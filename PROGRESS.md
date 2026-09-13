@@ -69,6 +69,7 @@ The audit fixes code only in files no lane agent is actively changing. For lanes
 | `feb65b4` C: keep running when Weave turns a key away | C | Pass | A rejected key or no network now leaves tracing off with a warning |
 | `eb96dc4` D: the server traces its run to Weave | D | Pass with notes | Authored from Lane C into `services/api`, `start.sh` and `.env.example`, the cross-lane edit A-18 records; tests stand in for the Weave account |
 | `dce5fde` C, D: note the Weave wiring in both progress files | C, D | Pass | Progress files only |
+| `184e423` D: Fix what I can runs Lane C's loop and shows every pass | D | Pass | The loop runs on the search cache, routed by TypeSafe or the labelled local policy; kept moves add up per piece |
 
 `609db3d`, `9028d14`, `b90e570`, `d3f7d95` and `1a06655` change only the plan and lane documents. A-1 covers the lane document errors from `9028d14`.
 
