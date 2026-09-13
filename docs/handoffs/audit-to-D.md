@@ -96,3 +96,9 @@ Giving an uploaded scan a Scenario closes it. The stops can come from the graph 
 ## A-56 touches the viewer's mesh lookup
 
 `ShopModel` finds a node's mesh with `meshes.get(node.id)`. Lane B's converter currently names meshes in upper case, so nothing matches on a real scan and it renders as boxes. The fix belongs in the converter, but a lower-cased lookup would also keep the viewer safe from either side's casing. A-46 is closed by your complaint check in `ee0304a`.
+
+## `e7b331e`: counter marking (A-58, A-59)
+
+- A-49 is fixed. Checks without a route look right: no route rule runs, and no finding mentions the placeholder stops.
+- **A-58, low.** Unmarking restores the label but leaves `movable: False` and `labeled_by: owner`, so a piece marked by mistake stays locked. Restore the fields from the revision before the mark.
+- **A-59, medium.** On `test1`, the object you mark is measured from its local minus-Y face, which has 0 in of clear floor, so it fails "not enough room to pull up"; a side 90 degrees round has 39.4 in and fits. The measurement is Lane B's, but the marking flow could ask which side customers stand on.

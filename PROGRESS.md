@@ -63,6 +63,9 @@ The audit fixes code only in files no lane agent is actively changing. For lanes
 | `ee0304a` D: confirm the lawsuit counter height from the public complaint | D | Pass | Closes A-46 |
 | `1ebff37` B: answer what sealed a route by rasterising without the node | B | Pass | Resolves A-40 |
 | `2913c95` through `279ff84`, about thirty pushes from all four lanes | A-D | Suites pass | Not read line by line. At `b860fec`, 571 tests pass with 7 expected failures, including the mesh tests with Blender |
+| `e7b331e` D: check a scan before its route, and let the owner mark the counter | D | Pass with notes | Resolves A-49; A-58, A-59 |
+| `b39f625` D: say a layout passes only as far as the checks that ran | D | Pass | |
+| `1955734` D: record counter marking, early checks and the phone origin fix | D | Pass | Progress file only |
 
 `609db3d`, `9028d14`, `b90e570`, `d3f7d95` and `1a06655` change only the plan and lane documents. A-1 covers the lane document errors from `9028d14`.
 
@@ -356,7 +359,7 @@ CONTRACT REJECTS lidar-mesh.json -> Input should be 'room_usdz', 'room_json', 'r
 `lidar_mesh` reached the contract twelve commits later in `6f704a5`, a Lane A commit that wrote `packages/contracts/`, `services/api/` and `apps/web/`. Changing anything in `packages/contracts/` is on the protocol's must-not-decide-alone list.
 
 ### A-49 A real uploaded scan never gets a Scenario, so nothing about it is ever checked
-High. `open`. Lane D.
+High. `fixed in e7b331e`. Lane D.
 
 Reproduced by pushing `test1`'s six uploadable artifacts through the real app:
 
@@ -417,3 +420,13 @@ High. `open`. Lane B, with the viewer lookup in Lane D.
 Medium. `open`. Lane B.
 
 A phone export carries each element once as a parametric box and once as a mesh. `d0947b8` maps both to the same identity by stripping Blender's `.001`, but renaming the second object to a name the first already holds makes Blender add `.001` back. Reproduced with Blender at `d0947b8` and `279ff84`: `test1` has 88 names, and all 26 of its nodes appear as both `<id>` and `<id>.001`; `ravida` likewise for 25 nodes. Which of the two a viewer picks up is arbitrary, and the copy can never match a node. Keeping one object per element, or naming the parametric one distinctly, would give each node one mesh. Pinned in `tests/test_audit_open_findings.py`, skipped without Blender.
+
+### A-58 Unmarking a counter leaves the object locked
+Low. `open`. Lane D.
+
+`labels._as_counter` sets `label`, `labeled_by` and `movable: False`; `_as_scanned`, the undo, restores only the label. Reproduced at `1955734` on the sample shop by marking `table_1` and unmarking it: `movable` goes from true to false and stays false, `labeled_by` stays `owner`, and the label comes back as the raw category `table` rather than the scanned `Table`. The owner cannot drag a piece they marked by mistake. Restoring `movable`, `labeled_by` and the label from the revision before the mark would make it an undo.
+
+### A-59 The counter approach is measured on a side no customer may use
+Medium. `open`. Lane B measures it, Lane C and Lane D rely on it.
+
+`counter_approach` places the 30 by 48 in clear floor space in front of the counter's local minus-Y face. On the fixture that face looks into the shop, but a real RoomPlan object's axes say nothing about which side customers stand on, and the owner-marking flow in `e7b331e` has no way to say so either. Reproduced at `1955734` with `test1`'s storage object, 0.49 by 0.52 m, marked as the counter: as scanned the approach measures 45.3 by 0.0 in and fails, and Lane C reports "There's not enough room to pull up to the service counter" at 0.0 in. Turned 90 degrees, the same object has 145.7 by 39.4 in of clear floor, which fits. Measuring every face and using the most open one, or letting the owner say which side is the front, would keep a real scan from failing on the wrong side.
