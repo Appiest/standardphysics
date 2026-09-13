@@ -1,6 +1,6 @@
 {
   "lane": "C",
-  "updated": "2026-09-13T04:15:38.301291+00:00",
+  "updated": "2026-09-13T05:21:36Z",
   "done": [
     "rule pack: 18 rules, thresholds in the units the standard is written in, the quoted sentence behind each, and every other number the section states",
     "human verification ledger binding rule id, section, threshold and unit, so editing a threshold switches its check off",
@@ -32,7 +32,8 @@
     "A-34: a partly measured turn is a gap on unevaluated, not silence",
     "point_of_sale_height: when a lowered section exists, the finding is the register on the high part, not a missing portion",
     "407 Lane C tests",
-    "workflow simulation: all-directions route suites, four functional avatar profiles, forward-facing paths, RoomPlan plus raw-mesh collision evidence, target reach checks, 1,000-trial bounded TypeSafe batches, aggregate design feedback, full-suite layout ranking, and a no-workflow-regression gate on furniture proposals"
+    "workflow simulation: all-directions route suites, four functional avatar profiles, forward-facing paths, RoomPlan plus raw-mesh collision evidence, target reach checks, 1,000-trial bounded TypeSafe batches, aggregate design feedback, full-suite layout ranking, and a no-workflow-regression gate on furniture proposals",
+    "a key Weave turns away leaves tracing off and logs why, instead of raising (feb65b4)"
   ],
   "in_progress": "wire workflow feedback and avatar paths into the Lane D HTTP/report/viewer surfaces",
   "blocked_on": null,

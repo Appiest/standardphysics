@@ -10,6 +10,8 @@ import os
 import pathlib
 from dataclasses import dataclass
 
+from standardphysics_agents.tracing import ENTITY_ENV, PROJECT_ENV
+
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 DEFAULT_DATA_DIR = pathlib.Path(__file__).resolve().parents[1] / "var"
 
@@ -44,6 +46,10 @@ class Settings:
     glance, and a demo that shows invented findings about an invented room is
     worse than an empty list. Set SP_SEED_SAMPLE_SHOP=1 if you want it back.
     """
+    weave_project: str | None = None
+    """Traces go to Weave when this is set, and nowhere when it is not. Only
+    `from_environment` fills it in, so a server built in a test stays local."""
+    weave_entity: str | None = None
 
     @property
     def database_path(self) -> pathlib.Path:
@@ -56,4 +62,6 @@ class Settings:
             data_dir=pathlib.Path(os.environ.get("SP_DATA_DIR", DEFAULT_DATA_DIR)),
             preview_unverified_rules=_flag("SP_PREVIEW_UNVERIFIED_RULES"),
             seed_sample_shop=_flag("SP_SEED_SAMPLE_SHOP"),
+            weave_project=os.environ.get(PROJECT_ENV) or None,
+            weave_entity=os.environ.get(ENTITY_ENV) or None,
         )

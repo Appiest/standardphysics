@@ -11,6 +11,7 @@ from typing import Annotated
 from fastapi import FastAPI, Header, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
+from standardphysics_agents import init_tracing, project_url, shutdown_tracing
 from standardphysics_contracts import (
     Artifact,
     ArtifactKind,
@@ -54,6 +55,12 @@ from .worker import ASSESS, PROCESS, Worker
 log = logging.getLogger(__name__)
 
 
+def _start_tracing(settings: Settings) -> None:
+    """Weave sees the whole run: seeding, uploads, checks and every model call."""
+    if init_tracing(settings.weave_project, settings.weave_entity):
+        log.info("this run is traced to %s", project_url())
+
+
 def _problem_response(exc: ApiProblem) -> JSONResponse:
     return JSONResponse(exc.body.model_dump(exclude_none=True), status_code=exc.status)
 
@@ -85,6 +92,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     async def lifespan(_: FastAPI):
         if settings.preview_unverified_rules:
             log.warning("SP_PREVIEW_UNVERIFIED_RULES is on: findings come from rules no person has verified")
+        _start_tracing(settings)
         if settings.seed_sample_shop:
             seed_sample_shop(database, store)
         if run_worker:
@@ -92,6 +100,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
         yield
         if run_worker:
             worker.stop()
+        shutdown_tracing()
 
     app = FastAPI(title="Standard Physics API", version="0.1.0", lifespan=lifespan)
     app.state.database, app.state.store, app.state.worker = database, store, worker

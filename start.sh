@@ -46,15 +46,26 @@ check_port_free() {
   fi
 }
 
+install_into_venv() {
+  # A .venv that uv created has no pip inside it, so ask uv to do the install.
+  if .venv/bin/python -m pip --version >/dev/null 2>&1; then
+    .venv/bin/python -m pip install --quiet --upgrade pip
+    .venv/bin/python -m pip install --quiet "$@"
+  elif command -v uv >/dev/null; then
+    VIRTUAL_ENV="$ROOT/.venv" uv pip install --quiet "$@"
+  else
+    fail "The .venv has no pip in it. Delete .venv, then run ./start.sh again."
+  fi
+}
+
 install_python() {
   local stamp=".venv/.installed" wanted
-  wanted="$(hash_files pyproject.toml packages/*/pyproject.toml services/api/pyproject.toml)"
+  wanted="$(hash_files "$0" pyproject.toml packages/*/pyproject.toml services/api/pyproject.toml)"
   [ -x .venv/bin/python ] || { echo "Creating .venv"; "$(find_python)" -m venv .venv; }
   [ "$(cat "$stamp" 2>/dev/null)" = "$wanted" ] && return
   echo "Installing Python packages"
-  .venv/bin/python -m pip install --quiet --upgrade pip
-  .venv/bin/python -m pip install --quiet -e . -e packages/contracts -e packages/fixtures -e packages/pipeline \
-    -e packages/agents -e "services/api[test]"
+  install_into_venv -e . -e packages/contracts -e packages/fixtures -e packages/pipeline \
+    -e "packages/agents[observability]" -e "services/api[test]"
   echo "$wanted" >"$stamp"
 }
 

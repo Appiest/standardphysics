@@ -9,6 +9,7 @@ because the tests run in CI and CI has no keys.
 from __future__ import annotations
 
 import functools
+import logging
 import os
 from typing import Any, Callable, TypeVar
 
@@ -16,6 +17,8 @@ Fn = TypeVar("Fn", bound=Callable[..., Any])
 
 PROJECT_ENV = "WANDB_PROJECT"
 ENTITY_ENV = "WANDB_ENTITY"
+
+log = logging.getLogger(__name__)
 
 
 class _Tracing:
@@ -37,7 +40,8 @@ class _Tracing:
         module = _import_weave()
         if module is None:
             return False
-        module.init(target)
+        if not _open_project(module, target):
+            return False
         self._weave, self.project = module, target
         return True
 
@@ -77,6 +81,21 @@ def _import_weave() -> Any:
     except ImportError:
         return None
     return weave
+
+
+def _open_project(module: Any, target: str) -> bool:
+    """`weave.init` needs a key and a network, so it fails for reasons the
+    caller cannot see coming: a rejected key, no connection, a project the
+    account cannot write to. Any of those leaves tracing off and the server
+    running, because this lane may not require a third-party account.
+    """
+    try:
+        module.init(target)
+    except Exception as error:
+        log.warning("weave tracing is off, %s said: %s", target, error)
+        return False
+    log.info("weave tracing is on for %s", target)
+    return True
 
 
 def _project_name(project: str | None, entity: str | None) -> str | None:

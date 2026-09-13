@@ -1,6 +1,6 @@
 {
   "lane": "D",
-  "updated": "2026-09-13T03:39:38Z",
+  "updated": "2026-09-13T05:27:52Z",
   "done": [
     "contracts and fixture shop (21bbc65)",
     "Stop.anchor_node_id and WidthResult.needs_measurement (audit A-6, A-9)",
@@ -31,7 +31,8 @@
     "a phone on the same Wi-Fi can open the dev workspace (379994e)",
     "scans get checked before their route is confirmed, route rules excluded; audit A-49 resolved (e7b331e)",
     "the owner can mark the service counter from the viewer; a layout passes only as far as the checks that ran (b39f625)",
-    "rule review sheet for Lane C; point_of_sale_height kept for the demo by Brendan (04a85ae, 279ff84)"
+    "rule review sheet for Lane C; point_of_sale_height kept for the demo by Brendan (04a85ae, 279ff84)",
+    "the API server turns Weave on from .env at startup, so an upload through the web app traces itself (eb96dc4)"
   ],
   "in_progress": null,
   "blocked_on": null,

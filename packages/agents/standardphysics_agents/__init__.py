@@ -26,7 +26,9 @@ from .rules import (
     save_ledger,
 )
 from .tracing import init as init_tracing
-from .tracing import is_live, project_url, traced
+from .tracing import is_live, project_url
+from .tracing import shutdown as shutdown_tracing
+from .tracing import traced
 from .workflows import (
     DEFAULT_PROFILES,
     LARGER_BODY_PROFILE,
@@ -68,5 +70,6 @@ __all__ = [
     "inventory", "is_live", "load_ledger", "load_pack", "parse_decision",
     "project_url", "propose_fix", "query_schema", "run_checks", "run_loop",
     "run_pass", "run_typesafe_workflow_batch", "run_workflow_batch",
-    "save_ledger", "state_for", "to_finding", "to_findings", "traced",
+    "save_ledger", "shutdown_tracing", "state_for", "to_finding",
+    "to_findings", "traced",
 ]

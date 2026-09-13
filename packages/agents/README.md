@@ -136,6 +136,10 @@ check.
 agent call carries `@traced`, which costs one attribute read when Weave is not
 configured, because the tests run in CI and CI has no keys.
 
-Set `WANDB_PROJECT` and `WANDB_ENTITY` and the whole loop reads as one trace
-tree. `evaluate` writes per-case results to `runs/evaluation.json` either way,
-so a run can always be looked at again.
+Set `WANDB_PROJECT` and `WANDB_ENTITY` in the repo-root `.env` and the whole
+loop reads as one trace tree. The API server calls `init_tracing()` at startup
+and logs the project URL, so an upload through the web app traces itself. A key
+Weave rejects logs a warning and leaves the server running untraced.
+
+`evaluate` writes per-case results to `runs/evaluation.json` either way, so a
+run can always be looked at again.
