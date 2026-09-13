@@ -1,4 +1,4 @@
-import type { AskAnswer, LayoutCheckResult, NodeMove, ProposalResult, Scenario, SceneGraph } from "@/types/contracts";
+import type { AskAnswer, LayoutCheckResult, LoopResult, NodeMove, ProposalResult, Scenario, SceneGraph } from "@/types/contracts";
 
 export class ApiRefusal extends Error {
   constructor(readonly status: number, readonly error: string) {
@@ -33,6 +33,10 @@ export function saveLayout(scanId: string, baseRevision: number, moves: NodeMove
 
 export function proposeFix(scanId: string, baseRevision: number, findingIds: string[]) {
   return sendJson<ProposalResult>(`/api/scans/${scanId}/proposals`, { base_revision: baseRevision, finding_ids: findingIds });
+}
+
+export function runLoop(scanId: string, baseRevision: number) {
+  return sendJson<LoopResult>(`/api/scans/${scanId}/loop`, { base_revision: baseRevision });
 }
 
 export function setCounter(scanId: string, baseRevision: number, nodeId: string, isCounter: boolean) {

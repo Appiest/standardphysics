@@ -21,6 +21,8 @@ from standardphysics_contracts import (
     CreateScanRequest,
     LayoutCheckRequest,
     LayoutCheckResult,
+    LoopRequest,
+    LoopResult,
     ProposalRequest,
     ProposalResult,
     Report,
@@ -42,6 +44,7 @@ from .simulations import queue_simulation, simulation_status
 from .replays import install_replay_routes
 from standardphysics_contracts import RebuildRequest, SimulationRequest, SimulationStatus, graph_hash
 from .lidar_mesh import InvalidLidarMesh, validate_lidar_mesh
+from .loop_run import run as run_loop_on
 from .proposals import propose
 from .questions import answer_question
 from .report import build_report
@@ -290,6 +293,10 @@ def _install_layout_routes(app: FastAPI, database: Database, stages: Stages, wor
     @app.post("/api/scans/{scan_id}/ask", response_model=AskAnswer)
     def ask_about_the_shop(scan_id: uuid.UUID, body: AskRequest) -> AskAnswer:
         return answer_question(database, stages, scan_id, body)
+
+    @app.post("/api/scans/{scan_id}/loop", response_model=LoopResult)
+    def fix_what_it_can(scan_id: uuid.UUID, body: LoopRequest) -> LoopResult:
+        return run_loop_on(database, stages, scan_id, body)
 
     @app.post("/api/scans/{scan_id}/proposals", response_model=ProposalResult)
     def proposal(scan_id: uuid.UUID, body: ProposalRequest) -> ProposalResult:

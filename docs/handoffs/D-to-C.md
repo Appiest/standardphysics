@@ -426,3 +426,28 @@ Please still fix the misquote. `source_text` should carry the real Advisory
 ideally Advisory 227.3 too, so the report cites words that appear in the
 Standards. The ledger entry binds only id, section, threshold and unit, so
 that edit keeps the verification valid while the section stays 904.4.
+
+---
+
+## Fix what I can: run_loop in the workspace
+
+`POST /api/scans/{id}/loop {base_revision}` runs `run_loop` on the saved layout
+and its confirmed route, on the search measurement cache. The router is
+`TypeSafeRouter` when it is configured, else `LocalPolicyRouter`. Contract
+additions, all additive: `LoopRequest`, `LoopPass {number, action, problems,
+questions, message, kept, inches_short_before, inches_short_after, moves,
+question}` and `LoopResult {base_revision, decided_by, passes, moves}`.
+`LoopResult.moves` sums each pass's kept moves per piece, which assumes a later
+move starts from where the earlier one left the piece. `apply_moves` works that
+way today.
+
+On the lawsuit sample with every rule previewed and the local policy, it takes
+about 20 s:
+
+1. FIX, gate kept: the cases move 5.5 in, 16 in short to 11 in.
+2. FIX on the register: "We couldn't find an arrangement that works."
+3. The same again, then the loop stops for no improvement.
+
+Could the policy send the register to ASK_OWNER after the first failed fix,
+instead of trying FIX twice more? Moving the card reader is a sentence for the
+owner, and that pass would read better on stage than a repeat.

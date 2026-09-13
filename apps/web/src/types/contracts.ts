@@ -323,6 +323,43 @@ export interface LidarMeshPart {
   vertices: [number, number, number, ...number[]];
 }
 /**
+ * One trip round the loop: what the router chose and what came of it.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "LoopPass".
+ */
+export interface LoopPass {
+  action: ("FIX" | "RESCAN_AREA" | "ASK_OWNER" | "ESCALATE" | "DONE") | null;
+  inches_short_after: number | null;
+  inches_short_before: number | null;
+  kept: boolean | null;
+  message: string;
+  moves: NodeMove[];
+  number: number;
+  problems: number;
+  question: string | null;
+  questions: number;
+}
+/**
+ * Run Lane C's loop on this layout until it clears what it can or stops.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "LoopRequest".
+ */
+export interface LoopRequest {
+  base_revision: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "LoopResult".
+ */
+export interface LoopResult {
+  base_revision: number;
+  decided_by: string;
+  moves: NodeMove[];
+  passes: LoopPass[];
+}
+/**
  * Row-major 4x4 transform.
  *
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema

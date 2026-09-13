@@ -13,7 +13,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from .findings import Finding, Locus
-from .loop import Assessment, NodeMove, Proposal
+from .loop import Assessment, NodeMove, Proposal, RouterAction
 from .rules import Check
 from .scan import Scan
 from .scene import Scenario, SceneGraph
@@ -120,3 +120,36 @@ class AskAnswer(BaseModel):
     data: dict[str, Any] = {}
     proposal: Proposal | None = None
     findings: list[Finding] = []
+
+
+class LoopRequest(BaseModel):
+    """Run Lane C's loop on this layout until it clears what it can or stops."""
+
+    base_revision: int
+
+
+class LoopPass(BaseModel):
+    """One trip round the loop: what the router chose and what came of it."""
+
+    number: int
+    action: RouterAction | None
+    """None when the router's answer did not validate, so nothing was allowed to happen."""
+    problems: int
+    questions: int
+    message: str
+    kept: bool | None = None
+    """Whether the gate kept a new layout. None when no layout was tried."""
+    inches_short_before: float | None = None
+    inches_short_after: float | None = None
+    moves: list[NodeMove] = []
+    """This pass's moves, only when the gate kept them."""
+    question: str | None = None
+
+
+class LoopResult(BaseModel):
+    base_revision: int
+    decided_by: str
+    """The router that chose each action: TypeSafe, or the labelled local policy."""
+    passes: list[LoopPass]
+    moves: list[NodeMove]
+    """Every kept move from the base layout, combined per piece."""

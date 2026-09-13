@@ -1,6 +1,6 @@
 {
   "lane": "D",
-  "updated": "2026-09-13T05:27:52Z",
+  "updated": "2026-09-13T05:38:21Z",
   "done": [
     "contracts and fixture shop (21bbc65)",
     "Stop.anchor_node_id and WidthResult.needs_measurement (audit A-6, A-9)",
@@ -32,7 +32,8 @@
     "scans get checked before their route is confirmed, route rules excluded; audit A-49 resolved (e7b331e)",
     "the owner can mark the service counter from the viewer; a layout passes only as far as the checks that ran (b39f625)",
     "rule review sheet for Lane C; point_of_sale_height kept for the demo by Brendan (04a85ae, 279ff84)",
-    "the API server turns Weave on from .env at startup, so an upload through the web app traces itself (eb96dc4)"
+    "the API server turns Weave on from .env at startup, so an upload through the web app traces itself (eb96dc4)",
+    "Fix what I can: the workspace runs Lane C's run_loop and shows each pass, the router's choice and whether the re-measure kept it"
   ],
   "in_progress": null,
   "blocked_on": null,
@@ -53,7 +54,8 @@
     "standardphysics_fixtures.build_lawsuit_graph and build_lawsuit_scenario",
     "an assessment exists before the route is confirmed, with route rules excluded",
     "PUT and DELETE /api/scans/{id}/revisions/{rev}/counters/{node}",
-    "the viewer's Mark as the counter chip when a piece is picked"
+    "the viewer's Mark as the counter chip when a piece is picked",
+    "POST /api/scans/{id}/loop and LoopRequest, LoopPass, LoopResult"
   ],
   "needs_human": [
     "Verify the rule pack thresholds (Lane C's cli rules verify). Until then real scans report no findings; SP_PREVIEW_UNVERIFIED_RULES=1 is for development only",

@@ -5,6 +5,7 @@
     assess    Lane C  assess, with the human verification ledger
     geometry  Lane B  object-separated export_glb; scanned USDZ is fallback
     renders   Lane B  render_finding per locatable finding
+    loop      Lane C  run_loop, routed by TypeSafe when configured
 
 Swapping an implementation means changing one field of `Stages`. Geometry and
 renders need Blender and run after the scan is ready, so a slow export never
@@ -20,7 +21,16 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from standardphysics_agents import VerificationLedger, assess, load_ledger, load_pack
+from standardphysics_agents import (
+    LocalPolicyRouter,
+    LoopStep,
+    TypeSafeRouter,
+    VerificationLedger,
+    assess,
+    load_ledger,
+    load_pack,
+    run_loop,
+)
 from standardphysics_agents.ask import Answer, ask
 from standardphysics_agents.fix import FixOutcome, propose_fix
 from standardphysics_contracts import Assessment, Finding, Scenario, SceneGraph, Stop, Vec3
@@ -44,6 +54,12 @@ def preview_ledger() -> VerificationLedger:
     return ledger
 
 
+def configured_router() -> TypeSafeRouter | LocalPolicyRouter:
+    """TypeSafe when its key and address are set, else Lane C's local policy, which says so on every decision."""
+    router = TypeSafeRouter()
+    return router if router.configured else LocalPolicyRouter()
+
+
 def without_route_rules(ledger: VerificationLedger) -> VerificationLedger:
     """The same verifications minus every rule about a customer route, for a scan that has none yet."""
     route_rule_ids = {rule.id for rule in load_pack().rules if ROUTE_SUBJECTS.intersection(rule.applies_to)}
@@ -58,6 +74,7 @@ class Stages:
     export_glb: Callable[[SceneGraph, pathlib.Path], pathlib.Path] = blender.export_glb
     usdz_to_glb: Callable[..., blender.ConversionResult] = blender.usdz_to_glb
     render_finding: Callable[..., pathlib.Path] = blender.render_finding
+    router_factory: Callable[[], TypeSafeRouter | LocalPolicyRouter] = configured_router
     search_measure: PipelineMeasurements = field(default_factory=PipelineMeasurements)
     """A second cache for fix searches and questions, so neither holds up a drag check."""
 
@@ -110,6 +127,14 @@ class Stages:
         with self._search_lock:
             ledger = self.ledger_factory()
             return propose_fix(graph, scenario, self.search_measure, targets, rules=load_pack(), ledger=ledger)
+
+    def loop(self, graph: SceneGraph, scenario: Scenario) -> tuple[str, list[LoopStep]]:
+        """Lane C's loop on the search cache: the router's name, and every pass it ran."""
+        router = self.router_factory()
+        with self._search_lock:
+            ledger = self.ledger_factory()
+            steps = run_loop(graph, scenario, self.search_measure, router, rules=load_pack(), ledger=ledger)
+        return router.provider, steps
 
     def ask(self, text: str, graph: SceneGraph, scenario: Scenario) -> Answer:
         """Lane C's ask box, on the search cache."""

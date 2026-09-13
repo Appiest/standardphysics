@@ -12,7 +12,7 @@ from .errors import ApiProblem
 from .stages import Stages
 
 
-def _inputs(database: Database, scan_id: uuid.UUID, revision: int):
+def fix_inputs(database: Database, scan_id: uuid.UUID, revision: int):
     with database.connect() as connection:
         if not repo.scan_exists(connection, scan_id):
             raise ApiProblem(404, "no scan")
@@ -25,7 +25,7 @@ def _inputs(database: Database, scan_id: uuid.UUID, revision: int):
 
 
 def propose(database: Database, stages: Stages, scan_id: uuid.UUID, body: ProposalRequest) -> ProposalResult:
-    graph, scenario, assessment = _inputs(database, scan_id, body.base_revision)
+    graph, scenario, assessment = fix_inputs(database, scan_id, body.base_revision)
     wanted = set(body.finding_ids)
     targets = [finding for finding in assessment.findings if finding.id in wanted]
     if len(targets) != len(wanted):

@@ -21,6 +21,7 @@ import { type Comparison, ComparePanel } from "./ComparePanel";
 import { RefreshWhile } from "@/components/RefreshWhile";
 import { FindingsList } from "./FindingsList";
 import { FixSuggestion } from "./FixSuggestion";
+import { LoopRun } from "./LoopRun";
 import { PickedObject } from "./PickedObject";
 import type { ArrangeHandlers } from "./ShopModel";
 import { type Arrangement, useArrangement } from "./useArrangement";
@@ -214,13 +215,20 @@ function RoutePrompt({ onRoute }: { onRoute: () => void }) {
   );
 }
 
+/** Above the findings: confirm the route first, then let the loop fix what furniture can. */
+function NextStep({ scan, scene, findings, route, onRoute, onTryLayout }: Omit<FindingsPanelProps, "assessment" | "selected" | "onToggle">) {
+  if (!route.confirmed) return scan.state === "ready" ? <RoutePrompt onRoute={onRoute} /> : null;
+  if (!hasProblems(findings)) return null;
+  return <LoopRun key={scene.revision} scanId={scan.id} revision={scene.revision} onTry={onTryLayout} />;
+}
+
 function FindingsPanel({ scan, scene, assessment, findings, selected, onToggle, onTryLayout, route, onRoute }: FindingsPanelProps) {
   if (assessment === null && isWorking(scan)) {
     return <p className="px-3 font-medium" role="status">Checking this layout</p>;
   }
   return (
     <div className="flex flex-col gap-5">
-      {!route.confirmed && scan.state === "ready" && <RoutePrompt onRoute={onRoute} />}
+      <NextStep scan={scan} scene={scene} findings={findings} route={route} onRoute={onRoute} onTryLayout={onTryLayout} />
       {findings.length === 0 ? (
         <p className="px-3 text-ink-muted">{scanStatus(scan, assessment, route.confirmed)}</p>
       ) : (
@@ -243,6 +251,8 @@ function usePicked(scene: SceneGraph) {
   const node = picked ? scene.nodes.find((candidate) => candidate.id === picked.id) ?? null : null;
   return { setPicked, node, label: node?.label ?? picked?.label ?? null };
 }
+
+const hasProblems = (findings: Finding[]) => findings.some((finding) => finding.outcome === "problem");
 
 const canMarkCounter = (task: Task, scan: Scan) => task === "findings" && scan.state === "ready";
 
