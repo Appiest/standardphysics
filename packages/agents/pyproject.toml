@@ -12,11 +12,12 @@ dependencies = [
   "standardphysics-pipeline",
   "pydantic>=2.7",
   "openai>=1.0",
+  "pillow>=10",
 ]
 
 [project.optional-dependencies]
 observability = ["weave>=0.51"]
-replay = ["pillow>=10", "imageio-ffmpeg>=0.5"]
+replay = ["imageio-ffmpeg>=0.5"]
 
 [project.scripts]
 standardphysics-agents = "standardphysics_agents.cli:main"
