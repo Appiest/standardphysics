@@ -66,6 +66,9 @@ The audit fixes code only in files no lane agent is actively changing. For lanes
 | `e7b331e` D: check a scan before its route, and let the owner mark the counter | D | Pass with notes | Resolves A-49; A-58, A-59 |
 | `b39f625` D: say a layout passes only as far as the checks that ran | D | Pass | |
 | `1955734` D: record counter marking, early checks and the phone origin fix | D | Pass | Progress file only |
+| `feb65b4` C: keep running when Weave turns a key away | C | Pass | A rejected key or no network now leaves tracing off with a warning |
+| `eb96dc4` D: the server traces its run to Weave | D | Pass with notes | Authored from Lane C into `services/api`, `start.sh` and `.env.example`, the cross-lane edit A-18 records; tests stand in for the Weave account |
+| `dce5fde` C, D: note the Weave wiring in both progress files | C, D | Pass | Progress files only |
 
 `609db3d`, `9028d14`, `b90e570`, `d3f7d95` and `1a06655` change only the plan and lane documents. A-1 covers the lane document errors from `9028d14`.
 
