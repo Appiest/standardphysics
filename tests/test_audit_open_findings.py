@@ -9,6 +9,7 @@ the code fixes it; the audit only pins it.
 
 import hashlib
 import json
+import re
 import uuid
 from pathlib import Path
 
@@ -33,6 +34,8 @@ from standardphysics_contracts import (
 )
 from standardphysics_fixtures import build_graph, build_scenario, node_id
 from standardphysics_pipeline import blender
+from standardphysics_pipeline import check_blender
+from standardphysics_pipeline.blender import glb_node_names, usdz_to_glb
 from standardphysics_pipeline.ingest import parse_room_json
 from standardphysics_pipeline.measure import PipelineMeasurements
 from standardphysics_pipeline.occupancy import blocks_floor
@@ -237,6 +240,50 @@ def test_a43_a_retried_scan_whose_assessment_still_fails_ends_failed(tmp_path):
         client.post(f"/api/scans/{scan_id}/complete")
         client.app.state.worker.drain()
         assert client.get(f"/api/scans/{scan_id}").json()["state"] == "failed"
+
+
+PHONE_SCANS = Path(__file__).parent.parent / "datasets" / "phone"
+
+
+def _blender_missing() -> bool:
+    try:
+        check_blender.blender_path()
+    except FileNotFoundError:
+        return True
+    return False
+
+
+def _converted_names(usdz: Path, mapping: Path, tmp_path) -> list[str]:
+    out = tmp_path / "scene.glb"
+    usdz_to_glb(usdz, out, mapping)
+    return glb_node_names(out)
+
+
+@pytest.mark.skipif(_blender_missing(), reason="needs Blender")
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError, reason="A-56: converted meshes are named in upper case, node ids in lower case"
+)
+def test_a56_a_converted_mesh_is_named_by_its_node_id(tmp_path):
+    names = _converted_names(
+        REAL_EXPORTS / "apple_bedroom3.usdz", REAL_EXPORTS / "apple_bedroom3.metadata.plist", tmp_path
+    )
+    export = json.loads((REAL_EXPORTS / "apple_bedroom3.room.json").read_text())
+    node_ids = {str(node.id) for node in parse_room_json(export).nodes}
+    naming_a_node = {name for name in names if name.split(".")[0].lower() in node_ids}
+    assert naming_a_node
+    assert naming_a_node <= node_ids
+
+
+@pytest.mark.skipif(_blender_missing(), reason="needs Blender")
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError, reason="A-57: each phone scan element converts twice, the copy named <id>.001"
+)
+def test_a57_a_phone_scan_converts_each_element_once(tmp_path):
+    scan = PHONE_SCANS / "test1"
+    names = _converted_names(scan / "room.usdz", scan / "room.metadata.plist", tmp_path)
+    node_ids = {str(node.id) for node in parse_room_json(json.loads((scan / "room.json").read_text())).nodes}
+    copies = [name for name in names if re.search(r"\.\d{3}$", name) and name.split(".")[0].lower() in node_ids]
+    assert not copies
 
 
 @pytest.mark.parametrize("room", ["apple_bedroom3", "apple_livingroom"])
