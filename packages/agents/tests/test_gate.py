@@ -8,13 +8,13 @@ import pytest
 from standardphysics_agents import assess
 from standardphysics_agents.assess import Pass
 from standardphysics_agents.checks.observation import Unevaluated
+from standardphysics_agents.evaluation import variants as v
 from standardphysics_agents.evaluation.gate import (
     UNMEASURED_SHORTFALL_INCHES,
     accepts,
     answered_checks,
     total_shortfall,
 )
-from standardphysics_agents.evaluation import variants as v
 from standardphysics_agents.fix import apply_moves
 from standardphysics_contracts import NodeMove, Vec3, to_meters
 from standardphysics_fixtures.shop import FIX_SHIFT_INCHES

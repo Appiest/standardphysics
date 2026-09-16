@@ -759,7 +759,28 @@ export interface SceneNode {
   quality: "measured" | "needs_another_look" | "confirmed";
   raw_category: string;
   reconstruction?: DisplayReconstruction | null;
+  relation?: ("rests_on" | "inside" | "mounted_on" | "cut_into") | null;
+  texts?: SurfaceText[];
   transform: Mat4;
+}
+/**
+ * Words read off a surface, and the frames they were read from.
+ *
+ * A whiteboard, a sign, a label on a box. The text is evidence about what the
+ * room says, never about what it measures.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "SurfaceText".
+ */
+export interface SurfaceText {
+  confidence: number;
+  /**
+   * @minItems 1
+   * @maxItems 8
+   */
+  evidence_frame_ids: [string, ...string[]];
+  face: ("top" | "front" | "back" | "left" | "right" | "bottom") | null;
+  text: string;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema

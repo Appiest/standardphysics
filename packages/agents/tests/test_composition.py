@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from standardphysics_agents.fix import apply_moves, violations
 from standardphysics_agents.fix.composition import (
     Composition,
@@ -18,7 +17,7 @@ from standardphysics_agents.fix.composition import (
 )
 from standardphysics_agents.fix.furnishing import arrangements
 from standardphysics_agents.fix.moves import move_node
-from standardphysics_contracts import Mat4, NodeMove, SceneGraph, SceneNode, Scenario, Vec3
+from standardphysics_contracts import Mat4, NodeMove, Scenario, SceneGraph, SceneNode, Vec3
 from standardphysics_fixtures.shop import node_id
 
 

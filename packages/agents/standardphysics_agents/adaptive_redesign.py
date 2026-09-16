@@ -15,7 +15,6 @@ from .redesign import propose_redesign
 from .router import SystemOneClient, SystemOneError, TypeSafeCallBudget
 from .workflows import FunctionalProfile, Workflow, evaluate_workflow
 
-
 MAX_FAILURE_EVIDENCE = 64
 
 PLACEMENT_CHECKS = frozenset({

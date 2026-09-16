@@ -117,7 +117,9 @@ def install_replay_routes(app: FastAPI, database: Database, store: ArtifactStore
 
     @app.head(route + "/{asset}")
     @app.get(route + "/{asset}")
-    def asset(scan_id: UUID, revision: Annotated[int, PathParameter(ge=0)], asset: Literal["video.mp4"]) -> FileResponse:
+    def asset(
+        scan_id: UUID, revision: Annotated[int, PathParameter(ge=0)], asset: Literal["video.mp4"]
+    ) -> FileResponse:
         _load(database, store, scan_id, revision)
         path = _directory(store, scan_id, revision) / asset
         if not path.is_file():
@@ -130,7 +132,8 @@ def main() -> None:
     parser.add_argument("manifest", type=Path)
     args = parser.parse_args()
     settings = Settings.from_environment()
-    replay = publish(args.manifest, Database(settings.database_path), ArtifactStore(settings.data_dir, settings.max_artifact_bytes))
+    store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes)
+    replay = publish(args.manifest, Database(settings.database_path), store)
     print(f"Published {len(replay.chapters)} recorded runs for {replay.scan_id} revision {replay.revision}")
 
 

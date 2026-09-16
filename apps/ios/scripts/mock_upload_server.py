@@ -1,9 +1,9 @@
 """Serve the repository's mock upload contract on a reachable development host."""
 
 import argparse
+import runpy
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-import runpy
 
 mock_path = Path(__file__).resolve().parents[3] / "packages" / "fixtures" / "standardphysics_fixtures" / "mock_api.py"
 Handler = runpy.run_path(str(mock_path))["Handler"]

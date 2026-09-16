@@ -13,8 +13,8 @@ from PIL import Image
 from standardphysics_contracts import NodeTextureCoverage, SceneGraph, TextureCoverage
 
 from ..blender import BlenderError, _run, display_graph
-from ..lidar import load_mesh, triangles_in_arkit_world
 from ..footprints import floor_polygon
+from ..lidar import load_mesh, triangles_in_arkit_world
 from .camera import CameraMetadataError, PhotoCamera, load_cameras
 from .project import (
     DepthBuffers,
@@ -24,9 +24,9 @@ from .project import (
     pad_gutters,
     rasterize_atlas,
     sample_surface,
-    triangle_depth_buffer,
     to_linear,
     to_srgb,
+    triangle_depth_buffer,
     view_samples,
 )
 

@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import json
 
-import pytest
 import numpy as np
-
-from standardphysics_contracts import to_meters, to_inches
-from standardphysics_pipeline import Grid, clearance_map, widest_path
-
+import pytest
 from standardphysics_agents.cli import main
 from standardphysics_agents.evaluation import run_accessibility_sweep
+from standardphysics_contracts import to_inches, to_meters
+from standardphysics_pipeline import Grid, clearance_map, widest_path
 
 
 def test_sweep_runs_the_exact_requested_number_of_deterministic_cases():

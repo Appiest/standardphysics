@@ -5,6 +5,7 @@ import uuid
 
 from conftest import FIXTURE_DATA, create_scan, drain, put_artifact
 from standardphysics_pipeline import glb_node_names, reconstruct
+
 from standardphysics_api.stages import Stages
 
 REAL = FIXTURE_DATA / "real"

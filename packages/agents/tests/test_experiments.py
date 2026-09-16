@@ -21,9 +21,9 @@ from standardphysics_agents.evaluation.configuration import (
 from standardphysics_agents.evaluation.experiments import (
     DEFAULT_GRID,
     GRID_AXES,
+    NO_PROJECT,
     NOT_INSTALLED,
     NOT_SIGNED_IN,
-    NO_PROJECT,
     TABLE_COLUMNS,
     Counted,
     blocker,
@@ -32,7 +32,6 @@ from standardphysics_agents.evaluation.experiments import (
     run_experiment,
     run_grid,
     save_experiments,
-    target,
 )
 from standardphysics_agents.evaluation.scorers import LOWER_IS_BETTER, SCORERS
 from standardphysics_fixtures import (

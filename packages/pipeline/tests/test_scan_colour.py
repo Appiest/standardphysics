@@ -10,7 +10,10 @@ import numpy as np
 import pytest
 from standardphysics_pipeline.textures.camera import PhotoCamera
 from standardphysics_pipeline.textures.scan_colour import (
-    UNSEEN, colour_the_scan, unused_vertices_removed, vertex_normals,
+    UNSEEN,
+    colour_the_scan,
+    unused_vertices_removed,
+    vertex_normals,
 )
 
 

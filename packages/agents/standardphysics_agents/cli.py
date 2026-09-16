@@ -28,9 +28,9 @@ from .assess import assess
 from .evaluation import (
     DEFAULT_GRID,
     DEFAULT_SETUPS,
+    blocker,
     evaluate,
     evaluate_in_weave,
-    blocker,
     log_experiments,
     previewing,
     run_accessibility_sweep,

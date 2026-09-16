@@ -28,15 +28,22 @@ You need Python 3.11 or newer and Node 20.9 or newer. From a fresh clone:
 ./start.sh
 ```
 
-That installs the Python packages into `.venv` and the web packages into `apps/web`, then starts the API on port 8787 and the web workspace at http://localhost:3000. The workspace lists scans that came off a phone. To load the two in `datasets/phone` without a phone, run `.venv/bin/python scripts/import_scan.py datasets/phone/*` while it's running. To add the sample shop, start it with `SP_SEED_SAMPLE_SHOP=1 ./start.sh`. Ctrl-C stops both. For the demo, `./start.sh --prod` runs a production build instead.
+That installs the Python packages into `.venv` and the web packages into `apps/web`, then starts the API on port 8787 and the web workspace at http://localhost:3000. Ctrl-C stops both. For the demo, `./start.sh --prod` runs a production build instead.
 
-Findings come only from rules a person has verified, with `.venv/bin/standardphysics-agents rules verify <rule> --by "<name>"` from Lane C. Until someone does that, `SP_PREVIEW_UNVERIFIED_RULES=1 ./start.sh` runs every rule anyway, for development only.
+Open the workspace and create an account. A scan belongs to the owner who uploaded it, and the list only ever shows your own shops, so a fresh account starts empty.
 
-To run the tests:
+To start with a shop already in it, run `SP_SEED_SAMPLE_SHOP=1 ./start.sh`. That seeds the sample boba shop and the demo account that owns it, and prints the email and password to sign in as. Set `SP_SEED_OWNER_PASSWORD` to choose the password yourself; leave it unset and the server generates one and logs it.
+
+To load the phone scans in `datasets/phone`, run `.venv/bin/python scripts/import_scan.py datasets/phone/*` while it's running.
+
+Findings come only from rules whose threshold has been checked against the text it cites. `scripts/verify_rulepack.py` does that check and writes the ledger, which is committed, so a clean clone reports findings without any flag. Two rules are left off it and the script says why for each. A person who has read a section adds their name with `.venv/bin/standardphysics-agents rules second-check <rule> --by "<name>"`. `SP_PREVIEW_UNVERIFIED_RULES=1` runs every rule including the two, for development only, and stamps the report as unreviewed.
+
+To run the tests and the linter:
 
 ```bash
 .venv/bin/python -m pytest
 .venv/bin/python -m pytest packages/agents services/api/tests -q
+.venv/bin/python -m ruff check .
 (cd apps/web && npm run lint && npm run typecheck && npm run test)
 ```
 
@@ -49,6 +56,27 @@ To move the shop's dimensions by hand and watch the same checks read the new roo
 That is a marimo notebook, installed by `./start.sh`. [`docs/marimo.md`](docs/marimo.md) says what each slider does.
 
 Lane B additionally needs Blender 5.x. `brew install --cask --force blender` — the `--force` matters, because a plain install silently does nothing when Blender was installed by hand.
+
+## Deploying it
+
+```bash
+docker compose up --build
+```
+
+That builds one image and runs two containers from it, the API and the web workspace, with the scans in a named volume. Open http://localhost:3000. Add `SP_SEED_SAMPLE_SHOP=1` to the environment to seed the sample shop and its demo account.
+
+On a host that gives you a single container and a single port, run the same image with no argument. The entrypoint then serves the workspace on `$PORT` and runs the API beside it on 8787:
+
+```bash
+docker build -t standardphysics .
+docker run -p 3000:3000 -v scans:/data standardphysics
+```
+
+The scans and every uploaded artifact live in `/data`. Mount it, or a restart loses every shop anyone has scanned.
+
+`/health` answers without a session, so a load balancer can ask. It reads from the database, because a process that is listening but cannot read its own scans is not healthy in any way that matters.
+
+Two things the image does not do. Blender is not installed, so an uploaded scan shows as boxes and its report has no pictures; the seeded sample shop carries a committed model and is unaffected. And `/present` and `/brush` are not part of the product, so they answer 404 unless `SP_SHOW_DEMO_ROUTES=1` asks for them.
 
 ## What already works
 

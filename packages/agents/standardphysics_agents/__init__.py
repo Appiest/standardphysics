@@ -21,13 +21,6 @@ from .accessibility_intelligence import (
     TextGuardResult,
 )
 from .adaptive_redesign import AdaptiveRedesignResult, run_adaptive_redesign
-from .layout_repair import (
-    aesthetics_cost,
-    prefer_layout,
-    run_layout_repair,
-    seating_broken,
-    try_deterministic_repair,
-)
 from .ask import Answer, Query, ask, query_schema
 from .assess import Pass, assess
 from .checks import CheckContext, Observation, Unevaluated, run_checks
@@ -42,6 +35,13 @@ from .evaluation import EvaluationResult, GateResult, accepts, dataset, evaluate
 from .findings import finding_id, to_finding, to_findings
 from .fix import FixOutcome, Relaxation, propose_fix
 from .hashing import graph_hash, inventory
+from .layout_repair import (
+    aesthetics_cost,
+    prefer_layout,
+    run_layout_repair,
+    seating_broken,
+    try_deterministic_repair,
+)
 from .loop import Loop, LoopStep, run_loop, run_pass
 from .router import (
     LocalPolicyRouter,

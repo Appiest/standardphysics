@@ -1,12 +1,10 @@
 """Blender-backed output. Skipped where Blender is not installed."""
 
 import json
-import pathlib
 from math import cos, pi, sin
 from uuid import uuid4
 
 import pytest
-
 from standardphysics_contracts import DisplayPart, DisplayReconstruction, Mat4, SceneNode, Vec3
 from standardphysics_fixtures import build_graph, build_scenario
 from standardphysics_pipeline.blender import (

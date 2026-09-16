@@ -2,15 +2,15 @@ import { notFound } from "next/navigation";
 import { RefreshWhile } from "@/components/RefreshWhile";
 import { ScanStatus } from "@/components/ScanStatus";
 import { Workspace } from "@/components/workspace/Workspace";
-import { getAssessment, getScan, getScenario, getScenarioSuggestion, getScene, getTextureStatus, sceneGlbUrl } from "@/lib/api";
-import { API_ORIGIN } from "@/lib/api-origin";
+import { getAssessment, getScan, getScenario, getScenarioSuggestion, getScene, getTextureStatus, headSceneGlb, sceneGlbUrl } from "@/lib/api";
 import type { Scan, SceneGraph } from "@/types/contracts";
+import { requireSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /** Whether a GLB exists, and the revision whose layout it was exported from. */
 async function glbStatus(scanId: string) {
-  const response = await fetch(`${API_ORIGIN}${sceneGlbUrl(scanId)}`, { method: "HEAD", cache: "no-store" });
+  const response = await headSceneGlb(scanId);
   const revision = response.headers.get("X-Exported-Revision");
   return {
     revision: response.ok && revision !== null ? Number(revision) : null,
@@ -39,6 +39,7 @@ function NotMeasuredYet({ scan }: { scan: Scan }) {
 }
 
 export default async function ShopPage({ params }: PageProps<"/scans/[scanId]">) {
+  await requireSession();
   const { scanId } = await params;
   const scan = await getScan(scanId);
   if (!scan) notFound();

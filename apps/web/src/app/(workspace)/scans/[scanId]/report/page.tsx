@@ -6,6 +6,7 @@ import { PrintButton } from "@/components/PrintButton";
 import { getReport } from "@/lib/api";
 import { formatInches, groupFindings } from "@/lib/findings";
 import type { Finding, ReviewedRule, Scenario } from "@/types/contracts";
+import { requireSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -159,6 +160,7 @@ function PreviewNotice({ preview }: { preview: boolean }) {
 }
 
 export default async function ReportPage({ params }: PageProps<"/scans/[scanId]/report">) {
+  await requireSession();
   const { scanId } = await params;
   const report = await getReport(scanId);
   if (!report) notFound();

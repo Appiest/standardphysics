@@ -12,8 +12,8 @@ from .search import (
     CANDIDATE_LIMIT,
     FixOutcome,
     Relaxation,
-    propose_fix,
     proposal_id,
+    propose_fix,
 )
 from .strategies import Candidate, candidates
 

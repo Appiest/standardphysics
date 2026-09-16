@@ -9,6 +9,7 @@ description = "Upload, pipeline jobs and the workspace API. Lane D."
 requires-python = ">=3.11"
 dependencies = [
   "fastapi==0.141.1",
+  "email-validator==2.3.0",
   "uvicorn==0.52.4",
   "standardphysics-contracts",
   "standardphysics-fixtures",
@@ -30,6 +31,15 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "C90"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests read better as tables of short assertions than as wrapped paragraphs.
+# The rules that catch real defects still apply to them: F, I and C90.
+"**/tests/**" = ["E501", "E701", "E702"]
+
+[tool.ruff.lint.isort]
+# Both configs must agree, or a fix run under one undoes the other.
+known-first-party = ["standardphysics_api"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10

@@ -3,9 +3,8 @@ import io
 import json
 import uuid
 
-from PIL import Image
-
 from conftest import create_scan, drain, put_artifact
+from PIL import Image
 
 
 def test_ingest_passes_uploaded_frames_to_the_default_astra_labeler(client, monkeypatch):

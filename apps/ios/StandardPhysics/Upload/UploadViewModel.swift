@@ -129,6 +129,12 @@ final class UploadViewModel: ObservableObject {
             guard isActive(runID) else { return }
             errorMessage = "This scan is linked to a different upload server."
             finish(runID)
+        } catch UploadClientError.signedOut {
+            guard isActive(runID) else { return }
+            state = .failed
+            try? uploadStore.record(state: .failed)
+            errorMessage = "Your session ended. Sign in again, then upload this scan."
+            finish(runID)
         } catch UploadClientError.remoteScanMissing {
             guard isActive(runID) else { return }
             state = .failed

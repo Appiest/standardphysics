@@ -1,5 +1,4 @@
 from conftest import drain
-
 from standardphysics_fixtures import node_id
 
 

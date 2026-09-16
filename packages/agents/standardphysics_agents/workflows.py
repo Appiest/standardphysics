@@ -33,8 +33,8 @@ from .assess import Pass, assess
 from .loop import Loop, LoopStep, StepResult, _do_fix, run_loop
 from .mesh_collision import MeshCollisionIndex
 from .router import LocalPolicyRouter, TypeSafeRouter
-from .tracing import suspend_tracing
 from .rules import AgentRulePack, VerificationLedger, load_ledger, load_pack
+from .tracing import suspend_tracing
 
 MAX_WORKFLOW_WORKERS = 1_000
 
@@ -671,6 +671,39 @@ def _run_score(run: WorkflowRun) -> tuple[int, int, int, int, int]:
     )
 
 
+def _check_batch_inputs(workflows: list, profiles: list, samples: int, max_workers: int) -> None:
+    if not workflows:
+        raise ValueError("at least one workflow is required")
+    if not profiles:
+        raise ValueError("at least one functional profile is required")
+    if not 1 <= samples <= 10000:
+        raise ValueError("samples must be between 1 and 10000")
+    if not 1 <= max_workers <= MAX_WORKFLOW_WORKERS:
+        raise ValueError(f"max_workers must be between 1 and {MAX_WORKFLOW_WORKERS}")
+
+
+def _collect_runs(
+    run: Callable[[int], "WorkflowRun"],
+    samples: int,
+    max_workers: int,
+    on_progress: Callable[[int], None] | None,
+) -> tuple["WorkflowRun", ...]:
+    """Run every sample with bounded parallelism, returned in index order.
+
+    Progress is reported as each trial lands, but the results are put back in
+    the order they were submitted so a batch does not depend on thread timing.
+    """
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(run, index) for index in range(samples)]
+        collected: dict[int, WorkflowRun] = {}
+        for completed, future in enumerate(as_completed(futures), start=1):
+            item = future.result()
+            collected[item.index] = item
+            if on_progress is not None:
+                on_progress(completed)
+    return tuple(collected[index] for index in range(samples))
+
+
 def run_workflow_batch(
     graph: SceneGraph,
     *,
@@ -695,14 +728,7 @@ def run_workflow_batch(
     never shared across threads; the expensive raw-mesh index is immutable and
     built once for the entire batch.
     """
-    if not workflows:
-        raise ValueError("at least one workflow is required")
-    if not profiles:
-        raise ValueError("at least one functional profile is required")
-    if not 1 <= samples <= 10000:
-        raise ValueError("samples must be between 1 and 10000")
-    if not 1 <= max_workers <= MAX_WORKFLOW_WORKERS:
-        raise ValueError(f"max_workers must be between 1 and {MAX_WORKFLOW_WORKERS}")
+    _check_batch_inputs(workflows, profiles, samples, max_workers)
 
     selected_rules = rules or load_pack()
     selected_ledger = ledger if ledger is not None else load_ledger()
@@ -798,15 +824,7 @@ def run_workflow_batch(
                 suite_evaluations=suite_evaluations,
             )
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(run, index) for index in range(samples)]
-        collected: dict[int, WorkflowRun] = {}
-        for completed, future in enumerate(as_completed(futures), start=1):
-            item = future.result()
-            collected[item.index] = item
-            if on_progress is not None:
-                on_progress(completed)
-        runs = tuple(collected[index] for index in range(samples))
+    runs = _collect_runs(run, samples, max_workers, on_progress)
     return WorkflowBatchResult(runs=runs, max_workers=max_workers)
 
 

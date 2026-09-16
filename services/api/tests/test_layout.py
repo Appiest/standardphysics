@@ -1,9 +1,8 @@
 """Dragging furniture: re-checks while moving, and saving a layout."""
 
 from conftest import drain
-
-from standardphysics_fixtures import FIX_SHIFT_INCHES, node_id
 from standardphysics_contracts import to_meters
+from standardphysics_fixtures import FIX_SHIFT_INCHES, node_id
 
 CASE_EAST = str(node_id("case_east"))
 COUNTER = str(node_id("counter"))

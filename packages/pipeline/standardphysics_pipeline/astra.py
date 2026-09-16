@@ -519,33 +519,47 @@ def select_keyframes(
     if not objects:
         return _strongest_paths(candidates, limit)
 
-    rankings: list[list[_FrameCandidate]] = []
-    for node in objects:
-        ranked = _rank_for_object(node, paths, pose_by_key, graph.capture_to_room)
-        rankings.append(ranked)
-
-    selected: list[pathlib.Path] = []
-    selected_paths: set[pathlib.Path] = set()
-    # Two views are useful for one or two objects.  For a larger graph, give
-    # each object one view first and use the remaining slots for coverage.
+    rankings = [_rank_for_object(node, paths, pose_by_key, graph.capture_to_room) for node in objects]
+    # Two views are useful for one or two objects. For a larger graph, give each
+    # object one view first and use the remaining slots for coverage.
     views_per_object = 2 if len(objects) <= 3 else 1
+    selected = _round_robin_views(rankings, views_per_object, limit)
+    if len(selected) >= limit:
+        return selected[:limit]
+    return _fill_remaining(candidates, selected, limit)
+
+
+def _round_robin_views(
+    rankings: list[list["_FrameCandidate"]], views_per_object: int, limit: int
+) -> list[pathlib.Path]:
+    """One frame per object per pass, so no single object eats the whole budget."""
+    selected: list[pathlib.Path] = []
+    seen: set[pathlib.Path] = set()
     for view_number in range(views_per_object):
         for ranked in rankings:
             for candidate in ranked[view_number:]:
-                if candidate.path not in selected_paths:
+                if candidate.path not in seen:
                     selected.append(candidate.path)
-                    selected_paths.add(candidate.path)
+                    seen.add(candidate.path)
                     break
             if len(selected) >= limit:
-                return selected[:limit]
+                return selected
+    return selected
 
+
+def _fill_remaining(
+    candidates: list["_FrameCandidate"], selected: list[pathlib.Path], limit: int
+) -> list[pathlib.Path]:
+    """Spend whatever budget the round robin left on the strongest frames."""
+    filled = list(selected)
+    seen = set(filled)
     for candidate in sorted(candidates, key=lambda item: (-item.score, item.order)):
-        if candidate.path not in selected_paths:
-            selected.append(candidate.path)
-            selected_paths.add(candidate.path)
-        if len(selected) >= limit:
+        if len(filled) >= limit:
             break
-    return selected[:limit]
+        if candidate.path not in seen:
+            filled.append(candidate.path)
+            seen.add(candidate.path)
+    return filled[:limit]
 
 
 def _unique_paths(frame_paths: Iterable[pathlib.Path]) -> list[pathlib.Path]:
@@ -741,23 +755,16 @@ def _room_to_capture(x: float, y: float, z: float, capture_to_room: Any) -> tupl
         return x, z, -y
 
 
-def _calibrated_photo_evidence(
-    graph: SceneGraph,
-    frame_paths: Iterable[pathlib.Path] | None,
-    poses_path: pathlib.Path | None,
-) -> list[_CalibratedEvidence]:
-    """Create bounded object crops only when calibrated metadata proves the association.
+Candidate = tuple[float, str, pathlib.Path, tuple[int, int, int, int], str, tuple[float, ...], tuple[float, ...]]
+Selection = tuple[UUID, str, pathlib.Path, tuple[int, int, int, int], str, tuple[float, float, float]]
 
-    A full frame can help labels, but it does not establish that a particular
-    measured object was observed.  Completion evidence therefore comes only
-    from a camera projection through the graph's capture-to-room transform.
-    """
-    if graph.capture_to_room is None or not frame_paths:
-        return []
-    paths = _unique_paths(frame_paths)
+
+def _crop_candidates(graph: SceneGraph, paths: list[pathlib.Path], poses_path) -> dict[UUID, list[Candidate]]:
+    """Every object crop a calibrated pose can prove, keyed by object."""
     path_by_id = {_frame_key(path.name): path for path in paths}
-    candidates: dict[UUID, list[tuple[float, str, pathlib.Path, tuple[int, int, int, int], str, tuple[float, ...], tuple[float, ...]]]] = {}
+    candidates: dict[UUID, list[Candidate]] = {}
     dimensions_match: dict[pathlib.Path, bool] = {}
+    objects = [node for node in graph.nodes if node.kind == "object"]
     for pose in _load_poses(poses_path):
         record = pose.record
         path = path_by_id.get(pose.frame_key)
@@ -771,31 +778,54 @@ def _calibrated_photo_evidence(
             camera = camera_from_pose(record, graph.capture_to_room)
         except (CameraMetadataError, ValueError, np.linalg.LinAlgError):
             continue
-        for node in graph.nodes:
-            if node.kind != "object":
-                continue
-            crop, score = _projected_object_crop(node, camera)
-            if crop is not None:
-                candidates.setdefault(node.id, []).append((
-                    score, record.frame_id, path, crop, record.orientation,
-                    tuple(float(value) for value in camera.position),
-                    tuple(float(value) for value in camera.forward),
-                ))
+        _collect_crops(objects, camera, record, path, candidates)
+    return candidates
 
-    selected: list[tuple[UUID, str, pathlib.Path, tuple[int, int, int, int], str, tuple[float, float, float]]] = []
+
+def _collect_crops(objects, camera, record, path: pathlib.Path, candidates: dict[UUID, list[Candidate]]) -> None:
+    for node in objects:
+        crop, score = _projected_object_crop(node, camera)
+        if crop is None:
+            continue
+        candidates.setdefault(node.id, []).append((
+            score, record.frame_id, path, crop, record.orientation,
+            tuple(float(value) for value in camera.position),
+            tuple(float(value) for value in camera.forward),
+        ))
+
+
+def _best_views(graph: SceneGraph, candidates: dict[UUID, list[Candidate]]) -> list[Selection]:
+    """The strongest crop per object, plus one view from a different angle.
+
+    A second crop only earns its place when it sees the object from somewhere
+    else; two frames of the same angle prove nothing the first did not.
+    """
+    selected: list[Selection] = []
     for node in (item for item in graph.nodes if item.kind == "object"):
         ranked = sorted(candidates.get(node.id, []), key=lambda item: (-item[0], item[1]))
         if ranked:
             _, frame_id, path, crop, orientation, position, _ = ranked[0]
             selected.append((node.id, frame_id, path, crop, orientation, _camera_local(node, position)))
-            for candidate in ranked[1:]:
-                _, alternate_id, alternate_path, alternate_crop, alternate_orientation, _, _ = candidate
-                if alternate_id != frame_id and _complementary_view(ranked[0], candidate):
-                    selected.append((node.id, alternate_id, alternate_path, alternate_crop, alternate_orientation, _camera_local(node, candidate[5])))
-                    break
+            alternate = _complementary_of(ranked, frame_id)
+            if alternate is not None:
+                _, other_id, other_path, other_crop, other_orientation, other_position, _ = alternate
+                selected.append(
+                    (node.id, other_id, other_path, other_crop, other_orientation,
+                     _camera_local(node, other_position))
+                )
         if len(selected) >= MAX_IMAGE_COUNT:
             break
+    return selected
 
+
+def _complementary_of(ranked: list[Candidate], frame_id: str) -> Candidate | None:
+    for candidate in ranked[1:]:
+        if candidate[1] != frame_id and _complementary_view(ranked[0], candidate):
+            return candidate
+    return None
+
+
+def _encoded_evidence(selected: list[Selection]) -> list[_CalibratedEvidence]:
     evidence: list[_CalibratedEvidence] = []
     for node_id, frame_id, path, crop, orientation, camera_local in selected:
         encoded = _encode_crop(path, crop, orientation)
@@ -811,6 +841,23 @@ def _calibrated_photo_evidence(
             },
         ))
     return evidence
+
+
+def _calibrated_photo_evidence(
+    graph: SceneGraph,
+    frame_paths: Iterable[pathlib.Path] | None,
+    poses_path: pathlib.Path | None,
+) -> list[_CalibratedEvidence]:
+    """Create bounded object crops only when calibrated metadata proves the association.
+
+    A full frame can help labels, but it does not establish that a particular
+    measured object was observed.  Completion evidence therefore comes only
+    from a camera projection through the graph's capture-to-room transform.
+    """
+    if graph.capture_to_room is None or not frame_paths:
+        return []
+    candidates = _crop_candidates(graph, _unique_paths(frame_paths), poses_path)
+    return _encoded_evidence(_best_views(graph, candidates))
 
 
 def _matches_pose_image(path: pathlib.Path, record: PoseRecord) -> bool:
@@ -1116,6 +1163,44 @@ def _message_content(payload: dict) -> str | None:
     return content if isinstance(content, str) else None
 
 
+ITEM_KEYS = {"id", "label", "movable", "quality", "appearance", "reconstruction"}
+QUALITIES = {"measured", "needs_another_look"}
+
+
+def _node_id_of(item: dict, expected: set[UUID]) -> UUID | None:
+    try:
+        node_id = UUID(str(item.get("id")))
+    except (ValueError, TypeError):
+        return None
+    return node_id if node_id in expected else None
+
+
+def _labelling_of(item: dict) -> tuple[str, str, bool] | None:
+    """The three fields every patch must carry, or None if any is unusable."""
+    label, quality, movable = item.get("label"), item.get("quality"), item.get("movable")
+    if not isinstance(label, str) or not label.strip():
+        return None
+    if quality not in QUALITIES or not isinstance(movable, bool):
+        return None
+    return label, quality, movable
+
+
+def _reconstruction_of(raw: object, allowed: set[str]) -> DisplayReconstruction | None:
+    """A reconstruction is kept only when every frame it cites is one we gave it.
+
+    A model that cites a frame it was never shown, or cites one twice, has
+    invented its evidence, so the reconstruction is dropped rather than trusted.
+    """
+    try:
+        reconstruction = DisplayReconstruction.model_validate(raw)
+    except (TypeError, ValueError):
+        return None
+    cited = reconstruction.evidence_frame_ids
+    if not allowed or len(set(cited)) != len(cited) or not set(cited).issubset(allowed):
+        return None
+    return reconstruction
+
+
 def _patch_from_item(
     item: object,
     expected: set[UUID],
@@ -1123,19 +1208,16 @@ def _patch_from_item(
     allow_appearance: bool = True,
     evidence_frame_ids: dict[UUID, set[str]] | None = None,
 ) -> LabelPatch | None:
-    if not isinstance(item, dict):
+    if not isinstance(item, dict) or set(item) - ITEM_KEYS:
         return None
-    if set(item) - {"id", "label", "movable", "quality", "appearance", "reconstruction"}:
+    node_id = _node_id_of(item, expected)
+    labelling = _labelling_of(item) if node_id is not None else None
+    if node_id is None or labelling is None:
         return None
-    try:
-        node_id = UUID(str(item.get("id")))
-    except (ValueError, TypeError):
-        return None
-    label, quality, movable = item.get("label"), item.get("quality"), item.get("movable")
-    if node_id not in expected or not isinstance(label, str) or not label.strip() or quality not in {"measured", "needs_another_look"} or not isinstance(movable, bool):
-        return None
-    raw_appearance = item.get("appearance")
+    label, quality, movable = labelling
+
     appearance = None
+    raw_appearance = item.get("appearance")
     if raw_appearance is not None:
         if not allow_appearance:
             return None
@@ -1143,16 +1225,10 @@ def _patch_from_item(
             appearance = DisplayAppearance.model_validate(raw_appearance)
         except (TypeError, ValueError):
             return None
-    reconstruction = None
+
     raw_reconstruction = item.get("reconstruction")
+    reconstruction = None
     if raw_reconstruction is not None:
-        try:
-            reconstruction = DisplayReconstruction.model_validate(raw_reconstruction)
-        except (TypeError, ValueError):
-            reconstruction = None
-        allowed = (evidence_frame_ids or {}).get(node_id, set())
-        if reconstruction is not None:
-            cited = reconstruction.evidence_frame_ids
-            if not allowed or len(set(cited)) != len(cited) or not set(cited).issubset(allowed):
-                reconstruction = None
+        reconstruction = _reconstruction_of(raw_reconstruction, (evidence_frame_ids or {}).get(node_id, set()))
+
     return LabelPatch(node_id, label.strip()[:80], movable, quality, appearance, reconstruction)

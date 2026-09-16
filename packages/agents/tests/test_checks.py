@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from pytest import approx
 from standardphysics_agents import VerificationLedger, assess
 from standardphysics_agents.checks.route_geometry import is_reversal, reversal_stops
 from standardphysics_agents.checks.route_width import route_width_verdict
 from standardphysics_agents.checks.turn_width import turn_verdict
-from pytest import approx
 from standardphysics_contracts import Mat4, Stop, Vec3, to_meters
 from standardphysics_fixtures import build_lawsuit_graph, build_lawsuit_scenario
 from standardphysics_fixtures.shop import FIX_SHIFT_INCHES, node_id

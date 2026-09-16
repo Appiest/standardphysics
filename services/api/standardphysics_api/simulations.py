@@ -15,13 +15,13 @@ from standardphysics_agents import (
     load_pack,
 )
 from standardphysics_agents.adaptive_redesign import route_trial_evidence
+from standardphysics_agents.evaluation.scan_campaign import run_campaign
+from standardphysics_agents.evaluation.scan_tasks import choose_task, propose_tasks
 from standardphysics_agents.layout_repair import (
     prefer_layout,
     run_layout_repair,
     seating_broken,
 )
-from standardphysics_agents.evaluation.scan_campaign import run_campaign
-from standardphysics_agents.evaluation.scan_tasks import choose_task, propose_tasks
 from standardphysics_agents.mesh_collision import MeshCollisionIndex
 from standardphysics_agents.router import LocalPolicyRouter, TypeSafeRouter
 from standardphysics_agents.simulation_report import simulation_result
@@ -180,6 +180,25 @@ def _ada_rule_violation_count(
     )
 
 
+def _next_layout(
+    measured_graph: SceneGraph, current: SceneGraph, final_candidate: SceneGraph, redesign
+) -> tuple[SceneGraph | None, str | None]:
+    """The layout to carry into the next cycle, or None and the reason the loop stops."""
+    candidate = redesign.graph
+    if candidate is None and graph_hash(final_candidate) != graph_hash(current):
+        # TypeSafe may have produced the best candidate during the batch.
+        # Repair has still reviewed its evidence; verify that candidate as a
+        # fixed layout before making any convergence claim.
+        candidate = final_candidate
+    if candidate is not None and seating_broken(measured_graph, candidate):
+        candidate = None
+    if candidate is None or graph_hash(candidate) == graph_hash(current):
+        reasons = redesign.rounds[-1].reasons if redesign.rounds else ()
+        detail = ", ".join(reasons) or "no new candidate"
+        return None, f"Repair could not produce a new layout: {detail}."
+    return candidate, None
+
+
 def _run_accessibility_loop(
     measured_graph: SceneGraph,
     scenario: Scenario,
@@ -280,18 +299,9 @@ def _run_accessibility_loop(
                 item.model_copy(update={"round": len(adaptive_history) + 1})
             )
 
-        next_candidate = redesign.graph
-        if next_candidate is None and graph_hash(final_candidate) != graph_hash(current):
-            # TypeSafe may have produced the best candidate during the batch.
-            # Repair has still reviewed its evidence; verify that candidate as a
-            # fixed layout before making any convergence claim.
-            next_candidate = final_candidate
-        if next_candidate is not None and seating_broken(measured_graph, next_candidate):
-            next_candidate = None
-        if next_candidate is None or graph_hash(next_candidate) == graph_hash(current):
-            reasons = redesign.rounds[-1].reasons if redesign.rounds else ()
-            detail = ", ".join(reasons) or "no new candidate"
-            stop_reason = f"Repair could not produce a new layout: {detail}."
+        next_candidate, refusal = _next_layout(measured_graph, current, final_candidate, redesign)
+        if next_candidate is None:
+            stop_reason = refusal
             break
         current = prefer_layout(measured_graph, [next_candidate])
 

@@ -13,9 +13,9 @@ directly and the viewer can select by it with no mapping file.
 import argparse
 import json
 import sys
+from math import cos, pi, radians
 
 import bpy
-from math import cos, pi, radians
 from mathutils import Matrix, Vector
 
 KIND_ORDER = ["floor", "wall", "window", "opening", "door", "object"]

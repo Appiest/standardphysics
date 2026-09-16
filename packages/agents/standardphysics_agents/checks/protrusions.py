@@ -25,7 +25,6 @@ from ..rules import RuleSpec
 from ..tracing import traced
 from .context import CheckContext
 from .observation import Observation
-from .rectangles import facing
 
 RULE_ID = "protruding_objects"
 

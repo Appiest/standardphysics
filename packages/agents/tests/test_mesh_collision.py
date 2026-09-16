@@ -1,7 +1,7 @@
 from uuid import uuid4
 
-from standardphysics_contracts import LidarMesh, LidarMeshPart, Mat4, SceneNode, Vec3
 from standardphysics_agents.mesh_collision import MeshCollisionIndex
+from standardphysics_contracts import LidarMesh, LidarMeshPart, Mat4, SceneNode, Vec3
 
 
 def mesh(vertices, triangles):

@@ -19,7 +19,6 @@ human to look at is a display concern and must not reach this maths.
 import numpy as np
 import pytest
 from standardphysics_contracts import PoseRecord
-
 from standardphysics_pipeline.coords import capture_to_room
 from standardphysics_pipeline.textures.camera import CameraMetadataError, camera_from_pose
 

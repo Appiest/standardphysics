@@ -7,8 +7,8 @@ different geometry than they think.
 from standardphysics_contracts import to_inches, to_meters
 from standardphysics_fixtures import (
     FIX_SHIFT_INCHES,
-    FixtureMeasurements,
     PINCH_INCHES,
+    FixtureMeasurements,
     build_graph,
     build_scenario,
     build_street_scenario,

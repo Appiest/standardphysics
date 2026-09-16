@@ -22,12 +22,10 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import numpy as np
-
-from standardphysics_contracts import Vec3, to_inches, to_meters
+from standardphysics_contracts import SceneGraph, Vec3, to_inches, to_meters
 
 from .footprints import footprint, gap_between
 from .occupancy import Grid, blocks_floor
-from standardphysics_contracts import SceneGraph
 
 TURN_THRESHOLD_DEGREES = 120.0
 """Angular floor for a reversal.

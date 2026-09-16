@@ -1,14 +1,13 @@
 import hashlib
 import json
 import shutil
-from dataclasses import replace
 
+from conftest import FIXTURE_DATA, create_scan, drain, no_blender_stages, put_artifact
 from standardphysics_contracts import Mat4, NodeTextureCoverage, TextureCoverage
 from standardphysics_fixtures import build_graph
 from standardphysics_pipeline.textures import BakeResult
+
 from standardphysics_api import repository as repo
-from standardphysics_api.textures import texture_status
-from conftest import create_scan, put_artifact, no_blender_stages, FIXTURE_DATA, drain
 
 
 def _bake(inputs):

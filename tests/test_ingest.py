@@ -7,11 +7,10 @@ these prove the parser is self-consistent, not that it matches the SDK.
 import uuid
 
 import pytest
-
 from standardphysics_pipeline.ingest import (
     RoomParseError,
-    parse_room_json,
     missing_coverage,
+    parse_room_json,
     to_arkit_columns,
 )
 

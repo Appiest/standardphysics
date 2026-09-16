@@ -6,7 +6,6 @@ checks are measuring something other than what they think.
 """
 
 import pytest
-
 from standardphysics_contracts import Mat4, Scenario, SceneGraph, SceneNode, Stop, Vec3, to_inches, to_meters
 from standardphysics_fixtures import (
     FIX_SHIFT_INCHES,
@@ -15,7 +14,14 @@ from standardphysics_fixtures import (
     build_scenario,
     node_id,
 )
-from standardphysics_pipeline.footprints import contains_point, floor_polygon, footprint, gap_between, gap_between_nodes, polygon_bounds
+from standardphysics_pipeline.footprints import (
+    contains_point,
+    floor_polygon,
+    footprint,
+    gap_between,
+    gap_between_nodes,
+    polygon_bounds,
+)
 from standardphysics_pipeline.measure import PipelineMeasurements
 from standardphysics_pipeline.occupancy import BLOCKING_HEIGHT, OUTSIDE_MARGIN, blocks_floor, build_grid
 from standardphysics_pipeline.routes import clearance_map, widest_path
@@ -370,8 +376,8 @@ def test_repeated_measurements_reuse_paths_but_moves_invalidate_them(shop, monke
     measure.route_path_clearances(graph, scenario, 1)
     measure.route_run_below(graph, scenario, 1, 36)
     assert len(calls) == 1
-    from standardphysics_contracts import NodeMove, Vec3
     from standardphysics_agents.fix import apply_moves
+    from standardphysics_contracts import NodeMove, Vec3
     moved = apply_moves(graph, [NodeMove(node_id=graph.movable()[0].id, delta_translation=Vec3(x=0.05, y=0, z=0))])
     measure.route_clear_width(moved, scenario, 1)
     assert len(calls) == 2

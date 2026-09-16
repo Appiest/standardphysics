@@ -16,7 +16,6 @@ import json
 import numpy as np
 import pytest
 from standardphysics_contracts import PoseRecord
-
 from standardphysics_pipeline.coords import capture_to_room
 from standardphysics_pipeline.textures.camera import CameraMetadataError, PhotoCamera, camera_from_pose, load_cameras
 from standardphysics_pipeline.textures.project import DepthBuffers, rasterize_atlas, triangle_depth_buffer, view_samples

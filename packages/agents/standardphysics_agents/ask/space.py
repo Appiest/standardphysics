@@ -25,7 +25,6 @@ from standardphysics_contracts import (
     SceneGraph,
     SceneNode,
     Vec3,
-    to_inches,
     to_meters,
 )
 from standardphysics_contracts.rules import Tier

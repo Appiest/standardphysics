@@ -4,6 +4,7 @@ import { HomeTitleBlock } from "@/components/home/HomeTitleBlock";
 import { SheetIndex } from "@/components/home/SheetIndex";
 import { loadShopSheet, sheetNumber } from "@/components/home/shopSheet";
 import { listScans } from "@/lib/api";
+import { requireSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ function EmptySheet() {
 }
 
 export default async function ShopsPage() {
+  const session = await requireSession();
   const sheets = await Promise.all((await listScans()).map(loadShopSheet));
   const [featured, ...others] = sheets;
 
@@ -29,7 +31,7 @@ export default async function ShopsPage() {
             {featured ? <FeaturedSheet sheet={featured} sheetNumber={sheetNumber(0)} /> : <EmptySheet />}
             {others.length > 0 && <SheetIndex sheets={others} firstIndex={1} />}
           </div>
-          <HomeTitleBlock className="lg:self-end" />
+          <HomeTitleBlock session={session} className="lg:self-end" />
         </div>
       </SheetFrame>
     </main>

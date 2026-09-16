@@ -1,10 +1,10 @@
 from uuid import uuid4
 
 from standardphysics_agents.models import ModelAnswer
-from standardphysics_agents.redesign import validate_redesign, propose_redesign
+from standardphysics_agents.redesign import propose_redesign, validate_redesign
 from standardphysics_agents.router import Rejected
-from standardphysics_agents.workflows import Workflow, WHEELCHAIR_PROFILE
 from standardphysics_agents.rules import VerificationLedger
+from standardphysics_agents.workflows import WHEELCHAIR_PROFILE, Workflow
 from standardphysics_fixtures import node_id
 
 

@@ -8,8 +8,8 @@ import uuid
 
 import numpy as np
 import pytest
-from PIL import Image
 import standardphysics_pipeline.astra as astra
+from PIL import Image
 from standardphysics_pipeline.astra import (
     MAX_IMAGE_BYTES,
     MAX_OUTPUT_TOKENS,

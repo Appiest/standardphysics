@@ -19,7 +19,6 @@ from uuid import UUID
 
 import numpy as np
 from scipy import ndimage
-
 from standardphysics_contracts import Vec3, to_inches, to_meters
 
 from .occupancy import Grid, occupancy_excluding
@@ -160,6 +159,34 @@ def widest_path(
         exempt |= extra_exempt
     search_field = np.where(exempt, np.inf, clearance)
 
+    best, came_from = _bottleneck_search(grid, walkable, search_field, start, goal)
+
+    if best[goal] < 0:
+        return PathResult(0.0, None, [], reachable=False)
+
+    path = _retrace(came_from, start, goal)
+    measured = [cell for cell in path if not exempt[cell]]
+    if not measured:
+        measured = path
+    pinch = min(measured, key=lambda cell: clearance[cell])
+    return PathResult(
+        float(clearance[pinch]), pinch, path, reachable=True, exempt=exempt
+    )
+
+
+def _bottleneck_search(
+    grid: Grid,
+    walkable: np.ndarray,
+    search_field: np.ndarray,
+    start: tuple[int, int],
+    goal: tuple[int, int],
+) -> tuple[np.ndarray, dict[tuple[int, int], tuple[int, int]]]:
+    """Dijkstra on the widest bottleneck rather than the shortest distance.
+
+    `best[cell]` is the largest clearance a route from start can guarantee all
+    the way to that cell, so relaxing an edge takes the minimum of the width so
+    far and the neighbour's own clearance.
+    """
     rows, cols = grid.shape
     best = np.full((rows, cols), -1.0)
     came_from: dict[tuple[int, int], tuple[int, int]] = {}
@@ -174,28 +201,22 @@ def widest_path(
             continue
         if cell == goal:
             break
-        row, col = cell
-        for d_row, d_col in NEIGHBOURS:
-            neighbour = (row + d_row, col + d_col)
-            if not grid.contains(*neighbour) or not walkable[neighbour]:
-                continue
+        for neighbour in _walkable_neighbours(grid, walkable, cell):
             candidate = min(width, search_field[neighbour])
             if candidate > best[neighbour]:
                 best[neighbour] = candidate
                 came_from[neighbour] = cell
                 heapq.heappush(queue, (-candidate, neighbour))
 
-    if best[goal] < 0:
-        return PathResult(0.0, None, [], reachable=False)
+    return best, came_from
 
-    path = _retrace(came_from, start, goal)
-    measured = [cell for cell in path if not exempt[cell]]
-    if not measured:
-        measured = path
-    pinch = min(measured, key=lambda cell: clearance[cell])
-    return PathResult(
-        float(clearance[pinch]), pinch, path, reachable=True, exempt=exempt
-    )
+
+def _walkable_neighbours(grid: Grid, walkable: np.ndarray, cell: tuple[int, int]):
+    row, col = cell
+    for d_row, d_col in NEIGHBOURS:
+        neighbour = (row + d_row, col + d_col)
+        if grid.contains(*neighbour) and walkable[neighbour]:
+            yield neighbour
 
 
 def _retrace(came_from, start, goal) -> list[tuple[int, int]]:

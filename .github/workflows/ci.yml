@@ -15,6 +15,9 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e . -e packages/contracts -e packages/fixtures -e packages/pipeline -e "packages/agents[notebook]" -e "services/api[test]" pytest
       - run: python -c "import numpy, scipy, pydantic; print('deps ok')"
+      - run: python -m pip install ruff==0.16.7
+      - run: python -m ruff check .
+      - run: python -m ruff check --config services/api/pyproject.toml services/api/
       - run: python -m pytest
       - run: python -m pytest packages/agents -q
       - run: python -m pytest services/api/tests -q

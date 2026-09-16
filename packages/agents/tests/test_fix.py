@@ -25,7 +25,14 @@ from standardphysics_contracts import (
     to_meters,
 )
 from standardphysics_fixtures.shop import FIX_SHIFT_INCHES, node_id
-from standardphysics_pipeline import PipelineMeasurements, contains_point, floor_polygon, footprint, gap_between, polygon_bounds
+from standardphysics_pipeline import (
+    PipelineMeasurements,
+    contains_point,
+    floor_polygon,
+    footprint,
+    gap_between,
+    polygon_bounds,
+)
 
 CASE_EAST = node_id("case_east")
 CASE_WEST = node_id("case_west")

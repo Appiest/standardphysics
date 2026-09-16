@@ -46,7 +46,8 @@ def _poses_of(connection, store, scan_id):
     poses = repo.artifact_of_kind(connection, scan_id, "poses")
     if poses is None:
         return None, {}
-    records = [PoseRecord.model_validate(item) for item in json.loads(_metadata(store.artifact_path(scan_id, poses.id)))]
+    payload = json.loads(_metadata(store.artifact_path(scan_id, poses.id)))
+    records = [PoseRecord.model_validate(item) for item in payload]
     cameras = {item.frame_id: item for item in records if item.projectable}
     if len(cameras) != sum(item.projectable for item in records):
         raise ValueError("duplicate camera frame ids")
@@ -147,7 +148,10 @@ def _graphs(connection, store, scan_id, revision):
         room = repo.artifact_of_kind(connection, scan_id, "room_json")
         if room:
             try:
-                capture = capture.model_copy(update={"capture_to_room": capture_to_room_from_payload(json.loads(_metadata(store.artifact_path(scan_id, room.id))))})
+                room_metadata = json.loads(_metadata(store.artifact_path(scan_id, room.id)))
+                capture = capture.model_copy(
+                    update={"capture_to_room": capture_to_room_from_payload(room_metadata)}
+                )
             except (ValueError, KeyError, TypeError, OSError):
                 pass
     return shown, bake_graph_for(shown, capture)
@@ -163,14 +167,26 @@ def _status(connection, store, scan_id, revision):
             state, inputs, error = "needs_photos", None, "capture alignment is missing"
         else:
             key = texture_build_key(bake, inputs["digest"])
-            row = connection.execute("SELECT b.*, j.state AS job_state, j.error AS job_error FROM texture_builds b LEFT JOIN jobs j ON j.scan_id=b.scan_id AND j.kind='texture' AND j.revision=b.id WHERE b.scan_id=? AND b.build_key=?", (str(scan_id), key)).fetchone()
+            row = connection.execute(
+                "SELECT b.*, j.state AS job_state, j.error AS job_error FROM texture_builds b"
+                " LEFT JOIN jobs j ON j.scan_id=b.scan_id AND j.kind='texture' AND j.revision=b.id"
+                " WHERE b.scan_id=? AND b.build_key=?",
+                (str(scan_id), key),
+            ).fetchone()
     if row:
         state = "complete" if row["result_json"] else row["job_state"] or "not_started"
         error = row["job_error"]
-    ready = row if row and row["result_json"] else connection.execute("SELECT * FROM texture_builds WHERE scan_id=? AND result_json IS NOT NULL ORDER BY id DESC LIMIT 1", (str(scan_id),)).fetchone()
+    ready = row if row and row["result_json"] else connection.execute(
+        "SELECT * FROM texture_builds WHERE scan_id=? AND result_json IS NOT NULL ORDER BY id DESC LIMIT 1",
+        (str(scan_id),),
+    ).fetchone()
     build = TextureBuild.model_validate_json(ready["result_json"]) if ready else None
     stale = stale_node_ids(shown, build.bake_graph) if build else []
-    result = TextureStatus(scan_id=scan_id, revision=shown.revision, state=state, build=build, exact=bool(ready and ready["build_key"] == key), stale_node_ids=stale, error=error, can_retry=bool(inputs and state == "failed"))
+    result = TextureStatus(
+        scan_id=scan_id, revision=shown.revision, state=state, build=build,
+        exact=bool(ready and ready["build_key"] == key), stale_node_ids=stale, error=error,
+        can_retry=bool(inputs and state == "failed"),
+    )
     return result, bake, inputs, key
 
 
@@ -182,10 +198,17 @@ def texture_status(database, store, scan_id, revision=None):
 def queue_texture(database, store, worker, scan_id, revision=None, *, retry=False):
     with database.transaction() as connection:
         status, bake, inputs, key = _status(connection, store, scan_id, revision)
-        if inputs is None or status.state in ("queued", "running", "complete") or (status.state == "failed" and not retry):
+        settled = status.state in ("queued", "running", "complete")
+        if inputs is None or settled or (status.state == "failed" and not retry):
             return status
-        connection.execute("INSERT OR IGNORE INTO texture_builds (scan_id, build_key, graph_json, inputs_json, created_at) VALUES (?, ?, ?, ?, ?)", (str(scan_id), key, bake.model_dump_json(), json.dumps(inputs), repo.now()))
-        row = connection.execute("SELECT id FROM texture_builds WHERE scan_id=? AND build_key=?", (str(scan_id), key)).fetchone()
+        connection.execute(
+            "INSERT OR IGNORE INTO texture_builds (scan_id, build_key, graph_json, inputs_json, created_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (str(scan_id), key, bake.model_dump_json(), json.dumps(inputs), repo.now()),
+        )
+        row = connection.execute(
+            "SELECT id FROM texture_builds WHERE scan_id=? AND build_key=?", (str(scan_id), key)
+        ).fetchone()
         repo.queue_job_again(connection, scan_id, TEXTURE, row["id"])
     worker.wake()
     return texture_status(database, store, scan_id, revision)
@@ -230,7 +253,9 @@ def _paint_the_scan(store, scan_id, graph, inputs, out_dir) -> bool:
 
 def run_texture(database, store, stages, scan_id, build_id):
     with database.connect() as connection:
-        row = connection.execute("SELECT * FROM texture_builds WHERE id=? AND scan_id=?", (build_id, str(scan_id))).fetchone()
+        row = connection.execute(
+            "SELECT * FROM texture_builds WHERE id=? AND scan_id=?", (build_id, str(scan_id))
+        ).fetchone()
     if row is None or row["result_json"]:
         return
     graph = SceneGraph.model_validate_json(row["graph_json"])
@@ -287,10 +312,17 @@ def install_texture_routes(app: FastAPI, database, store, worker):
         if not BUILD_KEY.fullmatch(build_key) or not ASSET_NAME.fullmatch(filename):
             raise ApiProblem(404, "no texture asset")
         with database.connect() as connection:
-            row = connection.execute("SELECT result_json FROM texture_builds WHERE scan_id=? AND build_key=?", (str(scan_id), build_key)).fetchone()
+            row = connection.execute(
+                "SELECT result_json FROM texture_builds WHERE scan_id=? AND build_key=?",
+                (str(scan_id), build_key),
+            ).fetchone()
         if row is None or row["result_json"] is None:
             raise ApiProblem(404, "textures are not ready")
         path = store.scan_dir(scan_id) / "textures" / build_key / filename
         if not path.is_file():
             raise ApiProblem(404, "no texture asset")
-        return FileResponse(path, media_type="model/gltf-binary" if filename.endswith(".glb") else "image/png", headers={"Cache-Control": "private, max-age=31536000, immutable"})
+        return FileResponse(
+            path,
+            media_type="model/gltf-binary" if filename.endswith(".glb") else "image/png",
+            headers={"Cache-Control": "private, max-age=31536000, immutable"},
+        )

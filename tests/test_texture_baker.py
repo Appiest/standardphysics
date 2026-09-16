@@ -11,11 +11,16 @@ import numpy as np
 import pytest
 from PIL import Image
 from standardphysics_contracts import Mat4, PoseRecord, SceneGraph, SceneNode, Vec3
-
 from standardphysics_pipeline.blender import glb_node_names
 from standardphysics_pipeline.coords import capture_to_room
 from standardphysics_pipeline.textures import bake as baker
-from standardphysics_pipeline.textures.bake import BakeInputs, TextureBakeError, _lidar_points, _load_images, bake_textures
+from standardphysics_pipeline.textures.bake import (
+    BakeInputs,
+    TextureBakeError,
+    _lidar_points,
+    _load_images,
+    bake_textures,
+)
 from standardphysics_pipeline.textures.camera import PhotoCamera
 from standardphysics_pipeline.textures.project import TopViews
 

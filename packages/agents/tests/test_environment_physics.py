@@ -8,15 +8,15 @@ from uuid import uuid4
 
 import pytest
 from standardphysics_agents import (
-    TypeSafeCallBudget,
     WHEELCHAIR_PROFILE,
+    TypeSafeCallBudget,
     Workflow,
     analyze_environment_physics,
     graph_hash,
     run_adaptive_redesign,
 )
-from standardphysics_agents.redesign import RedesignResult
 from standardphysics_agents.adaptive_redesign import _layout_evidence
+from standardphysics_agents.redesign import RedesignResult
 from standardphysics_agents.router import (
     ChoiceQuestion,
     SystemOneClient,
@@ -177,6 +177,7 @@ def test_adaptive_redesign_stops_on_rejection_and_never_mutates_scan(monkeypatch
         "standardphysics_agents.adaptive_redesign.propose_redesign", propose
     )
     from standardphysics_agents import DEFAULT_PROFILES, build_workflow_suite, load_pack
+
     from standardphysics_api.stages import preview_ledger
 
     workflows = build_workflow_suite(measured, build_scenario())
@@ -300,6 +301,7 @@ def test_typesafe_budget_is_thread_safe_and_exhaustion_makes_no_provider_call():
 
 def test_astra_works_on_remaining_rule_problems_with_what_the_route_trials_learned(monkeypatch):
     from standardphysics_agents import DEFAULT_PROFILES, build_workflow_suite, load_pack
+
     from standardphysics_api.stages import preview_ledger
 
     measured = build_graph()
@@ -378,6 +380,7 @@ def test_route_trial_evidence_names_kept_moves_and_failing_journeys():
 def test_only_floor_placement_problems_count_as_astra_work():
     from standardphysics_agents import load_pack
     from standardphysics_agents.adaptive_redesign import PLACEMENT_CHECKS, _rule_problem_evidence
+
     from standardphysics_api.stages import preview_ledger
 
     graph = build_graph()

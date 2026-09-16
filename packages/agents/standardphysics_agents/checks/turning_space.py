@@ -15,8 +15,8 @@ from ..rules import RuleSpec
 from ..tracing import traced
 from .clear_floor import fits_turning_circle, square_side
 from .context import CheckContext
-from .rectangles import intruders, rectangle
 from .observation import Observation
+from .rectangles import intruders, rectangle
 from .route_geometry import reversal_stops, setback_point
 
 RULE_ID = "turning_space"

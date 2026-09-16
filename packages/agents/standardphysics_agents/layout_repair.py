@@ -19,14 +19,13 @@ from standardphysics_contracts import (
 )
 from standardphysics_pipeline.footprints import rotation_about_z
 
+from .adaptive_redesign import AdaptiveRedesignResult, run_adaptive_redesign
 from .assess import assess
 from .evaluation.gate import accepts
 from .fix import apply_moves, propose_fix
 from .fix.composition import Composition, lost_seating
 from .fix.furnishing import arrangements
 from .workflows import evaluate_workflow, workflow_candidate_rejection
-
-from .adaptive_redesign import AdaptiveRedesignResult, run_adaptive_redesign
 
 
 def moves_between(before: SceneGraph, after: SceneGraph) -> list[NodeMove]:

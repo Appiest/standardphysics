@@ -10,7 +10,6 @@ import pathlib
 import plistlib
 
 import pytest
-
 from standardphysics_pipeline.ingest import parse_room_json
 
 REAL = pathlib.Path(__file__).parents[1] / "packages/fixtures/standardphysics_fixtures/data/real"

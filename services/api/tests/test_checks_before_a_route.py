@@ -1,10 +1,10 @@
 """Before the owner confirms a route, every rule that needs none still runs."""
 
+from conftest import REPO, create_scan, drain, no_blender_stages, put_artifact
 from standardphysics_agents import load_pack
-from standardphysics_api.stages import ROUTE_SUBJECTS, preview_ledger, without_route_rules
 from standardphysics_fixtures import build_lawsuit_graph
 
-from conftest import REPO, create_scan, drain, no_blender_stages, put_artifact
+from standardphysics_api.stages import ROUTE_SUBJECTS, preview_ledger, without_route_rules
 
 ROUTE_RULES = {rule.id for rule in load_pack().rules if ROUTE_SUBJECTS.intersection(rule.applies_to)}
 

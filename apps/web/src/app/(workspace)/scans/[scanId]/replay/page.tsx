@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { SimulationReplayPlayer } from "@/components/workspace/SimulationReplayPlayer";
 import { getScan, getSimulationReplay } from "@/lib/api";
 import type { SimulationReplay } from "@/types/contracts";
+import { requireSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ function CampaignEvidence({ replay }: { replay: SimulationReplay }) {
 }
 
 export default async function ReplayPage({ params, searchParams }: PageProps<"/scans/[scanId]/replay">) {
+  await requireSession();
   const { scanId } = await params;
   const query = await searchParams;
   const revision = Number(query.revision ?? "0");

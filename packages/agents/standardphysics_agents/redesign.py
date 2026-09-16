@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from standardphysics_contracts import NodeMove, SceneGraph, Vec3
 
@@ -102,7 +103,21 @@ def propose_redesign(graph, workflows, profiles, feedback, measure, *, rules, le
     return validate_redesign(graph, answer, workflows, profiles, measure, rules=rules, ledger=ledger, collision_index=collision_index)
 
 
-def _edits_to_moves(edits: RoomEdits) -> list[NodeMove]:
+def _edit_complaint(graph, edits: RoomEdits) -> str | None:
+    """Why these edits cannot be applied, or None when they can."""
+    ids = [edit.node_id for edit in edits.moves]
+    if not ids:
+        return "no_supported_furniture_move"
+    if len(ids) != len(set(ids)):
+        return "duplicate_objects"
+    if not set(ids) <= {node.id for node in graph.nodes}:
+        return "unknown_objects"
+    if all(edit.dx == 0 and edit.dy == 0 and edit.rotation_degrees == 0 for edit in edits.moves):
+        return "no_op_moves"
+    return None
+
+
+def _moves_of(edits: RoomEdits) -> list[NodeMove]:
     return [
         NodeMove(
             node_id=edit.node_id,
@@ -113,42 +128,54 @@ def _edits_to_moves(edits: RoomEdits) -> list[NodeMove]:
     ]
 
 
-def validate_redesign(graph, answer: ModelAnswer, workflows, profiles, measure, *, rules, ledger, collision_index=None) -> RedesignResult:
-    try:
-        edits = RoomEdits.model_validate(answer.payload)
-    except ValidationError:
-        return RedesignResult(None, answer.model, False, ("invalid_model_edits",))
-    ids = [edit.node_id for edit in edits.moves]
-    if not ids:
-        return RedesignResult(None, answer.model, False, ("no_supported_furniture_move",))
-    known = {node.id for node in graph.nodes}
-    if len(ids) != len(set(ids)):
-        return RedesignResult(None, answer.model, False, ("duplicate_objects",))
-    if not set(ids) <= known:
-        return RedesignResult(None, answer.model, False, ("unknown_objects",))
-    if all(
-        edit.dx == 0 and edit.dy == 0 and edit.rotation_degrees == 0
-        for edit in edits.moves
-    ):
-        return RedesignResult(None, answer.model, False, ("no_op_moves",))
-    moves = expand_moves_with_seating(graph, _edits_to_moves(edits))
-    candidate = apply_moves(graph, moves)
-    if lost_seating(graph, candidate):
-        return RedesignResult(None, answer.model, False, ("stranded_seating",))
-    broken = violations(graph, candidate)
-    if broken:
-        return RedesignResult(None, answer.model, False, tuple(sorted({item.kind for item in broken})))
-    if not rules.enabled(ledger, max_tier=3):
-        return RedesignResult(None, answer.model, False, ("no_verified_rules",))
+def _scored_against_workflows(graph, candidate, workflows, measure, rules, ledger):
+    """(reasons to reject, whether anything measurably improved).
+
+    Every workflow has to hold: one that gets worse rejects the candidate, and
+    at least one has to actually improve or there is no reason to move anything.
+    """
     improved = False
     for workflow in workflows:
         before = assess(graph, workflow.scenario, measure, rules=rules, ledger=ledger, max_tier=3)
         after = assess(candidate, workflow.scenario, measure, rules=rules, ledger=ledger, max_tier=3)
         gate = accepts(before, after, require_improvement=False)
         if not gate:
-            return RedesignResult(None, answer.model, False, gate.reasons)
+            return gate.reasons, improved
         improved = improved or bool(accepts(before, after))
-    regression = workflow_candidate_rejection(graph, candidate, workflows=workflows, profiles=profiles, measure=measure, collision_index=collision_index)
+    return None, improved
+
+
+def validate_redesign(
+    graph, answer: ModelAnswer, workflows, profiles, measure, *, rules, ledger, collision_index=None
+) -> RedesignResult:
+    def rejected(*reasons: str) -> RedesignResult:
+        return RedesignResult(None, answer.model, False, tuple(reasons))
+
+    try:
+        edits = RoomEdits.model_validate(answer.payload)
+    except ValidationError:
+        return rejected("invalid_model_edits")
+
+    complaint = _edit_complaint(graph, edits)
+    if complaint:
+        return rejected(complaint)
+
+    candidate = apply_moves(graph, expand_moves_with_seating(graph, _moves_of(edits)))
+    if lost_seating(graph, candidate):
+        return rejected("stranded_seating")
+    broken = violations(graph, candidate)
+    if broken:
+        return rejected(*sorted({item.kind for item in broken}))
+    if not rules.enabled(ledger, max_tier=3):
+        return rejected("no_verified_rules")
+
+    reasons, improved = _scored_against_workflows(graph, candidate, workflows, measure, rules, ledger)
+    if reasons:
+        return RedesignResult(None, answer.model, False, reasons)
+
+    regression = workflow_candidate_rejection(
+        graph, candidate, workflows=workflows, profiles=profiles, measure=measure, collision_index=collision_index
+    )
     if regression or not improved:
-        return RedesignResult(None, answer.model, False, (regression or "nothing_measurable_improved",))
+        return rejected(regression or "nothing_measurable_improved")
     return RedesignResult(candidate, answer.model, True, ())

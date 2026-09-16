@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import secrets
 from dataclasses import dataclass
 
 from standardphysics_agents.tracing import ENTITY_ENV, PROJECT_ENV
@@ -54,6 +55,14 @@ class Settings:
     glance, and a demo that shows invented findings about an invented room is
     worse than an empty list. Set SP_SEED_SAMPLE_SHOP=1 if you want it back.
     """
+    seed_owner_email: str = "demo@standardphysics.app"
+    """The account the sample shop belongs to, when SP_SEED_SAMPLE_SHOP is on."""
+    seed_owner_password: str = ""
+    """Set by SP_SEED_OWNER_PASSWORD, or generated at startup and logged.
+
+    Generating it means the repository carries no password that works against
+    every deployment of this server.
+    """
     weave_project: str | None = None
     """Traces go to Weave when this is set, and nowhere when it is not. Only
     `from_environment` fills it in, so a server built in a test stays local."""
@@ -75,6 +84,8 @@ class Settings:
             data_dir=pathlib.Path(os.environ.get("SP_DATA_DIR", DEFAULT_DATA_DIR)),
             preview_unverified_rules=_flag("SP_PREVIEW_UNVERIFIED_RULES"),
             seed_sample_shop=_flag("SP_SEED_SAMPLE_SHOP"),
+            seed_owner_email=os.environ.get("SP_SEED_OWNER_EMAIL", "demo@standardphysics.app"),
+            seed_owner_password=os.environ.get("SP_SEED_OWNER_PASSWORD") or secrets.token_urlsafe(12),
             weave_project=os.environ.get(PROJECT_ENV) or None,
             weave_entity=os.environ.get(ENTITY_ENV) or None,
             auto_deep_simulation=_flag("SP_AUTO_DEEP_SIMULATION"),

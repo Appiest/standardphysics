@@ -25,7 +25,6 @@ from dataclasses import dataclass, replace
 from itertools import product
 
 import numpy as np
-
 from standardphysics_contracts import NodeMove, Scenario, SceneGraph, SceneNode, Vec3, to_meters
 from standardphysics_pipeline.footprints import polygon_bounds, rotation_about_z
 from standardphysics_pipeline.occupancy import blocks_floor

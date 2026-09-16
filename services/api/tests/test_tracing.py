@@ -7,7 +7,7 @@ than watched once by eye. CI has no keys, so the account is stood in for.
 import sys
 
 import pytest
-from conftest import no_blender_stages
+from conftest import no_blender_stages, sign_up
 from fastapi.testclient import TestClient
 from standardphysics_agents import tracing
 
@@ -46,6 +46,7 @@ def serve(tmp_path, **settings) -> TestClient:
 
 def test_a_project_turns_tracing_on(tmp_path, weave):
     with serve(tmp_path, weave_project="physics", weave_entity="physics") as client:
+        sign_up(client)
         assert client.get("/api/scans").status_code == 200
         assert weave.projects == ["physics/physics"]
         assert tracing.project_url() == "https://wandb.ai/physics/physics/weave"
@@ -59,6 +60,7 @@ def test_it_stops_when_the_server_stops(tmp_path, weave):
 
 def test_no_project_leaves_it_off(tmp_path, weave):
     with serve(tmp_path) as client:
+        sign_up(client)
         assert client.get("/api/scans").status_code == 200
         assert weave.projects == []
         assert not tracing.is_live()
@@ -67,6 +69,7 @@ def test_no_project_leaves_it_off(tmp_path, weave):
 def test_a_key_weave_rejects_does_not_stop_the_server(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "weave", FakeWeave(failure=ValueError("api_key not valid")))
     with serve(tmp_path, weave_project="physics") as client:
+        sign_up(client)
         assert client.get("/api/scans").status_code == 200
         assert not tracing.is_live()
 

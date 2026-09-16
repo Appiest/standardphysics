@@ -22,8 +22,8 @@ from standardphysics_contracts import MeasurementProvider
 
 from ..assess import assess
 from ..fix.search import propose_fix
-from ..rules import AgentRulePack, VerificationLedger, load_ledger, load_pack
 from ..router import LocalPolicyRouter, state_for
+from ..rules import AgentRulePack, VerificationLedger, load_ledger, load_pack
 from ..tracing import is_live, project_url, traced
 from .dataset import Case, dataset
 from .gate import accepts

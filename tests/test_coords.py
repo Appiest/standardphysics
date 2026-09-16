@@ -3,7 +3,6 @@ measurement is wrong, so these pin both.
 """
 
 import pytest
-
 from standardphysics_pipeline.coords import (
     dimensions_to_z_up,
     point_to_y_up,

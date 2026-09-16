@@ -39,20 +39,53 @@ def no_blender_stages(**overrides) -> Stages:
     return Stages(**{**options, **overrides})
 
 
+OWNER_EMAIL = "owner@example.com"
+OWNER_PASSWORD = "a-long-enough-password"
+SEED_OWNER_PASSWORD = "seed-owner-password"
+
+
+def sign_up(test_client: TestClient, email: str = OWNER_EMAIL, password: str = OWNER_PASSWORD) -> str:
+    """Register an owner and leave this client signed in as them."""
+    response = test_client.post(
+        "/api/auth/sign-up", json={"email": email, "password": password, "shop_name": "Corner cafe"}
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["owner_id"]
+
+
+def sign_in(test_client: TestClient, email: str, password: str) -> None:
+    response = test_client.post("/api/auth/sign-in", json={"email": email, "password": password})
+    assert response.status_code == 200, response.text
+
+
+def sign_out(test_client: TestClient) -> None:
+    assert test_client.post("/api/auth/sign-out").status_code == 204
+
+
 @pytest.fixture
 def make_client(tmp_path):
     def build(
         seed: bool = False,
         stages: Stages | None = None,
+        sign_in_as_owner: bool = True,
         **settings_overrides,
     ) -> TestClient:
         settings = Settings(
             data_dir=tmp_path / "var",
             seed_sample_shop=seed,
             max_artifact_bytes=5_000_000,
+            seed_owner_password=SEED_OWNER_PASSWORD,
             **settings_overrides,
         )
-        return TestClient(create_app(settings, stages or no_blender_stages(), run_worker=False))
+        test_client = TestClient(create_app(settings, stages or no_blender_stages(), run_worker=False))
+        if not sign_in_as_owner:
+            return test_client
+        with test_client:
+            if seed:
+                sign_in(test_client, settings.seed_owner_email, SEED_OWNER_PASSWORD)
+            else:
+                sign_up(test_client)
+        return test_client
 
     return build
 
@@ -60,6 +93,14 @@ def make_client(tmp_path):
 @pytest.fixture
 def client(make_client):
     with make_client() as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def stranger(make_client):
+    """A signed-in owner with no scans of their own."""
+    with make_client(sign_in_as_owner=False) as test_client:
+        sign_up(test_client, "stranger@example.com", "another-long-password")
         yield test_client
 
 

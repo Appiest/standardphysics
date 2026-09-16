@@ -7,20 +7,16 @@ and the finding closes. Reproductions are in PROGRESS.md. The lane that owns
 the code fixes it; the audit only pins it.
 """
 
+import contextlib
 import hashlib
 import json
 import uuid
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-
 import standardphysics_fixtures
+from fastapi.testclient import TestClient
 from standardphysics_agents import VerificationLedger
-from standardphysics_api import layout
-from standardphysics_api.app import create_app
-from standardphysics_api.settings import Settings
-from standardphysics_api.stages import Stages
 from standardphysics_contracts import (
     Mat4,
     SaveLayoutRequest,
@@ -36,6 +32,11 @@ from standardphysics_pipeline import blender
 from standardphysics_pipeline.ingest import parse_room_json
 from standardphysics_pipeline.measure import PipelineMeasurements
 from standardphysics_pipeline.occupancy import blocks_floor
+
+from standardphysics_api import layout
+from standardphysics_api.app import create_app
+from standardphysics_api.settings import Settings
+from standardphysics_api.stages import Stages
 
 THICKNESS = 0.1
 DEPTH = 4.0
@@ -136,13 +137,36 @@ def _finalize_and_process(client: TestClient, scan_id: str) -> str:
     return client.get(f"/api/scans/{scan_id}").json()["state"]
 
 
-def _api_client(tmp_path, seed_sample_shop: bool = False) -> TestClient:
+AUDIT_PASSWORD = "audit-owner-password"
+
+
+@contextlib.contextmanager
+def _api_client(tmp_path, seed_sample_shop: bool = False):
+    """A running API with an owner already signed in.
+
+    The sample shop belongs to the seeded demo account, so a seeded client
+    signs in as that owner rather than registering a second one who would see
+    an empty list.
+    """
     stages = Stages(
         ledger_factory=VerificationLedger,
         export_glb=_without_blender, usdz_to_glb=_without_blender, render_finding=_without_blender,
     )
-    settings = Settings(data_dir=tmp_path / "var", seed_sample_shop=seed_sample_shop)
-    return TestClient(create_app(settings, stages, run_worker=False))
+    settings = Settings(
+        data_dir=tmp_path / "var", seed_sample_shop=seed_sample_shop, seed_owner_password=AUDIT_PASSWORD
+    )
+    with TestClient(create_app(settings, stages, run_worker=False)) as client:
+        _sign_in(client, settings, seed_sample_shop)
+        yield client
+
+
+def _sign_in(client: TestClient, settings: Settings, seeded: bool) -> None:
+    if seeded:
+        credentials = {"email": settings.seed_owner_email, "password": AUDIT_PASSWORD}
+        assert client.post("/api/auth/sign-in", json=credentials).status_code == 200
+        return
+    registration = {"email": "audit@example.com", "password": AUDIT_PASSWORD, "shop_name": "Audit"}
+    assert client.post("/api/auth/sign-up", json=registration).status_code == 201
 
 
 def _sample_shop_id(client: TestClient) -> str:

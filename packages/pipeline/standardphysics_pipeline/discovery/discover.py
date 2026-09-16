@@ -37,8 +37,8 @@ from ..lidar import LidarMeshError, room_cloud
 from ..textures.camera import CameraMetadataError, PhotoCamera, load_cameras
 from ..textures.project import depth_buffer
 from .boxes import claimed_by_any, contained_fraction, resting_parent
-from .carve import FrameView, carve
 from .cache import DetectionCache
+from .carve import FrameView, carve
 from .detect import DEFAULT_MODEL, MODEL_ENV, Detection, DetectionError, Transport, detect_objects
 from .merge import Candidate, DiscoveredObject, merge_candidates
 from .people import without_people
@@ -291,6 +291,7 @@ def _worth_keeping(object_: DiscoveredObject, graph: SceneGraph, viewpoints: int
 
 
 def _node_for(object_: DiscoveredObject, graph: SceneGraph, viewpoints: int) -> SceneNode:
+    resting = resting_parent(object_.box, graph)
     return SceneNode(
         id=_stable_id(graph.scan_id, object_),
         kind="object",
@@ -301,7 +302,8 @@ def _node_for(object_: DiscoveredObject, graph: SceneGraph, viewpoints: int) -> 
         quality="measured" if viewpoints >= CONFIDENT_VIEWS else "needs_another_look",
         movable=object_.movable,
         labeled_by="discovery",
-        parent_id=resting_parent(object_.box, graph),
+        parent_id=resting,
+        relation="rests_on" if resting is not None else None,
     )
 
 

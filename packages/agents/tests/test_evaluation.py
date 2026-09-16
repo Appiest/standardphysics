@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 import pytest
-from standardphysics_fixtures.shop import node_id
 from standardphysics_agents.evaluation import (
     LOWER_IS_BETTER,
     SCORERS,
@@ -23,6 +22,7 @@ from standardphysics_agents.evaluation.scorers import (
     router_action_match,
 )
 from standardphysics_agents.router import LocalPolicyRouter, Rejected, state_for
+from standardphysics_fixtures.shop import node_id
 
 EXPECTED_SCORERS = {
     "finding_precision",

@@ -32,6 +32,16 @@ from .measurement import (
     MeasurementProvider,
     WidthResult,
 )
+from .primitives import (
+    Evidence,
+    NodeSet,
+    Payload,
+    PrimitiveResult,
+    PrimitiveSpec,
+    Quantity,
+    TextSet,
+    Truth,
+)
 from .rules import Authority, Check, Citation, RulePack, Tier
 from .scan import Artifact, ArtifactKind, Scan, ScanState, SurfaceCoverage
 from .scene import (
@@ -41,10 +51,12 @@ from .scene import (
     LabelSource,
     NodeKind,
     Quality,
+    Relation,
     Scenario,
     SceneGraph,
     SceneNode,
     Stop,
+    SurfaceText,
 )
 from .simulation import (
     AdaptiveRoundResult,
@@ -72,6 +84,9 @@ from .textures import (
 )
 
 __all__ = [
+    "Relation",
+    "SurfaceText",
+    "Evidence", "NodeSet", "Payload", "PrimitiveResult", "PrimitiveSpec", "Quantity", "TextSet", "Truth",
     "AdaptiveRoundResult",
     "Annotation",
     "AnnotationKind",

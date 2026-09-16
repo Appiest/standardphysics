@@ -17,14 +17,13 @@ from typing import Callable
 from standardphysics_contracts import MeasurementProvider, Scenario, SceneGraph
 from standardphysics_contracts.rules import Tier
 
-from ..assess import Pass
 from ..copy import ask_reply
-from ..rules import AgentRulePack, VerificationLedger, load_ledger, load_pack
 from ..router.decision import Rejected
+from ..rules import AgentRulePack, VerificationLedger, load_ledger, load_pack
 from ..tracing import traced
 from .answer import Answer, AskContext
-from .directions import DIRECTIONS, Direction, shop_axes
 from .dimensions import measure
+from .directions import DIRECTIONS, Direction, shop_axes
 from .inventory import count
 from .layout import rearrange
 from .locus import subject_locus
@@ -32,8 +31,8 @@ from .places import where
 from .query import KINDS, Query, QueryKind, parse_query, query_schema
 from .resolve import KeywordResolver, ModelResolver, catalogue, resolver
 from .shapes import Arrangement, arrangement, describe
-from .spans import distance
 from .space import FitAnswer, FitRequest, fits, space
+from .spans import distance
 from .standards import check
 
 Executor = Callable[[Query, AskContext], Answer]

@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 import numpy as np
-
 from standardphysics_contracts import SceneGraph, SceneNode, Vec3, to_meters
 
 from .footprints import floor_polygon, polygon_bounds

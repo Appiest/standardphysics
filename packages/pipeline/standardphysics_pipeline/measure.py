@@ -8,11 +8,10 @@ threshold check cannot afford that.
 
 from __future__ import annotations
 
-from uuid import UUID
 from collections import OrderedDict
+from uuid import UUID
 
 import numpy as np
-
 from standardphysics_contracts import (
     ClearFloorResult,
     HeightResult,
@@ -38,9 +37,9 @@ from .routes import (
     blockers_at,
     clearance_map,
     longest_run_below,
-    what_sealed_the_route,
     path_clearances,
     straddling_blockers,
+    what_sealed_the_route,
     widest_path,
     world_path,
 )

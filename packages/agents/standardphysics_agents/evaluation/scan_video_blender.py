@@ -6,12 +6,12 @@ blender --background --python scan_video_blender.py -- --campaign report.json
 import argparse
 import json
 import math
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import bpy
-from mathutils import Vector
 import numpy as np
+from mathutils import Vector
 
 FPS = 18
 SECONDS = 5
@@ -225,9 +225,7 @@ def pose(run, phase, rig, pov, follow):
     root.location = position
     root.rotation_euler.z = math.atan2(forward.y,forward.x)-math.pi/2
     bpy.context.view_layer.update()
-    local_target = root.matrix_world.inverted() @ target
     shoulder = Vector((.19,.035,run['profile']['shoulder_height']))
-    direction = local_target-shoulder
     # The hand illustration stops at the configured reach envelope.
     world_shoulder = position+Vector((0,0,run['profile']['shoulder_height']))
     world_reach = target-world_shoulder

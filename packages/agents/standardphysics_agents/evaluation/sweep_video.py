@@ -11,8 +11,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageFont
 import imageio_ffmpeg
+from PIL import Image, ImageDraw, ImageFont
 
 SIZE = (1920, 1080)
 FPS = 30

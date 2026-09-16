@@ -7,20 +7,20 @@ not millions of model calls or millions of repeated BFS computations.
 from __future__ import annotations
 
 import argparse
-from collections import deque
-from dataclasses import asdict, dataclass
 import hashlib
 import json
 import math
-from pathlib import Path
 import time
+from collections import deque
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Callable
 
 import numpy as np
 from standardphysics_contracts import LidarMesh, SceneGraph, graph_hash
 from standardphysics_pipeline.footprints import rotation_about_z
 
-from .scan_space import ScanSpace, build_spaces, FLOOR_NOISE_BAND
+from .scan_space import FLOOR_NOISE_BAND, ScanSpace, build_spaces
 from .scan_tasks import PROP_SIZES, ScanTask, TaskSuite, choose_task, propose_tasks, validate_tasks
 
 OUTCOMES = ("route_blocked", "out_of_reach", "route_and_reach_fit")

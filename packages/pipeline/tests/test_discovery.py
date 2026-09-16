@@ -19,13 +19,17 @@ import numpy as np
 import pytest
 from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3
 from standardphysics_pipeline.coords import capture_to_room
-from standardphysics_pipeline.discovery.boxes import claimed_by, claimed_by_any, inside, resting_parent, structure_points
+from standardphysics_pipeline.discovery.boxes import (
+    claimed_by,
+    claimed_by_any,
+    resting_parent,
+    structure_points,
+)
 from standardphysics_pipeline.discovery.carve import FrameView, carve, fit_box
 from standardphysics_pipeline.discovery.clusters import voxel_components, without_the_surface_beneath
-from standardphysics_pipeline.discovery.detect import Detection, _pixel_box, EncodedFrame
+from standardphysics_pipeline.discovery.detect import Detection, EncodedFrame, _pixel_box
 from standardphysics_pipeline.discovery.discover import _viewpoints, _worth_keeping
-from standardphysics_pipeline.discovery.merge import DiscoveredObject
-from standardphysics_pipeline.discovery.merge import Candidate, merge_candidates
+from standardphysics_pipeline.discovery.merge import Candidate, DiscoveredObject, merge_candidates
 from standardphysics_pipeline.discovery.people import without_people
 from standardphysics_pipeline.textures.camera import PhotoCamera
 

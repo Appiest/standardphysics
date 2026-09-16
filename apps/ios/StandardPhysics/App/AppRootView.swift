@@ -10,8 +10,10 @@ final class AppModel: ObservableObject {
         case upload(UploadViewModel)
         case workspace(UUID)
         case connection
+        case signIn
     }
 
+    let session = SessionStore()
     @Published var screen: Screen = .start
     @Published private(set) var savedScans = CaptureLibrary.all()
     @Published var deletionMessage: String?
@@ -33,7 +35,16 @@ final class AppModel: ObservableObject {
     func connectionChanged() {
         uploads.values.forEach { $0.cancel() }
         uploads.removeAll()
+        // A token is only good at the server that issued it.
+        session.serverChanged()
         showStart()
+    }
+
+    func signOut() {
+        uploads.values.forEach { $0.cancel() }
+        uploads.removeAll()
+        session.signOut()
+        screen = .signIn
     }
 
     func recoverSavedRoom(_ directory: URL) async {
@@ -55,6 +66,10 @@ final class AppModel: ObservableObject {
             screen = .connection
             return
         }
+        guard let token = session.token else {
+            screen = .signIn
+            return
+        }
         if let existing = uploads[scan.id], existing.totalCount == scan.artifacts.count {
             screen = .upload(existing)
             return
@@ -63,7 +78,7 @@ final class AppModel: ObservableObject {
         let model = UploadViewModel(
             scan: scan,
             name: name,
-            client: ScanUploadClient(baseURL: baseURL)
+            client: ScanUploadClient(baseURL: baseURL, token: token)
         )
         uploads[scan.id] = model
         model.start()
@@ -86,7 +101,7 @@ final class AppModel: ObservableObject {
         savedScans = CaptureLibrary.all()
 
         guard let remoteID, let baseURL = AppEnvironment.apiBaseURL else { return }
-        try? await ScanUploadClient(baseURL: baseURL).delete(id: remoteID)
+        try? await ScanUploadClient(baseURL: baseURL, token: session.token).delete(id: remoteID)
     }
 
     func refreshSavedScanStates() async {
@@ -98,9 +113,10 @@ final class AppModel: ObservableObject {
             for scan in savedScans {
                 let store = ResumableUploadStore(captureDirectory: scan.directory)
                 guard store.scanID != nil, uploads[scan.id] == nil,
-                      let baseURL = AppEnvironment.apiBaseURL else { continue }
+                      let baseURL = AppEnvironment.apiBaseURL,
+                      let token = session.token else { continue }
                 let model = UploadViewModel(scan: scan, name: scan.name ?? "Shop scan",
-                    client: ScanUploadClient(baseURL: baseURL))
+                    client: ScanUploadClient(baseURL: baseURL, token: token))
                 uploads[scan.id] = model
                 model.start()
             }
@@ -153,6 +169,8 @@ private struct SupportedAppView: View {
             WorkspaceScreen(appModel: model, scanID: scanID)
         case .connection:
             ConnectionScreen(model: model)
+        case .signIn:
+            SignInScreen(model: model, session: model.session)
         }
     }
 }
@@ -181,6 +199,7 @@ private struct StartView: View {
                             .buttonStyle(AppButtonStyle())
                         Button("Connection") { model.screen = .connection }
                             .buttonStyle(AppButtonStyle(.secondary))
+                        AccountRow(model: model, session: model.session)
                         if !model.savedScans.isEmpty {
                             SavedScansView(
                                 scans: model.savedScans,
@@ -209,6 +228,33 @@ private struct StartView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .task { await model.refreshSavedScanStates() }
+        }
+    }
+}
+
+/// Who this phone uploads as, and the way to change it.
+///
+/// Scans go to whichever account is signed in here, so the shop's name is on
+/// screen before anyone starts a scan rather than after the upload fails.
+private struct AccountRow: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var session: SessionStore
+
+    var body: some View {
+        if let owner = session.owner {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(owner.shopName)
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.ink)
+                Text(owner.email)
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.mutedInk)
+                Button("Sign out") { model.signOut() }
+                    .buttonStyle(AppButtonStyle(.secondary))
+            }
+        } else {
+            Button("Sign in") { model.screen = .signIn }
+                .buttonStyle(AppButtonStyle(.secondary))
         }
     }
 }

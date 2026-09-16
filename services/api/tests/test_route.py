@@ -18,6 +18,7 @@ def _real_scan(client, name: str) -> str:
 
 def test_a_phone_scan_without_a_route_is_checked_for_everything_but_its_route(client):
     from standardphysics_agents import load_pack
+
     from standardphysics_api.stages import ROUTE_SUBJECTS
 
     route_rules = {rule.id for rule in load_pack().rules if ROUTE_SUBJECTS.intersection(rule.applies_to)}

@@ -3,7 +3,6 @@
 import math
 
 import pytest
-
 from standardphysics_contracts import ClearFloorResult, Vec3, to_inches, to_meters
 from standardphysics_fixtures import build_graph, build_scenario, node_id
 from standardphysics_pipeline.locus import (

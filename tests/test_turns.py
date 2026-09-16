@@ -8,7 +8,6 @@ its end to reach the counter.
 import uuid
 
 import pytest
-
 from standardphysics_contracts import Mat4, Scenario, SceneGraph, SceneNode, Stop, Vec3
 from standardphysics_pipeline.measure import PipelineMeasurements
 from standardphysics_pipeline.turns import Turn, find_turn

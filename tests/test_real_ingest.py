@@ -10,7 +10,6 @@ import pathlib
 import plistlib
 
 import pytest
-
 from standardphysics_contracts import to_meters
 from standardphysics_pipeline.blender import usdz_to_glb
 from standardphysics_pipeline.check_blender import blender_path
