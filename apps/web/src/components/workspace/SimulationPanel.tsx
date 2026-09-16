@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ActivitySpinner } from "@/components/ui/ActivitySpinner";
 import { Button } from "@/components/ui/Button";
 import { accessibilityLoopRequest, LOOP_TRIALS, LOOP_WORKERS, loopResultSentence } from "@/lib/accessibility-loop";
 import { getSimulation, SimulationRequestError, startSimulation } from "@/lib/simulation-client";
@@ -118,7 +119,7 @@ function PhysicsResults({ result, labels }: { result: NonNullable<SimulationStat
 
 function ResultFeedback({ feedback, labels }: { feedback: SimulationFeedback[]; labels: Map<string, string> }) {
   if (feedback.length === 0) return null;
-  return <details className="rounded-lg bg-rule/30 p-3"><summary className="cursor-pointer font-medium">Profile failures and blockers</summary><ul className="mt-3 space-y-2">{feedback.map((item) => <Feedback key={`${item.workflow_title}-${item.profile_title}`} feedback={item} labels={labels} />)}</ul></details>;
+  return <details className="rounded-lg bg-rule/30 p-3"><summary className="cursor-pointer font-medium">Profile failures and blockers</summary><ul className="mt-3 space-y-2">{feedback.map((item, index) => <Feedback key={index} feedback={item} labels={labels} />)}</ul></details>;
 }
 
 function ResultLimitations({ limitations }: { limitations: string[] }) {
@@ -158,8 +159,7 @@ function SimulationMessages({ status, error }: { status: SimulationStatus | null
   const cycle = status?.cycle ?? 0;
   return <>
     {isActive(status) && cycle > 0 && <p className="text-sm text-ink-muted">Pass {cycle}: testing the layout shown in the room.</p>}
-    {status?.error && <p role="alert" className="text-sm text-problem">{status.error}</p>}
-    {error && <p role="alert" className="text-sm text-problem">{error}</p>}
+    {(status?.error || error) && <ActivitySpinner />}
   </>;
 }
 

@@ -1,9 +1,9 @@
 import { ArrowRight, ArrowUp } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
+import { ScanStatus } from "@/components/ScanStatus";
 import { InkedFloorPlan } from "@/components/blueprint/InkedFloorPlan";
 import { SHEET_GRID_CLASS, SheetField } from "@/components/blueprint/SheetField";
 import { countNeedingAttention } from "@/lib/findings";
-import { scanStatus } from "@/lib/scan-status";
 import type { ShopSheet } from "./shopSheet";
 
 const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -16,7 +16,7 @@ function toFixValue({ assessment }: ShopSheet) {
 function PlanPlaceholder({ sheet }: { sheet: ShopSheet }) {
   return (
     <div className="flex h-72 items-center justify-center px-6 text-center text-ink-muted sm:h-[26rem]">
-      {scanStatus(sheet.scan, sheet.assessment, sheet.hasScenario)}
+      <ScanStatus scan={sheet.scan} assessment={sheet.assessment} routeConfirmed={sheet.hasScenario} />
     </div>
   );
 }
@@ -38,7 +38,7 @@ export function FeaturedSheet({ sheet, sheetNumber }: { sheet: ShopSheet; sheetN
       <dl className={`${SHEET_GRID_CLASS} border-t border-ink *:bg-paper group-hover:*:bg-sheet sm:grid-cols-[minmax(0,2fr)_1fr_1fr_auto]`}>
         <SheetField label="Shop">
           <span className="heading-display block truncate text-2xl">{scan.name}</span>
-          <span className="block text-sm font-normal text-ink-muted text-pretty">{scanStatus(scan, assessment, hasScenario)}</span>
+          <ScanStatus className="block text-sm font-normal text-ink-muted text-pretty" scan={scan} assessment={assessment} routeConfirmed={hasScenario} />
         </SheetField>
         <SheetField label={dateLabel}>{dateFormat.format(checkedOn)}</SheetField>
         <SheetField label="To fix">{toFixValue(sheet)}</SheetField>

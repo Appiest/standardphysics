@@ -10,6 +10,7 @@ rearrangement anybody can carry out.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from standardphysics_contracts import SceneGraph, SceneNode, Vec3
@@ -192,7 +193,18 @@ def _one_above_the_other(a: SceneNode, b: SceneNode) -> bool:
     return underside(a) >= top_of(b) - VERTICAL_TOLERANCE or underside(b) >= top_of(a) - VERTICAL_TOLERANCE
 
 
-def _overlapping(a: SceneNode, b: SceneNode) -> bool:
+def _far_apart(a: SceneNode, b: SceneNode) -> bool:
+    """Centres further apart than both half-diagonals together, so the footprints cannot meet."""
+    apart = math.dist(
+        (a.transform.position.x, a.transform.position.y),
+        (b.transform.position.x, b.transform.position.y),
+    )
+    return apart > (math.hypot(a.dimensions.x, a.dimensions.y) + math.hypot(b.dimensions.x, b.dimensions.y)) / 2
+
+
+def overlapping(a: SceneNode, b: SceneNode) -> bool:
+    if _far_apart(a, b):
+        return False
     return gap_between(collision_shape(a), collision_shape(b)) == 0.0 and not _one_above_the_other(a, b)
 
 
@@ -231,7 +243,7 @@ def _collisions(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode])
 
 def _overlaps(node: SceneNode, obstacles, swings, scene: _Scene) -> list[Violation]:
     for other in obstacles:
-        if _overlapping(node, other) and not scene.already(_overlapping, node, other):
+        if overlapping(node, other) and not scene.already(overlapping, node, other):
             return [Violation("collided", str(node.id), f"{node.label} into {other.label}", blocker=other.label)]
     for door in swings:
         clash = lambda piece, swing: _in_swing(piece, door_keep_clear(swing), scene.floor_z)

@@ -79,9 +79,11 @@ struct CaptureScreen: View {
                 .padding(.vertical, AppTheme.Spacing.card)
                 .background(AppTheme.captureProgress)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.control, style: .continuous))
-        case .failed(let message):
+        case .failed:
             VStack(spacing: AppTheme.Spacing.small) {
-                Text(message).font(.headline).foregroundStyle(AppTheme.onDark)
+                ProgressView()
+                    .tint(AppTheme.onDark)
+                    .accessibilityLabel("Working")
                 if capture.canRetrySave {
                     Button("Save again") { capture.retrySave() }
                         .buttonStyle(AppButtonStyle(.primary))

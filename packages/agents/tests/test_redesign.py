@@ -119,12 +119,15 @@ def test_astra_receives_focused_movable_objects_and_actionable_failures(
 
 
 def test_validated_aisle_improvement_preserves_all_objects_and_dimensions(graph, scenario, pipeline, pack, ledger):
+    from standardphysics_agents.fix.composition import tables_by_chair
     from standardphysics_contracts import to_meters
+    before_seating = tables_by_chair(graph)
     result = validate(graph, scenario, pipeline, pack, ledger, [move(node_id('case_east'), dx=to_meters(5))])
     assert result.accepted, result.reasons
     assert result.graph is not None
     assert {node.id: node.dimensions for node in result.graph.nodes} == {node.id: node.dimensions for node in graph.nodes}
     assert result.graph.by_id(node_id('counter')) == graph.by_id(node_id('counter'))
+    assert before_seating.items() <= tables_by_chair(result.graph).items()
 
 
 def test_astra_receives_rule_problems_and_route_trials(graph, pipeline, pack, ledger):
@@ -146,3 +149,40 @@ def test_astra_receives_rule_problems_and_route_trials(graph, pipeline, pack, le
     assert client.state["actionable_rule_problems"] == [problem]
     assert client.state["route_trials"] == trials
     assert "route_trials" in client.instruction
+    assert "seating_groups" in client.state
+    assert "seating_groups" in client.instruction
+
+
+def test_moving_a_table_alone_keeps_its_chairs_seated(graph, scenario, pipeline, pack, ledger):
+    from standardphysics_agents.fix import apply_moves
+    from standardphysics_agents.fix.composition import expand_moves_with_seating, tables_by_chair
+    from standardphysics_contracts import NodeMove, Vec3
+
+    table = graph.by_id(node_id("table_1"))
+    before = {chair for chair, table_id in tables_by_chair(graph).items() if table_id == table.id}
+    assert before
+    moves = expand_moves_with_seating(
+        graph,
+        [NodeMove(node_id=table.id, delta_translation=Vec3(x=0.4, y=0.0, z=0.0), delta_rotation_z_degrees=0.0)],
+    )
+    assert {move.node_id for move in moves} >= before | {table.id}
+    after = tables_by_chair(apply_moves(graph, moves))
+    assert before <= set(after)
+    assert all(after[chair] == table.id for chair in before)
+
+
+def test_explicitly_leaving_chairs_behind_a_moved_table_is_rejected(
+    graph, scenario, pipeline, pack, ledger
+):
+    table = graph.by_id(node_id("table_1"))
+    chairs = [graph.by_id(node_id(name)) for name in ("chair_1", "chair_2")]
+    result = validate(
+        graph,
+        scenario,
+        pipeline,
+        pack,
+        ledger,
+        [move(table.id, dx=1.8), *[move(chair.id, dx=0.01) for chair in chairs]],
+    )
+    assert not result.accepted
+    assert result.reasons == ("stranded_seating",)

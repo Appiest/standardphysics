@@ -4,8 +4,51 @@
     {
       "name": "scenario-sweep",
       "runtimeExecutable": ".venv/bin/marimo",
-      "runtimeArgs": ["run", "notebooks/scenario_sweep.py", "--port", "2718", "--headless", "--no-token"],
+      "runtimeArgs": [
+        "run",
+        "notebooks/scenario_sweep.py",
+        "--port",
+        "2718",
+        "--headless",
+        "--no-token"
+      ],
       "port": 2718
+    },
+    {
+      "name": "demo-api",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/yanzihao/Documents/standardphysics-weave && SP_PREVIEW_UNVERIFIED_RULES=1 PYTHONPATH=packages/contracts:packages/fixtures:packages/pipeline:packages/agents:services/api:src exec /Users/yanzihao/Documents/standardphysics/.venv/bin/python -c 'import logging, uvicorn; from standardphysics_api.app import create_app; logging.basicConfig(level=logging.INFO); uvicorn.run(create_app(), host=\"0.0.0.0\", port=8788, workers=1)'"
+      ],
+      "port": 8788
+    },
+    {
+      "name": "demo-web",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/yanzihao/Documents/standardphysics-weave/apps/web && SP_API_ORIGIN=http://127.0.0.1:8788 exec npx next dev --webpack --hostname 0.0.0.0 --port 3001"
+      ],
+      "port": 3001
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": [
+        "-c",
+        "SP_PREVIEW_UNVERIFIED_RULES=1 exec .venv/bin/python -m uvicorn standardphysics_api.app:create_app --factory --host 0.0.0.0 --port 8788"
+      ],
+      "port": 8788
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/web && SP_API_ORIGIN=http://127.0.0.1:8788 exec npm run dev"
+      ],
+      "port": 3000
     }
   ]
 }

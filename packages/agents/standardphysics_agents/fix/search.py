@@ -35,7 +35,9 @@ from ..copy import no_arrangement, proposal_rationale, relaxation_question
 from ..hashing import inventory
 from ..rules import AgentRulePack, VerificationLedger
 from ..tracing import traced
+from .composition import Composition
 from .constraints import violations
+from .furnishing import arrangements
 from .moves import apply_moves, unlocked, without
 from .pinch import Pinch, pinch_from
 from .placement import placements
@@ -154,9 +156,20 @@ class _Search:
     candidate_rejection: CandidateRejection | None = None
     measured: int = 0
     rejected: list[str] = field(default_factory=list)
+    plans: list[Candidate] | None = None
+    composition: Composition = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.composition = Composition.of(self.graph)
+
+    def arrangements(self) -> list[Candidate]:
+        """Whole-room plans, worked out once however many findings ask for them."""
+        if self.plans is None:
+            self.plans = arrangements(self.graph, self.scenario, self.rules)
+        return self.plans
 
     def run(self, pinch: Pinch, limit: int) -> tuple[Candidate, SceneGraph] | None:
-        return self.check(pinch, candidates(pinch, limit))
+        return self.check(pinch, self.composition.ranked(candidates(pinch, limit)))
 
     def check(self, pinch: Pinch, guesses: Iterable[Candidate]) -> tuple[Candidate, SceneGraph] | None:
         from ..evaluation.gate import accepts
@@ -167,6 +180,9 @@ class _Search:
             broken = violations(self.graph, rearranged)
             if broken:
                 self.rejected.extend(item.kind for item in broken)
+                continue
+            if self.composition.leaves_overlaps(candidate.moves):
+                self.rejected.append("left_overlapping")
                 continue
             self.measured += 1
             after = assess(
@@ -219,7 +235,8 @@ def propose_fix(
         result = search.run(pinch, limit)
         if result is None and limit > 0:
             finding = next(f for f in problems if f.id == pinch.finding_id)
-            result = search.check(pinch, placements(graph, pinch, finding, rules, limit * 4))
+            guesses = [*placements(graph, pinch, finding, rules, limit * 4), *search.arrangements()]
+            result = search.check(pinch, sorted(guesses, key=lambda guess: guess.disruption))
         if result is None:
             continue
         picked, rearranged = result
@@ -336,4 +353,28 @@ def _try_setting_aside(
         )
         if _resolves(known, pinch.finding_id, after) and accepts(baseline, after) and not rejected:
             return _relaxation("set_aside", [node])
+        if _arranges_without(
+            candidate, scenario, measure, pinch,
+            rules=rules, ledger=ledger, max_tier=max_tier, baseline=baseline,
+            candidate_rejection=candidate_rejection,
+        ):
+            return _relaxation("set_aside", [node])
     return None
+
+
+def _arranges_without(
+    remaining, scenario, measure, pinch, *, rules, ledger, max_tier, baseline,
+    candidate_rejection,
+) -> bool:
+    """Whether the rest of the room can be laid out to clear the finding once a piece is set aside.
+
+    A room with more furniture than floor has no tidy answer with everything in
+    it. Asking to set one piece aside is only worth it when a whole-room plan
+    for what is left actually passes.
+    """
+    search = _Search(
+        remaining, scenario, measure, rules, ledger, max_tier,
+        baseline=baseline, candidate_rejection=candidate_rejection,
+    )
+    plans = arrangements(remaining, scenario, rules)[:RELAXATION_LIMIT]
+    return search.check(pinch, plans) is not None

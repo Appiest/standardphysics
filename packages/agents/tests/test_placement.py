@@ -8,6 +8,7 @@ import pytest
 from standardphysics_agents import assess
 from standardphysics_agents.evaluation.gate import accepts
 from standardphysics_agents.fix import apply_moves, pinch_from, propose_fix, violations
+from standardphysics_agents.fix.composition import Composition
 from standardphysics_agents.fix.placement import placements
 from standardphysics_agents.router import state_for
 from standardphysics_contracts import SceneGraph, Scenario
@@ -20,15 +21,17 @@ def room():
     return SceneGraph.model_validate(data["graph"]), Scenario.model_validate(data["scenario"])
 
 
-def test_the_captured_room_gets_two_actual_moves_and_no_measured_failures(room, pack, ledger):
+def test_the_captured_room_clears_every_measured_failure_without_stacking_furniture(room, pack, ledger):
     graph, scenario = room
     original = graph.model_dump()
     measure = PipelineMeasurements()
     before = assess(graph, scenario, measure, rules=pack, ledger=ledger)
     assert {f.check_id for f in before.problems} == {"turning_space", "service_counter_approach"}
-    current = graph
+    current, after = graph, before
     for _ in range(2):
-        baseline = assess(current, scenario, measure, rules=pack, ledger=ledger)
+        if not after.problems:
+            break
+        baseline = after
         state = state_for(baseline.findings, current, pack)
         assert {f.id for f in baseline.problems} <= set(state.fixable_finding_ids)
         outcome = propose_fix(current, scenario, measure, baseline.problems,
@@ -36,11 +39,11 @@ def test_the_captured_room_gets_two_actual_moves_and_no_measured_failures(room, 
         assert outcome.found and outcome.proposal.moves
         assert outcome.proposal.preserves_inventory
         assert not violations(current, outcome.graph)
+        assert not Composition.of(current).leaves_overlaps(outcome.proposal.moves)
         after = assess(outcome.graph, scenario, measure, rules=pack, ledger=ledger)
         assert accepts(baseline, after)
         current = outcome.graph
     assert not after.problems
-    assert len([n for n in current.nodes if n.transform != graph.by_id(n.id).transform]) == 2
     assert all(n.dimensions == graph.by_id(n.id).dimensions for n in current.nodes)
     assert graph.model_dump() == original
 

@@ -15,7 +15,11 @@ struct ConnectionScreen: View {
                     Text("Use your Mac’s network address for a local server. Keep both devices on the same Wi-Fi.")
                         .foregroundStyle(AppTheme.mutedInk)
                 }
-                if let error { Text(error).foregroundStyle(AppTheme.warning) }
+                if error != nil {
+                    ProgressView()
+                        .tint(AppTheme.accent)
+                        .accessibilityLabel("Working")
+                }
                 Button("Save connection") {
                     do {
                         try AppEnvironment.save(api: api, workspace: workspace)

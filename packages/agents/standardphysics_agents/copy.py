@@ -404,6 +404,7 @@ RATIONALES = {
     "move_one_aside": "Move {what} {distance} over.",
     "stagger": "Step {what} {distance} apart along the aisle, so they stop lining up.",
     "turn_one": "Turn {what} a quarter turn.",
+    "arrange_room": "Set the tables square to the walls with their chairs around them, and keep the aisles open.",
 }
 
 RELAXATIONS = {

@@ -188,15 +188,21 @@ private struct StartView: View {
                                 delete: { scan in Task { await model.deleteScan(scan) } }
                             )
                         }
-                        if let message = model.deletionMessage {
-                            Text(message).foregroundStyle(AppTheme.mutedInk)
+                        if model.deletionMessage != nil {
+                            ProgressView()
+                                .tint(AppTheme.accent)
+                                .accessibilityLabel("Working")
                         }
                         ForEach(model.recoveryDirectories, id: \.self) { directory in
                             Button("Recover saved room") {
                                 Task { await model.recoverSavedRoom(directory) }
                             }.buttonStyle(AppButtonStyle(.secondary))
                         }
-                        if let message = model.recoveryMessage { Text(message) }
+                        if model.recoveryMessage != nil {
+                            ProgressView()
+                                .tint(AppTheme.accent)
+                                .accessibilityLabel("Working")
+                        }
                     }
                     .padding(AppTheme.Spacing.page)
                 }

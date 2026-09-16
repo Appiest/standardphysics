@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import { RefreshWhile } from "@/components/RefreshWhile";
+import { ScanStatus } from "@/components/ScanStatus";
 import { Workspace } from "@/components/workspace/Workspace";
 import { getAssessment, getScan, getScenario, getScenarioSuggestion, getScene, getTextureStatus, sceneGlbUrl } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/api-origin";
-import { scanStatus } from "@/lib/scan-status";
 import type { Scan, SceneGraph } from "@/types/contracts";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,7 @@ function NotMeasuredYet({ scan }: { scan: Scan }) {
   return (
     <main className="mx-auto max-w-2xl px-5 py-20">
       <h1 className="heading-display text-3xl">{scan.name}</h1>
-      <p className="mt-4 text-lg text-ink-muted">{scanStatus(scan, null, false)}</p>
+      <ScanStatus className="mt-4 text-lg text-ink-muted" scan={scan} assessment={null} routeConfirmed={false} />
       <RefreshWhile pending={scan.state !== "failed"} />
     </main>
   );

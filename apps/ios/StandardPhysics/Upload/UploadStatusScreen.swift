@@ -10,17 +10,15 @@ struct UploadStatusScreen: View {
             VStack(spacing: AppTheme.Spacing.page) {
                 Spacer()
                 statusMark
-                Text(uploadModel.state.displayText)
-                    .font(AppTheme.Typography.status)
-                    .multilineTextAlignment(.center)
-                if let message = uploadModel.errorMessage {
-                    Text(message)
-                        .font(.body)
-                        .foregroundStyle(AppTheme.mutedInk)
+                if uploadModel.errorMessage == nil && uploadModel.state != .failed {
+                    Text(uploadModel.state.displayText)
+                        .font(AppTheme.Typography.status)
                         .multilineTextAlignment(.center)
                 }
-                if let message = uploadModel.optionalUploadErrorMessage {
-                    Text(message).foregroundStyle(AppTheme.mutedInk)
+                if uploadModel.optionalUploadErrorMessage != nil {
+                    ProgressView()
+                        .tint(AppTheme.accent)
+                        .accessibilityLabel("Working")
                 } else if uploadModel.state == .ready && uploadModel.pendingOptionalUploadCount > 0 {
                     Text("Your video and images are still uploading.").foregroundStyle(AppTheme.mutedInk)
                 }
@@ -41,16 +39,12 @@ struct UploadStatusScreen: View {
                 .background(AppTheme.accent)
                 .clipShape(Circle())
                 .accessibilityHidden(true)
-        } else if uploadModel.errorMessage != nil || uploadModel.state == .failed {
-            Image(systemName: "arrow.clockwise")
-                .font(AppTheme.Typography.statusSymbol)
-                .foregroundStyle(AppTheme.warning)
-                .accessibilityHidden(true)
         } else {
             ProgressView()
                 .controlSize(.large)
                 .tint(AppTheme.accent)
                 .frame(width: AppTheme.Size.statusMark, height: AppTheme.Size.statusMark)
+                .accessibilityLabel("Working")
         }
     }
 

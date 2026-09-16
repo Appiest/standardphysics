@@ -21,6 +21,13 @@ from .accessibility_intelligence import (
     TextGuardResult,
 )
 from .adaptive_redesign import AdaptiveRedesignResult, run_adaptive_redesign
+from .layout_repair import (
+    aesthetics_cost,
+    prefer_layout,
+    run_layout_repair,
+    seating_broken,
+    try_deterministic_repair,
+)
 from .ask import Answer, Query, ask, query_schema
 from .assess import Pass, assess
 from .checks import CheckContext, Observation, Unevaluated, run_checks
@@ -149,6 +156,7 @@ __all__ = [
     "WorkflowLeg",
     "WorkflowRun",
     "accepts",
+    "aesthetics_cost",
     "analyze_environment_physics",
     "ask",
     "assess",
@@ -167,19 +175,23 @@ __all__ = [
     "load_ledger",
     "load_pack",
     "parse_decision",
+    "prefer_layout",
     "project_url",
     "propose_fix",
     "query_schema",
     "run_adaptive_redesign",
     "run_checks",
+    "run_layout_repair",
     "run_loop",
     "run_pass",
     "run_typesafe_workflow_batch",
     "run_workflow_batch",
     "save_ledger",
+    "seating_broken",
     "shutdown_tracing",
     "state_for",
     "to_finding",
     "to_findings",
     "traced",
+    "try_deterministic_repair",
 ]

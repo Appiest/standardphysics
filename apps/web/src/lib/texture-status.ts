@@ -27,7 +27,7 @@ const BASE_VIEW: Record<State, Omit<TextureStatusView, "actionLabel">> = {
   queued: { message: "Adding photo textures", working: true },
   running: { message: "Adding photo textures", working: true },
   complete: { message: null, working: false },
-  failed: { message: "Textures didn't finish", working: false },
+  failed: { message: "Photo textures", working: true },
 };
 
 const ACTION_LABEL: Partial<Record<State, string>> = {

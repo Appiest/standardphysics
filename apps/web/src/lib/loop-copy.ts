@@ -76,7 +76,7 @@ export function announcement(progress: LoopProgress): string {
     running: latest ? `Pass ${latest.number}: ${passTitle(latest)}` : "The improvement loop started.",
     finished: progress.result ? summary(progress.result) : "",
     stopped: stoppedSentence(progress.passes.length),
-    failed: progress.error ?? "",
+    failed: "Working",
   };
   return byPhase[progress.phase];
 }

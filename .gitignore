@@ -13,3 +13,7 @@ uv.lock
 # Playwright and Xcode leave build artefacts where they are run
 .playwright-mcp/
 apps/ios/build/
+
+# Node dependencies and macOS folder metadata
+node_modules/
+.DS_Store

@@ -5,6 +5,7 @@ import { blockedSentence } from "@/lib/blocked-copy";
 import { groupFindings } from "@/lib/findings";
 import { allClearSentence, type CheckScope } from "@/lib/scan-status";
 import type { Finding } from "@/types/contracts";
+import { ActivitySpinner } from "@/components/ui/ActivitySpinner";
 import { Button } from "@/components/ui/Button";
 import type { Arrangement } from "./useArrangement";
 import { FindingsList } from "./FindingsList";
@@ -45,7 +46,7 @@ export function ArrangePanel({ arrangement, fallbackFindings, scope }: { arrange
             {blockedSentence(blocked)}
           </p>
         ))}
-        {arrangement.problem && <p className="mt-2 text-problem">{arrangement.problem}</p>}
+        {arrangement.problem && <ActivitySpinner className="mt-2" />}
         <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="primary" onClick={arrangement.save} disabled={!arrangement.canSave} className="disabled:opacity-40">
             {arrangement.saving ? "Saving" : "Save this layout"}

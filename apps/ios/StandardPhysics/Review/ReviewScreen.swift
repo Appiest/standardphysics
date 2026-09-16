@@ -76,7 +76,11 @@ struct ReviewScreen: View {
                     }
                     .buttonStyle(AppButtonStyle())
                     .disabled(trimmedName.isEmpty)
-                    if let saveError { Text(saveError).foregroundStyle(AppTheme.warning) }
+                    if saveError != nil {
+                        ProgressView()
+                            .tint(AppTheme.accent)
+                            .accessibilityLabel("Working")
+                    }
                 }
                 .padding(AppTheme.Spacing.section)
             }

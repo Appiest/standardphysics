@@ -83,7 +83,7 @@ function TextureAction({ textures, actionLabel }: { textures: Textures; actionLa
 
 function photoLabel(textures: Textures, status: TextureStatus, statusMessage: string | null) {
   const problem = textures.error ?? status.error;
-  if (problem) return problem;
+  if (problem) return "Photo textures";
   if (status.build === null && statusMessage) return statusMessage;
   return "Photo textures";
 }
@@ -127,6 +127,7 @@ function ReconstructedMode({ textures }: { textures: Textures }) {
 function PhotoModes({ textures, status }: { textures: Textures; status: TextureStatus }) {
   const view = textureStatusView(status);
   const hasBuild = status.build !== null;
+  const working = view.working || Boolean(textures.error ?? status.error);
   return (
     <>
       <IconButton
@@ -135,11 +136,11 @@ function PhotoModes({ textures, status }: { textures: Textures; status: TextureS
         aria-disabled={!hasBuild}
         onClick={() => hasBuild && textures.onMode("captured")}
       >
-        {view.working ? <CircleNotch size={ICON_SIZE} className="animate-spin" aria-hidden /> : <ImageSquare size={ICON_SIZE} aria-hidden />}
+        {working ? <CircleNotch size={ICON_SIZE} className="motion-safe:animate-spin" aria-hidden /> : <ImageSquare size={ICON_SIZE} aria-hidden />}
       </IconButton>
       {hasBuild && <BuiltModes textures={textures} status={status} />}
       <TextureAction textures={textures} actionLabel={view.actionLabel} />
-      {view.working && <span className="sr-only" role="status">{view.message}</span>}
+      {working && <span className="sr-only" role="status">Working</span>}
     </>
   );
 }

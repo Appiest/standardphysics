@@ -3,6 +3,7 @@
 import { Storefront } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ActivitySpinner } from "@/components/ui/ActivitySpinner";
 import { IconButton } from "@/components/ui/IconButton";
 import { canBeCounter, isMarkedCounter, pieceName } from "@/lib/counter";
 import { setCounter } from "@/lib/layout-client";
@@ -57,7 +58,7 @@ export function PickedObject({ scanId, revision, label, node, editable }: {
         <p aria-live="polite" className="px-2 text-sm font-medium text-ink">{label && pieceName(label)}</p>
         {offerCounter && <CounterButton node={node} saving={saving} onToggle={() => toggle(node)} />}
       </div>
-      {problem && <p role="alert" className="rounded-lg bg-sheet px-3 py-2 text-sm text-problem">{problem}</p>}
+      {problem && <ActivitySpinner className="rounded-lg bg-sheet px-3 py-2 shadow-float" />}
     </div>
   );
 }

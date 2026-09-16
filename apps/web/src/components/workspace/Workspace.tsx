@@ -5,11 +5,12 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { ScanStatus } from "@/components/ScanStatus";
 import { overviewPose, poseFromLocus, topDownPose, type ViewerPose } from "@/lib/camera";
 import { interpolateLayout } from "@/lib/compare";
 import { findingForNode, type Focus, focusOnLocus, groupFindings } from "@/lib/findings";
 import { AskBox } from "./AskBox";
-import { type CheckScope, scanStatus } from "@/lib/scan-status";
+import { type CheckScope } from "@/lib/scan-status";
 import { METERS_PER_INCH } from "@/lib/moves";
 import { capturedMeshUrl } from "@/lib/lidar-mesh";
 import type { Assessment, Finding, Locus, NodeMove, Scan, Scenario, SceneGraph } from "@/types/contracts";
@@ -233,7 +234,7 @@ function FindingsPanel({ scan, scene, assessment, findings, selected, onToggle, 
     <div className="flex flex-col gap-5">
       <NextStep scan={scan} scene={scene} route={route} onRoute={onRoute} onTryLayout={onTryLayout} />
       {findings.length === 0 ? (
-        <p className="px-3 text-ink-muted">{scanStatus(scan, assessment, route.confirmed)}</p>
+        <ScanStatus className="px-3 text-ink-muted" scan={scan} assessment={assessment} routeConfirmed={route.confirmed} />
       ) : (
         <FindingsList
           groups={groupFindings(findings)}

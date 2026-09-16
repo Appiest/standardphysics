@@ -44,5 +44,6 @@ describe("loop copy", () => {
     const running: LoopProgress = { phase: "running", decidedBy: "typesafe", passes: [base], result: null, error: null };
     expect(announcement(running)).toBe("Pass 1: Moved furniture");
     expect(announcement({ ...running, phase: "idle", passes: [] })).toBe("");
+    expect(announcement({ ...running, phase: "failed", error: "Connection lost" })).toBe("Working");
   });
 });

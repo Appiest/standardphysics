@@ -20,6 +20,8 @@ ENTRANCE_LABELS = frozenset({"front door", "entrance", "entry door", "main door"
 
 DINING_SURFACE_LABELS = frozenset({"table", "dining table", "cafe table", "bar table"})
 
+SEATING_LABELS = frozenset({"chair", "stool", "bar stool", "armchair", "seat"})
+
 LOWERED_SECTION_LABELS = frozenset(
     {
         "lowered counter section",
@@ -77,6 +79,14 @@ def dining_surfaces(graph: SceneGraph) -> list[SceneNode]:
         for node in graph.nodes
         if node.kind == "object" and _normalized(node.label) in DINING_SURFACE_LABELS
     ]
+
+
+def is_seating(node: SceneNode) -> bool:
+    return node.kind == "object" and _normalized(node.label) in SEATING_LABELS
+
+
+def seating(graph: SceneGraph) -> list[SceneNode]:
+    return [node for node in graph.nodes if is_seating(node)]
 
 
 def lowered_sections(graph: SceneGraph) -> list[SceneNode]:

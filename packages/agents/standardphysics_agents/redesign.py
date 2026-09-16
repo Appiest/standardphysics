@@ -9,6 +9,11 @@ from standardphysics_contracts import NodeMove, SceneGraph, Vec3
 from .assess import assess
 from .evaluation.gate import accepts
 from .fix import apply_moves, violations
+from .fix.composition import (
+    expand_moves_with_seating,
+    lost_seating,
+    seating_groups,
+)
 from .models import ModelAnswer, OpenRouter
 from .router import Rejected
 from .workflows import workflow_candidate_rejection
@@ -42,13 +47,18 @@ INSTRUCTION = (
     "object IDs. `route_trials`, when present, summarizes route trials that already ran on this room: its "
     "`kept_moves` are already applied to `room`, and `failing_workflows` shows which journeys still failed "
     "and what blocked them. Build on those kept moves rather than undoing them. "
+    "`seating_groups` lists each table with the chairs currently pulled up to it. Keep those groups intact: "
+    "clear wheelchair routes and turning space by sliding whole seating groups or opening aisles between "
+    "them, never by shoving a table aside and leaving its chairs behind. A layout that disconnects chairs "
+    "from their tables is rejected even when the measured clearances pass. "
     "Use only IDs in `movable_objects`. Return floor translations in meters and "
     "rotations in degrees for one to four existing movable objects. "
     "Preserve every object's measured size, inventory, fixed fixtures, walls and doors. "
     "Do not move an object merely because an unlocalized raw-mesh collision exists. Do not return a no-op move. "
     "Do not infer that an attractive rendering is legally compliant. Return no moves if `actionable_failures` "
     "and `actionable_rule_problems` are both empty or the evidence does not support a safe improvement. "
-    "The application remeasures every route and rule before accepting edits."
+    "The application remeasures every route and rule before accepting edits, and it carries unnamed chairs "
+    "with any moved table so seating stays together."
 )
 
 
@@ -67,6 +77,7 @@ def propose_redesign(graph, workflows, profiles, feedback, measure, *, rules, le
     answer = client.structured(INSTRUCTION, {
         "room": graph.model_dump(mode="json"),
         "movable_objects": movable_objects,
+        "seating_groups": seating_groups(graph),
         "actionable_failures": [
             failure
             for item in feedback
@@ -91,6 +102,17 @@ def propose_redesign(graph, workflows, profiles, feedback, measure, *, rules, le
     return validate_redesign(graph, answer, workflows, profiles, measure, rules=rules, ledger=ledger, collision_index=collision_index)
 
 
+def _edits_to_moves(edits: RoomEdits) -> list[NodeMove]:
+    return [
+        NodeMove(
+            node_id=edit.node_id,
+            delta_translation=Vec3(x=edit.dx, y=edit.dy, z=0),
+            delta_rotation_z_degrees=edit.rotation_degrees,
+        )
+        for edit in edits.moves
+    ]
+
+
 def validate_redesign(graph, answer: ModelAnswer, workflows, profiles, measure, *, rules, ledger, collision_index=None) -> RedesignResult:
     try:
         edits = RoomEdits.model_validate(answer.payload)
@@ -109,8 +131,10 @@ def validate_redesign(graph, answer: ModelAnswer, workflows, profiles, measure, 
         for edit in edits.moves
     ):
         return RedesignResult(None, answer.model, False, ("no_op_moves",))
-    moves = [NodeMove(node_id=edit.node_id, delta_translation=Vec3(x=edit.dx, y=edit.dy, z=0), delta_rotation_z_degrees=edit.rotation_degrees) for edit in edits.moves]
+    moves = expand_moves_with_seating(graph, _edits_to_moves(edits))
     candidate = apply_moves(graph, moves)
+    if lost_seating(graph, candidate):
+        return RedesignResult(None, answer.model, False, ("stranded_seating",))
     broken = violations(graph, candidate)
     if broken:
         return RedesignResult(None, answer.model, False, tuple(sorted({item.kind for item in broken})))

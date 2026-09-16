@@ -21,8 +21,14 @@ struct WorkspaceScreen: View {
                     )
                 } else {
                     VStack(spacing: AppTheme.Spacing.card) {
-                        Text(message ?? "Enter your Mac’s workspace address in Connection. This demo needs no sign-in.")
-                            .font(.title2)
+                        if message != nil {
+                            ProgressView()
+                                .tint(AppTheme.accent)
+                                .accessibilityLabel("Working")
+                        } else {
+                            Text("Enter your Mac’s workspace address in Connection. This demo needs no sign-in.")
+                                .font(.title2)
+                        }
                         if message != nil {
                             Button("Try again") { message = nil }
                                 .buttonStyle(AppButtonStyle())

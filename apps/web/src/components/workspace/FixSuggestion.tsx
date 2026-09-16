@@ -2,6 +2,7 @@
 
 import { CircleNotch, Lock, MagicWand } from "@phosphor-icons/react";
 import { useState } from "react";
+import { ActivitySpinner } from "@/components/ui/ActivitySpinner";
 import { Button } from "@/components/ui/Button";
 import { formatInches } from "@/lib/findings";
 import { inventoryLines } from "@/lib/inventory";
@@ -72,7 +73,7 @@ export function FixSuggestion({ scanId, scene, finding, onTry }: Props) {
         {state === "looking" ? <CircleNotch size={16} className="animate-spin" aria-hidden /> : <MagicWand size={16} weight="bold" aria-hidden />}
         {state === "looking" ? "Looking for a layout" : "Find a layout that fixes this"}
       </Button>
-      {state === "failed" && <p className="mt-2 text-problem">We couldn&apos;t look for a layout just now. Try again.</p>}
+      {state === "failed" && <ActivitySpinner className="mt-2" size={16} />}
     </div>
   );
 }

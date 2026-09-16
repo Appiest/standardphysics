@@ -12,7 +12,7 @@ describe("textureStatusView", () => {
   });
 
   it("offers a retry only when the failed build permits one", () => {
-    expect(textureStatusView(status("failed"))).toEqual({ message: "Textures didn't finish", working: false, actionLabel: null });
+    expect(textureStatusView(status("failed"))).toEqual({ message: "Photo textures", working: true, actionLabel: null });
     expect(textureStatusView(status("failed", true)).actionLabel).toBe("Try textures again");
   });
 

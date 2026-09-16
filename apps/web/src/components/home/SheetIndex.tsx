@@ -1,6 +1,6 @@
 import { ArrowRight } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
-import { scanStatus } from "@/lib/scan-status";
+import { ScanStatus } from "@/components/ScanStatus";
 import { sheetNumber, type ShopSheet } from "./shopSheet";
 
 export function SheetIndex({ sheets, firstIndex }: { sheets: ShopSheet[]; firstIndex: number }) {
@@ -19,7 +19,7 @@ export function SheetIndex({ sheets, firstIndex }: { sheets: ShopSheet[]; firstI
               <span className="font-semibold tabular-nums">{sheetNumber(firstIndex + index)}</span>
               <span className="min-w-0">
                 <span className="block truncate font-semibold">{sheet.scan.name}</span>
-                <span className="block truncate text-sm text-ink-muted">{scanStatus(sheet.scan, sheet.assessment, sheet.hasScenario)}</span>
+                <ScanStatus className="block truncate text-sm text-ink-muted" scan={sheet.scan} assessment={sheet.assessment} routeConfirmed={sheet.hasScenario} />
               </span>
               <ArrowRight size={18} weight="bold" aria-hidden className="transition-transform duration-150 group-hover:translate-x-1" />
             </Link>
