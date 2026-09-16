@@ -22,7 +22,7 @@ class FakeWeave:
         self.failure = failure
         self.projects: list[str] = []
 
-    def init(self, project: str) -> None:
+    def init(self, project: str, settings: dict | None = None) -> None:
         if self.failure is not None:
             raise self.failure
         self.projects.append(project)

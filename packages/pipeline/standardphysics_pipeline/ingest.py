@@ -36,6 +36,26 @@ FIXED_CATEGORIES = {
 nothing here starts out movable.
 """
 
+SLEEPING_CATEGORIES = frozenset({"bed"})
+SLEEPING_LABELS = frozenset({"bed", "bunk bed", "loft bed", "daybed", "mattress", "futon"})
+
+
+def sleeping_places(graph: SceneGraph) -> list[SceneNode]:
+    """Beds, by RoomPlan's category or by label.
+
+    A bed is the plainest sign that a scan is somebody's home or dorm room
+    rather than a business, so labelling and route suggestions ask this first.
+    """
+    return [
+        node
+        for node in graph.nodes
+        if node.kind == "object"
+        and (
+            node.raw_category in SLEEPING_CATEGORIES
+            or node.label.strip().casefold() in SLEEPING_LABELS
+        )
+    ]
+
 CONFIDENCE_TO_QUALITY = {
     "high": "measured",
     "medium": "needs_another_look",

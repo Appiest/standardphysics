@@ -19,7 +19,7 @@ from typing import Any, Protocol
 
 from standardphysics_contracts import Decision
 
-from ..tracing import traced
+from ..tracing import record_llm, start_llm, traced
 from .decision import ACTIONS, Rejected, parse_decision
 from .state import RouterState
 
@@ -35,7 +35,9 @@ DEFAULT_TIMEOUT_SECONDS = 20.0
 PROVIDER = "typesafe"
 
 INSTRUCTION = (
-    "You are choosing the next step for an accessibility review of a small shop. "
+    "You are choosing the next step for an accessibility review of a scanned room. "
+    "room_kind in the state says whether it is a service business, a home, or a "
+    "general room; only a service business has a counter people are served at. "
     "Pick exactly one action from the options. FIX moves furniture and may only "
     "target problems where furniture_can_fix is true. RESCAN_AREA asks for a "
     "short follow-up scan and may only target findings where wants_another_look "
@@ -116,6 +118,12 @@ class TypeSafeCallBudget:
 
 class Transport(Protocol):
     def post(self, url: str, body: bytes, headers: dict[str, str]) -> bytes: ...
+
+
+class Guidance(Protocol):
+    """Lessons learned by the outer loop, for one kind of room at a time."""
+
+    def for_room(self, room_kind: str) -> list[str]: ...
 
 
 class UrllibTransport:
@@ -206,6 +214,7 @@ class TypeSafeRouter:
         model: str | None = None,
         transport: Transport | None = None,
         budget: TypeSafeCallBudget | None = None,
+        playbook: Guidance | None = None,
     ) -> None:
         self.api_key = api_key or os.environ.get(API_KEY_ENV)
         self.base_url = (
@@ -215,6 +224,7 @@ class TypeSafeRouter:
         self.model = model or os.environ.get(MODEL_ENV) or DEFAULT_MODEL
         self.transport = transport or UrllibTransport()
         self.budget = budget
+        self.playbook = playbook
 
     @property
     def configured(self) -> bool:
@@ -227,11 +237,19 @@ class TypeSafeRouter:
             "questions": {
                 "action": {
                     "type": "choice",
-                    "instructions": INSTRUCTION,
+                    "instructions": self.instructions(state),
                     "criteria": available_actions(state),
                 }
             },
         }
+
+    def instructions(self, state: RouterState) -> str:
+        """The fixed instruction, then any lessons the outer loop kept for this kind of room."""
+        lessons = self.playbook.for_room(state.room_kind) if self.playbook is not None else []
+        if not lessons:
+            return INSTRUCTION
+        numbered = " ".join(f"({index}) {text}" for index, text in enumerate(lessons, start=1))
+        return f"{INSTRUCTION} Lessons kept from earlier evaluated runs: {numbered}"
 
     @traced("router.typesafe")
     def decide(self, state: RouterState) -> Decision | Rejected:
@@ -270,8 +288,24 @@ class TypeSafeRouter:
         return _load(raw) if isinstance(raw, (str, bytes)) else raw
 
     def _call(self, body: dict) -> bytes | Rejected:
+        """One request, recorded as a chat span on the loop's turn when one is open.
+
+        The span holds the state that was sent and the action that came back.
+        The headers, and the key in them, never reach it.
+        """
         if self.budget is not None and not self.budget.reserve():
             return Rejected("typesafe_call_budget_exhausted")
+        with start_llm(model=self.model, provider_name=PROVIDER) as llm:
+            raw = self._post(body)
+            record_llm(
+                llm,
+                sent=json.dumps(body.get("state", body)),
+                received=_answer_name(raw),
+                usage=_usage_of(raw),
+            )
+        return raw
+
+    def _post(self, body: dict) -> bytes | Rejected:
         try:
             return self.transport.post(
                 f"{self.base_url}{self.path}",
@@ -283,6 +317,19 @@ class TypeSafeRouter:
             )
         except (urllib.error.URLError, urllib.error.HTTPError, OSError, TimeoutError):
             return Rejected("transport_error")
+
+
+def _answer_name(raw: Any) -> str:
+    """What a trace keeps of an answer: the action chosen, or why there was none."""
+    if isinstance(raw, Rejected):
+        return f"rejected:{raw.reason}"
+    choice = _typesafe_choice(raw)
+    return choice if isinstance(choice, str) else "no_choice"
+
+
+def _usage_of(raw: Any) -> dict | None:
+    body = _load(raw) if isinstance(raw, (str, bytes)) else None
+    return body.get("usage") if isinstance(body, dict) else None
 
 
 def _decision_payload(payload: Any, state: RouterState) -> Any:

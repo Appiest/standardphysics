@@ -11,7 +11,7 @@ reads it that way.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Any, Callable, Sequence
 from uuid import UUID
 
 from standardphysics_contracts import Decision
@@ -20,6 +20,8 @@ from ..assess import Pass
 from ..checks import roles
 from ..fix.search import FixOutcome
 from ..router.decision import Rejected
+from ..router.state import ONE_SHOT_ACTIONS, REPEATED_ACTION
+from ..rules import AgentRulePack, load_pack
 from .dataset import Case
 from .gate import GateResult
 
@@ -154,6 +156,88 @@ def router_action_match(outcome: CaseOutcome) -> float | None:
     return 1.0 if outcome.decision.action == outcome.case.expected_action else 0.0
 
 
+HAND_OFFS = frozenset({"ASK_OWNER", "ESCALATE"})
+
+
+def trajectory_ok(outcome: CaseOutcome) -> float | None:
+    """Whether the router spends a pass the case says was already spent.
+
+    A case holds one decision, made after the actions it lists were taken on
+    this layout, so the waste it can show is a one-shot action taken again. A
+    case with no history has nothing to say. `loop_trajectory_ok` scores a whole
+    run of the loop.
+    """
+    decision = outcome.decision
+    if not outcome.case.actions_taken or decision is None or isinstance(decision, Rejected):
+        return None
+    taken = outcome.case.actions_taken
+    return 0.0 if decision.action in ONE_SHOT_ACTIONS and decision.action in taken else 1.0
+
+
+def loop_trajectory_ok(steps: Sequence[Any], rules: AgentRulePack | None = None) -> float | None:
+    """Whether a run of the loop spent its passes well.
+
+    Zero when the loop had to refuse a repeated action, when two passes take the
+    same action on the same layout, or when a FIX targets a rule no
+    rearrangement can satisfy. Otherwise every pass after the last rearrangement
+    the gate kept has to be a hand-off to a person, each kind once, with at
+    least one when the gate left a problem standing. `None` when no
+    rearrangement was kept, because there is then no fix for hand-offs to follow.
+    A score about control flow only: it reads no measurement and changes none.
+    """
+    answered = [step for step in steps if step.decision is not None]
+    if _wasted_a_pass(steps, answered) or _fixed_the_unfixable(answered, rules or load_pack()):
+        return 0.0
+    kept = _last_kept_fix(answered)
+    if kept is None:
+        return None
+    handed_off = _handed_off_once(answered[kept + 1 :], answered[kept].result.gate)
+    return 1.0 if handed_off else 0.0
+
+
+def _wasted_a_pass(steps: Sequence[Any], answered: list[Any]) -> bool:
+    if any(step.rejected == REPEATED_ACTION for step in steps):
+        return True
+    passes = [(step.decision.action, step.assessment.graph_hash) for step in answered]
+    return len(passes) != len(set(passes))
+
+
+def _fixed_the_unfixable(answered: list[Any], rules: AgentRulePack) -> bool:
+    return any(
+        step.decision.action == "FIX" and not _only_rearrangeable_targets(step, rules)
+        for step in answered
+    )
+
+
+def _only_rearrangeable_targets(step: Any, rules: AgentRulePack) -> bool:
+    targets = set(step.decision.target_finding_ids)
+    checks = {f.check_id for f in step.assessment.findings if f.id in targets}
+    return all(_rearrangeable(check_id, rules) for check_id in checks)
+
+
+def _rearrangeable(check_id: str, rules: AgentRulePack) -> bool:
+    try:
+        return rules.by_id(check_id).rearrangeable
+    except KeyError:
+        return False
+
+
+def _last_kept_fix(answered: list[Any]) -> int | None:
+    kept = [
+        index
+        for index, step in enumerate(answered)
+        if step.decision.action == "FIX" and step.result.gate is not None and step.result.gate.accepted
+    ]
+    return kept[-1] if kept else None
+
+
+def _handed_off_once(after: list[Any], gate: GateResult) -> bool:
+    actions = [step.decision.action for step in after if step.decision.action != "DONE"]
+    if len(actions) != len(set(actions)) or not set(actions) <= HAND_OFFS:
+        return False
+    return bool(actions) or gate.problems_after == 0
+
+
 def fix_resolves_finding(outcome: CaseOutcome) -> float | None:
     """Whether a rearrangement actually cleared what it targeted."""
     if not outcome.case.fix_should_resolve or outcome.fix is None:
@@ -170,6 +254,7 @@ SCORERS: dict[str, Scorer] = {
     "measurement_error_in": measurement_error_in,
     "label_accuracy": label_accuracy,
     "router_action_match": router_action_match,
+    "trajectory_ok": trajectory_ok,
     "fix_resolves_finding": fix_resolves_finding,
 }
 

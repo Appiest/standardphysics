@@ -48,9 +48,20 @@ from .evaluation.accessibility_sweep import (
 from .evaluation.accessibility_sweep import (
     DEFAULT_OUTPUT_PATH as DEFAULT_SWEEP_OUTPUT_PATH,
 )
-from .evaluation.scorers import LOWER_IS_BETTER, SCORERS
+from .evaluation.scorers import LOWER_IS_BETTER, SCORERS, loop_trajectory_ok
+from .evolution import (
+    DEFAULT_MEMORY_PATH,
+    DEFAULT_PLAYBOOK_PATH,
+    DEFAULT_RUN_PATH,
+    Evolution,
+    Playbook,
+    evolve,
+    load_playbook,
+    save_evolution,
+    save_playbook,
+)
 from .loop import run_loop
-from .router import LocalPolicyRouter, TypeSafeRouter
+from .router import LocalPolicyRouter, TypeSafeCallBudget, TypeSafeRouter
 from .rules import RuleSpec, load_ledger, load_pack, save_ledger
 from .simulation_report import simulation_result
 from .tracing import init as init_tracing
@@ -264,7 +275,9 @@ def _evaluate(args) -> int:
         measure=_measurements(args.provider),
         rules=pack,
         ledger=ledger,
+        router=_router(args.router),
         run_fixes=not args.no_fixes,
+        version=args.version,
     )
     print(f"rule pack {result.rulepack_version}, {len(result.outcomes)} cases")
     print(f"completed: {result.completed}")
@@ -277,8 +290,8 @@ def _evaluate(args) -> int:
     print(f"per-case results: {written}")
     if result.weave_url:
         print(f"traces: {result.weave_url}")
-    if result.dataset_url:
-        print(f"rows in weave: {result.dataset_url}")
+    if result.evaluation_url:
+        print(f"evaluation in weave: {result.evaluation_url}")
     return 0 if result.completed else 1
 
 
@@ -488,6 +501,62 @@ def _print_runs(experiments) -> None:
         print(f"  {url}")
 
 
+TYPESAFE_NEEDED = (
+    "Evolving the playbook needs TypeSafe. Set TYPESAFE_API_KEY and TYPESAFE_BASE_URL, then try again."
+)
+
+
+def _evolve(args) -> int:
+    """The outer loop: score TypeSafe, learn a lesson, keep it only if it helps."""
+    from .evaluation.configuration import ledger as configured_ledger
+    from .evaluation.configuration import measurements as shared_measurements
+
+    pack, ledger = load_pack(), configured_ledger(args.preview_unverified)
+    if not args.preview_unverified and _nothing_enabled(pack, ledger):
+        return 1
+    if not TypeSafeRouter().configured:
+        print(TYPESAFE_NEEDED, file=sys.stderr)
+        return 1
+    budget = TypeSafeCallBudget(args.call_limit)
+    playbook_path = Path(args.playbook)
+    cases = labelled_cases()[: args.cases] if args.cases else labelled_cases()
+    evolution = evolve(
+        cases=cases,
+        generations=args.generations,
+        router_factory=lambda playbook: TypeSafeRouter(playbook=playbook, budget=budget),
+        measure=shared_measurements("pipeline"),
+        rules=pack,
+        ledger=ledger,
+        playbook=Playbook() if args.fresh else load_playbook(playbook_path),
+        memory_path=Path(args.memory),
+    )
+    _print_evolution(evolution)
+    print(f"\nplaybook v{evolution.playbook.version}: {save_playbook(evolution.playbook, playbook_path)}")
+    print(f"generations: {save_evolution(evolution, Path(args.out))}")
+    print(f"TypeSafe calls: {budget.used} of {budget.limit}")
+    return 0
+
+
+def _print_evolution(evolution: Evolution) -> None:
+    print(f"baseline: {_control_reading(evolution.baseline)}")
+    for generation in evolution.generations:
+        verdict = "kept" if generation.kept else "refused"
+        print(f"\ngeneration {generation.number}: {len(generation.failures)} failing cases")
+        if generation.lesson is not None:
+            print(f"  lesson ({generation.lesson.source}): {generation.lesson.text}")
+        print(f"  {verdict}: {', '.join(generation.reasons) or 'the action scores rose and nothing fell'}")
+        if generation.before:
+            print(f"  on {len(generation.trial_cases)} trial cases: "
+                  f"{_control_reading(generation.before)} -> {_control_reading(generation.after)}")
+    if evolution.final is not None:
+        print(f"\nevery case, final playbook: {_control_reading(evolution.final)}")
+
+
+def _control_reading(scores: dict) -> str:
+    names = ("router_action_match", "trajectory_ok")
+    return ", ".join(f"{name} {scores[name]:.2f}" for name in names if name in scores)
+
+
 def _ask(args) -> int:
     pack, ledger = load_pack(), load_ledger()
     graph, scenario = _fixture_shop()
@@ -544,7 +613,15 @@ def _loop(args) -> int:
         if gate:
             print(f"  gate: {'accepted' if gate.accepted else 'rejected'}, "
                   f"{gate.shortfall_before:.1f} in short -> {gate.shortfall_after:.1f}")
+    print(f"trajectory: {TRAJECTORY_READINGS[loop_trajectory_ok(steps, pack)]}")
     return 0
+
+
+TRAJECTORY_READINGS = {
+    1.0: "every pass after the kept rearrangement did something new",
+    0.0: "a pass repeated work or aimed a fix at something furniture cannot change",
+    None: "no rearrangement was kept, so there is no hand-off to judge",
+}
 
 
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
@@ -559,6 +636,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "simulate": _simulate,
     "weave-eval": _weave_eval,
     "experiments": _experiments,
+    "evolve": _evolve,
     "loop": _loop,
     "ask": _ask,
 }
@@ -607,6 +685,12 @@ def build_parser() -> argparse.ArgumentParser:
         "evaluate", help="score the checks against the labelled dataset"
     )
     evaluation.add_argument("--provider", choices=PROVIDERS, default="pipeline")
+    evaluation.add_argument("--router", choices=ROUTERS, default="local")
+    evaluation.add_argument(
+        "--version",
+        default=None,
+        help="the label Weave's Evals tab gives this run; defaults to the router's name",
+    )
     evaluation.add_argument("--out", default=DEFAULT_EVALUATION_PATH)
     evaluation.add_argument(
         "--no-fixes", action="store_true", help="skip the rearrangement cases"
@@ -665,6 +749,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="name the configurations and stop"
     )
     grid.add_argument(
+        "--preview-unverified",
+        action="store_true",
+        help="development only: score as if a person had verified every rule",
+    )
+
+    evolution = commands.add_parser(
+        "evolve",
+        help="learn lessons for TypeSafe from its failures, keeping only those the scores back",
+    )
+    evolution.add_argument("--generations", type=int, default=3)
+    evolution.add_argument(
+        "--cases", type=int, default=None, help="only the first N cases, for a quick look"
+    )
+    evolution.add_argument("--call-limit", type=int, default=300, help="TypeSafe calls this run may make")
+    evolution.add_argument("--playbook", default=str(DEFAULT_PLAYBOOK_PATH))
+    evolution.add_argument("--memory", default=str(DEFAULT_MEMORY_PATH))
+    evolution.add_argument("--out", default=str(DEFAULT_RUN_PATH))
+    evolution.add_argument(
+        "--fresh", action="store_true", help="start from an empty playbook instead of the saved one"
+    )
+    evolution.add_argument(
         "--preview-unverified",
         action="store_true",
         help="development only: score as if a person had verified every rule",

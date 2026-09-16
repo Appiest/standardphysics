@@ -32,6 +32,7 @@ from standardphysics_agents import (
     load_pack,
 )
 from standardphysics_agents.ask import Answer, ask
+from standardphysics_agents.evolution import load_playbook
 from standardphysics_agents.fix import FixOutcome, propose_fix
 from standardphysics_agents.loop import loop_steps
 from standardphysics_contracts import Assessment, Finding, Scenario, SceneGraph, Stop, Vec3
@@ -82,7 +83,7 @@ def preview_ledger() -> VerificationLedger:
 
 def configured_router() -> TypeSafeRouter | LocalPolicyRouter:
     """TypeSafe when its key and address are set, else Lane C's local policy, which says so on every decision."""
-    router = TypeSafeRouter()
+    router = TypeSafeRouter(playbook=load_playbook())
     return router if router.configured else LocalPolicyRouter()
 
 

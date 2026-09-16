@@ -14,12 +14,14 @@ import math
 import os
 import pathlib
 import re
+import sys
 import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Literal, Sequence
+from typing import Any, Callable, Iterable, Iterator, Literal, Sequence
 from uuid import UUID
 
 import numpy as np
@@ -32,7 +34,7 @@ from standardphysics_contracts import (
 )
 
 from .footprints import footprint, gap_between
-from .ingest import FIXED_CATEGORIES
+from .ingest import FIXED_CATEGORIES, sleeping_places
 from .mesh_evidence import object_mesh_profiles
 from .textures.camera import CameraMetadataError, camera_from_pose
 
@@ -40,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 API_KEY_ENV = "OPENROUTER_API_KEY"
 MODEL_ENV = "OPENROUTER_MODEL"
+PROVIDER_NAME = "openrouter"
 BASE_URL_ENV = "OPENROUTER_BASE_URL"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL = "openai/gpt-6-astra"
@@ -75,10 +78,8 @@ WALL_GAP_METERS = 0.45
 OVERLAP_METERS = 0.02
 THIN_METERS = 0.04
 
-INSTRUCTION = (
-    "Label every supplied object in this shop scan with an ordinary name such as "
-    "Ordering counter, Display case, Table, or Chair. Counters and plumbed-in "
-    "fixtures are not movable. Do not change sizes. Mark thin or overlapping "
+LABELLING_RULES = (
+    "Do not change sizes. Mark thin or overlapping "
     "detections as needs_another_look. You may add a display-only appearance "
     "with a six-digit base color and broad material when the frame evidence is "
     "clear; when images_provided is false, appearance must be null. For each "
@@ -120,6 +121,19 @@ _RECONSTRUCTION_SCHEMA = {
         "parts": {"type": "array", "minItems": 1, "maxItems": 32, "items": _PART_SCHEMA},
     },
 }
+
+
+INSTRUCTION = (
+    "Label every supplied object in this shop scan with an ordinary name such as "
+    "Ordering counter, Display case, Table, or Chair. Counters and plumbed-in "
+    "fixtures are not movable. " + LABELLING_RULES
+)
+HOME_INSTRUCTION = (
+    "Label every supplied object in this scan of a bedroom or dorm room with an "
+    "ordinary name such as Bed, Desk, Dresser, Shelf, or Chair. It is a home, so "
+    "nothing in it is an ordering counter, a register, or a display case. "
+    "Plumbed-in fixtures are not movable. " + LABELLING_RULES
+)
 LABEL_SCHEMA = {
     "type": "object", "additionalProperties": False, "required": ["nodes"],
     "properties": {"nodes": {"type": "array", "items": {
@@ -274,12 +288,17 @@ def _local_identity(node: SceneNode, walls: list[SceneNode], graph: SceneGraph) 
         return node.label, False
     if node.label.strip().casefold() in COUNTER_LABELS:
         return node.label, False
-    if _looks_like_counter(node, walls):
+    home = bool(sleeping_places(graph))
+    if not home and _looks_like_counter(node, walls):
         return "Ordering counter", False
-    return _named_furniture(node.raw_category) or (node.label, node.movable)
+    return _named_furniture(node.raw_category, home) or (node.label, node.movable)
 
 
-def _named_furniture(category: str) -> tuple[str, bool] | None:
+def _named_furniture(category: str, home: bool = False) -> tuple[str, bool] | None:
+    """Plain names for RoomPlan's categories. Storage in a home is a dresser or
+    a shelf, never something a shop displays stock in."""
+    if home and category == "storage":
+        return "Storage", True
     return {
         "storage": ("Display case", True), "chair": ("Chair", True), "table": ("Table", True),
         "sofa": ("Sofa", True), "stool": ("Stool", True), "bench": ("Bench", True),
@@ -371,16 +390,80 @@ def _remote_batch(
         poses_path=poses_path,
         mesh_profiles=mesh_profiles,
     )
-    if transport is not None:
-        payload = transport(_chat_url(), body, _chat_headers(api_key))
-    else:
-        payload = _openrouter_post(_chat_url(), body, _chat_headers(api_key), deadline=deadline)
-    return _patches_from_model(
-        payload,
-        scoped,
-        allow_appearance=_body_has_images(body),
-        evidence_by_node=_body_evidence_by_node(body),
-    )
+    with _model_call(len(scoped.nodes)) as answered:
+        if transport is not None:
+            payload = transport(_chat_url(), body, _chat_headers(api_key))
+        else:
+            payload = _openrouter_post(_chat_url(), body, _chat_headers(api_key), deadline=deadline)
+        patches = _patches_from_model(
+            payload,
+            scoped,
+            allow_appearance=_body_has_images(body),
+            evidence_by_node=_body_evidence_by_node(body),
+        )
+        answered(patches, payload)
+    return patches
+
+
+@contextmanager
+def _model_call(node_count: int) -> Iterator[Callable[[list | None, Any], None]]:
+    """A Weave chat span around one Astra request, when Weave is already running.
+
+    Weave is not a dependency of this package, and the agents lane's tracing
+    helper sits above it, so this only uses a Weave that a caller has imported
+    and initialized. The span holds the node count sent and the patch count
+    returned: never the key, the headers, the photographs or the scan.
+    """
+    llm = _open_chat_span()
+
+    def answered(patches: list | None, payload: Any) -> None:
+        _record_chat(llm, node_count, patches, payload)
+
+    try:
+        yield answered
+    finally:
+        _close_chat_span(llm)
+
+
+def _open_chat_span() -> Any:
+    weave = sys.modules.get("weave")
+    try:
+        if weave is None or weave.get_client() is None:
+            return None
+        model = os.environ.get(MODEL_ENV) or DEFAULT_MODEL
+        return weave.conversation.start_llm(model=model, provider_name=PROVIDER_NAME).__enter__()
+    except Exception:
+        return None
+
+
+def _record_chat(llm: Any, node_count: int, patches: list | None, payload: Any) -> None:
+    if llm is None:
+        return
+    usage = payload.get("usage") if isinstance(payload, dict) else None
+    counts = usage if isinstance(usage, dict) else {}
+    try:
+        types = sys.modules["weave"].conversation
+        llm.record(
+            input_messages=[types.Message(role="user", content=f"{node_count} scene nodes")],
+            output_messages=[
+                types.Message(role="assistant", content=f"{len(patches or [])} label patches")
+            ],
+            usage=types.Usage(
+                input_tokens=int(counts.get("prompt_tokens") or 0),
+                output_tokens=int(counts.get("completion_tokens") or 0),
+            ),
+        )
+    except Exception:
+        return
+
+
+def _close_chat_span(llm: Any) -> None:
+    if llm is None:
+        return
+    try:
+        llm.__exit__(None, None, None)
+    except Exception:
+        return
 
 
 def _body_has_images(body: dict[str, Any]) -> bool:
@@ -429,6 +512,10 @@ def _chat_headers(api_key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
+def _instruction(graph: SceneGraph) -> str:
+    return HOME_INSTRUCTION if sleeping_places(graph) else INSTRUCTION
+
+
 def _chat_body(
     graph: SceneGraph,
     *,
@@ -453,7 +540,7 @@ def _chat_body(
         "model": os.environ.get(MODEL_ENV) or DEFAULT_MODEL,
         "max_tokens": MAX_OUTPUT_TOKENS,
         "reasoning": {"effort": "low"},
-        "messages": [{"role": "system", "content": INSTRUCTION}, {"role": "user", "content": content}],
+        "messages": [{"role": "system", "content": _instruction(graph)}, {"role": "user", "content": content}],
         "response_format": {"type": "json_schema", "json_schema": {"name": "astra_labels", "strict": True, "schema": LABEL_SCHEMA}},
         "provider": PROVIDER_ROUTING,
     }

@@ -8,8 +8,11 @@ through to a default has authorized something nobody asked for.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from standardphysics_agents import assess, graph_hash
+from standardphysics_agents.evaluation.scorers import loop_trajectory_ok
 from standardphysics_agents.loop import HANDLERS, MAX_PASSES, Loop, run_loop, run_pass
 from standardphysics_agents.router import (
     ACTIONS,
@@ -17,6 +20,7 @@ from standardphysics_agents.router import (
     LocalPolicyRouter,
     parse_decision,
 )
+from standardphysics_agents.router.state import REPEATED_ACTION
 
 
 class ScriptedRouter:
@@ -266,7 +270,8 @@ def test_a_router_that_never_finishes_is_capped(
         graph, scenario, pipeline, Stubborn(), rules=pack, ledger=ledger
     )
     assert len(steps) == 2
-    assert steps[-1].action == "RESCAN_AREA"
+    assert steps[0].action == "RESCAN_AREA"
+    assert steps[-1].rejected == REPEATED_ACTION
 
 
 def test_three_failed_rearrangements_end_the_loop(
@@ -293,3 +298,106 @@ def test_three_failed_rearrangements_end_the_loop(
     failed = sum(1 for s in steps if s.result.fix_failed)
     assert failed <= MAX_FIX_ATTEMPTS
     assert len(steps) <= 12
+
+
+def _unfixable(findings, graph):
+    return next(
+        f
+        for f in findings
+        if f.outcome == "problem"
+        and f.locus
+        and not any(graph.by_id(n).movable for n in f.locus.node_ids)
+    )
+
+
+def test_a_repeated_escalation_on_the_same_layout_authorizes_nothing(
+    graph, scenario, pipeline, pack, ledger, problem
+):
+    """Plan section 6b: one ESCALATE per layout, however often the router asks."""
+    escalate = {"action": "ESCALATE", "target_finding_ids": [str(problem.id)]}
+    steps = run_loop(
+        graph, scenario, pipeline, ScriptedRouter(escalate, escalate),
+        rules=pack, ledger=ledger,
+    )
+    assert [step.action for step in steps] == ["ESCALATE", None]
+    assert steps[-1].rejected == REPEATED_ACTION
+    assert sum(len(step.result.escalated) for step in steps) == 1
+
+
+def test_the_live_stutter_scores_as_a_wasted_pass(
+    graph, scenario, pipeline, pack, ledger, problem, findings
+):
+    stuck = _unfixable(findings, graph)
+    escalate = {"action": "ESCALATE", "target_finding_ids": [str(stuck.id)]}
+    router = ScriptedRouter(
+        {"action": "FIX", "target_finding_ids": [str(problem.id)]}, escalate, escalate
+    )
+    steps = run_loop(graph, scenario, pipeline, router, rules=pack, ledger=ledger)
+    assert [step.action for step in steps] == ["FIX", "ESCALATE", None]
+    assert loop_trajectory_ok(steps, pack) == 0.0
+
+
+def test_the_local_policy_spends_its_passes_well(steps, pack):
+    assert loop_trajectory_ok(steps, pack) == 1.0
+
+
+def test_the_router_hears_what_the_last_gate_and_search_said(
+    graph, scenario, pipeline, pack, ledger, problem
+):
+    router = ScriptedRouter(
+        {"action": "FIX", "target_finding_ids": [str(problem.id)]}, {"action": "DONE"}
+    )
+    run_loop(graph, scenario, pipeline, router, rules=pack, ledger=ledger)
+    assert router.seen[0].summary()["last_gate"] is None
+    heard = router.seen[1].summary()
+    assert heard["last_gate"]["accepted"] is True
+    assert heard["last_gate"]["shortfall_after_in"] < heard["last_gate"]["shortfall_before_in"]
+    assert heard["last_search"]["found"] is True
+    json.dumps(heard)
+
+
+def _recording_tools(monkeypatch) -> list:
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    from standardphysics_agents import loop as loop_module
+
+    recorded: list = []
+
+    @contextmanager
+    def start_tool(name, **_fields):
+        span = SimpleNamespace(result=None)
+        yield span
+        recorded.append((name, json.loads(span.result)))
+
+    monkeypatch.setattr(loop_module, "start_tool", start_tool)
+    return recorded
+
+
+def test_a_fix_records_the_assessment_the_search_and_the_gate(
+    graph, scenario, pipeline, pack, ledger, problem, monkeypatch
+):
+    recorded = _recording_tools(monkeypatch)
+    router = ScriptedRouter({"action": "FIX", "target_finding_ids": [str(problem.id)]})
+    run_pass(_loop(graph, scenario, pipeline, pack, ledger, router))
+    assert [name for name, _ in recorded] == ["assess", "propose_fix", "gate"]
+    assert recorded[2][1]["accepted"] is True
+
+
+def test_a_tool_result_holds_counts_not_the_scene(
+    graph, scenario, pipeline, pack, ledger, problem, monkeypatch
+):
+    recorded = _recording_tools(monkeypatch)
+    router = ScriptedRouter({"action": "FIX", "target_finding_ids": [str(problem.id)]})
+    run_pass(_loop(graph, scenario, pipeline, pack, ledger, router))
+    kept = json.dumps(recorded)
+    assert all(str(node.id) not in kept for node in graph.nodes)
+
+
+def test_every_other_branch_is_one_tool(
+    graph, scenario, pipeline, pack, ledger, problem, monkeypatch
+):
+    recorded = _recording_tools(monkeypatch)
+    router = ScriptedRouter({"action": "ESCALATE", "target_finding_ids": [str(problem.id)]})
+    run_pass(_loop(graph, scenario, pipeline, pack, ledger, router))
+    assert [name for name, _ in recorded] == ["assess", "escalate"]

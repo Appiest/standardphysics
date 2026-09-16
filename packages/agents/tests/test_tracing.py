@@ -21,11 +21,13 @@ class FakeWeave:
     def __init__(self, style: str = "factory") -> None:
         self.style = style
         self.projects: list[str] = []
+        self.settings: list[dict | None] = []
         self.ops: list[str] = []
         self.calls: list[str] = []
 
-    def init(self, project: str) -> None:
+    def init(self, project: str, settings: dict | None = None) -> None:
         self.projects.append(project)
+        self.settings.append(settings)
 
     def op(self, *args, **kwargs):
         """Both spellings Weave has used, so the wrapper survives either.
@@ -238,3 +240,148 @@ class TestEverythingIsTraced:
         names = [self._named(run_checks), *[self._named(c) for _, c in REGISTRY]]
         assert all("." in name for name in names)
         assert {name.split(".")[0] for name in names} == {"checks"}
+
+
+class FakeSpan:
+    """A conversation, turn, tool or model call, and what was written to it."""
+
+    def __init__(self, sdk, kind, fields) -> None:
+        self.sdk, self.kind, self.fields = sdk, kind, fields
+        self.result = None
+        self.recorded = None
+
+    def __enter__(self):
+        self.sdk.opened.append(self.kind)
+        self.sdk.current[self.kind] = self
+        return self
+
+    def __exit__(self, kind, error, traceback):
+        self.sdk.closed.append((self.kind, kind))
+        self.sdk.current.pop(self.kind, None)
+        return False
+
+    def start_turn(self, **fields):
+        return FakeSpan(self.sdk, "turn", fields)
+
+    def start_tool(self, **fields):
+        return FakeSpan(self.sdk, "tool", fields)
+
+    def start_llm(self, **fields):
+        return FakeSpan(self.sdk, "llm", fields)
+
+    def record(self, **fields):
+        self.recorded = fields
+
+
+class FakeConversationModule:
+    def __init__(self, sdk) -> None:
+        self.sdk = sdk
+
+    def get_current_conversation(self):
+        return self.sdk.current.get("conversation")
+
+    def get_current_turn(self):
+        return self.sdk.current.get("turn")
+
+    @staticmethod
+    def Message(role, content):  # noqa: N802 - matches weave.conversation.Message
+        return {"role": role, "content": content}
+
+    @staticmethod
+    def Usage(**counts):  # noqa: N802 - matches weave.conversation.Usage
+        return counts
+
+
+class FakeAgentsWeave(FakeWeave):
+    """Weave's Agents surface: a conversation holding turns holding tools and calls."""
+
+    def __init__(self, refuse: bool = False) -> None:
+        super().__init__()
+        self.refuse = refuse
+        self.opened: list[str] = []
+        self.closed: list[tuple] = []
+        self.current: dict = {}
+        self.conversation = FakeConversationModule(self)
+
+    def start_conversation(self, **fields):
+        if self.refuse:
+            raise RuntimeError("the SDK moved")
+        return FakeSpan(self, "conversation", fields)
+
+
+def _live(monkeypatch, fake):
+    monkeypatch.setitem(sys.modules, "weave", fake)
+    monkeypatch.setenv("WANDB_PROJECT", "standardphysics")
+    assert tracing.init()
+    return fake
+
+
+@pytest.fixture
+def agents(monkeypatch):
+    return _live(monkeypatch, FakeAgentsWeave())
+
+
+class TestTheAgentsTab:
+    def test_automatic_patching_stays_off(self, weave):
+        tracing.init()
+        assert weave.settings == [{"implicitly_patch_integrations": False}]
+
+    def test_nothing_is_recorded_without_an_account(self):
+        with tracing.start_conversation(agent_name="loop") as conversation:
+            with tracing.start_turn(user_message="Pass 1.") as turn:
+                with tracing.start_tool(name="assess") as tool:
+                    tool.result = "{}"
+        spans = (conversation, turn, tool)
+        assert all(isinstance(span, tracing.Unrecorded) for span in spans)
+
+    def test_a_pass_nests_under_its_conversation(self, agents):
+        with tracing.start_conversation(agent_name="loop"):
+            with tracing.start_turn(user_message="Pass 1."):
+                with tracing.start_tool(name="assess"):
+                    pass
+                with tracing.start_llm(model="jev-latest", provider_name="typesafe"):
+                    pass
+        assert agents.opened == ["conversation", "turn", "tool", "llm"]
+        assert [kind for kind, _ in agents.closed] == ["tool", "llm", "turn", "conversation"]
+
+    def test_a_tool_keeps_its_result_and_its_name(self, agents):
+        with tracing.start_conversation(agent_name="loop"), tracing.start_turn():
+            with tracing.start_tool(name="gate") as tool:
+                tool.result = '{"accepted": true}'
+        assert (tool.fields, tool.result) == ({"name": "gate"}, '{"accepted": true}')
+
+    def test_a_tool_outside_a_turn_is_not_recorded(self, agents):
+        with tracing.start_tool(name="assess") as tool:
+            pass
+        assert isinstance(tool, tracing.Unrecorded)
+        assert agents.opened == []
+
+    def test_an_sdk_that_refuses_costs_the_record_and_nothing_else(self, monkeypatch):
+        _live(monkeypatch, FakeAgentsWeave(refuse=True))
+        ran = []
+        with tracing.start_conversation(agent_name="loop") as conversation:
+            ran.append(True)
+        assert ran == [True]
+        assert isinstance(conversation, tracing.Unrecorded)
+
+    def test_an_error_in_the_work_closes_the_span_and_still_raises(self, agents):
+        with pytest.raises(ValueError):
+            with tracing.start_conversation(agent_name="loop"):
+                raise ValueError("measuring failed")
+        assert agents.closed == [("conversation", ValueError)]
+
+    def test_a_model_call_records_one_message_each_way(self, agents):
+        with tracing.start_conversation(agent_name="loop"), tracing.start_turn():
+            with tracing.start_llm(model="jev-latest", provider_name="typesafe") as llm:
+                tracing.record_llm(
+                    llm, sent="{}", received="FIX",
+                    usage={"input_tokens": 10, "output_tokens": 2, "cost": "unknown"},
+                )
+        assert llm.recorded == {
+            "input_messages": [{"role": "user", "content": "{}"}],
+            "output_messages": [{"role": "assistant", "content": "FIX"}],
+            "usage": {"input_tokens": 10, "output_tokens": 2},
+        }
+
+    def test_recording_on_nothing_is_harmless(self):
+        tracing.record_llm(tracing.Unrecorded(), sent="a", received="b")

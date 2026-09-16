@@ -516,3 +516,103 @@ def test_reconstruction_wall_deadline_does_not_wait_for_stalled_workers(monkeypa
     result = reconstruct_result(graph, transport=stalled_transport)
     assert time.monotonic() - started < 0.18
     assert result.source == "roomplan"
+
+
+class _FakeChatSpan:
+    def __init__(self, fields) -> None:
+        self.fields = fields
+        self.recorded = None
+        self.closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        self.closed = True
+        return False
+
+    def record(self, **fields):
+        self.recorded = fields
+
+
+class _FakeConversation:
+    def __init__(self) -> None:
+        self.spans: list[_FakeChatSpan] = []
+
+    def start_llm(self, **fields):
+        span = _FakeChatSpan(fields)
+        self.spans.append(span)
+        return span
+
+    @staticmethod
+    def Message(role, content):  # noqa: N802 - matches weave.conversation.Message
+        return {"role": role, "content": content}
+
+    @staticmethod
+    def Usage(**counts):  # noqa: N802 - matches weave.conversation.Usage
+        return counts
+
+
+class _FakeWeave:
+    def __init__(self, client) -> None:
+        self.client = client
+        self.conversation = _FakeConversation()
+
+    def get_client(self):
+        return self.client
+
+
+def test_an_astra_request_is_one_chat_span_holding_counts_only(monkeypatch):
+    weave = _FakeWeave(client=object())
+    monkeypatch.setitem(__import__("sys").modules, "weave", weave)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-secret")
+    graph = parse_room_json({"objects": [element("storage"), element("chair")]})
+    objects = [node for node in graph.nodes if node.kind == "object"]
+    answer = model_response(patch_for(objects[0]), patch_for(objects[1], "Chair"))
+    answer["usage"] = {"prompt_tokens": 120, "completion_tokens": 30}
+
+    reconstruct_result(graph, transport=lambda *_: answer)
+
+    [span] = weave.conversation.spans
+    assert span.fields["provider_name"] == "openrouter"
+    assert span.closed
+    assert span.recorded["output_messages"] == [{"role": "assistant", "content": "2 label patches"}]
+    assert span.recorded["usage"] == {"input_tokens": 120, "output_tokens": 30}
+    kept = json.dumps(span.recorded)
+    assert "sk-or-test-secret" not in kept and "Bearer" not in kept
+
+
+def test_no_weave_client_means_no_span(monkeypatch):
+    weave = _FakeWeave(client=None)
+    monkeypatch.setitem(__import__("sys").modules, "weave", weave)
+    graph = parse_room_json({"objects": [element("storage")]})
+    objects = [node for node in graph.nodes if node.kind == "object"]
+
+    reconstruct_result(graph, transport=lambda *_: model_response(patch_for(objects[0])))
+
+    assert weave.conversation.spans == []
+
+
+def bedroom_payload():
+    payload = shop_payload()
+    payload["objects"].append(element("bed", dims=(2.0, 0.5, 1.5), at=(2.5, 0.25, 1.0)))
+    return payload
+
+
+def test_a_long_dresser_against_a_bedroom_wall_is_not_an_ordering_counter():
+    rebuilt = reconstruct(parse_room_json(bedroom_payload()))
+    labels = {node.label for node in rebuilt.nodes if node.kind == "object"}
+    assert "Ordering counter" not in labels
+    assert "Display case" not in labels
+    assert "Storage" in labels
+
+
+def test_astra_is_told_a_bedroom_is_a_home():
+    system = _chat_body(parse_room_json(bedroom_payload()))["messages"][0]["content"]
+    assert "home" in system
+    assert "shop" not in system
+
+
+def test_astra_is_still_told_a_shop_is_a_shop():
+    system = _chat_body(parse_room_json(shop_payload()))["messages"][0]["content"]
+    assert "shop scan" in system

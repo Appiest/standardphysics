@@ -65,9 +65,10 @@ If TypeSafe is not available by 3:00 PM Saturday, run a labeled local policy beh
 
 The fix agent's model calls go through OpenRouter with the OpenAI SDK, the
 same way Lane B calls Astra: `base_url="https://openrouter.ai/api/v1"`,
-`OPENROUTER_API_KEY`, model from `OPENROUTER_MODEL`. Weave picks these up
-through its OpenRouter integration, so leave OpenRouter's Broadcast to Weave
-setting off or every call is traced twice.
+`OPENROUTER_API_KEY`, model from `OPENROUTER_MODEL`. `tracing.init` turns
+Weave's automatic integrations off and the loop opens its model spans by hand,
+so leave OpenRouter's Broadcast to Weave setting off too, or every call is
+traced twice.
 
 **6. Fix agent.** Proposes translations and rotations of movable nodes only. No resize, no fixture movement, no leaving the floor, no shrinking an obstacle. Keeping the owner's furniture is a hard default — placement is adjustable, inventory is not. After three failed attempts say "We couldn't find an arrangement that works" and offer one specific relaxation for the owner to approve.
 
