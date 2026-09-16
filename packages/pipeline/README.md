@@ -25,6 +25,7 @@ python -m standardphysics_pipeline.check_blender
 | `check_blender.py` | Proves this machine can import USDZ |
 | `coords.py` | RoomPlan's Y-up meters to our Z-up meters, once, on ingest |
 | `ingest.py` | `room.json` to `SceneGraph` |
+| `astra.py` | OpenRouter label/clean, or local shop heuristics |
 | `occupancy.py` | Floor rasterization and the distance transform |
 | `routes.py` | Widest path, bottleneck width, and the pinch point |
 | `measure.py` | The `MeasurementProvider` Lane C calls |

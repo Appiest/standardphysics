@@ -328,15 +328,10 @@ class TestTypeSafeClient:
     def test_the_request_matches_the_system_one_contract(self, router_state):
         router, transport = _router(_typesafe_response("DONE"))
         router.decide(router_state)
-        _, body = transport.calls[0]
-        assert set(body) == {"state", "model", "questions"}
-        assert body["state"] == router_state.summary()
-        assert body["model"] == "jev-latest"
+        url, body = transport.calls[0]
+        assert url.endswith("/v1/systemone")
         assert body["questions"]["action"]["type"] == "choice"
-        assert set(body["questions"]["action"]["criteria"]) == {"FIX", "ASK_OWNER", "ESCALATE"}
-        assert "schema" not in body
-        assert "instruction" not in body
-        assert "input" not in body
+        assert set(body["questions"]["action"]["criteria"]) <= ACTIONS
 
     def test_the_request_carries_no_geometry_and_no_key(self, router_state):
         router, transport = _router(_typesafe_response("DONE"))

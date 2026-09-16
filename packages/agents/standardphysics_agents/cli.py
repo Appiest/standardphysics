@@ -63,6 +63,7 @@ from .evolution import (
 from .loop import run_loop
 from .router import LocalPolicyRouter, TypeSafeCallBudget, TypeSafeRouter
 from .rules import RuleSpec, load_ledger, load_pack, save_ledger
+from .simulate import screen_layouts
 from .simulation_report import simulation_result
 from .tracing import init as init_tracing
 from .tracing import is_live, project_url
@@ -588,6 +589,29 @@ def _ask(args) -> int:
     return 0 if answer.understood else 1
 
 
+def _screen(args) -> int:
+    pack, ledger = load_pack(), load_ledger()
+    if _nothing_enabled(pack, ledger):
+        return 1
+    graph, scenario = _fixture_shop()
+    measured = assess(graph, scenario, _measurements(args.provider), rules=pack, ledger=ledger)
+    report = screen_layouts(
+        graph,
+        scenario,
+        _measurements(args.provider),
+        measured.findings,
+        rules=pack,
+        ledger=ledger,
+        samples=args.samples,
+    )
+    print(f"tried {report.samples}, measured {report.measured}")
+    if report.best:
+        print(f"found {report.best.candidate.strategy}")
+        return 0
+    print("no arrangement in this screen")
+    return 1
+
+
 def _loop(args) -> int:
     pack, ledger = load_pack(), load_ledger()
     if _nothing_enabled(pack, ledger):
@@ -639,6 +663,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "evolve": _evolve,
     "loop": _loop,
     "ask": _ask,
+    "screen": _screen,
 }
 
 
@@ -786,6 +811,12 @@ def build_parser() -> argparse.ArgumentParser:
     question.add_argument("question", nargs="+")
     question.add_argument("--provider", choices=PROVIDERS, default="pipeline")
     question.add_argument("--tier", type=int, default=1)
+
+    screen = commands.add_parser(
+        "screen", help="try many legal layouts on the fixture shop"
+    )
+    screen.add_argument("--provider", choices=PROVIDERS, default="pipeline")
+    screen.add_argument("--samples", type=int, default=256)
     return parser
 
 

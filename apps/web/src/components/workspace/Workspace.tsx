@@ -291,7 +291,7 @@ function useWorkspaceActions(findings: Finding[], scene: SceneGraph, arrangement
   const clear = useCallback(() => { setSelected(null); setAsked(null); setPicked(null); }, [setSelected, setAsked, setPicked]);
   const selectNode = useCallback((nodeId: string) => {
     setSelected(findingForNode(findings, nodeId) ?? null);
-    setPicked({ id: nodeId, label: scene.nodes.find((node) => node.id === nodeId)?.label ?? "Scanned surface" });
+    setPicked({ id: nodeId, label: scene.nodes.find((node) => node.id === nodeId)?.label ?? "Object" });
   }, [findings, scene, setSelected, setPicked]);
   const toggle = (finding: Finding) => setSelected((current) => current?.id === finding.id ? null : finding);
   const showView = (next: ViewMode) => { setSelected(null); setMode(next); };

@@ -26,6 +26,7 @@ from .state import RouterState
 API_KEY_ENV = "TYPESAFE_API_KEY"
 BASE_URL_ENV = "TYPESAFE_BASE_URL"
 MODEL_ENV = "TYPESAFE_MODEL"
+PATH_ENV = "TYPESAFE_PATH"
 
 DEFAULT_BASE_URL = "https://api.typesafe.ai"
 DEFAULT_PATH = "/v1/systemone"
@@ -72,6 +73,7 @@ def available_actions(state: RouterState) -> dict[str, str]:
             if action in (eligible or {"DONE"})}
 
 RESPONSE_PATHS = (
+    ("answers", "action"),
     ("data",),
     ("output",),
     ("result",),
@@ -210,7 +212,7 @@ class TypeSafeRouter:
         self,
         api_key: str | None = None,
         base_url: str | None = None,
-        path: str = DEFAULT_PATH,
+        path: str | None = None,
         model: str | None = None,
         transport: Transport | None = None,
         budget: TypeSafeCallBudget | None = None,
@@ -220,7 +222,7 @@ class TypeSafeRouter:
         self.base_url = (
             base_url or os.environ.get(BASE_URL_ENV) or DEFAULT_BASE_URL
         ).rstrip("/")
-        self.path = path or DEFAULT_PATH
+        self.path = path or os.environ.get(PATH_ENV) or DEFAULT_PATH
         self.model = model or os.environ.get(MODEL_ENV) or DEFAULT_MODEL
         self.transport = transport or UrllibTransport()
         self.budget = budget
@@ -229,6 +231,10 @@ class TypeSafeRouter:
     @property
     def configured(self) -> bool:
         return bool(self.api_key and self.base_url)
+
+    @property
+    def uses_choice(self) -> bool:
+        return self.path.rstrip("/").endswith("systemone")
 
     def request_body(self, state: RouterState) -> dict:
         return {
