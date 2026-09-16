@@ -353,6 +353,17 @@ export interface PhysicsRoute {
   reachable: boolean;
 }
 /**
+ * What a result was read off, and where to look to see it.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "Evidence".
+ */
+export interface Evidence {
+  at: Vec3 | null;
+  frames: string[];
+  subjects: string[];
+}
+/**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "HeightResult".
  */
@@ -544,6 +555,16 @@ export interface Mat4 {
   ];
 }
 /**
+ * Nodes the primitive selected, such as everything standing on a desk.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "NodeSet".
+ */
+export interface NodeSet {
+  node_ids: string[];
+  type: "nodes";
+}
+/**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "NodeTextureCoverage".
  */
@@ -620,6 +641,67 @@ export interface PoseRecord {
     number,
     ...number[]
   ];
+}
+/**
+ * One primitive's answer, with everything needed to show or cite it.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrimitiveResult".
+ */
+export interface PrimitiveResult {
+  evidence: Evidence;
+  note: string | null;
+  payload: (Quantity | NodeSet | TextSet | Truth) | null;
+  primitive: string;
+  quality: "measured" | "needs_another_look" | "not_measurable";
+}
+/**
+ * One measured number, in the unit the standard is written in.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "Quantity".
+ */
+export interface Quantity {
+  type: "quantity";
+  unit: string;
+  value: number;
+}
+/**
+ * Words read off surfaces in the room.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "TextSet".
+ */
+export interface TextSet {
+  texts: string[];
+  type: "texts";
+}
+/**
+ * A yes or no the geometry settled, such as whether a body fits.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "Truth".
+ */
+export interface Truth {
+  type: "truth";
+  value: boolean;
+}
+/**
+ * A primitive as a model is shown it: a name, what it does, its arguments.
+ *
+ * This is the whole vocabulary a planner gets. A plan naming anything outside
+ * it is refused before it runs.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrimitiveSpec".
+ */
+export interface PrimitiveSpec {
+  arguments: {
+    [k: string]: unknown;
+  };
+  name: string;
+  returns: "quantity" | "nodes" | "texts" | "truth";
+  summary: string;
 }
 /**
  * Ask the fix agent for a layout that clears these findings.

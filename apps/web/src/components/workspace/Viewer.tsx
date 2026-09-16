@@ -89,7 +89,7 @@ function ShopSurfaces(props: ShopSurfacesProps) {
   const reconstructed = !glbUrl ? boxes : (
     <GlbFallback key={glbUrl} fallback={boxes}>
       <Suspense fallback={boxes}>
-        <GlbShopModel url={glbUrl} exported={exported} {...props} />
+        <GlbShopModel url={glbUrl} exported={exported} {...modelProps} />
       </Suspense>
     </GlbFallback>
   );
