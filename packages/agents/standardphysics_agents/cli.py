@@ -9,7 +9,9 @@ confirmation: it cannot be satisfied by someone who did not read the section.
 from __future__ import annotations
 
 import argparse
+import json
 import math
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -648,6 +650,72 @@ TRAJECTORY_READINGS = {
 }
 
 
+def _count_on_surfaces(args) -> int:
+    """How many of something is on the surfaces of a scanned room."""
+    from standardphysics_pipeline import surfaces
+
+    thing = " ".join(args.thing)
+    try:
+        scan = surfaces.open_scan(Path(args.scan))
+        read = surfaces.counter()
+    except (surfaces.ScanNotReadable, surfaces.NoCounterConfigured) as refusal:
+        print(refusal)
+        return 1
+    mesh = "with lidar" if scan.cloud is not None else "no lidar, nothing can be tested for occlusion"
+    print(f"{scan.frame_count} frames, {len(scan.graph.nodes)} regions, {mesh}", file=sys.stderr)
+    result = surfaces.tally(
+        scan.graph, scan.cameras, scan.frames, thing, read,
+        size=args.patch, readings=args.readings, workers=args.workers, cloud=scan.cloud,
+    )
+    print(surfaces.report(result))
+    return 0
+
+
+def _suite_model(args):
+    """Whichever endpoint is asked for, defaulting to the one models.py knows.
+
+    The writer and the judge are the measuring instrument rather than the app, so
+    which model runs them is a separate decision from the provider policy the app
+    itself follows.
+    """
+    from .models import OpenRouter
+
+    if not (args.model or args.base_url or args.api_key_env or args.timeout):
+        return None
+    return OpenRouter(
+        api_key=os.environ.get(args.api_key_env) if args.api_key_env else None,
+        model=args.model,
+        base_url=args.base_url,
+        timeout=args.timeout,
+    )
+
+
+def _held_out(args) -> int:
+    """Score the app on rooms it was not developed against."""
+    from .evaluation import held_out
+
+    try:
+        result = held_out.run(
+            Path(args.root),
+            seed=args.seed,
+            per_scene=args.questions,
+            held_out=args.hold_out,
+            model=_suite_model(args),
+            workers=args.workers,
+            watch=lambda line: print(line, file=sys.stderr, flush=True),
+        )
+    except (held_out.NoRealScenes, held_out.CouldNotWriteQuestions, held_out.CouldNotJudge) as refusal:
+        print(refusal)
+        return 1
+    print(held_out.report(result))
+    if args.transcript:
+        Path(args.transcript).write_text(
+            "\n".join(json.dumps(row) for row in held_out.transcript(result)) + "\n"
+        )
+        print(f"every question written to {args.transcript}")
+    return 0
+
+
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "rules.list": _list,
     "rules.show": _show,
@@ -664,6 +732,8 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "loop": _loop,
     "ask": _ask,
     "screen": _screen,
+    "held-out": _held_out,
+    "count": _count_on_surfaces,
 }
 
 
@@ -804,6 +874,44 @@ def build_parser() -> argparse.ArgumentParser:
     loop.add_argument("--provider", choices=PROVIDERS, default="pipeline")
     loop.add_argument("--router", choices=ROUTERS, default="typesafe")
     loop.add_argument("--tier", type=int, default=1)
+
+    tally = commands.add_parser(
+        "count",
+        help="how many of something is on the surfaces a scan photographed",
+    )
+    tally.add_argument("thing", nargs="+", help="what to count, in your own words")
+    tally.add_argument("--scan", required=True, help="a scan directory")
+    tally.add_argument("--patch", type=float, default=0.6, help="patch size in metres")
+    tally.add_argument("--readings", type=int, default=3, help="readings per patch")
+    tally.add_argument("--workers", type=int, default=8, help="patches read at once")
+
+    suite = commands.add_parser(
+        "held-out",
+        help="score the app on scanned rooms it was not developed against",
+    )
+    suite.add_argument("--seed", type=int, required=True, help="picks the split and the questions")
+    suite.add_argument("--questions", type=int, default=80, help="questions per scene")
+    suite.add_argument("--hold-out", type=int, default=2, help="scenes to score on")
+    suite.add_argument("--root", default=".", help="the repository, where scans are found")
+    suite.add_argument("--model", default=None, help="the model that writes and judges")
+    suite.add_argument("--base-url", default=None, help="an OpenAI-shaped endpoint")
+    suite.add_argument(
+        "--api-key-env",
+        default=None,
+        help="the environment variable holding that endpoint's key",
+    )
+    suite.add_argument(
+        "--workers", type=int, default=8, help="questions scored at once"
+    )
+    suite.add_argument(
+        "--transcript", default=None, help="write every question and answer here, as JSON lines"
+    )
+    suite.add_argument(
+        "--timeout",
+        type=float,
+        default=240.0,
+        help="seconds to wait for one batch of questions or one verdict",
+    )
 
     question = commands.add_parser(
         "ask", help="ask the fixture shop a question about itself"

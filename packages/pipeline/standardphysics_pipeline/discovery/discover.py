@@ -31,7 +31,7 @@ import uuid
 from dataclasses import dataclass, field
 
 import numpy as np
-from standardphysics_contracts import SceneGraph, SceneNode
+from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
 
 from ..lidar import LidarMeshError, room_cloud
 from ..textures.camera import CameraMetadataError, PhotoCamera, load_cameras
@@ -286,7 +286,7 @@ def _worth_keeping(object_: DiscoveredObject, graph: SceneGraph, viewpoints: int
     return not any(
         contained_fraction(object_.box, node) >= ALREADY_MEASURED
         for node in graph.nodes
-        if node.kind == "object"
+        if not bounds_the_room(node)
     )
 
 

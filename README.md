@@ -47,6 +47,36 @@ To run the tests and the linter:
 (cd apps/web && npm run lint && npm run typecheck && npm run test)
 ```
 
+To ask how many of something is in a scan:
+
+```bash
+.venv/bin/standardphysics-agents count books --scan services/api/var/scans/<id>
+```
+
+Every measured region has sides with a measured area. Each side is cut into patches of a known size, each patch is projected into the frame that photographed it most squarely, and a model is asked one question about each crop: how many of the named thing can you see here. The engine does the rest, so the density, the multiplication and the coverage are arithmetic over measurements and no figure in the answer came out of a sentence.
+
+Nothing in the code matches the word you type. Ask for chairs and the shelving returns nothing; ask for books and the desks do. It follows that the answer covers only the surface a walk actually photographed, and the report says how much that was and what share was never seen.
+
+`--patch` sets the patch size in metres, `--readings` how many times each patch is counted before taking the median, and `--workers` how many run at once. It needs `DISCOVERY_API_KEY`, `DISCOVERY_BASE_URL` and `DISCOVERY_MODEL` set, and refuses to run rather than guessing without them.
+
+To score the app on rooms it was not built against:
+
+```bash
+.venv/bin/standardphysics-agents held-out --seed 21
+```
+
+That writes fresh questions about a scanned room, asks them, and scores each answer against the room rather than against an expected string. It then does the whole thing again over the same geometry with every name replaced by a nonsense token, and prints what the names were worth. A gap between the two is something answering from an English word instead of from a measurement.
+
+Around one question in eight has no answer in the scan. Saying so scores as a pass and answering it anyway scores as a failure, which is the part a system that games the rest fails hardest.
+
+It needs real scans and refuses to run without them, and it needs a model to write and judge. `--questions` sets how many per room (80 for a full run, fewer for a look), `--hold-out` how many rooms are scored on, and `--model`, `--base-url` and `--api-key-env` point it at an endpoint other than the configured one:
+
+```bash
+.venv/bin/standardphysics-agents held-out --seed 21 --questions 12 \
+  --model accounts/fireworks/models/kimi-k3 \
+  --base-url https://api.fireworks.ai/inference/v1 --api-key-env FIREWORKS_API_KEY
+```
+
 To move the shop's dimensions by hand and watch the same checks read the new room:
 
 ```bash

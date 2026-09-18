@@ -57,6 +57,10 @@ from .scene import (
     SceneNode,
     Stop,
     SurfaceText,
+    bounds_the_room,
+    lies_flat,
+    measured_as,
+    stands_upright,
 )
 from .simulation import (
     AdaptiveRoundResult,
@@ -84,6 +88,10 @@ from .textures import (
 )
 
 __all__ = [
+    "bounds_the_room",
+    "measured_as",
+    "lies_flat",
+    "stands_upright",
     "Relation",
     "SurfaceText",
     "Evidence", "NodeSet", "Payload", "PrimitiveResult", "PrimitiveSpec", "Quantity", "TextSet", "Truth",

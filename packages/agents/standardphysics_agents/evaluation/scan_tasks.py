@@ -6,7 +6,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
-from standardphysics_contracts import SceneGraph
+from standardphysics_contracts import SceneGraph, bounds_the_room
 
 from ..models import OpenRouter
 from ..router import ChoiceQuestion, Rejected, SystemOneClient, SystemOneError
@@ -48,7 +48,7 @@ INSTRUCTION = (
 
 
 def validate_tasks(suite: TaskSuite, graph: SceneGraph) -> TaskSuite:
-    tables = {node.id for node in graph.nodes if node.kind == "object" and node.raw_category == "table"}
+    tables = {node.id for node in graph.contents() if node.raw_category == "table"}
     if len({task.id for task in suite.tasks}) != len(suite.tasks):
         raise ValueError("task IDs must be unique")
     if any(task.target_node_id not in tables for task in suite.tasks):
@@ -61,7 +61,7 @@ def validate_tasks(suite: TaskSuite, graph: SceneGraph) -> TaskSuite:
 def propose_tasks(graph: SceneGraph, client: OpenRouter | None = None) -> tuple[TaskSuite, dict]:
     client = client or OpenRouter()
     tables = [node.model_dump(mode="json") for node in graph.nodes
-              if node.kind == "object" and node.raw_category == "table"]
+              if not bounds_the_room(node) and node.raw_category == "table"]
     answer = client.structured(INSTRUCTION, {"scan_id": str(graph.scan_id), "tables": tables},
                                TaskSuite.model_json_schema(), "scan_task_suite")
     if isinstance(answer, Rejected):

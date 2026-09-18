@@ -16,7 +16,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from standardphysics_contracts import Mat4, SceneGraph, SceneNode
+from standardphysics_contracts import Mat4, SceneGraph, SceneNode, lies_flat
 
 from .coords import capture_to_room, dimensions_to_z_up, transform_from_arkit
 
@@ -219,7 +219,7 @@ def _stand_on_the_floor(nodes: list[SceneNode]) -> float:
     Shifting once here means nothing downstream has to know where the phone was
     standing. Heights are heights above the floor everywhere after this.
     """
-    floor = next((node for node in nodes if node.kind == "floor"), None)
+    floor = next((node for node in nodes if lies_flat(node)), None)
     if floor is None:
         return 0.0
 

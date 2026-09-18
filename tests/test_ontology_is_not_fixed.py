@@ -24,11 +24,11 @@ ONTOLOGY_LITERAL = re.compile(
     r'^(?:NodeKind|Relation|QueryKind|Dimension|LabelSource)\s*(?::\s*\w+\s*)?=\s*Literal\[', re.M
 )
 
-BRANCHES_BASELINE = 98
+BRANCHES_BASELINE = 22
 """Places that ask what kind of thing something is. Target: nothing above the
 interpretation layer asks, because a name is for showing a person."""
 
-LITERALS_BASELINE = 5
+LITERALS_BASELINE = 0
 """Closed sets naming what can exist. Target: zero."""
 
 

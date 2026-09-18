@@ -31,8 +31,20 @@
 	<string>Use the camera to measure your shop.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Connect to the workspace on your local network to upload your scans.</string>
-	<key>UILaunchScreen</key>
-	<dict/>
+	<key>UIAppFonts</key>
+	<array>
+		<string>LibreFranklin-Bold.ttf</string>
+		<string>LibreFranklin-ExtraBold.ttf</string>
+		<string>Karla-Regular.ttf</string>
+		<string>Karla-Medium.ttf</string>
+		<string>Karla-Bold.ttf</string>
+		<string>AtkinsonHyperlegibleMono-Regular.ttf</string>
+		<string>AtkinsonHyperlegibleMono-Medium.ttf</string>
+	</array>
+	<key>UIDesignRequiresCompatibility</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
 	<key>UIRequiresFullScreen</key>
 	<true/>
 	<key>UISupportedInterfaceOrientations</key>

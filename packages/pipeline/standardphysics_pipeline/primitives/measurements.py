@@ -22,6 +22,7 @@ from standardphysics_contracts import (
     SceneGraph,
     SceneNode,
     Vec3,
+    stands_upright,
     to_inches,
 )
 
@@ -171,7 +172,7 @@ def clearance_above(arguments: NodeArgument, context: Context) -> PrimitiveResul
     node = _node(context.graph, arguments.node_id)
     if node is None:
         return _not_in_the_room("clearance_above", arguments.node_id)
-    ceiling = max((_top_of(other) for other in context.graph.nodes if other.kind == "wall"), default=None)
+    ceiling = max((_top_of(other) for other in context.graph.nodes if stands_upright(other)), default=None)
     if ceiling is None:
         return PrimitiveResult(
             primitive="clearance_above",

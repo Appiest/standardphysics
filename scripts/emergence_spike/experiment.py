@@ -8,7 +8,6 @@ import os
 import sys
 import urllib.request
 
-sys.path.insert(0, "/tmp/claude-0/-home-user-standardphysics/fcf20089-0f67-52be-aee3-fcbd8ccab05f/scratchpad/spike")
 from substrate import Refused, load, select
 
 GRAMMAR = """

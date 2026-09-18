@@ -14,7 +14,8 @@ something built in comes back as `Rejected` and reaches no executor.
 
 from __future__ import annotations
 
-from typing import Literal
+from collections.abc import Callable
+from dataclasses import dataclass
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -24,26 +25,44 @@ from ..router.decision import Rejected
 from ..strict_schema import strict_schema
 from .directions import DIRECTIONS, Direction
 
-QueryKind = Literal[
-    "COUNT",
-    "MEASURE",
-    "DISTANCE",
-    "WHERE",
-    "DESCRIBE",
-    "SPACE",
-    "REARRANGE",
-    "CHECK",
-]
+QueryKind = str
+"""A kind of question some executor has said it can answer.
 
-KINDS: frozenset[str] = frozenset(
-    {"COUNT", "MEASURE", "DISTANCE", "WHERE", "DESCRIBE", "SPACE", "REARRANGE", "CHECK"}
-)
+It was a closed list of eight, written here and restated in the table of
+executors, so the list of things a person could ask lived in a type rather than
+in the code that answers them. An executor now registers its own kind, with what
+it needs from the question, and a new one plugs in without this file changing.
+"""
 
-Dimension = Literal["height", "width", "depth", "length", "footprint"]
+Needs = Callable[["Query"], "str | None"]
 
-DIMENSIONS: frozenset[str] = frozenset(
-    {"height", "width", "depth", "length", "footprint"}
-)
+
+@dataclass(frozen=True)
+class Kind:
+    name: str
+    needs: Needs
+    """Why a question of this kind cannot be acted on, or nothing if it can."""
+
+
+KINDS: dict[str, Kind] = {}
+"""Every kind of question an executor has registered, by name."""
+
+
+def register_kind(name: str, needs: Needs | None = None) -> None:
+    KINDS[name] = Kind(name=name, needs=needs or (lambda query: None))
+
+
+Dimension = str
+"""A measurement some reader knows how to take.
+
+Filled from the readers themselves, so the dimensions a question may ask about
+are exactly the ones something can measure."""
+
+DIMENSIONS: set[str] = set()
+
+
+def register_dimensions(names) -> None:
+    DIMENSIONS.update(names)
 
 MAX_DISTANCE_INCHES = 600.0
 """Fifty feet. Longer than any shop we screen, so a model that says 10000 is
@@ -51,9 +70,6 @@ caught before it drives a search."""
 
 MAX_RESTATEMENT = 200
 
-NEEDS_SUBJECT: frozenset[str] = frozenset(
-    {"COUNT", "MEASURE", "WHERE", "DESCRIBE", "REARRANGE"}
-)
 
 
 class Query(BaseModel):
@@ -93,7 +109,25 @@ def query_schema() -> dict:
     through: a kind outside the set, a label naming nothing in the shop, a
     measurement past what a shop can be.
     """
-    return strict_schema(Query)
+    schema = strict_schema(Query)
+    properties = schema.get("properties", {})
+    _choose_from(properties.get("kind"), sorted(KINDS))
+    _choose_from(properties.get("dimension"), sorted(DIMENSIONS))
+    return schema
+
+
+def _choose_from(field: dict | None, names: list[str]) -> None:
+    """Tell the model which values exist, read from what has registered.
+
+    Without the closed types the generated schema says only "a string", and a
+    model given no list invents kinds nobody answers.
+    """
+    if not field or not names:
+        return
+    variants = field.get("anyOf")
+    target = next((v for v in variants if v.get("type") == "string"), None) if variants else field
+    if target is not None:
+        target["enum"] = names
 
 
 def _shape(raw: object) -> Query | Rejected:
@@ -116,19 +150,19 @@ def _closed_sets(query: Query, graph: SceneGraph) -> str | None:
 
 
 def _arguments(query: Query, graph: SceneGraph) -> str | None:
-    if query.kind in NEEDS_SUBJECT and not (
-        query.subject_labels or query.subject_node_ids
-    ):
-        return "question_names_nothing"
-    if query.kind == "MEASURE" and query.dimension is None:
-        return "question_does_not_say_which_dimension"
-    if query.kind == "DISTANCE" and not query.other_labels:
-        return "question_names_only_one_end"
-    if query.kind == "SPACE" and query.length_inches is None:
-        return "question_does_not_say_how_big"
-    if query.kind == "REARRANGE" and query.direction is None:
-        return "question_does_not_say_which_way"
-    return None
+    """Whatever the kind's own executor said it needs."""
+    return KINDS[query.kind].needs(query)
+
+
+def names_something(query: Query) -> str | None:
+    if query.subject_labels or query.subject_node_ids:
+        return None
+    return "question_names_nothing"
+
+
+def all_of(*needs: Needs) -> Needs:
+    """Several requirements, reporting the first one a question misses."""
+    return lambda query: next((why for need in needs if (why := need(query))), None)
 
 
 def _numbers(query: Query, graph: SceneGraph) -> str | None:
@@ -151,7 +185,7 @@ def _pinned(query: Query, graph: SceneGraph) -> str | None:
 
 
 def _movable(query: Query, graph: SceneGraph) -> str | None:
-    if query.kind != "REARRANGE":
+    if query.direction is None:
         return None
     for node_id in query.subject_node_ids:
         if not graph.by_id(node_id).movable:

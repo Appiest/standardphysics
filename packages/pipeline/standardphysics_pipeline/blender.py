@@ -198,13 +198,19 @@ def display_graph(graph: SceneGraph) -> SceneGraph:
 
 
 def _display_node(node):
-    if node.kind == "wall":
-        return node.model_copy(update={"dimensions": node.dimensions.model_copy(update={"y": max(node.dimensions.y, MIN_DISPLAY_WALL_THICKNESS)})})
-    if node.kind == "floor":
-        dimensions = node.dimensions.model_copy(update={
-            axis: MIN_DISPLAY_WALL_THICKNESS
-            for axis in ("x", "y", "z")
-            if getattr(node.dimensions, axis) == 0.0
-        })
-        return node.model_copy(update={"dimensions": dimensions})
-    return node
+    """Anything with no thickness gets just enough to be visible.
+
+    A wall is measured as a plane and a floor as a sheet, so both come back with
+    an extent of nothing in some direction and neither can be drawn. Which one it
+    is does not matter: an extent of zero cannot be seen, so every one of them is
+    opened to the smallest width that can. The measurements are untouched, and
+    only what is drawn changes.
+    """
+    flattened = {
+        axis: MIN_DISPLAY_WALL_THICKNESS
+        for axis in ("x", "y", "z")
+        if getattr(node.dimensions, axis) < MIN_DISPLAY_WALL_THICKNESS
+    }
+    if not flattened:
+        return node
+    return node.model_copy(update={"dimensions": node.dimensions.model_copy(update=flattened)})

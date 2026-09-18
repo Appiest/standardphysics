@@ -9,7 +9,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .geometry import Mat4, Vec3
 
-NodeKind = Literal["wall", "door", "window", "opening", "floor", "object"]
+NodeKind = str
+"""What a region is called, which is a word somebody coined and not a category.
+
+It was a closed set of six, and a scan of anywhere those six do not cover had
+nowhere to put what it found. A name is for showing a person; anything that needs
+to know what a region is measures it, which is what `SceneGraph.bounds_the_room`
+and `SceneGraph.upright_extent` are for.
+"""
 
 Quality = Literal["measured", "needs_another_look", "confirmed"]
 """measured: LiDAR at high confidence.
@@ -17,10 +24,18 @@ needs_another_look: thin coverage or low confidence; becomes a request, not a fi
 confirmed: a number a person entered by hand.
 """
 
-LabelSource = Literal["roomplan", "astra", "owner", "discovery"]
+LabelSource = str
+"""Who coined the name. A new way of finding things should not need this file
+edited before it can say where a name came from."""
 """discovery: found in the LiDAR and named from the photos, because RoomPlan boxes no such category."""
 
-Relation = Literal["rests_on", "inside", "mounted_on", "cut_into"]
+Relation = str
+"""How one region stands to another, in whatever word was coined for it.
+
+Four were listed, and somewhere with a fifth arrangement could not be described.
+A relation carries the geometric predicate that justified it, so anything needing
+the truth re-runs that rather than trusting the word.
+"""
 """How a node is attached to its parent.
 
 rests_on   its underside meets the parent's top face: a blanket on a bed.
@@ -133,7 +148,77 @@ class SceneNode(BaseModel):
         `SceneGraph.obstacles` for the question a route actually needs, since
         answering it means knowing what the node rests on.
         """
-        return self.kind in ("object", "door", "opening")
+        return not lies_flat(self)
+
+
+SHEET_THICKNESS = 0.2
+"""How thin a region has to be to read as a sheet rather than a solid, in metres."""
+
+SHEET_AREA = 1.0
+"""And how broad, in square metres, so that a shelf board is not a wall."""
+
+
+def bounds_the_room(node: SceneNode) -> bool:
+    """Whether the region encloses the space rather than standing in it.
+
+    A room is made of sheets and filled with solids. A wall, a floor, a ceiling,
+    a door and a window are all broad and almost without thickness; a chair, a
+    table and a bookcase are none of them thin. The difference is in the extents
+    themselves, so it holds in a room with a four metre void over it as well as
+    one with an ordinary ceiling, where asking whether a region covers most of
+    the floor-to-ceiling span does not.
+
+    It needs only the region, so anywhere that used to ask what kind of thing it
+    was holding can ask this instead, whether or not it has the whole room.
+
+    Where it is wrong: a rug and a wall poster are broad and thin and are not the
+    room, so this reads them as part of it. Nothing in the scans on hand has one,
+    so it has not been worth a second rule yet, and a scan that turns one up will
+    show as a thing that cannot be counted or moved.
+    """
+    spans = sorted(node.dimensions.as_tuple())
+    return spans[0] <= SHEET_THICKNESS and spans[1] * spans[2] >= SHEET_AREA
+
+
+def measured_as(node: SceneNode) -> Vec3:
+    """The region across, back and up: width, depth and height as a person reads them.
+
+    A region records its extents in its own frame, and the scanner orients that
+    frame however it likes. The extent listed third is a height for a bookcase
+    and a floor's length for a floor, so anything reading it as a height is right
+    about half the time, and a suite that did so told a model a bookcase was half
+    a metre tall and two metres deep.
+
+    The region's own turning says which of its three extents points up; that one
+    is the height. The other two are its width and its depth, taken from the
+    region itself rather than from a box drawn round it, because a bookcase set
+    at an angle to the room is still as deep as a bookcase.
+    """
+    rotation = [row[:3] for row in _rows(node.transform)]
+    extents = list(node.dimensions.as_tuple())
+    upward = max(range(3), key=lambda index: abs(rotation[2][index]))
+    height = 2 * sum(abs(rotation[2][index]) * extents[index] / 2 for index in range(3))
+    flat = sorted((extents[index] for index in range(3) if index != upward), reverse=True)
+    return Vec3(x=flat[0], y=flat[1], z=height)
+
+
+def lies_flat(node: SceneNode) -> bool:
+    """A sheet lying down: a floor, or a ceiling over one."""
+    return bounds_the_room(node) and _upright_extent(node) <= SHEET_THICKNESS
+
+
+def stands_upright(node: SceneNode) -> bool:
+    """A sheet standing up: a wall, or something set into one."""
+    return bounds_the_room(node) and _upright_extent(node) > SHEET_THICKNESS
+
+
+def _upright_extent(node: SceneNode) -> float:
+    return measured_as(node).z
+
+
+def _rows(transform) -> list[list[float]]:
+    values = transform.m
+    return [values[0:4], values[4:8], values[8:12], values[12:16]]
 
 
 def _refuse_cycles(parents: dict[UUID, UUID]) -> None:
@@ -183,6 +268,32 @@ class SceneGraph(BaseModel):
         _refuse_cycles(parents)
         return self
 
+    def ground(self) -> SceneNode | None:
+        """The sheet everything stands on: the lowest one lying down."""
+        flat = [node for node in self.nodes if lies_flat(node)]
+        return min(flat, key=lambda node: node.transform.position.z) if flat else None
+
+    def upright_extent(self, node: SceneNode) -> float:
+        """How far the region reaches up and down, in the room's own frame.
+
+        A region's extents are recorded in its own frame, and the scanner does
+        not orient every frame the same way: a floor's come back as two
+        horizontal spans and a thickness of nothing, a wall's as a width and a
+        storey. Reading `dimensions.z` and calling it height is right for some
+        regions and nonsense for others, which is why so much of this code asks
+        what kind of thing it is holding first. Turning the extents through the
+        region's own rotation answers it for all of them without asking.
+        """
+        return _upright_extent(node)
+
+    def bounds_the_room(self, node: SceneNode) -> bool:
+        """Whether the region encloses the space rather than standing in it."""
+        return bounds_the_room(node)
+
+    def contents(self) -> list[SceneNode]:
+        """Everything standing in the room rather than making it."""
+        return [node for node in self.nodes if not bounds_the_room(node)]
+
     def by_id(self, node_id: UUID) -> SceneNode:
         for node in self.nodes:
             if node.id == node_id:
@@ -199,14 +310,17 @@ class SceneGraph(BaseModel):
         inside the desk's own footprint and stops nobody, so counting it would
         narrow every aisle beside that desk by the width of a cup.
         """
-        return [n for n in self.nodes if n.kind == "wall" or (n.touches_floor and self.stands_on_floor(n))]
+        return [
+            n for n in self.nodes
+            if stands_upright(n) or (n.touches_floor and self.stands_on_floor(n))
+        ]
 
     def stands_on_floor(self, node: SceneNode) -> bool:
         """Whether the node reaches the ground rather than being carried."""
         if node.parent_id is None:
             return True
         parent = self.by_id(node.parent_id)
-        if parent.kind == "floor":
+        if lies_flat(parent):
             return node.relation == "rests_on"
         return False
 

@@ -27,14 +27,18 @@ def node(name: str, kind: str = "object", parent=None, relation=None, at=(0.0, 0
 @pytest.fixture
 def dorm():
     """A floor, a bed on it, a blanket on the bed, and a pen inside a cup on a desk."""
-    floor = node("floor", kind="floor")
-    bed = node("bed", parent=floor.id, relation="rests_on")
-    blanket = node("blanket", parent=bed.id, relation="rests_on")
-    desk = node("desk", parent=floor.id, relation="rests_on")
-    cup = node("cup", parent=desk.id, relation="rests_on")
-    pen = node("pen", parent=cup.id, relation="inside")
-    poster = node("poster", parent=node("wall", kind="wall").id, relation="mounted_on")
-    wall = node("wall", kind="wall")
+    # Sized like the things they are named after. They were all one-metre cubes,
+    # which made the room describable only by its labels: a floor that is not
+    # flat and a wall that does not stand up can be told apart from a bed by
+    # reading their names and by nothing else.
+    floor = node("floor", kind="floor", size=(4.0, 3.0, 0.0))
+    bed = node("bed", parent=floor.id, relation="rests_on", size=(2.0, 1.4, 0.5))
+    blanket = node("blanket", parent=bed.id, relation="rests_on", size=(0.9, 0.7, 0.06))
+    desk = node("desk", parent=floor.id, relation="rests_on", size=(1.2, 0.6, 0.75))
+    cup = node("cup", parent=desk.id, relation="rests_on", size=(0.09, 0.09, 0.11))
+    pen = node("pen", parent=cup.id, relation="inside", size=(0.01, 0.01, 0.14))
+    wall = node("wall", kind="wall", size=(4.0, 0.0, 2.5))
+    poster = node("poster", parent=wall.id, relation="mounted_on", size=(0.6, 0.02, 0.9))
     return SceneGraph(scan_id=uuid.uuid4(), nodes=[floor, bed, blanket, desk, cup, pen, wall, poster])
 
 

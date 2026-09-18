@@ -13,12 +13,13 @@ struct ConnectionScreen: View {
                     addressField("Upload address", value: $api)
                     addressField("Workspace address", value: $workspace)
                     Text("Use your Mac’s network address for a local server. Keep both devices on the same Wi-Fi.")
+                        .font(AppTheme.Typography.secondary)
                         .foregroundStyle(AppTheme.mutedInk)
                 }
-                if error != nil {
-                    ProgressView()
-                        .tint(AppTheme.accent)
-                        .accessibilityLabel("Working")
+                if let error {
+                    Text(error)
+                        .font(AppTheme.Typography.secondary)
+                        .foregroundStyle(AppTheme.problem)
                 }
                 Button("Save connection") {
                     do {
@@ -28,6 +29,8 @@ struct ConnectionScreen: View {
                 }
                 .buttonStyle(AppButtonStyle())
             }
+            .scrollContentBackground(.hidden)
+            .background(DraftingPaper())
             .navigationTitle("Connection")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

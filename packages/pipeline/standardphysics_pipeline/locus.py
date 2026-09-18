@@ -22,6 +22,7 @@ from standardphysics_contracts import (
     SceneNode,
     Vec3,
     WidthResult,
+    lies_flat,
     to_meters,
 )
 
@@ -85,7 +86,7 @@ def _standing_room(graph: SceneGraph, subject: Vec3) -> Vec3 | None:
     at the back of a wall. The middle of the floor is always somewhere a person
     could stand and see in.
     """
-    floor = next((node for node in graph.nodes if node.kind == "floor"), None)
+    floor = next((node for node in graph.nodes if lies_flat(node)), None)
     if floor is None:
         return None
     polygon = floor_polygon(floor)

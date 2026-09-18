@@ -21,7 +21,7 @@ struct SignInScreen: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Sign in") {
+                Section {
                     TextField("Email", text: $email)
                         .keyboardType(.emailAddress)
                         .textContentType(.username)
@@ -30,17 +30,21 @@ struct SignInScreen: View {
                     SecureField("Password", text: $password)
                         .textContentType(.password)
                     Text("Use the same email and password as your workspace.")
+                        .font(AppTheme.Typography.secondary)
                         .foregroundStyle(AppTheme.mutedInk)
                 }
                 if let error {
                     Text(error)
-                        .foregroundStyle(AppTheme.warning)
+                        .font(AppTheme.Typography.secondary)
+                        .foregroundStyle(AppTheme.problem)
                         .accessibilityAddTraits(.isStaticText)
                 }
                 Button(working ? "Signing in" : "Sign in") { submit() }
                     .buttonStyle(AppButtonStyle())
                     .disabled(!canSubmit)
             }
+            .scrollContentBackground(.hidden)
+            .background(DraftingPaper())
             .navigationTitle("Sign in")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

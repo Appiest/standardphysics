@@ -18,7 +18,7 @@ from typing import Callable
 import numpy as np
 from scipy import ndimage
 from standardphysics_agents.checks.roles import RoomKind, room_kind
-from standardphysics_contracts import Scenario, SceneGraph, SceneNode, Stop, Vec3
+from standardphysics_contracts import Scenario, SceneGraph, SceneNode, Stop, Vec3, stands_upright
 from standardphysics_pipeline import build_grid, footprint, sleeping_places
 
 STANDING_ROOM = 0.45
@@ -41,7 +41,7 @@ Point = tuple[float, float]
 
 
 def _outline_points(graph: SceneGraph) -> list[tuple[float, float]]:
-    walls = [point for node in graph.nodes if node.kind == "wall" for point in footprint(node)]
+    walls = [point for node in graph.nodes if stands_upright(node) for point in footprint(node)]
     return walls or [point for node in graph.nodes for point in footprint(node)]
 
 

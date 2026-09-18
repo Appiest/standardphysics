@@ -103,7 +103,7 @@ def rearrange(query: Query, context: AskContext) -> Answer:
         return _nothing_to_move(query, context)
 
     before = context.baseline()
-    best: tuple[Proposal, SceneGraph] | None = None
+    best: tuple[Proposal, SceneGraph, float] | None = None
     blocked_by: str | None = None
 
     for inches in _distances(query):
@@ -120,11 +120,12 @@ def rearrange(query: Query, context: AskContext) -> Answer:
         best = (
             _proposal(context.graph, candidate, moves, query.direction, inches),
             candidate,
+            inches,
         )
 
     if best is None:
         return _no_room(query, movable, blocked_by)
-    proposal, candidate = best
+    proposal, candidate, moved_inches = best
     return Answer(
         text=proposal.rationale,
         kind="REARRANGE",
@@ -134,6 +135,8 @@ def rearrange(query: Query, context: AskContext) -> Answer:
         data={
             "inventory_before": proposal.inventory_before,
             "inventory_after": proposal.inventory_after,
+            "moved_inches": moved_inches,
+            "moved_count": len(movable),
         },
         proposal=proposal,
         graph=candidate,

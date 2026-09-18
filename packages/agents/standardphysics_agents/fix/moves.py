@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 from uuid import UUID
 
-from standardphysics_contracts import Mat4, NodeMove, SceneGraph, SceneNode, Vec3
+from standardphysics_contracts import Mat4, NodeMove, SceneGraph, SceneNode, Vec3, bounds_the_room, lies_flat
 from standardphysics_pipeline import contains_point, footprint
 from standardphysics_pipeline.footprints import rotation_about_z
 
@@ -55,7 +55,7 @@ def move_node(node: SceneNode, move: NodeMove) -> SceneNode:
 
 
 def floor_height(graph: SceneGraph) -> float:
-    floor = next((node for node in graph.nodes if node.kind == "floor"), None)
+    floor = next((node for node in graph.nodes if lies_flat(node)), None)
     return floor.transform.position.z if floor else 0.0
 
 
@@ -68,7 +68,7 @@ def top_of(node: SceneNode) -> float:
 
 
 def rests_on_something(node: SceneNode, floor_z: float) -> bool:
-    return node.kind == "object" and underside(node) > floor_z + RESTING_GAP
+    return not bounds_the_room(node) and underside(node) > floor_z + RESTING_GAP
 
 
 def _surface_under(graph: SceneGraph, node: SceneNode, floor_z: float) -> float:
@@ -77,7 +77,7 @@ def _surface_under(graph: SceneGraph, node: SceneNode, floor_z: float) -> float:
     tops = [
         top_of(other)
         for other in graph.nodes
-        if other.id != node.id and other.kind == "object" and contains_point(footprint(other), centre)
+        if other.id != node.id and not bounds_the_room(other) and contains_point(footprint(other), centre)
     ]
     return max([floor_z, *tops])
 

@@ -40,6 +40,7 @@ from standardphysics_contracts import (
     SimulationRequest,
     SimulationResult,
     SimulationStatus,
+    bounds_the_room,
     graph_hash,
 )
 from standardphysics_pipeline import PipelineMeasurements
@@ -137,7 +138,7 @@ def simulation_status(database, scan_id: UUID, revision: int) -> SimulationStatu
 
 
 def _interactions(graph: SceneGraph, scenario: Scenario) -> list[Interaction]:
-    nodes = {node.id: node for node in graph.nodes if node.kind == "object"}
+    nodes = {node.id: node for node in graph.contents()}
     targets = dict.fromkeys(stop.anchor_node_id for stop in scenario.stops if stop.anchor_node_id in nodes)
     return [Interaction(id=str(key), title=f"Reach {nodes[key].label}", target_node_id=key, height="top")
             for key in targets]
@@ -531,7 +532,7 @@ def _validate_exhaustive_inputs(
     if mesh.floorY is None:
         raise ValueError("the LiDAR mesh has no floor reference")
     if not any(
-        node.kind == "object" and node.raw_category == "table"
+        not bounds_the_room(node) and node.raw_category == "table"
         for node in graph.nodes
     ):
         raise ValueError("the scan has no table candidates for generated tasks")

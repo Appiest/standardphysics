@@ -35,7 +35,7 @@ def object_mesh_profiles(graph: SceneGraph, path: pathlib.Path | None) -> dict[s
         transform = alignment @ np.asarray(part.transform).reshape(4, 4, order="F")
         pieces.append(vertices @ transform[:3, :3].T + transform[:3, 3])
     points = np.concatenate(pieces)
-    return {str(node.id): _profile(points, node) for node in graph.nodes if node.kind == "object"}
+    return {str(node.id): _profile(points, node) for node in graph.contents()}
 
 
 def _profile(points, node) -> dict:

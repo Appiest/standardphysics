@@ -7,7 +7,7 @@ import site inside this lane did not have to move.
 
 from __future__ import annotations
 
-from standardphysics_contracts import SceneGraph, graph_hash
+from standardphysics_contracts import SceneGraph, bounds_the_room, graph_hash
 
 __all__ = ["graph_hash", "inventory"]
 
@@ -20,7 +20,7 @@ def inventory(graph: SceneGraph) -> dict[str, int]:
     """
     counts: dict[str, int] = {}
     for node in graph.nodes:
-        if node.kind != "object":
+        if bounds_the_room(node):
             continue
         counts[node.label] = counts.get(node.label, 0) + 1
     return counts

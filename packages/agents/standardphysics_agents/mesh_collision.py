@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 from scipy.spatial import cKDTree
-from standardphysics_contracts import LidarMesh, Vec3, to_meters
+from standardphysics_contracts import LidarMesh, Vec3, bounds_the_room, to_meters
 from standardphysics_pipeline import footprint
 from standardphysics_pipeline.footprints import contains_point
 
@@ -97,7 +97,7 @@ class MeshCollisionIndex:
         footprints = [
             footprint(node)
             for node in nodes
-            if node.kind == "object" and node.movable
+            if not bounds_the_room(node) and node.movable
         ]
         if not footprints:
             return self

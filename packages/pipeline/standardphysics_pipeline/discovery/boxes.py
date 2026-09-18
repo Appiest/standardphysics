@@ -12,7 +12,7 @@ from __future__ import annotations
 from uuid import UUID
 
 import numpy as np
-from standardphysics_contracts import SceneGraph, SceneNode
+from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
 
 from .carve import CarvedBox
 
@@ -58,7 +58,7 @@ def claimed_by(points: np.ndarray, node: SceneNode, margin: float = CLAIMED_MARG
     _, _, half = _frame(node)
     local = to_local(points, node)
     within = np.all(np.abs(local) <= half + margin, axis=1)
-    if node.kind != "object" or half[2] * 2 <= UNCLAIMED_LID:
+    if bounds_the_room(node) or half[2] * 2 <= UNCLAIMED_LID:
         return within
     return within & (local[:, 2] <= half[2] - UNCLAIMED_LID)
 
@@ -95,7 +95,7 @@ def resting_parent(carved: CarvedBox, graph: SceneGraph) -> UUID | None:
     footprint = np.asarray([[carved.centre[0], carved.centre[1], 0.0]], dtype=np.float64)
     best: tuple[float, UUID] | None = None
     for node in graph.nodes:
-        if node.kind != "object":
+        if bounds_the_room(node):
             continue
         top = node.transform.position.z + node.dimensions.z / 2
         gap = underside - top

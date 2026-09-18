@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from standardphysics_contracts import NodeMove, SceneGraph, Vec3
+from standardphysics_contracts import NodeMove, SceneGraph, Vec3, bounds_the_room
 
 from .assess import assess
 from .evaluation.gate import accepts
@@ -73,7 +73,7 @@ def propose_redesign(graph, workflows, profiles, feedback, measure, *, rules, le
             "dimensions": node.dimensions.model_dump(mode="json"),
         }
         for node in graph.nodes
-        if node.kind == "object" and node.movable
+        if not bounds_the_room(node) and node.movable
     ]
     answer = client.structured(INSTRUCTION, {
         "room": graph.model_dump(mode="json"),

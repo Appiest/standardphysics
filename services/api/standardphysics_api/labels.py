@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 
-from standardphysics_contracts import SceneGraph, SceneNode
+from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
 
 from . import repository as repo
 from .db import Database
@@ -70,6 +70,6 @@ def _object_node(graph: SceneGraph, node_id: uuid.UUID) -> SceneNode:
         node = graph.by_id(node_id)
     except KeyError:
         raise ApiProblem(404, "no such object") from None
-    if node.kind != "object":
+    if bounds_the_room(node):
         raise ApiProblem(400, "only furniture and fixtures can be a counter")
     return node

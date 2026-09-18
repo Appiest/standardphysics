@@ -201,7 +201,7 @@ def build_entrance_object_workflows(
     }
     workflows = []
     for entrance_index, entrance in enumerate(entrances):
-        for target in (node for node in graph.nodes if node.kind == "object"):
+        for target in (node for node in graph.contents()):
             destination = existing_stops.get(target.id) or _stop_at_node(target)
             workflows.append(
                 Workflow(

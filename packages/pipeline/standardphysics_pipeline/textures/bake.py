@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from PIL import Image
-from standardphysics_contracts import NodeTextureCoverage, SceneGraph, TextureCoverage
+from standardphysics_contracts import NodeTextureCoverage, SceneGraph, TextureCoverage, bounds_the_room, lies_flat
 
 from ..blender import BlenderError, _run, display_graph
 from ..footprints import floor_polygon
@@ -173,6 +173,15 @@ def _validate_inputs(inputs: BakeInputs) -> None:
     inputs.out_dir.mkdir(parents=True, exist_ok=True)
 
 
+def _is_an_opening(node) -> bool:
+    """A doorway or a window: a hole in a surface rather than a surface.
+
+    It is cut out of something that is already being drawn, so drawing it again
+    lays a second skin over the same wall.
+    """
+    return bounds_the_room(node) and node.parent_id is not None
+
+
 def _evenly_spaced(values: list[PhotoCamera], limit: int) -> list[PhotoCamera]:
     if len(values) <= limit:
         return values
@@ -282,13 +291,13 @@ def _layout(
     graph_path, floors_path, density_path = work / "graph.json", work / "floors.json", work / "density.json"
     graph_path.write_text(graph.model_dump_json())
     floors_path.write_text(json.dumps({
-        str(node.id): floor_polygon(node) for node in graph.nodes if node.kind == "floor"
+        str(node.id): floor_polygon(node) for node in graph.nodes if lies_flat(node)
     }))
     detail = min(512.0, max(48.0, min(min(camera.width, camera.height) for camera in cameras) / 3.0))
     density_path.write_text(json.dumps({
         str(node.id): detail
         for node in graph.nodes
-        if node.kind in {"wall", "floor", "object"}
+        if not _is_an_opening(node)
     }))
     try:
         output = _run("texture_scene.py", [

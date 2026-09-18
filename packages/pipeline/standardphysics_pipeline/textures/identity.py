@@ -12,7 +12,7 @@ import hashlib
 import json
 from uuid import UUID
 
-from standardphysics_contracts import SceneGraph, SceneNode
+from standardphysics_contracts import SceneGraph, SceneNode, stands_upright
 
 TEXTURE_PIPELINE_VERSION = "7"
 PRECISION = 6
@@ -62,7 +62,7 @@ def _shape_fingerprint(node: SceneNode, portals: list) -> str:
     parts: list = [node.kind, node.raw_category, _rounded(node.dimensions.as_tuple()), _visual_parts(node)]
     if node.kind in PLACEMENT_BOUND_KINDS:
         parts.append(_rounded(node.transform.m))
-    if node.kind == "wall":
+    if stands_upright(node):
         parts.append(portals)
     return json.dumps(parts, separators=(",", ":"))
 

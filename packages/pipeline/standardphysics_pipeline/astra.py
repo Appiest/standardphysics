@@ -31,6 +31,8 @@ from standardphysics_contracts import (
     PoseRecord,
     SceneGraph,
     SceneNode,
+    bounds_the_room,
+    stands_upright,
 )
 
 from .footprints import footprint, gap_between
@@ -240,8 +242,8 @@ def apply_patches(
 
 
 def local_patches(graph: SceneGraph) -> list[LabelPatch]:
-    walls = [node for node in graph.nodes if node.kind == "wall"]
-    objects = [node for node in graph.nodes if node.kind == "object"]
+    walls = [node for node in graph.nodes if stands_upright(node)]
+    objects = graph.contents()
     return [_local_patch(node, walls, objects, graph) for node in graph.nodes]
 
 
@@ -269,7 +271,7 @@ def _apply_one(node: SceneNode, patch: LabelPatch | None, source: Reconstruction
 
 
 def _locked_movable(node: SceneNode, proposed: bool) -> bool:
-    if node.kind != "object" or node.raw_category in FIXED_CATEGORIES:
+    if bounds_the_room(node) or node.raw_category in FIXED_CATEGORIES:
         return False
     if not node.movable:
         return False
@@ -284,7 +286,7 @@ def _local_patch(node: SceneNode, walls: list[SceneNode], objects: list[SceneNod
 def _local_identity(node: SceneNode, walls: list[SceneNode], graph: SceneGraph) -> tuple[str, bool]:
     if node.kind == "door":
         return _door_label(node, graph), False
-    if node.kind != "object" or node.raw_category in FIXED_CATEGORIES:
+    if bounds_the_room(node) or node.raw_category in FIXED_CATEGORIES:
         return node.label, False
     if node.label.strip().casefold() in COUNTER_LABELS:
         return node.label, False
@@ -320,7 +322,7 @@ def _looks_like_counter(node: SceneNode, walls: list[SceneNode]) -> bool:
 
 
 def _local_quality(node: SceneNode, objects: list[SceneNode]) -> QualityName:
-    if node.quality == "confirmed" or node.kind != "object":
+    if node.quality == "confirmed" or bounds_the_room(node):
         return node.quality
     if min(node.dimensions.x, node.dimensions.y, node.dimensions.z) < THIN_METERS:
         return "needs_another_look"
@@ -340,7 +342,7 @@ def _remote_patches(
     api_key = os.environ.get(API_KEY_ENV)
     if transport is None and not api_key:
         return None
-    objects = [node for node in graph.nodes if node.kind == "object"]
+    objects = graph.contents()
     batches = [objects[index:index + RECONSTRUCTION_BATCH_SIZE] for index in range(0, len(objects), RECONSTRUCTION_BATCH_SIZE)]
     if not batches:
         return None
@@ -383,7 +385,7 @@ def _remote_batch(
 ) -> list[LabelPatch] | None:
     if time.monotonic() >= deadline:
         return None
-    scoped = graph.model_copy(update={"nodes": [node for node in graph.nodes if node.kind != "object"] + list(objects)})
+    scoped = graph.model_copy(update={"nodes": [n for n in graph.nodes if graph.bounds_the_room(n)] + list(objects)})
     body = _chat_body(
         scoped,
         frame_paths=frame_paths,
@@ -602,7 +604,7 @@ def select_keyframes(
         for order, path in enumerate(paths)
         for score, visible in [_best_frame_score(path, graph, pose_by_key)]
     ]
-    objects = [node for node in graph.nodes if node.kind == "object"]
+    objects = graph.contents()
     if not objects:
         return _strongest_paths(candidates, limit)
 
@@ -708,7 +710,7 @@ def _best_frame_score(
     pose = pose_by_key.get(_frame_key(path.name))
     if pose is None:
         return -100.0, False
-    scores = [_project_score(node, pose, graph.capture_to_room) for node in graph.nodes if node.kind == "object"]
+    scores = [_project_score(node, pose, graph.capture_to_room) for node in graph.contents()]
     if not scores:
         return 0.0, False
     return max(scores, key=lambda item: item[0])
@@ -851,7 +853,7 @@ def _crop_candidates(graph: SceneGraph, paths: list[pathlib.Path], poses_path) -
     path_by_id = {_frame_key(path.name): path for path in paths}
     candidates: dict[UUID, list[Candidate]] = {}
     dimensions_match: dict[pathlib.Path, bool] = {}
-    objects = [node for node in graph.nodes if node.kind == "object"]
+    objects = graph.contents()
     for pose in _load_poses(poses_path):
         record = pose.record
         path = path_by_id.get(pose.frame_key)
@@ -888,7 +890,7 @@ def _best_views(graph: SceneGraph, candidates: dict[UUID, list[Candidate]]) -> l
     else; two frames of the same angle prove nothing the first did not.
     """
     selected: list[Selection] = []
-    for node in (item for item in graph.nodes if item.kind == "object"):
+    for node in graph.contents():
         ranked = sorted(candidates.get(node.id, []), key=lambda item: (-item[0], item[1]))
         if ranked:
             _, frame_id, path, crop, orientation, position, _ = ranked[0]
@@ -1130,10 +1132,10 @@ def _context(
     mesh_profiles: dict[UUID, Any] | None = None,
 ) -> dict[str, Any]:
     return {
-        "walls": [_surface_brief(node) for node in graph.nodes if node.kind == "wall"],
+        "walls": [_surface_brief(node) for node in graph.nodes if stands_upright(node)],
         "objects": [
             _object_brief(node, (mesh_profiles or {}).get(str(node.id)))
-            for node in graph.nodes if node.kind == "object"
+            for node in graph.contents()
         ],
         "doors": [_surface_brief(node) for node in graph.nodes if node.kind == "door"],
         "images_provided": images_provided,
@@ -1223,7 +1225,7 @@ def _patches_from_model(
     items = parsed.get("nodes")
     if not isinstance(items, list):
         return None
-    expected = {node.id for node in graph.nodes if node.kind == "object"}
+    expected = {node.id for node in graph.contents()}
     if not expected:
         return None
     patches = [

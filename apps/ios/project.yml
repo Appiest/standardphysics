@@ -25,6 +25,18 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         UILaunchStoryboardName: LaunchScreen
+        UIAppFonts:
+          - LibreFranklin-Bold.ttf
+          - LibreFranklin-ExtraBold.ttf
+          - Karla-Regular.ttf
+          - Karla-Medium.ttf
+          - Karla-Bold.ttf
+          - AtkinsonHyperlegibleMono-Regular.ttf
+          - AtkinsonHyperlegibleMono-Medium.ttf
+        # The sheet is drawn with square corners throughout, and iOS 26 rounds
+        # every system control it draws for us, swipe actions among them. This
+        # is the supported way back to the squared-off controls.
+        UIDesignRequiresCompatibility: true
         UIRequiresFullScreen: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

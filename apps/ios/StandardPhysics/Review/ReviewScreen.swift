@@ -20,7 +20,7 @@ struct ReviewScreen: View {
 
     var body: some View {
         ZStack {
-            AppTheme.canvas.ignoresSafeArea()
+            DraftingPaper()
             VStack(spacing: 0) {
                 ZStack(alignment: .topLeading) {
                     ScannedRoomView(scene: detailScene ?? roomScene, locator: locator,
@@ -46,7 +46,7 @@ struct ReviewScreen: View {
                 }
 
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.card) {
-                    Text(selectedSurface).font(.headline).accessibilityAddTraits(.updatesFrequently)
+                    Text(selectedSurface).font(AppTheme.Typography.heading).accessibilityAddTraits(.updatesFrequently)
                     if let notice = scan.captureNotice {
                         Text(notice).foregroundStyle(AppTheme.mutedInk)
                         Button("Record another pass") { model.beginCapture() }
@@ -59,10 +59,10 @@ struct ReviewScreen: View {
                             .buttonStyle(AppButtonStyle(.secondary))
                     }
                     Text("Name this shop")
-                        .font(.title2.bold())
+                        .font(AppTheme.Typography.title)
                     TextField("Boba shop", text: $name)
                         .textInputAutocapitalization(.words)
-                        .font(.title3)
+                        .font(AppTheme.Typography.body)
                         .padding(AppTheme.Spacing.control)
                         .background(AppTheme.panel)
                         .overlay {

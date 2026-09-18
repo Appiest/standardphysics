@@ -6,13 +6,17 @@ struct UploadStatusScreen: View {
 
     var body: some View {
         ZStack {
-            AppTheme.canvas.ignoresSafeArea()
+            DraftingPaper()
             VStack(spacing: AppTheme.Spacing.page) {
                 Spacer()
                 statusMark
-                if uploadModel.errorMessage == nil && uploadModel.state != .failed {
-                    Text(uploadModel.state.displayText)
-                        .font(AppTheme.Typography.status)
+                Text(uploadModel.state.displayText)
+                    .font(AppTheme.Typography.status)
+                    .multilineTextAlignment(.center)
+                if let message = uploadModel.errorMessage {
+                    Text(message)
+                        .font(AppTheme.Typography.body)
+                        .foregroundStyle(AppTheme.mutedInk)
                         .multilineTextAlignment(.center)
                 }
                 if uploadModel.optionalUploadErrorMessage != nil {

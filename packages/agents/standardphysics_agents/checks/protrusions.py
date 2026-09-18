@@ -17,7 +17,7 @@ there is nothing there to report.
 
 from __future__ import annotations
 
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3, to_inches
+from standardphysics_contracts import SceneGraph, SceneNode, Vec3, bounds_the_room, lies_flat, stands_upright, to_inches
 from standardphysics_pipeline import footprint
 from standardphysics_pipeline.footprints import rotation_about_z
 
@@ -41,7 +41,7 @@ def leading_edge_inches(node: SceneNode) -> float:
 
 
 def is_mounted(node: SceneNode) -> bool:
-    return node.kind == "object" and leading_edge_inches(node) > MOUNTED_ABOVE_INCHES
+    return not bounds_the_room(node) and leading_edge_inches(node) > MOUNTED_ABOVE_INCHES
 
 
 def in_the_hazard_band(node: SceneNode, rule: RuleSpec) -> bool:
@@ -54,7 +54,7 @@ def in_the_hazard_band(node: SceneNode, rule: RuleSpec) -> bool:
 
 
 def _room_centre(graph: SceneGraph) -> Vec3:
-    floors = [node for node in graph.nodes if node.kind == "floor"]
+    floors = [node for node in graph.nodes if lies_flat(node)]
     return floors[0].transform.position if floors else Vec3(x=0.0, y=0.0, z=0.0)
 
 
@@ -89,7 +89,7 @@ def projection_inches(node: SceneNode, wall: SceneNode, room_centre: Vec3) -> fl
 def _host_wall(node: SceneNode, graph: SceneGraph) -> SceneNode | None:
     """The wall a mounted object belongs to, by its declared parent or by
     whichever one it reaches out of least."""
-    walls = [other for other in graph.nodes if other.kind == "wall"]
+    walls = [other for other in graph.nodes if stands_upright(other)]
     if not walls:
         return None
     if node.parent_id is not None:

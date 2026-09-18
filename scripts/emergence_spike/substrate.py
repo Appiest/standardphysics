@@ -7,16 +7,16 @@ experiment is whether a model can write those itself.
 import json
 import math
 import pathlib
-import sys
 
-sys.path.insert(0, "/home/user/standardphysics/packages/pipeline")
 from standardphysics_pipeline.ingest import parse_room_json
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 GRAVITY = [0.0, 0.0, -1.0]  # measured up-axis of the scan is +z
 
 
 def load(name):
-    graph = parse_room_json(json.loads(pathlib.Path(f"/home/user/standardphysics/datasets/phone/{name}/room.json").read_text()))
+    graph = parse_room_json(json.loads(ROOT.joinpath("datasets", "phone", name, "room.json").read_text()))
     regions = {}
     truth = {}
     for index, node in enumerate(graph.nodes):

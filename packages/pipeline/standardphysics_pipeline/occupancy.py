@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 import numpy as np
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3, to_meters
+from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, to_meters
 
 from .footprints import floor_polygon, polygon_bounds
 
@@ -148,7 +148,7 @@ def _rotation_2d(node: SceneNode) -> tuple[float, float]:
 
 
 def _bounds(graph: SceneGraph) -> tuple[float, float, float, float]:
-    floor = next((node for node in graph.nodes if node.kind == "floor"), None)
+    floor = next((node for node in graph.nodes if lies_flat(node)), None)
     if floor is not None:
         min_x, min_y, max_x, max_y = polygon_bounds(floor_polygon(floor))
         return (
@@ -166,6 +166,8 @@ def _bounds(graph: SceneGraph) -> tuple[float, float, float, float]:
 
 def build_grid(graph: SceneGraph, cell_size: float = CELL_SIZE) -> Grid:
     min_x, min_y, max_x, max_y = _bounds(graph)
+    if _measures_nothing(graph):
+        return _all_blocked(min_x, min_y, max_x, max_y, cell_size)
     cols = max(int(np.ceil((max_x - min_x) / cell_size)), 1)
     rows = max(int(np.ceil((max_y - min_y) / cell_size)), 1)
     occupied = np.zeros((rows, cols), dtype=bool)
@@ -190,6 +192,34 @@ def build_grid(graph: SceneGraph, cell_size: float = CELL_SIZE) -> Grid:
     return Grid(
         min_x, min_y, cell_size, occupied, owner, node_ids,
         _floor_mask(graph, world_x, world_y, INDOOR_MARGIN),
+    )
+
+
+def _measures_nothing(graph: SceneGraph) -> bool:
+    """Whether the capture handed back a region with no size in any direction.
+
+    A wall is allowed to have no thickness and a floor no height, but nothing
+    real has no extent at all. One of those in the graph means the capture did
+    not measure what it claims to describe, and a room whose shape is unknown
+    has no walkable ground in it until somebody scans it again.
+    """
+    return any(
+        max(node.dimensions.as_tuple()) <= 0 for node in graph.nodes
+    )
+
+
+def _all_blocked(
+    min_x: float, min_y: float, max_x: float, max_y: float, cell_size: float
+) -> Grid:
+    """Nothing walkable, which is the safe way to be wrong about a room."""
+    cols = max(int(np.ceil((max_x - min_x) / cell_size)), 1)
+    rows = max(int(np.ceil((max_y - min_y) / cell_size)), 1)
+    return Grid(
+        min_x, min_y, cell_size,
+        np.ones((rows, cols), dtype=bool),
+        np.full((rows, cols), -1, dtype=np.int32),
+        [],
+        None,
     )
 
 
@@ -264,7 +294,7 @@ def _floor_mask(
     graph: SceneGraph, world_x: np.ndarray, world_y: np.ndarray, margin: float
 ) -> np.ndarray | None:
     """Which cells lie on the scanned floor, give or take `margin` metres."""
-    floor = next((node for node in graph.nodes if node.kind == "floor"), None)
+    floor = next((node for node in graph.nodes if lies_flat(node)), None)
     if floor is None:
         return None
     return _inside_convex_polygon(floor_polygon(floor), world_x, world_y, margin)

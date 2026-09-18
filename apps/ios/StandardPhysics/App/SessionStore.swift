@@ -14,7 +14,7 @@ import Security
 /// it does not belong.
 @MainActor
 final class SessionStore: ObservableObject {
-    struct Owner: Decodable, Equatable, Sendable {
+    struct Owner: Codable, Equatable, Sendable {
         let email: String
         let shopName: String
 

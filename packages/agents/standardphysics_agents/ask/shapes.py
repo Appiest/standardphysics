@@ -17,7 +17,7 @@ import statistics
 from dataclasses import dataclass
 from typing import Literal
 
-from standardphysics_contracts import SceneNode, to_inches
+from standardphysics_contracts import SceneNode, bounds_the_room, stands_upright, to_inches
 
 from ..numbers import COUNT_WORDS, plural, span
 from ..tracing import traced
@@ -88,7 +88,7 @@ def _spacing(groups: list[list[float]]) -> float | None:
 def _near_a_wall(nodes: list[SceneNode], context: AskContext) -> int:
     from standardphysics_pipeline import gap_between_nodes
 
-    walls = [node for node in context.graph.nodes if node.kind == "wall"]
+    walls = [node for node in context.graph.nodes if stands_upright(node)]
     if not walls:
         return 0
     return sum(
@@ -104,7 +104,7 @@ def _extent(values: list[float]) -> float:
 
 
 def _room_span(context: AskContext, axis: tuple[float, float]) -> float:
-    walls = [node for node in context.graph.nodes if node.kind == "wall"]
+    walls = [node for node in context.graph.nodes if stands_upright(node)]
     if not walls:
         return 0.0
     return _extent(_project(walls, axis))
@@ -201,7 +201,7 @@ def describe(query: Query, context: AskContext) -> Answer:
     found = subjects.resolve(
         context.graph, query.subject_node_ids, query.subject_labels
     )
-    placeable = [node for node in found if node.kind == "object"]
+    placeable = [node for node in found if not bounds_the_room(node)]
     if not placeable:
         return _not_here(query)
 

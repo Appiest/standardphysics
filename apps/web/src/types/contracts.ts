@@ -833,15 +833,15 @@ export interface SceneNode {
   appearance?: DisplayAppearance | null;
   dimensions: Vec3;
   id: string;
-  kind: "wall" | "door" | "window" | "opening" | "floor" | "object";
+  kind: string;
   label: string;
-  labeled_by: "roomplan" | "astra" | "owner" | "discovery";
+  labeled_by: string;
   movable: boolean;
   parent_id: string | null;
   quality: "measured" | "needs_another_look" | "confirmed";
   raw_category: string;
   reconstruction?: DisplayReconstruction | null;
-  relation?: ("rests_on" | "inside" | "mounted_on" | "cut_into") | null;
+  relation?: string | null;
   texts?: SurfaceText[];
   transform: Mat4;
 }

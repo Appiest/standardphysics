@@ -38,6 +38,8 @@ from standardphysics_contracts import (
     SceneNode,
     Stop,
     Vec3,
+    bounds_the_room,
+    lies_flat,
     to_inches,
 )
 from standardphysics_contracts.rules import Tier
@@ -198,7 +200,7 @@ def default_aim(capture_id: str) -> Aim:
     customer starts, and ends at whatever is furthest from it.
     """
     named = anchors(load(capture_id))
-    ways_in = [name for name, node in named.items() if node.kind != "object"]
+    ways_in = [name for name, node in named.items() if bounds_the_room(node)]
     start = ways_in[0] if ways_in else next(iter(named))
     return Aim(capture=capture_id, start=start, end=_furthest_from(named, start))
 
@@ -412,7 +414,7 @@ def relied_on(result: Pass) -> set[UUID]:
 
 def floor_outline(graph: SceneGraph) -> Polygon | None:
     """The scanned floor, as a ground polygon."""
-    floor = next((node for node in graph.nodes if node.kind == "floor"), None)
+    floor = next((node for node in graph.nodes if lies_flat(node)), None)
     return None if floor is None else floor_polygon(floor)
 
 

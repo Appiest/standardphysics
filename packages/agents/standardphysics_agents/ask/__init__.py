@@ -22,31 +22,61 @@ from ..router.decision import Rejected
 from ..rules import AgentRulePack, VerificationLedger, load_ledger, load_pack
 from ..tracing import traced
 from .answer import Answer, AskContext
+from .compose import compose
 from .dimensions import measure
 from .directions import DIRECTIONS, Direction, shop_axes
 from .inventory import count
 from .layout import rearrange
 from .locus import subject_locus
 from .places import where
-from .query import KINDS, Query, QueryKind, parse_query, query_schema
+from .query import (
+    KINDS,
+    Query,
+    QueryKind,
+    all_of,
+    names_something,
+    parse_query,
+    query_schema,
+    register_kind,
+)
 from .resolve import KeywordResolver, ModelResolver, catalogue, resolver
 from .shapes import Arrangement, arrangement, describe
 from .space import FitAnswer, FitRequest, fits, space
 from .spans import distance
 from .standards import check
+from .verify import verified
 
 Executor = Callable[[Query, AskContext], Answer]
 
-EXECUTORS: dict[QueryKind, Executor] = {
-    "COUNT": count,
-    "MEASURE": measure,
-    "DISTANCE": distance,
-    "WHERE": where,
-    "DESCRIBE": describe,
-    "SPACE": space,
-    "REARRANGE": rearrange,
-    "CHECK": check,
-}
+def _says(field: str, reason: str):
+    """A question has to carry this argument before it can be acted on."""
+    return lambda query: None if getattr(query, field) else reason
+
+
+EXECUTORS: dict[QueryKind, Executor] = {}
+
+
+def answers(name: str, executor: Executor, *needs) -> None:
+    """Register an executor under the kind of question it answers.
+
+    The kind, what a question of it must carry, and the code that answers it are
+    one entry, so the list of questions this layer can take is the list of
+    executors that exist rather than a type written somewhere else.
+    """
+    EXECUTORS[name] = executor
+    register_kind(name, all_of(*needs) if needs else None)
+
+
+answers("COUNT", count, names_something)
+answers("MEASURE", measure, names_something,
+        _says("dimension", "question_does_not_say_which_dimension"))
+answers("DISTANCE", distance, _says("other_labels", "question_names_only_one_end"))
+answers("WHERE", where, names_something)
+answers("DESCRIBE", describe, names_something)
+answers("SPACE", space, _says("length_inches", "question_does_not_say_how_big"))
+answers("REARRANGE", rearrange, names_something,
+        _says("direction", "question_does_not_say_which_way"))
+answers("CHECK", check)
 
 
 @traced("ask")
@@ -70,6 +100,23 @@ def ask(
         ledger=ledger if ledger is not None else load_ledger(),
         max_tier=max_tier,
     )
+    return verified(_answered(text, graph, scenario, context, with_resolver), graph, text)
+
+
+def _answered(text, graph, scenario, context, with_resolver) -> Answer:
+    """A plan the model wrote, or the older executors when it could not write one.
+
+    Composition leads because a question nobody anticipated has nowhere else to
+    go. The executors stay underneath until every question they serve can be
+    written as steps, and they answer while a model is unreachable.
+    """
+    planned = compose(text, graph)
+    if planned is not None:
+        return Answer(
+            text=planned.text,
+            subjects=planned.regions,
+            data={"figures": planned.figures},
+        )
     query = (with_resolver or resolver()).resolve(text, graph, scenario)
     if isinstance(query, Rejected):
         return Answer(text=ask_reply(query.reason), rejected=query.reason)
@@ -79,8 +126,9 @@ def ask(
 __all__ = [
     "DIRECTIONS", "EXECUTORS", "KINDS", "Answer", "Arrangement", "AskContext",
     "Direction", "Executor", "FitAnswer", "FitRequest", "KeywordResolver",
-    "ModelResolver", "Query", "QueryKind", "arrangement", "ask", "catalogue",
+    "ModelResolver", "Query", "QueryKind", "answers", "arrangement", "ask", "catalogue",
     "check", "count", "describe", "distance", "fits", "measure", "parse_query",
-    "query_schema", "rearrange", "resolver", "shop_axes", "space",
+    "compose", "query_schema", "rearrange", "resolver", "shop_axes", "space",
+    "verified",
     "subject_locus", "where",
 ]

@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 from typing import Literal
 
-from standardphysics_contracts import Scenario, SceneGraph, SceneNode, Vec3
+from standardphysics_contracts import Scenario, SceneGraph, SceneNode, Vec3, lies_flat
 
 Direction = Literal["back", "front", "left", "right", "apart", "together"]
 
@@ -44,7 +44,7 @@ def _room_axes(graph: SceneGraph | None) -> list[tuple[float, float]]:
         return []
     from standardphysics_pipeline.footprints import rotation_about_z
 
-    floors = [node for node in graph.nodes if node.kind == "floor"]
+    floors = [node for node in graph.nodes if lies_flat(node)]
     if not floors:
         return []
     cos_t, sin_t = rotation_about_z(floors[0])

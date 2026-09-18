@@ -18,6 +18,7 @@ from standardphysics_contracts import (
     SceneNode,
     TextSet,
     Vec3,
+    bounds_the_room,
     to_inches,
 )
 
@@ -141,7 +142,7 @@ def find_objects(arguments: SearchArgument, context: Context) -> PrimitiveResult
     found = [
         node
         for node in context.graph.nodes
-        if node.kind == "object" and _named_by(node, wanted)
+        if not bounds_the_room(node) and _named_by(node, wanted)
     ]
     return _nodes_result("find_objects", found, None)
 
@@ -186,7 +187,7 @@ def text_on(arguments: NodeArgument, context: Context) -> PrimitiveResult:
     NoArguments,
 )
 def everything_in_the_room(_: NoArguments, context: Context) -> PrimitiveResult:
-    found = [node for node in context.graph.nodes if node.kind == "object"]
+    found = [node for node in context.graph.nodes if not bounds_the_room(node)]
     return _nodes_result("everything_in_the_room", found, None)
 
 
