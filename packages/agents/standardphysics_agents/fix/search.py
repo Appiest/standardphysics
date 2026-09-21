@@ -13,7 +13,7 @@ could allow, tested first so the offer is real.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Literal
 from uuid import UUID
@@ -38,6 +38,7 @@ from ..tracing import traced
 from .constraints import violations
 from .moves import apply_moves, unlocked, without
 from .pinch import Pinch, pinch_from
+from .placement import placements
 from .strategies import Candidate, candidates
 
 PROPOSAL_NAMESPACE = uuid.UUID("7b3c1f04-5e2a-4c6b-9d18-000000000004")
@@ -155,10 +156,13 @@ class _Search:
     rejected: list[str] = field(default_factory=list)
 
     def run(self, pinch: Pinch, limit: int) -> tuple[Candidate, SceneGraph] | None:
+        return self.check(pinch, candidates(pinch, limit))
+
+    def check(self, pinch: Pinch, guesses: Iterable[Candidate]) -> tuple[Candidate, SceneGraph] | None:
         from ..evaluation.gate import accepts
 
         known = {finding.id for finding in self.baseline.problems}
-        for candidate in candidates(pinch, limit):
+        for candidate in guesses:
             rearranged = apply_moves(self.graph, candidate.moves)
             broken = violations(self.graph, rearranged)
             if broken:
@@ -200,7 +204,8 @@ def propose_fix(
     candidate_rejection: CandidateRejection | None = None,
 ) -> FixOutcome:
     """One arrangement that clears a named finding, or one thing to ask about."""
-    problems = [finding for finding in targets if finding.outcome == "problem"]
+    problems = [finding for finding in targets if finding.outcome == "problem"
+                and rules.by_id(finding.check_id).rearrangeable]
     before = baseline or assess(
         graph, scenario, measure, rules=rules, ledger=ledger, max_tier=max_tier
     )
@@ -212,6 +217,9 @@ def propose_fix(
     )
     for pinch in _pinches(problems, graph):
         result = search.run(pinch, limit)
+        if result is None and limit > 0:
+            finding = next(f for f in problems if f.id == pinch.finding_id)
+            result = search.check(pinch, placements(graph, pinch, finding, rules, limit * 4))
         if result is None:
             continue
         picked, rearranged = result

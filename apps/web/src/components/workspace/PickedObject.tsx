@@ -3,7 +3,7 @@
 import { Storefront } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button } from "@/components/ui/Button";
+import { IconButton } from "@/components/ui/IconButton";
 import { canBeCounter, isMarkedCounter, pieceName } from "@/lib/counter";
 import { setCounter } from "@/lib/layout-client";
 import type { SceneNode } from "@/types/contracts";
@@ -34,10 +34,9 @@ function useCounterToggle(scanId: string, revision: number) {
 function CounterButton({ node, saving, onToggle }: { node: SceneNode; saving: boolean; onToggle: () => void }) {
   const marked = isMarkedCounter(node);
   return (
-    <Button variant="chip" aria-pressed={marked} disabled={saving} onClick={onToggle} className="disabled:opacity-60">
-      <Storefront size={16} weight="bold" aria-hidden />
-      {marked ? "Not the counter" : "Mark as the counter"}
-    </Button>
+    <IconButton label={marked ? "Customers order here" : "Mark as the counter"} tooltipSide="below" aria-pressed={marked} disabled={saving} onClick={onToggle}>
+      <Storefront size={18} weight={marked ? "fill" : "regular"} aria-hidden />
+    </IconButton>
   );
 }
 
@@ -54,8 +53,8 @@ export function PickedObject({ scanId, revision, label, node, editable }: {
 
   return (
     <div hidden={!label} className="absolute left-4 top-4 flex max-w-[calc(100%-2rem)] flex-col items-start gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <p aria-live="polite" className="rounded-lg bg-sheet px-3 py-2 text-sm text-ink">{label && pieceName(label)}</p>
+      <div className="flex items-center gap-1 rounded-xl bg-sheet/95 p-1 shadow-float">
+        <p aria-live="polite" className="px-2 text-sm font-medium text-ink">{label && pieceName(label)}</p>
         {offerCounter && <CounterButton node={node} saving={saving} onToggle={() => toggle(node)} />}
       </div>
       {problem && <p role="alert" className="rounded-lg bg-sheet px-3 py-2 text-sm text-problem">{problem}</p>}

@@ -1,16 +1,15 @@
 """Astra proposes tasks on known scanned surfaces; code owns all coordinates."""
 from __future__ import annotations
 
+import time
 from typing import Literal
 from uuid import UUID
-import json
-import time
 
 from pydantic import BaseModel, ConfigDict, Field
-from standardphysics_contracts import SceneGraph
+from standardphysics_contracts import SceneGraph, bounds_the_room
 
 from ..models import OpenRouter
-from ..router import Rejected
+from ..router import ChoiceQuestion, Rejected, SystemOneClient, SystemOneError
 from ..router.typesafe import TypeSafeRouter
 
 # Explicit hypothetical prop footprints in meters, never scan measurements.
@@ -49,7 +48,7 @@ INSTRUCTION = (
 
 
 def validate_tasks(suite: TaskSuite, graph: SceneGraph) -> TaskSuite:
-    tables = {node.id for node in graph.nodes if node.kind == "object" and node.raw_category == "table"}
+    tables = {node.id for node in graph.contents() if node.raw_category == "table"}
     if len({task.id for task in suite.tasks}) != len(suite.tasks):
         raise ValueError("task IDs must be unique")
     if any(task.target_node_id not in tables for task in suite.tasks):
@@ -62,11 +61,13 @@ def validate_tasks(suite: TaskSuite, graph: SceneGraph) -> TaskSuite:
 def propose_tasks(graph: SceneGraph, client: OpenRouter | None = None) -> tuple[TaskSuite, dict]:
     client = client or OpenRouter()
     tables = [node.model_dump(mode="json") for node in graph.nodes
-              if node.kind == "object" and node.raw_category == "table"]
+              if not bounds_the_room(node) and node.raw_category == "table"]
     answer = client.structured(INSTRUCTION, {"scan_id": str(graph.scan_id), "tables": tables},
                                TaskSuite.model_json_schema(), "scan_task_suite")
     if isinstance(answer, Rejected):
-        raise RuntimeError(f"Astra task generation failed: {answer.reason}")
+        raise RuntimeError(  # noqa: TRY004 -- provider failure, not a caller type error
+            f"Astra task generation failed: {answer.reason}"
+        )
     suite = validate_tasks(TaskSuite.model_validate(answer.payload), graph)
     return suite, {"model": answer.model, "provider": answer.provider,
                    "calls": 1, "source": "Astra via OpenRouter", "props": "hypothetical"}
@@ -80,23 +81,52 @@ def choose_task(tasks: list[ScanTask], history: list[dict],
     router = router or TypeSafeRouter()
     if not router.configured:
         raise RuntimeError("TypeSafe is required for task prioritization")
-    body = {
-        "model": router.model,
-        "state": {"goal": "Investigate wheelchair access to everyday tasks, especially medicine and computer use.",
-                  "remaining_tasks": [task.model_dump(mode="json") for task in tasks],
-                  "completed_screenings": history},
-        "questions": {"task": {"type": "choice",
-            "instructions": "Which remaining everyday task is most useful to investigate next, considering the user's priorities and completed route/reach evidence? Select a supplied task ID. This orders geometric tests and does not determine legal compliance.",
-            "criteria": {task.id: task.title for task in tasks}}},
+    state = {
+        "goal": "Investigate wheelchair access to everyday tasks, especially medicine and computer use.",
+        "remaining_tasks": [task.model_dump(mode="json") for task in tasks],
+        "completed_screenings": history,
     }
+    question = ChoiceQuestion(
+        instructions=(
+            "Which remaining everyday task is most useful to investigate next, "
+            "considering the user's priorities and completed route/reach evidence? "
+            "Select a supplied task ID. This orders geometric tests and does not "
+            "determine legal compliance."
+        ),
+        criteria={task.id: task.title for task in tasks},
+    )
+    client = SystemOneClient(
+        api_key=router.api_key,
+        base_url=router.base_url,
+        path=router.path,
+        model=router.model,
+        transport=router.transport,
+        budget=router.budget,
+    )
     started = time.perf_counter()
-    response = json.loads(router.transport.post(
-        router.base_url+router.path, json.dumps(body).encode(),
-        {"Authorization": f"Bearer {router.api_key}", "Content-Type": "application/json"},
-    ))
-    answer = response.get("answers", {}).get("task", {})
-    selected = next((task for task in tasks if task.id == answer.get("choice")), None)
+    try:
+        result = client.evaluate(state, {"task": question})
+    except SystemOneError as error:
+        raise RuntimeError(
+            f"TypeSafe task prioritization failed: {error}"
+        ) from error
+    answer = result.answers["task"]
+    selected = next(
+        (task for task in tasks if task.id == getattr(answer, "choice", None)), None
+    )
     if selected is None:
         raise ValueError("TypeSafe returned an unknown or missing task; no batch authorized")
-    return selected, {"source": "typesafe", "calls": 1, "request": body,
-                       "response": response, "elapsed_seconds": time.perf_counter()-started}
+    return selected, {
+        "source": "typesafe",
+        "calls": 1,
+        "request": {
+            "state": state,
+            "questions": {"task": question.model_dump(mode="json")},
+        },
+        "response": {
+            "model": result.model,
+            "answers": {"task": answer.model_dump(mode="json")},
+            "usage": result.usage.model_dump(mode="json"),
+        },
+        "elapsed_seconds": time.perf_counter() - started,
+    }

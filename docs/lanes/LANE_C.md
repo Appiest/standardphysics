@@ -73,6 +73,8 @@ setting off or every call is traced twice.
 
 **7. Weave tracing.** `weave.init()` at startup, `@weave.op` on every agent call and check. The whole loop should read as one trace tree.
 
+**7b. The experiment grid.** `cli experiments` scores the same cases against nine configurations and logs each one as a W&B run, which is the form ARIA reads. Cost travels with the scores: every measurement asked for, counted. See [`docs/aria.md`](../aria.md).
+
 **8. Evaluation.** About 25 labeled cases: fixture variants plus real scans as they arrive. Cover clean passes, real violations, ambiguous objects, thin coverage, and cases where the right answer is to ask rather than guess. Scorers: `finding_precision`, `finding_recall`, `measurement_error_in`, `label_accuracy`, `router_action_match`, `fix_resolves_finding`.
 
 **9. The gate.** A candidate layout is accepted only when its evaluation completes and strictly improves, with no new failures and no lost coverage. This is the difference between using Weave and using Weave well, and it is what the prize is judged on.

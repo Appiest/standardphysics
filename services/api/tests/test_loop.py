@@ -1,11 +1,12 @@
+import json
 import uuid
 
-from conftest import drain, no_blender_stages
 from standardphysics_agents import LocalPolicyRouter
-from standardphysics_api.loop_run import combine_moves
 from standardphysics_contracts import NodeMove, Vec3
-
 from standardphysics_fixtures import node_id
+
+from conftest import drain, no_blender_stages
+from standardphysics_api.loop_run import combine_moves
 
 
 def _sample(make_client):
@@ -41,3 +42,38 @@ def test_kept_moves_on_the_same_piece_add_up():
     [combined] = combine_moves(moves)
     assert (round(combined.delta_translation.x, 6), combined.delta_translation.y) == (0.15, 0.2)
     assert combined.delta_rotation_z_degrees == 10
+
+
+def _streamed_events(client, scan_id, base_revision=0):
+    with client.stream("POST", f"/api/scans/{scan_id}/loop/stream", json={"base_revision": base_revision}) as response:
+        assert response.headers["content-type"].startswith("application/x-ndjson")
+        return [json.loads(line) for line in response.iter_lines() if line]
+
+
+def test_the_streamed_loop_reports_each_pass_then_the_same_result(make_client):
+    client, scan_id = _sample(make_client)
+    events = _streamed_events(client, scan_id)
+    kinds = [event["kind"] for event in events]
+    assert kinds[0] == "started" and events[0]["decided_by"] == "local_policy"
+    assert kinds[-1] == "finished"
+    assert kinds[1:-1] and set(kinds[1:-1]) == {"pass"}
+    result = events[-1]["result"]
+    assert result["passes"] == [event["loop_pass"] for event in events[1:-1]]
+    assert result == client.post(f"/api/scans/{scan_id}/loop", json={"base_revision": 0}).json()
+
+
+def test_the_streamed_loop_refuses_a_missing_layout_before_it_starts(make_client):
+    client, scan_id = _sample(make_client)
+    assert client.post(f"/api/scans/{scan_id}/loop/stream", json={"base_revision": 9}).status_code == 404
+
+
+def test_a_loop_that_breaks_partway_ends_the_stream_with_a_failure(make_client, monkeypatch):
+    def breaks_before_the_first_pass(*args, **kwargs):
+        raise RuntimeError("measurement cache went away")
+        yield
+
+    monkeypatch.setattr("standardphysics_api.stages.loop_steps", breaks_before_the_first_pass)
+    client, scan_id = _sample(make_client)
+    events = _streamed_events(client, scan_id)
+    assert [event["kind"] for event in events] == ["started", "failed"]
+    assert "Nothing was changed" in events[1]["error"]

@@ -8,7 +8,6 @@ import uuid
 from pathlib import Path
 
 import pytest
-
 import standardphysics_fixtures
 from standardphysics_contracts import ClearFloorResult, Mat4, SceneNode, Vec3, to_meters
 from standardphysics_fixtures import build_graph, build_scenario, node_id

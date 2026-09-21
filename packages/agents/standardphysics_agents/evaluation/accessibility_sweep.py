@@ -11,12 +11,12 @@ does not load the rule ledger or label a generated layout ADA compliant.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
 import hashlib
 import json
 import math
-from pathlib import Path
 import time
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 import numpy as np
 from scipy import ndimage
@@ -76,6 +76,43 @@ class AccessibilitySweepResult:
         }
 
 
+def _check_inputs(evaluations: int, routes_per_layout: int, profiles: tuple) -> None:
+    if evaluations < 1:
+        raise ValueError("evaluations must be positive")
+    if routes_per_layout < 1:
+        raise ValueError("routes_per_layout must be positive")
+    if not profiles:
+        raise ValueError("at least one functional profile is required")
+
+
+def _profile_verdict(profile, result, component_labels, start, goal, route_errors):
+    """Whether this body fits the route, and everything wrong with the answer.
+
+    Connected components are the independent oracle: a route the width search
+    says fits has to join the same free component at that body width. A
+    disagreement means one of the two is wrong, so it is recorded rather than
+    resolved here.
+    """
+    reference_fit = _same_component(component_labels[profile.body_width_inches], start, goal)
+    measured_fit = (
+        result.reachable
+        and result.clearance_radius + FLOAT_TOLERANCE >= to_meters(profile.body_width_inches / 2)
+    )
+    reasons = list(route_errors)
+    if measured_fit != reference_fit:
+        reasons.append(
+            f"width oracle disagreed: widest_path={measured_fit}, components={reference_fit}"
+        )
+    return measured_fit, reasons
+
+
+def _remember(examples: list, layout: int, route: int, profile, reasons: list[str]) -> None:
+    if len(examples) < MAX_FAILURE_EXAMPLES:
+        examples.append(
+            SweepFailure(layout=layout, route=route, profile_id=profile.id, reason="; ".join(reasons))
+        )
+
+
 def run_accessibility_sweep(
     *,
     evaluations: int = DEFAULT_EVALUATIONS,
@@ -85,12 +122,7 @@ def run_accessibility_sweep(
     record_runs: int = 0,
 ) -> AccessibilitySweepResult:
     """Check exactly ``evaluations`` generated layout/route/profile cases."""
-    if evaluations < 1:
-        raise ValueError("evaluations must be positive")
-    if routes_per_layout < 1:
-        raise ValueError("routes_per_layout must be positive")
-    if not profiles:
-        raise ValueError("at least one functional profile is required")
+    _check_inputs(evaluations, routes_per_layout, profiles)
     recorder = ReplayCollector(record_runs)
 
     started = time.perf_counter()
@@ -138,32 +170,13 @@ def run_accessibility_sweep(
                 if completed >= evaluations:
                     break
                 profile_evaluations[profile.id] += 1
-                reference_fit = _same_component(
-                    component_labels[profile.body_width_inches], start, goal
-                )
-                measured_fit = (
-                    result.reachable
-                    and result.clearance_radius + FLOAT_TOLERANCE
-                    >= to_meters(profile.body_width_inches / 2)
+                measured_fit, reasons = _profile_verdict(
+                    profile, result, component_labels, start, goal, route_errors
                 )
                 profile_route_fits[profile.id] += int(measured_fit)
-                reasons = list(route_errors)
-                if measured_fit != reference_fit:
-                    reasons.append(
-                        "width oracle disagreed: "
-                        f"widest_path={measured_fit}, components={reference_fit}"
-                    )
                 if reasons:
                     failures += 1
-                    if len(examples) < MAX_FAILURE_EXAMPLES:
-                        examples.append(
-                            SweepFailure(
-                                layout=layout_index,
-                                route=route_index,
-                                profile_id=profile.id,
-                                reason="; ".join(reasons),
-                            )
-                        )
+                    _remember(examples, layout_index, route_index, profile, reasons)
                 if profile == profiles[0]:
                     recorder.consider(
                         layout=layout_index,

@@ -202,14 +202,16 @@ def _door_cases() -> list[Case]:
             v.door_width(_clean(), 30.0),
             expected_problems=frozenset({"door_clear_width"}),
             expected_inches={"door_clear_width": 30.0},
+            # An opening under the requirement is certain: the door in it only
+            # makes the gap smaller, so this one is measured, not asked about.
             expected_action="ASK_OWNER",
         ),
         _case(
             "door_32",
-            "Exactly 32 in, which the section permits.",
+            "An opening of exactly 32 in. The hole clears the requirement, and "
+            "the door in it does not, so this is asked about rather than passed.",
             v.door_width(_clean(), 32.0),
             forbidden_problems=frozenset({"door_clear_width"}),
-            expected_inches={"door_clear_width": 32.0},
             expected_action="ASK_OWNER",
         ),
         _case(
@@ -263,7 +265,8 @@ def _counter_cases() -> list[Case]:
             ),
             expected_problems=frozenset({"service_counter_approach"}),
             forbidden_problems=COUNTER_TOO_HIGH | {ROUTE},
-            expected_action="ASK_OWNER",
+            expected_action="FIX",
+            fix_should_resolve=True,
         ),
         _case(
             "counter_mislabelled",

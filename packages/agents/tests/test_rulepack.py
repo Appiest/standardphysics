@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from standardphysics_agents import VerificationLedger, load_pack, load_ledger
+from standardphysics_agents import VerificationLedger, load_ledger
 from standardphysics_agents.rules.pack import parse_pack
 
 TIER_1_CHECKS = {

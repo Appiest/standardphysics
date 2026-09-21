@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import pathlib
 import uuid
@@ -10,7 +11,7 @@ from typing import Annotated
 
 from fastapi import FastAPI, Header, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from standardphysics_agents import init_tracing, project_url, shutdown_tracing
 from standardphysics_contracts import (
     Artifact,
@@ -25,34 +26,44 @@ from standardphysics_contracts import (
     LoopResult,
     ProposalRequest,
     ProposalResult,
+    RebuildRequest,
     Report,
     SaveLayoutRequest,
     Scan,
     ScanList,
     Scenario,
     SceneGraph,
+    SimulationRequest,
+    SimulationStatus,
+    graph_hash,
 )
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from . import accounts
 from . import repository as repo
+from .architecture_export import install_architecture_export_routes
+from .auth import install_auth, owner_of
+from .combine import SaveCombineRequest, save_combine
 from .coverage import parse_coverage
 from .db import Database
 from .errors import ApiProblem
 from .labels import mark_counter, unmark_counter
 from .layout import check_layout, save_layout
-from .simulations import queue_simulation, simulation_status
-from .replays import install_replay_routes
-from standardphysics_contracts import RebuildRequest, SimulationRequest, SimulationStatus, graph_hash
 from .lidar_mesh import InvalidLidarMesh, validate_lidar_mesh
 from .loop_run import run as run_loop_on
+from .loop_run import stream as stream_loop_on
 from .proposals import propose
 from .questions import answer_question
+from .replays import install_replay_routes
 from .report import build_report
 from .route import confirm, suggestion
 from .seed import seed_sample_shop
 from .settings import Settings
+from .simulations import queue_simulation, simulation_status
+from .splats import install_splat_routes
 from .stages import Stages, preview_ledger
 from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId
+from .textures import install_texture_routes, maybe_queue_texture, validate_manifest
 from .worker import ASSESS, PROCESS, Worker
 
 log = logging.getLogger(__name__)
@@ -62,6 +73,16 @@ def _start_tracing(settings: Settings) -> None:
     """Weave sees the whole run: seeding, uploads, checks and every model call."""
     if init_tracing(settings.weave_project, settings.weave_entity):
         log.info("this run is traced to %s", project_url())
+
+
+def _seed_demo_account(database: Database, store: ArtifactStore, settings: Settings) -> None:
+    """Put the sample shop behind a real account, and say how to sign in as it."""
+    seed_sample_shop(database, store, settings.seed_owner_email, settings.seed_owner_password)
+    log.warning(
+        "sample shop seeded. Sign in as %s with password %s",
+        settings.seed_owner_email,
+        settings.seed_owner_password,
+    )
 
 
 def _problem_response(exc: ApiProblem) -> JSONResponse:
@@ -89,15 +110,19 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
         stages = Stages(ledger_factory=preview_ledger) if settings.preview_unverified_rules else Stages()
     database = Database(settings.database_path)
     store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes)
-    worker = Worker(database, store, stages)
+    worker = Worker(database, store, stages, settings)
 
     @contextlib.asynccontextmanager
     async def lifespan(_: FastAPI):
         if settings.preview_unverified_rules:
             log.warning("SP_PREVIEW_UNVERIFIED_RULES is on: findings come from rules no person has verified")
         _start_tracing(settings)
+        with database.transaction() as connection:
+            expired = accounts.drop_expired_sessions(connection)
+        if expired:
+            log.info("cleared %d expired session(s)", expired)
         if settings.seed_sample_shop:
-            seed_sample_shop(database, store)
+            _seed_demo_account(database, store, settings)
         if run_worker:
             worker.start()
         yield
@@ -108,19 +133,35 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     app = FastAPI(title="Standard Physics API", version="0.1.0", lifespan=lifespan)
     app.state.database, app.state.store, app.state.worker = database, store, worker
     _install_error_handlers(app)
+    install_auth(app, database, store)
+    install_architecture_export_routes(app, database)
     _install_scan_routes(app, database, store)
     _install_upload_routes(app, database, store, worker)
     _install_workspace_routes(app, database, store)
+    _install_combine_routes(app, database, store, worker)
     _install_file_routes(app, database, store)
     _install_layout_routes(app, database, stages, worker)
     _install_route_routes(app, database, worker)
     _install_simulation_routes(app, database, stages, worker)
     install_replay_routes(app, database, store)
+    install_texture_routes(app, database, store, worker)
+    install_splat_routes(app, database, store)
     _install_label_routes(app, database, worker)
 
     @app.get("/api/scans/{scan_id}/report", response_model=Report)
     def report(scan_id: uuid.UUID) -> Report:
         return build_report(database, stages.ledger_factory(), scan_id)
+
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        """Reachable without a session, so a load balancer can ask.
+
+        It touches the database, because a process that is listening but cannot
+        read its own scans is not healthy in any way that matters.
+        """
+        with database.connect() as connection:
+            connection.execute("SELECT 1 FROM scans LIMIT 1").fetchone()
+        return {"status": "ok"}
 
     return app
 
@@ -134,15 +175,15 @@ def _scan_or_404(connection, scan_id: uuid.UUID) -> Scan:
 
 def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore) -> None:
     @app.post("/api/scans", status_code=201, response_model=Scan)
-    def create_scan(body: CreateScanRequest) -> Scan:
+    def create_scan(body: CreateScanRequest, request: Request) -> Scan:
         with database.transaction() as connection:
-            scan_id = repo.insert_scan(connection, body)
+            scan_id = repo.insert_scan(connection, body, owner_of(request).id)
             return repo.get_scan(connection, scan_id)
 
     @app.get("/api/scans", response_model=ScanList)
-    def list_scans() -> ScanList:
+    def list_scans(request: Request) -> ScanList:
         with database.connect() as connection:
-            return ScanList(scans=repo.list_scans(connection))
+            return ScanList(scans=repo.list_scans(connection, owner_of(request).id))
 
     @app.get("/api/scans/{scan_id}", response_model=Scan)
     def get_scan(scan_id: uuid.UUID) -> Scan:
@@ -159,7 +200,9 @@ def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore)
         """
         with database.transaction() as connection:
             _scan_or_404(connection, scan_id)
-            running = connection.execute("SELECT 1 FROM jobs WHERE scan_id=? AND state='running'", (str(scan_id),)).fetchone()
+            running = connection.execute(
+                "SELECT 1 FROM jobs WHERE scan_id=? AND state='running'", (str(scan_id),)
+            ).fetchone()
             if running:
                 raise ApiProblem(409, "Wait for this room's running job to finish before deleting it")
             repo.delete_scan(connection, scan_id)
@@ -208,6 +251,24 @@ def _finalize(database: Database, store: ArtifactStore, scan_id: uuid.UUID) -> t
         return repo.get_scan(connection, scan_id), True
 
 
+STAGED_VALIDATORS = {
+    "lidar_mesh": (validate_lidar_mesh, InvalidLidarMesh, "invalid lidar mesh"),
+    "photo_manifest": (validate_manifest, ValueError, "invalid photo manifest"),
+}
+"""Artifact kinds whose bytes are checked before they are stored: the check, what it raises, and the 400 to send."""
+
+
+def _validate_staged(store: ArtifactStore, staged, kind: str) -> None:
+    if kind not in STAGED_VALIDATORS:
+        return
+    validate, invalid, message = STAGED_VALIDATORS[kind]
+    try:
+        validate(staged.temp_path.read_bytes())
+    except invalid:
+        store.discard(staged)
+        raise ApiProblem(400, message) from None
+
+
 def _install_upload_routes(app: FastAPI, database: Database, store: ArtifactStore, worker: Worker) -> None:
     @app.put("/api/scans/{scan_id}/artifacts/{artifact_id}", response_model=Artifact, status_code=201)
     async def upload_artifact(
@@ -226,15 +287,12 @@ def _install_upload_routes(app: FastAPI, database: Database, store: ArtifactStor
             raise ApiProblem(400, "invalid artifact id") from None
         except ArtifactTooLarge:
             raise ApiProblem(413, "artifact too large") from None
-        if x_artifact_kind == "lidar_mesh":
-            try:
-                validate_lidar_mesh(staged.temp_path.read_bytes())
-            except InvalidLidarMesh:
-                store.discard(staged)
-                raise ApiProblem(400, "invalid lidar mesh") from None
+        _validate_staged(store, staged, x_artifact_kind)
         status, artifact = _accept_staged(
             database, store, scan_id, artifact_id, x_artifact_kind, x_checksum_sha256, staged
         )
+        if x_artifact_kind in ("photo_manifest", "frames", "poses", "lidar_mesh"):
+            maybe_queue_texture(database, store, worker, scan_id)
         return JSONResponse(artifact.model_dump(mode="json"), status_code=status)
 
     @app.post("/api/scans/{scan_id}/complete", response_model=Scan)
@@ -284,6 +342,21 @@ def _install_workspace_routes(app: FastAPI, database: Database, store: ArtifactS
         return found
 
 
+def _install_combine_routes(app: FastAPI, database: Database, store: ArtifactStore, worker: Worker) -> None:
+    @app.get("/api/scans/{scan_id}/rooms")
+    def rooms(scan_id: uuid.UUID) -> dict:
+        with database.connect() as connection:
+            _scan_or_404(connection, scan_id)
+        manifest = store.scan_dir(scan_id) / "rooms.json"
+        if not manifest.exists():
+            return {"rooms": []}
+        return json.loads(manifest.read_text())
+
+    @app.post("/api/scans/{scan_id}/combine", response_model=SceneGraph, status_code=201)
+    def combine(scan_id: uuid.UUID, body: SaveCombineRequest) -> SceneGraph:
+        return save_combine(database, worker, scan_id, body)
+
+
 
 def _install_layout_routes(app: FastAPI, database: Database, stages: Stages, worker: Worker) -> None:
     @app.post("/api/scans/{scan_id}/layout-checks", response_model=LayoutCheckResult)
@@ -297,6 +370,13 @@ def _install_layout_routes(app: FastAPI, database: Database, stages: Stages, wor
     @app.post("/api/scans/{scan_id}/loop", response_model=LoopResult)
     def fix_what_it_can(scan_id: uuid.UUID, body: LoopRequest) -> LoopResult:
         return run_loop_on(database, stages, scan_id, body)
+
+    @app.post("/api/scans/{scan_id}/loop/stream")
+    def fix_what_it_can_as_it_goes(scan_id: uuid.UUID, body: LoopRequest) -> StreamingResponse:
+        lines = stream_loop_on(database, stages, scan_id, body)
+        # no-transform stops a compressing proxy from holding lines back until the loop ends.
+        headers = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
+        return StreamingResponse(lines, media_type="application/x-ndjson", headers=headers)
 
     @app.post("/api/scans/{scan_id}/proposals", response_model=ProposalResult)
     def proposal(scan_id: uuid.UUID, body: ProposalRequest) -> ProposalResult:
@@ -373,13 +453,17 @@ def _install_simulation_routes(app: FastAPI, database: Database, stages: Stages,
 
     @app.post("/api/scans/{scan_id}/rebuild", response_model=SceneGraph, status_code=201)
     def rebuild(scan_id: uuid.UUID, body: RebuildRequest) -> SceneGraph:
-        from .layout import _base, STALE_LAYOUT
+        from .layout import STALE_LAYOUT, _base
         base, latest, _ = _base(database, scan_id, body.base_revision)
         if latest != body.base_revision:
             raise ApiProblem(409, STALE_LAYOUT)
-        frame_paths, poses_path = worker.label_inputs(scan_id)
+        frame_paths, poses_path, lidar_mesh_path = worker.label_inputs(scan_id)
+        with database.connect() as connection:
+            captured_row = repo.get_revision(connection, scan_id, 0)
+        captured = repo.graph_of(captured_row) if captured_row else None
         rebuilt = stages.label_scan(
-            base, frame_paths=frame_paths, poses_path=poses_path
+            base, frame_paths=frame_paths, poses_path=poses_path,
+            lidar_mesh_path=lidar_mesh_path, capture_graph=captured,
         ).model_copy(update={"revision": base.revision + 1, "base_hash": graph_hash(base)})
         with database.transaction() as connection:
             if repo.get_revision(connection, scan_id)["revision"] != base.revision:

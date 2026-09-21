@@ -72,6 +72,14 @@ export function useArrangement(scanId: string, scene: SceneGraph) {
     [update, runCheck],
   );
 
+  const preview = useCallback((proposed: NodeMove[]) => {
+    latestSequence.current += 1;
+    update(Object.fromEntries(proposed.map((move) => [move.node_id, move])));
+    setCheck(null);
+    setChecking(false);
+    setProblem(null);
+  }, [update]);
+
   const reset = useCallback(() => {
     latestSequence.current += 1;
     update({});
@@ -110,6 +118,6 @@ export function useArrangement(scanId: string, scene: SceneGraph) {
 
   return {
     shown, moves, check, checking, saving, problem, activeId, hasMoves, blockedIds, canSave,
-    setActiveId, drag, drop: runCheck, nudge, reset, save, load,
+    setActiveId, drag, drop: runCheck, nudge, reset, save, load, preview,
   };
 }

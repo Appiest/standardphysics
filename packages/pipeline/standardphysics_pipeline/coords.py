@@ -67,6 +67,16 @@ def _multiply(a: list[list[float]], b: list[list[float]]) -> list[list[float]]:
     ]
 
 
+def capture_to_room(floor_height: float) -> Mat4:
+    """ARKit world to the room frame: turn Y-up into Z-up, then lower the floor to z = 0.
+
+    `floor_height` is the floor's ARKit Y, which becomes its Z after the turn.
+    """
+    rows = [list(row) for row in _BASIS]
+    rows[2][3] = -floor_height
+    return Mat4(m=[value for row in rows for value in row])
+
+
 def transform_from_arkit(flat_columns: list[float]) -> Mat4:
     """An ARKit `simd_float4x4`, as Swift serializes it, to our Mat4.
 

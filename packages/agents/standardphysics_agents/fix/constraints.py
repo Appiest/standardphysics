@@ -12,12 +12,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3
+from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, stands_upright
 from standardphysics_pipeline import footprint, gap_between
-from standardphysics_pipeline.footprints import Polygon, contains_point, floor_polygon, polygon_bounds
+from standardphysics_pipeline.footprints import Polygon, distance_outside, floor_polygon, polygon_bounds
 from standardphysics_pipeline.occupancy import blocks_floor
 
 from ..hashing import inventory
+from .moves import floor_height, rests_on_something, top_of, underside
 
 FLOOR_MARGIN = 0.01
 """A centimetre of slack at the floor edge, for arithmetic rather than for room."""
@@ -32,6 +33,9 @@ none. 5 mm is a fifth of an inch, well under anything a scan resolves.
 
 The shrunk shape is a test shape. Nothing proposed is ever built from it.
 """
+
+VERTICAL_TOLERANCE = 0.02
+"""How far a piece may sink into the one under it and still count as resting on it."""
 
 SWING_KINDS = frozenset({"door"})
 
@@ -94,7 +98,7 @@ def _inventory_changes(
 
 def floor_bounds(graph: SceneGraph) -> tuple[float, float, float, float] | None:
     for node in graph.nodes:
-        if node.kind == "floor":
+        if lies_flat(node):
             return polygon_bounds(floor_polygon(node))
     return None
 
@@ -113,7 +117,7 @@ def interior_bounds(graph: SceneGraph) -> tuple[float, float, float, float] | No
     min_x, min_y, max_x, max_y = bounds
     centre_x, centre_y = (min_x + max_x) / 2, (min_y + max_y) / 2
 
-    for wall in (node for node in graph.nodes if node.kind == "wall"):
+    for wall in (node for node in graph.nodes if stands_upright(node)):
         shape = footprint(wall)
         low_x, high_x = min(x for x, _ in shape), max(x for x, _ in shape)
         low_y, high_y = min(y for _, y in shape), max(y for _, y in shape)
@@ -129,21 +133,27 @@ def interior_bounds(graph: SceneGraph) -> tuple[float, float, float, float] | No
     return min_x, min_y, max_x, max_y
 
 
-def _off_the_floor(candidate: SceneGraph, moved: list[SceneNode]) -> list[Violation]:
-    floor = next((node for node in candidate.nodes if node.kind == "floor"), None)
+def _outside_by(boundary: Polygon, node: SceneNode) -> float:
+    return max(distance_outside(boundary, corner, FLOOR_MARGIN) for corner in footprint(node))
+
+
+def _off_the_floor(base: SceneGraph, candidate: SceneGraph, checked: list[SceneNode]) -> list[Violation]:
+    """Pieces a move pushes further past the edge of the floor.
+
+    A scan's floor outline is an approximation, and RoomPlan regularly leaves a
+    chair or a lamp hanging a few inches over it. Such a piece may still move,
+    as long as the move does not carry it further out than the scan found it.
+    """
+    floor = next((node for node in candidate.nodes if lies_flat(node)), None)
     if floor is None:
         return []
     boundary = floor_polygon(floor)
+    before = {node.id: node for node in base.nodes}
     found = []
-    for node in moved:
-        for x, y in footprint(node):
-            if not contains_point(boundary, (x, y), FLOOR_MARGIN):
-                found.append(
-                    Violation(
-                        "left_the_floor", str(node.id), node.label, blocker="wall"
-                    )
-                )
-                break
+    for node in checked:
+        was_outside = _outside_by(boundary, before[node.id]) if node.id in before else 0.0
+        if _outside_by(boundary, node) > was_outside + FLOOR_MARGIN:
+            found.append(Violation("left_the_floor", str(node.id), node.label, blocker="wall"))
     return found
 
 
@@ -177,43 +187,56 @@ def collision_shape(node: SceneNode, tolerance: float = OVERLAP_TOLERANCE) -> Po
     return footprint(node.model_copy(update={"dimensions": shrunk}))
 
 
-def _collisions(candidate: SceneGraph, moved: list[SceneNode]) -> list[Violation]:
+def _one_above_the_other(a: SceneNode, b: SceneNode) -> bool:
+    """A laptop on a desk shares the desk's footprint without touching its body."""
+    return underside(a) >= top_of(b) - VERTICAL_TOLERANCE or underside(b) >= top_of(a) - VERTICAL_TOLERANCE
+
+
+def _overlapping(a: SceneNode, b: SceneNode) -> bool:
+    return gap_between(collision_shape(a), collision_shape(b)) == 0.0 and not _one_above_the_other(a, b)
+
+
+def _in_swing(node: SceneNode, keep_clear: Polygon, floor_z: float) -> bool:
+    """Only something standing on the floor gets in the way of a door."""
+    return not rests_on_something(node, floor_z) and gap_between(collision_shape(node), keep_clear) == 0.0
+
+
+@dataclass(frozen=True)
+class _Scene:
+    """The layout a move started from, for telling a new clash from one the scan already had."""
+
+    before: dict
+    floor_z: float
+
+    def already(self, clash, node: SceneNode, other: SceneNode) -> bool:
+        was, other_was = self.before.get(node.id), self.before.get(other.id, other)
+        return was is not None and clash(was, other_was)
+
+
+def _collisions(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode]) -> list[Violation]:
     moved_ids = {node.id for node in moved}
     obstacles = [
         node
         for node in candidate.nodes
-        if node.id not in moved_ids and (blocks_floor(node) or node.kind == "wall")
+        if node.id not in moved_ids and (blocks_floor(node) or stands_upright(node))
     ]
-    swings = [(node, door_keep_clear(node)) for node in candidate.nodes
-              if node.kind in SWING_KINDS]
+    swings = [node for node in candidate.nodes if node.kind in SWING_KINDS]
+    scene = _Scene(before={node.id: node for node in base.nodes}, floor_z=floor_height(base))
 
     found = []
     for index, node in enumerate(moved):
-        found.extend(_overlaps(node, collision_shape(node), [*obstacles, *moved[index + 1:]], swings))
+        found.extend(_overlaps(node, [*obstacles, *moved[index + 1:]], swings, scene))
     return found
 
 
-def _overlaps(node: SceneNode, shape: Polygon, obstacles, swings) -> list[Violation]:
+def _overlaps(node: SceneNode, obstacles, swings, scene: _Scene) -> list[Violation]:
     for other in obstacles:
-        if gap_between(shape, collision_shape(other)) == 0.0:
-            return [
-                Violation(
-                    "collided",
-                    str(node.id),
-                    f"{node.label} into {other.label}",
-                    blocker=other.label,
-                )
-            ]
-    for door, keep_clear in swings:
-        if gap_between(shape, keep_clear) == 0.0:
-            return [
-                Violation(
-                    "blocked_a_door",
-                    str(node.id),
-                    f"{node.label} into the {door.label}",
-                    blocker=door.label,
-                )
-            ]
+        if _overlapping(node, other) and not scene.already(_overlapping, node, other):
+            return [Violation("collided", str(node.id), f"{node.label} into {other.label}", blocker=other.label)]
+    for door in swings:
+        clash = lambda piece, swing: _in_swing(piece, door_keep_clear(swing), scene.floor_z)
+        if clash(node, door) and not scene.already(clash, node, door):
+            return [Violation("blocked_a_door", str(node.id), f"{node.label} into the {door.label}", blocker=door.label)]
     return []
 
 
@@ -235,8 +258,8 @@ def violations(
         *_locked_moves(base, candidate),
         *_resizes(base, candidate),
         *_inventory_changes(base, candidate, added),
-        *_off_the_floor(candidate, checked),
-        *_collisions(candidate, checked),
+        *_off_the_floor(base, candidate, checked),
+        *_collisions(base, candidate, checked),
     ]
 
 

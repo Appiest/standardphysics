@@ -3,6 +3,7 @@ import json
 
 import pytest
 from standardphysics_contracts import SceneGraph, graph_hash
+
 from standardphysics_api.replays import publish
 
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import WebKit
 
 struct WorkspaceScreen: View {
@@ -21,8 +22,8 @@ struct WorkspaceScreen: View {
                     )
                 } else {
                     VStack(spacing: AppTheme.Spacing.card) {
-                        Text(message ?? "Enter your Mac’s workspace address in Connection. This demo needs no sign-in.")
-                            .font(.title2)
+                        Text(message ?? "Set the workspace address on the Connection screen, then sign in.")
+                            .font(AppTheme.Typography.lead)
                         if message != nil {
                             Button("Try again") { message = nil }
                                 .buttonStyle(AppButtonStyle())
@@ -63,6 +64,7 @@ struct WorkspaceWebView: UIViewRepresentable {
         configuration.userContentController = contentController
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
+        context.coordinator.attach(webView)
         context.coordinator.load(url, in: webView)
         return webView
     }
@@ -77,17 +79,23 @@ struct WorkspaceWebView: UIViewRepresentable {
         webView.stopLoading()
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, WKDownloadDelegate {
         private let allowedOrigin: WebOrigin
         private let onScanRequested: () -> Void
         private let onFailure: (String) -> Void
         private var requestedURL: URL?
+        private weak var webView: WKWebView?
+        private var downloadDestinations: [ObjectIdentifier: URL] = [:]
 
         init(allowedOrigin: WebOrigin,
              onScanRequested: @escaping () -> Void, onFailure: @escaping (String) -> Void) {
             self.allowedOrigin = allowedOrigin
             self.onScanRequested = onScanRequested
             self.onFailure = onFailure
+        }
+
+        func attach(_ webView: WKWebView) {
+            self.webView = webView
         }
 
         func load(_ url: URL, in webView: WKWebView) {
@@ -111,10 +119,17 @@ struct WorkspaceWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse)
             async -> WKNavigationResponsePolicy {
+            guard let responseURL = navigationResponse.response.url, allowedOrigin.contains(responseURL) else {
+                reportDownloadFailure("The workspace sent a file outside its configured address.")
+                return .cancel
+            }
             guard let response = navigationResponse.response as? HTTPURLResponse else { return .allow }
             if navigationResponse.isForMainFrame && response.statusCode >= 400 {
                 onFailure("The workspace returned an error (\(response.statusCode)). Try again after it is running on your Mac.")
                 return .cancel
+            }
+            if !navigationResponse.canShowMIMEType {
+                return .download
             }
             return .allow
         }
@@ -126,10 +141,107 @@ struct WorkspaceWebView: UIViewRepresentable {
             guard let target = navigationAction.request.url else { return .cancel }
             guard allowedOrigin.allowsLocalDemo else { return .cancel }
             if target.absoluteString == "about:blank" || allowedOrigin.contains(target) {
+                if navigationAction.shouldPerformDownload {
+                    return .download
+                }
                 return .allow
             } else {
                 return .cancel
             }
+        }
+
+        func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+            prepare(download)
+        }
+
+        func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+            prepare(download)
+        }
+
+        private func prepare(_ download: WKDownload) {
+            guard let requestURL = download.originalRequest?.url, allowedOrigin.contains(requestURL) else {
+                reportDownloadFailure("The workspace sent a file outside its configured address.")
+                return
+            }
+            download.delegate = self
+        }
+
+        func download(
+            _ download: WKDownload,
+            decideDestinationUsing response: URLResponse,
+            suggestedFilename: String,
+            completionHandler: @escaping (URL?) -> Void
+        ) {
+            guard let responseURL = response.url, allowedOrigin.contains(responseURL) else {
+                reportDownloadFailure("The workspace sent a file outside its configured address.")
+                completionHandler(nil)
+                return
+            }
+            do {
+                let destination = try WorkspaceDownloadDestination.fileURL(suggestedFilename: suggestedFilename)
+                downloadDestinations[ObjectIdentifier(download)] = destination
+                completionHandler(destination)
+            } catch {
+                reportDownloadFailure("Couldn’t save the floor plan on this phone. Try again.")
+                completionHandler(nil)
+            }
+        }
+
+        func downloadDidFinish(_ download: WKDownload) {
+            guard let destination = downloadDestinations.removeValue(forKey: ObjectIdentifier(download)) else {
+                reportDownloadFailure("Couldn’t save the floor plan on this phone. Try again.")
+                return
+            }
+            guard FileManager.default.fileExists(atPath: destination.path) else {
+                removeDownloadDirectory(containing: destination)
+                reportDownloadFailure("Couldn’t save the floor plan on this phone. Try again.")
+                return
+            }
+            DispatchQueue.main.async { [weak self] in self?.share(destination) }
+        }
+
+        func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+            removeDownloadedFile(for: download)
+            guard (error as NSError).code != NSURLErrorCancelled else { return }
+            reportDownloadFailure("Couldn’t download the floor plan. Check your connection and try again.")
+        }
+
+        private func share(_ fileURL: URL) {
+            guard let presenter = visibleViewController(from: webView?.window?.rootViewController) else {
+                try? FileManager.default.removeItem(at: fileURL)
+                removeDownloadDirectory(containing: fileURL)
+                reportDownloadFailure("The floor plan downloaded, but it could not be opened for sharing.")
+                return
+            }
+            let activity = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+            activity.popoverPresentationController?.sourceView = webView
+            activity.popoverPresentationController?.sourceRect = webView?.bounds ?? .zero
+            activity.completionWithItemsHandler = { [weak self] _, _, _, _ in
+                try? FileManager.default.removeItem(at: fileURL)
+                self?.removeDownloadDirectory(containing: fileURL)
+            }
+            presenter.present(activity, animated: true)
+        }
+
+        private func removeDownloadedFile(for download: WKDownload) {
+            guard let fileURL = downloadDestinations.removeValue(forKey: ObjectIdentifier(download)) else { return }
+            try? FileManager.default.removeItem(at: fileURL)
+            removeDownloadDirectory(containing: fileURL)
+        }
+
+        private func removeDownloadDirectory(containing fileURL: URL) {
+            WorkspaceDownloadDestination.removeDirectory(containing: fileURL)
+        }
+
+        private func visibleViewController(from controller: UIViewController?) -> UIViewController? {
+            if let presented = controller?.presentedViewController { return visibleViewController(from: presented) }
+            if let navigation = controller as? UINavigationController { return visibleViewController(from: navigation.visibleViewController) }
+            if let tabs = controller as? UITabBarController { return visibleViewController(from: tabs.selectedViewController) }
+            return controller
+        }
+
+        private func reportDownloadFailure(_ message: String) {
+            DispatchQueue.main.async { self.onFailure(message) }
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -142,6 +254,30 @@ struct WorkspaceWebView: UIViewRepresentable {
                   action == "scanShop" else { return }
             DispatchQueue.main.async { self.onScanRequested() }
         }
+    }
+}
+
+enum WorkspaceDownloadDestination {
+    private static let directoryName = "StandardPhysicsDownloads"
+
+    static func fileURL(suggestedFilename: String, fileManager: FileManager = .default) throws -> URL {
+        let root = fileManager.temporaryDirectory.appendingPathComponent(directoryName, isDirectory: true)
+        let directory = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent(safeFilename(suggestedFilename))
+    }
+
+    static func removeDirectory(containing fileURL: URL, fileManager: FileManager = .default) {
+        let directory = fileURL.deletingLastPathComponent()
+        guard directory.deletingLastPathComponent().lastPathComponent == directoryName else { return }
+        try? fileManager.removeItem(at: directory)
+    }
+
+    static func safeFilename(_ suggestedFilename: String) -> String {
+        let normalized = suggestedFilename.replacingOccurrences(of: "\\", with: "/")
+        guard !normalized.isEmpty, normalized != ".", normalized != ".." else { return "architecture.zip" }
+        let filename = URL(fileURLWithPath: normalized).lastPathComponent
+        return filename.isEmpty || filename == "." || filename == ".." || filename == "/" ? "architecture.zip" : filename
     }
 }
 

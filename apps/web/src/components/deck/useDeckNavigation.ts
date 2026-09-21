@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 
-type DeckPosition = { index: number; direction: 1 | -1 };
+type DeckPosition = { index: number; step: number; direction: 1 | -1 };
 
 const SWIPE_DISTANCE_PX = 60;
 
@@ -15,15 +15,28 @@ function slideIndexFromHash(slideCount: number) {
   return Number.isFinite(slideNumber) ? clampIndex(slideNumber - 1, slideCount) : 0;
 }
 
-function moveTo(current: DeckPosition, requested: number, slideCount: number): DeckPosition {
+function moveTo(current: DeckPosition, requested: number, slideCount: number, step = 0): DeckPosition {
   const index = clampIndex(requested, slideCount);
   if (index === current.index) return current;
-  return { index, direction: index > current.index ? 1 : -1 };
+  return { index, step, direction: index > current.index ? 1 : -1 };
 }
 
-export function useDeckNavigation(slideCount: number) {
+function advance(current: DeckPosition, stepCounts: number[]): DeckPosition {
+  if (current.step < stepCounts[current.index] - 1) return { ...current, step: current.step + 1, direction: 1 };
+  return moveTo(current, current.index + 1, stepCounts.length);
+}
+
+function retreat(current: DeckPosition, stepCounts: number[]): DeckPosition {
+  if (current.step > 0) return { ...current, step: current.step - 1, direction: -1 };
+  const previous = clampIndex(current.index - 1, stepCounts.length);
+  return moveTo(current, previous, stepCounts.length, stepCounts[previous] - 1);
+}
+
+export function useDeckNavigation(stepCounts: number[]) {
+  const slideCount = stepCounts.length;
   const [position, setPosition] = useState<DeckPosition>(() => ({
     index: slideIndexFromHash(slideCount),
+    step: 0,
     direction: 1,
   }));
   const pointerStart = useRef<number | null>(null);
@@ -33,8 +46,8 @@ export function useDeckNavigation(slideCount: number) {
     [slideCount],
   );
   const step = useCallback(
-    (offset: number) => setPosition((current) => moveTo(current, current.index + offset, slideCount)),
-    [slideCount],
+    (offset: 1 | -1) => setPosition((current) => (offset === 1 ? advance(current, stepCounts) : retreat(current, stepCounts))),
+    [stepCounts],
   );
 
   useEffect(() => {
@@ -97,5 +110,7 @@ export function useDeckNavigation(slideCount: number) {
     [step],
   );
 
-  return { ...position, handlePointerDown, handlePointerUp, handleContextMenu };
+  const advanceOneStep = useCallback(() => step(1), [step]);
+
+  return { ...position, advance: advanceOneStep, handlePointerDown, handlePointerUp, handleContextMenu };
 }

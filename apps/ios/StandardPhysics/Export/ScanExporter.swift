@@ -10,6 +10,7 @@ enum ArtifactKind: String, Codable, Sendable {
     case poses
     case coverage
     case lidarMesh = "lidar_mesh"
+    case photoManifest = "photo_manifest"
 }
 
 struct CaptureArtifact: Identifiable, Codable, Sendable {
@@ -125,13 +126,14 @@ enum ScanExporter {
         if let videoURL = recording.videoURL {
             artifacts.append(CaptureArtifact(id: "walkthrough", kind: .walkthroughMP4, fileURL: videoURL))
         }
-        artifacts.append(contentsOf: recording.frameURLs.enumerated().map { index, fileURL in
-            CaptureArtifact(
-                id: String(format: "frame-%04d", index),
-                kind: .frames,
-                fileURL: fileURL
-            )
+        artifacts.append(contentsOf: recording.frameURLs.compactMap { fileURL in
+            FrameIdentity.number(fromFileName: fileURL.lastPathComponent).map { number in
+                CaptureArtifact(id: FrameIdentity.artifactID(forNumber: number), kind: .frames, fileURL: fileURL)
+            }
         })
+        if let manifest = try writePhotoManifest(posesURL: recording.posesURL, directory: directory) {
+            artifacts.append(manifest)
+        }
 
         let scan = CapturedScan(
             id: captureID,
@@ -151,6 +153,60 @@ enum ScanExporter {
     }
 
     enum ExportError: Error { case invalidCaptureDirectory }
+
+    private struct PhotoManifestFrame: Codable {
+        let frameID: String
+        let sha256: String
+        let bytes: Int
+
+        enum CodingKeys: String, CodingKey {
+            case frameID = "frame_id"
+            case sha256
+            case bytes
+        }
+    }
+
+    private struct PhotoManifest: Codable {
+        let manifestVersion: Int
+        let posesSHA256: String
+        let frames: [PhotoManifestFrame]
+
+        enum CodingKeys: String, CodingKey {
+            case manifestVersion = "manifest_version"
+            case posesSHA256 = "poses_sha256"
+            case frames
+        }
+    }
+
+    /// Writes photo-manifest.json when poses.json has at least one version-2
+    /// record whose JPEG exists, so the server can tell a fully-photographed
+    /// scan from an older capture that never recorded photo metadata.
+    private static func writePhotoManifest(posesURL: URL, directory: URL) throws -> CaptureArtifact? {
+        guard let posesData = try? Data(contentsOf: posesURL),
+              let poses = try? JSONDecoder().decode([PoseRecord].self, from: posesData) else { return nil }
+        let frames = try photoManifestFrames(for: poses, directory: directory)
+        guard !frames.isEmpty else { return nil }
+
+        let manifest = PhotoManifest(
+            manifestVersion: 1,
+            posesSHA256: try SHA256Digest.hexDigest(of: posesURL),
+            frames: frames.sorted { $0.frameID < $1.frameID }
+        )
+        let manifestURL = directory.appendingPathComponent("photo-manifest.json")
+        try JSONEncoder.standardPhysics.encode(manifest).write(to: manifestURL, options: .atomic)
+        return CaptureArtifact(id: "photo-manifest", kind: .photoManifest, fileURL: manifestURL)
+    }
+
+    private static func photoManifestFrames(for poses: [PoseRecord], directory: URL) throws -> [PhotoManifestFrame] {
+        try poses.compactMap { pose in
+            guard pose.isVersion2OrLater, let frameID = pose.frameArtifactID else { return nil }
+            let fileURL = directory.appendingPathComponent(pose.image)
+            guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+            let attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+            let bytes = attributes[.size] as? Int ?? 0
+            return PhotoManifestFrame(frameID: frameID, sha256: try SHA256Digest.hexDigest(of: fileURL), bytes: bytes)
+        }
+    }
 }
 
 enum CaptureLibrary {

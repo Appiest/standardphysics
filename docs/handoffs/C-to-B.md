@@ -107,3 +107,58 @@ keep the aisle as `FIX`.
 still holds. A partly measured turn is a gap on `unevaluated` (`UNMEASURED_ZONE`)
 rather than a finding, so the audit's "neither a problem nor a pass" still
 holds and the team is told. The owner is not shown a turn of zero inches.
+
+---
+
+## Turn detection moves with the occupancy grid
+
+The evaluation now scores the same 39 cases at several cell sizes, for the ARIA
+experiment grid (`docs/aria.md`). Reproduce it with:
+
+```bash
+python -m standardphysics_agents.cli experiments --preview-unverified
+```
+
+Two cases change their answer with the grid, and both are `turn_clear_width`:
+
+| Cell size | `lawsuit_counter` | `door_clearance_blocked` |
+|---|---|---|
+| 15 mm | 30.7 in | 40.2 in |
+| 20 mm | 26.8 in | 40.9 in |
+| 25 mm | no turn found | no turn found |
+| 30 mm | 30.7 in | no turn found |
+| 50 mm | 33.6 in | 43.3 in |
+
+403.5.2 asks for 48 inches at the turn, so every number above is a shortfall
+we would report. The shipped 25 mm is the only cell size of the five that finds
+no 180 degree turn on these two shops.
+
+The measurement is not the wobbly part — the widths that come back are 4 to 7
+inches apart across a range where `route_clear_width` holds to a thousandth of
+an inch. What changes is whether a turn is detected at all, which comes from the
+path the widest-path search returns, and that path is laid out on the grid.
+
+What we need from you: whether these two shops contain a 180 degree turn. If
+they do, the labels are wrong and 25 mm is missing a real problem. If they do
+not, the detection is finding a turn in a path that merely bends around the
+grid, and the four other cell sizes are false positives. Either way the demo
+runs one cell size and the answer should not depend on which one.
+
+We have not touched the threshold or the labels. Both are a person's call.
+
+### ARIA reached the same two cases from the tables
+
+We put the grid in W&B and asked ARIA which check accounted for the precision
+drop. It isolated the same two cases from the per-case tables without being
+pointed at them, and added a number we had missed: at 50 mm cells
+`router_action_match` falls to 0.9744 as well. A coarser grid does not only add
+a finding, it changes what the router decides to do next.
+
+Running the cell sizes between the ones we had first sharpens the question. At
+20 mm, six cases pick up a spurious `turn_clear_width` rather than two. At
+40 mm, `finding_recall` drops to 0.9375 — the check now misses a real finding
+instead of inventing one. The full set is in `docs/aria_responses.md`.
+
+So the answer we need from you has not changed, and it matters more than it did:
+whether those shops contain a 180 degree turn. The check is wrong in both
+directions depending on the resolution it is handed.

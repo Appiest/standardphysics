@@ -9,10 +9,10 @@ not invent new ADA thresholds.
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 import threading
+from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from typing import Callable, Literal
 from uuid import UUID
 
@@ -21,20 +21,22 @@ from standardphysics_contracts import (
     MeasurementProvider,
     Scenario,
     SceneGraph,
+    SceneNode,
     Stop,
     Vec3,
     graph_hash,
     to_inches,
-    to_meters,
 )
 from standardphysics_contracts.rules import Tier
 
-from .loop import LoopStep, run_loop
+from .assess import Pass, assess
+from .loop import Loop, LoopStep, StepResult, _do_fix, run_loop
 from .mesh_collision import MeshCollisionIndex
 from .router import LocalPolicyRouter, TypeSafeRouter
 from .rules import AgentRulePack, VerificationLedger, load_ledger, load_pack
+from .tracing import suspend_tracing
 
-MAX_WORKFLOW_WORKERS = 32
+MAX_WORKFLOW_WORKERS = 1_000
 
 
 @dataclass(frozen=True)
@@ -97,7 +99,6 @@ DEFAULT_PROFILES = (
     LARGER_BODY_PROFILE,
 )
 
-
 @dataclass(frozen=True)
 class Workflow:
     id: str
@@ -154,6 +155,74 @@ def build_workflow_suite(
     for interaction in interactions:
         workflows.extend(_interaction_workflows(graph, scenario, interaction))
     return workflows
+
+
+def build_entrance_object_workflows(
+    graph: SceneGraph, scenario: Scenario
+) -> list[Workflow]:
+    """Route every inferred or Astra-labelled entrance to every scanned object."""
+    by_id = {node.id: node for node in graph.nodes}
+    entrance_terms = {"door", "entrance", "entry", "exit", "opening"}
+    scenario_entrances = [
+        stop
+        for stop in scenario.stops
+        if (
+            stop.anchor_node_id in by_id
+            and by_id[stop.anchor_node_id].kind in {"door", "opening"}
+        )
+        or entrance_terms & set(stop.name.casefold().replace("-", " ").split())
+    ]
+    entrances: list[Stop] = []
+    anchored_entrances: set[UUID] = set()
+    unanchored_positions: set[tuple[float, float, float]] = set()
+
+    for stop in scenario_entrances:
+        if stop.anchor_node_id is not None:
+            if stop.anchor_node_id in anchored_entrances:
+                continue
+            anchored_entrances.add(stop.anchor_node_id)
+        else:
+            position = stop.position.as_tuple()
+            if position in unanchored_positions:
+                continue
+            unanchored_positions.add(position)
+        entrances.append(stop)
+
+    for node in graph.nodes:
+        if node.kind not in {"door", "opening"} or node.id in anchored_entrances:
+            continue
+        anchored_entrances.add(node.id)
+        entrances.append(_stop_at_node(node))
+
+    existing_stops = {
+        stop.anchor_node_id: stop
+        for stop in scenario.stops
+        if stop.anchor_node_id is not None
+    }
+    workflows = []
+    for entrance_index, entrance in enumerate(entrances):
+        for target in (node for node in graph.contents()):
+            destination = existing_stops.get(target.id) or _stop_at_node(target)
+            workflows.append(
+                Workflow(
+                    id=f"entrance-object:{entrance_index}:{target.id}",
+                    title=f"{entrance.name} to {target.label}",
+                    scenario=Scenario(
+                        name=f"{entrance.name} to {target.label}",
+                        stops=[entrance, destination],
+                    ),
+                )
+            )
+    return workflows
+
+
+def _stop_at_node(node: SceneNode) -> Stop:
+    position = node.transform.position
+    return Stop(
+        name=node.label,
+        position=Vec3(x=position.x, y=position.y, z=0.0),
+        anchor_node_id=node.id,
+    )
 
 
 def _interaction_workflows(
@@ -481,6 +550,22 @@ class WorkflowBatchResult:
         return self.rejected_runs / self.total_runs if self.total_runs else 0.0
 
     @property
+    def violating_trials(self) -> int:
+        """Runs incomplete, rejected, or failing final ADA/workflow evaluation."""
+        return sum(
+            not run.completed
+            or run.rejected is not None
+            or bool(run.steps[-1].assessment.problems)
+            or any(
+                not evaluation.passed
+                for evaluation in (
+                    run.suite_evaluations or (run.evaluation,)
+                )
+            )
+            for run in self.runs
+        )
+
+    @property
     def action_counts(self) -> dict[str, int]:
         return dict(
             Counter(
@@ -586,6 +671,39 @@ def _run_score(run: WorkflowRun) -> tuple[int, int, int, int, int]:
     )
 
 
+def _check_batch_inputs(workflows: list, profiles: list, samples: int, max_workers: int) -> None:
+    if not workflows:
+        raise ValueError("at least one workflow is required")
+    if not profiles:
+        raise ValueError("at least one functional profile is required")
+    if not 1 <= samples <= 10000:
+        raise ValueError("samples must be between 1 and 10000")
+    if not 1 <= max_workers <= MAX_WORKFLOW_WORKERS:
+        raise ValueError(f"max_workers must be between 1 and {MAX_WORKFLOW_WORKERS}")
+
+
+def _collect_runs(
+    run: Callable[[int], "WorkflowRun"],
+    samples: int,
+    max_workers: int,
+    on_progress: Callable[[int], None] | None,
+) -> tuple["WorkflowRun", ...]:
+    """Run every sample with bounded parallelism, returned in index order.
+
+    Progress is reported as each trial lands, but the results are put back in
+    the order they were submitted so a batch does not depend on thread timing.
+    """
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(run, index) for index in range(samples)]
+        collected: dict[int, WorkflowRun] = {}
+        for completed, future in enumerate(as_completed(futures), start=1):
+            item = future.result()
+            collected[item.index] = item
+            if on_progress is not None:
+                on_progress(completed)
+    return tuple(collected[index] for index in range(samples))
+
+
 def run_workflow_batch(
     graph: SceneGraph,
     *,
@@ -610,14 +728,7 @@ def run_workflow_batch(
     never shared across threads; the expensive raw-mesh index is immutable and
     built once for the entire batch.
     """
-    if not workflows:
-        raise ValueError("at least one workflow is required")
-    if not profiles:
-        raise ValueError("at least one functional profile is required")
-    if not 1 <= samples <= 10000:
-        raise ValueError("samples must be between 1 and 10000")
-    if not 1 <= max_workers <= MAX_WORKFLOW_WORKERS:
-        raise ValueError(f"max_workers must be between 1 and {MAX_WORKFLOW_WORKERS}")
+    _check_batch_inputs(workflows, profiles, samples, max_workers)
 
     selected_rules = rules or load_pack()
     selected_ledger = ledger if ledger is not None else load_ledger()
@@ -628,6 +739,30 @@ def run_workflow_batch(
     suite_cache_lock = threading.Lock()
     local_steps_cache: dict[str, tuple[LoopStep, ...]] = {}
     local_steps_lock = threading.Lock()
+    initial_measure = measure_factory()
+    initial_passes = {
+        workflow.id: assess(
+            graph,
+            workflow.scenario,
+            initial_measure,
+            rules=selected_rules,
+            ledger=selected_ledger,
+            max_tier=max_tier,
+        )
+        for workflow in workflows
+    }
+    fix_cache: dict[tuple[str, tuple[str, ...]], StepResult] = {}
+    fix_cache_lock = threading.Lock()
+
+    def cached_fix(loop: Loop, current: Pass, decision) -> StepResult:
+        key = (
+            graph_hash(loop.graph),
+            tuple(sorted(str(item) for item in decision.target_finding_ids)),
+        )
+        with fix_cache_lock:
+            if key not in fix_cache:
+                fix_cache[key] = _do_fix(loop, current, decision)
+            return fix_cache[key]
 
     def evaluate_suite(
         candidate: SceneGraph, measure: MeasurementProvider
@@ -655,44 +790,41 @@ def run_workflow_batch(
                 before, candidate, workflows=workflows, profiles=profiles,
                 measure=measure, collision_index=mesh_index,
             ),
+            initial_pass=initial_passes[workflow.id],
+            fix_handler=cached_fix,
         ))
 
     def run(index: int) -> WorkflowRun:
-        workflow, profile = cases[index % len(cases)]
-        if not hasattr(local, "measure"):
-            local.measure = measure_factory()
-        router = router_factory()
-        if isinstance(router, LocalPolicyRouter):
-            # This policy is deterministic and independent of avatar profile.
-            # Live TypeSafe trials always call the provider for fresh judgments.
-            with local_steps_lock:
-                key = workflow.scenario.model_dump_json()
-                if key not in local_steps_cache:
-                    local_steps_cache[key] = execute(workflow, local.measure, router)
-                steps = local_steps_cache[key]
-        else:
-            steps = execute(workflow, local.measure, router)
-        final_graph = steps[-1].graph if steps else graph
-        suite_evaluations = evaluate_suite(final_graph, local.measure)
-        evaluation = next(
-            item
-            for item in suite_evaluations
-            if item.workflow.id == workflow.id and item.profile.id == profile.id
-        )
-        return WorkflowRun(
-            index=index,
-            evaluation=evaluation,
-            steps=steps,
-            suite_evaluations=suite_evaluations,
-        )
+        with suspend_tracing():
+            workflow, profile = cases[index % len(cases)]
+            if not hasattr(local, "measure"):
+                local.measure = measure_factory()
+            router = router_factory()
+            if isinstance(router, LocalPolicyRouter):
+                # This policy is deterministic and independent of avatar profile.
+                # Live TypeSafe trials always call the provider for fresh judgments.
+                with local_steps_lock:
+                    key = workflow.scenario.model_dump_json()
+                    if key not in local_steps_cache:
+                        local_steps_cache[key] = execute(workflow, local.measure, router)
+                    steps = local_steps_cache[key]
+            else:
+                steps = execute(workflow, local.measure, router)
+            final_graph = steps[-1].graph if steps else graph
+            suite_evaluations = evaluate_suite(final_graph, local.measure)
+            evaluation = next(
+                item
+                for item in suite_evaluations
+                if item.workflow.id == workflow.id and item.profile.id == profile.id
+            )
+            return WorkflowRun(
+                index=index,
+                evaluation=evaluation,
+                steps=steps,
+                suite_evaluations=suite_evaluations,
+            )
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        collected = []
-        for completed, item in enumerate(executor.map(run, range(samples)), start=1):
-            collected.append(item)
-            if on_progress is not None:
-                on_progress(completed)
-        runs = tuple(collected)
+    runs = _collect_runs(run, samples, max_workers, on_progress)
     return WorkflowBatchResult(runs=runs, max_workers=max_workers)
 
 

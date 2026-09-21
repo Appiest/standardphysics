@@ -1,6 +1,6 @@
 {
   "lane": "C",
-  "updated": "2026-09-13T05:21:36Z",
+  "updated": "2026-09-13T10:20:00Z",
   "done": [
     "rule pack: 18 rules, thresholds in the units the standard is written in, the quoted sentence behind each, and every other number the section states",
     "human verification ledger binding rule id, section, threshold and unit, so editing a threshold switches its check off",
@@ -33,9 +33,17 @@
     "point_of_sale_height: when a lowered section exists, the finding is the register on the high part, not a missing portion",
     "407 Lane C tests",
     "workflow simulation: all-directions route suites, four functional avatar profiles, forward-facing paths, RoomPlan plus raw-mesh collision evidence, target reach checks, 1,000-trial bounded TypeSafe batches, aggregate design feedback, full-suite layout ranking, and a no-workflow-regression gate on furniture proposals",
-    "a key Weave turns away leaves tracing off and logs why, instead of raising (feb65b4)"
+    "a key Weave turns away leaves tracing off and logs why, instead of raising (feb65b4)",
+    "the OpenAI SDK is a declared dependency: without it a model call raised ModuleNotFoundError and the ask box 500d whenever a key was set (2cc1667)",
+    "weave-eval: the same 39 cases and 7 scorers through weave.Evaluation, three configurations compared in the Evals tab, scoring still defined once in scorers.py (6ae3aa0)",
+    "the schema a model is held to is generated in the subset strict structured output accepts, so the ask box's model resolver can succeed at all: every property required, additionalProperties false, refused keywords dropped (582befd)",
+    "publish_to_weave returns the dataset's real URL from Weave's own path builder, and a run carries it on disk and prints it (e02bc1d)",
+    "TypeSafe's confidence and per-action probabilities are traced as router.typesafe.systemone, because a Decision has no room for them and how close the call was matters (ae92f10)",
+    "experiments: the same 39 cases and 7 scorers as a grid of W&B runs for ARIA, nine configurations over cell size and fix ladder depth, each with a cold measurement provider and a deterministic count of every measurement asked for",
+    "ARIA read the grid and said the fix ladder does nothing; its own proposed next run disproved that. The three cell sizes it had all find every fix in the first four rungs, and at 20 and 30 mm the ladder decides whether a third of the fixes are found. The evaluation's ladder went 8 -> 16 and the grid's axis values changed. docs/aria_responses.md, docs/aria.md",
+    "turn_clear_width is wrong in both directions depending on the occupancy grid it is handed: six spurious findings at 20 mm, a missed real one at 40 mm, nothing at 25 mm. ARIA isolated the same two cases from the tables on its own (handed to Lane B)"
   ],
-  "in_progress": "wire workflow feedback and avatar paths into the Lane D HTTP/report/viewer surfaces",
+  "in_progress": null,
   "blocked_on": null,
   "ready_for_others": [
     "standardphysics_agents.findings_for(graph, scenario) -> list[Finding], and RULEPACK_VERSION",
@@ -47,7 +55,8 @@
     "load_pack().as_contract_pack(ledger) -> contracts.RulePack, for Lane D's report",
     "point_of_sale_height on build_lawsuit_graph: the seed can switch to the variant",
     "standardphysics_agents.build_workflow_suite(...) expands a scan scenario into all stop directions plus task approaches",
-    "standardphysics_agents.run_typesafe_workflow_batch(...) runs up to 1,000 bounded trials and returns feedback plus recommended_graph"
+    "standardphysics_agents.run_typesafe_workflow_batch(...) runs up to 1,000 bounded trials and returns feedback plus recommended_graph",
+    "standardphysics_agents.evaluation.run_grid(setups, cases=...) -> list[Experiment], log_experiments(experiments) -> the W&B run urls, and cli experiments"
   ],
   "needs_human": [
     "BLOCKING THE WHOLE REPORT: read each rule's section and confirm its number. python -m standardphysics_agents.cli rules review --by \"<name>\". Fourteen tier 1 rules, a few minutes. Until then every check is off and findings_for returns nothing. The new one is point_of_sale_height, 904.4 and the 904.2 advisory.",
@@ -57,7 +66,9 @@
     "TYPESAFE_API_KEY and the quickstart's base URL and request path into .env, as TYPESAFE_BASE_URL. Without them the loop runs the local policy and says so, and the TypeSafe track comes out of the pitch.",
     "OPENROUTER_API_KEY in .env with zero data retention on the account and a credit limit. Without it the ask box matches keywords instead of reading the question, and says so.",
     "WANDB_API_KEY, WANDB_ENTITY and WANDB_PROJECT in .env, or tracing and evaluation stay local",
-    "Schedule the accessibility professional"
+    "Schedule the accessibility professional",
+    "For ARIA: the W&B project has to be a team project and an org admin has to turn on Smart features under Settings, Privacy. Then run cli experiments and ask it the questions in docs/aria.md.",
+    "Whether lawsuit_counter and door_clearance_blocked contain a 180 degree turn. The answer decides whether the labels are wrong or turn detection is, and neither is an agent's to change. See docs/handoffs/C-to-B.md."
   ],
   "simulation_video": {
     "plan": [

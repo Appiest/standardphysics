@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import urllib.error
 import urllib.request
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from standardphysics_contracts import Decision
@@ -39,7 +41,9 @@ INSTRUCTION = (
     "short follow-up scan and may only target findings where wants_another_look "
     "is true. ASK_OWNER needs one specific question. ESCALATE queues a problem "
     "for a professional. DONE ends the review. The application supplies eligible "
-    "finding targets after the action is selected."
+    "finding targets after the action is selected. Prioritize FIX for measured "
+    "problems; unrelated evidence questions do not prevent testing furniture "
+    "placements. Never repeat a scan request or owner question already issued."
 )
 
 ACTION_CRITERIA = {
@@ -49,6 +53,21 @@ ACTION_CRITERIA = {
     "ESCALATE": "Queue measured problems that furniture cannot resolve for a professional.",
     "DONE": "End the review when no eligible next step remains.",
 }
+
+
+def available_actions(state: RouterState) -> dict[str, str]:
+    """Only offer work that can still change this run's outcome."""
+    eligible = set()
+    if state.fixable_finding_ids and state.fix_budget_left:
+        eligible.add("FIX")
+    if state.rescan_finding_ids and "RESCAN_AREA" not in state.actions_taken:
+        eligible.add("RESCAN_AREA")
+    if state.questions and "ASK_OWNER" not in state.actions_taken:
+        eligible.add("ASK_OWNER")
+    if any(f.id not in state.fixable_finding_ids for f in state.problems) and "ESCALATE" not in state.actions_taken:
+        eligible.add("ESCALATE")
+    return {action: rubric for action, rubric in ACTION_CRITERIA.items()
+            if action in (eligible or {"DONE"})}
 
 RESPONSE_PATHS = (
     ("data",),
@@ -63,6 +82,36 @@ service that returns the object at the top level works without configuration.
 """
 
 _NO_TYPESAFE_ANSWER = object()
+
+
+@dataclass
+class TypeSafeCallBudget:
+    """One thread-safe, per-campaign ceiling on paid provider calls."""
+
+    limit: int
+    used: int = 0
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.limit, bool) or not 1 <= self.limit <= 50_000:
+            raise ValueError("TypeSafe call limit must be between 1 and 50000")
+        if (
+            isinstance(self.used, bool)
+            or not isinstance(self.used, int)
+            or not 0 <= self.used <= self.limit
+        ):
+            raise ValueError("TypeSafe calls used must be between zero and the limit")
+
+    @property
+    def remaining(self) -> int:
+        return max(self.limit - self.used, 0)
+
+    def reserve(self) -> bool:
+        with self._lock:
+            if self.used >= self.limit:
+                return False
+            self.used += 1
+            return True
 
 
 class Transport(Protocol):
@@ -133,9 +182,13 @@ def _load(raw: str | bytes) -> Any:
 def _walk(body: Any, path: tuple) -> Any:
     current = body
     for step in path:
-        if isinstance(step, int) and isinstance(current, list) and len(current) > step:
-            current = current[step]
-        elif isinstance(current, dict) and step in current:
+        list_index = (
+            isinstance(step, int)
+            and isinstance(current, list)
+            and len(current) > step
+        )
+        mapping_key = isinstance(current, dict) and step in current
+        if list_index or mapping_key:
             current = current[step]
         else:
             return None
@@ -152,6 +205,7 @@ class TypeSafeRouter:
         path: str = DEFAULT_PATH,
         model: str | None = None,
         transport: Transport | None = None,
+        budget: TypeSafeCallBudget | None = None,
     ) -> None:
         self.api_key = api_key or os.environ.get(API_KEY_ENV)
         self.base_url = (
@@ -160,6 +214,7 @@ class TypeSafeRouter:
         self.path = path or DEFAULT_PATH
         self.model = model or os.environ.get(MODEL_ENV) or DEFAULT_MODEL
         self.transport = transport or UrllibTransport()
+        self.budget = budget
 
     @property
     def configured(self) -> bool:
@@ -173,7 +228,7 @@ class TypeSafeRouter:
                 "action": {
                     "type": "choice",
                     "instructions": INSTRUCTION,
-                    "criteria": ACTION_CRITERIA,
+                    "criteria": available_actions(state),
                 }
             },
         }
@@ -182,7 +237,7 @@ class TypeSafeRouter:
     def decide(self, state: RouterState) -> Decision | Rejected:
         if not self.configured:
             return Rejected("typesafe_not_configured")
-        raw = self._call(self.request_body(state))
+        raw = self.ask(self.request_body(state))
         if isinstance(raw, Rejected):
             return raw
         choice = _typesafe_choice(raw)
@@ -200,7 +255,23 @@ class TypeSafeRouter:
             return decision
         return _authorize(decision, state)
 
+    @traced("router.typesafe.systemone")
+    def ask(self, body: dict) -> Any | Rejected:
+        """One request and the answer it returned, as its own traced call.
+
+        System One reports a confidence and a probability for every action it
+        did not pick. A `Decision` has no room for either, and both are worth
+        having when a loop did something surprising, so the answer is traced
+        where it arrives rather than summarized after the fact.
+        """
+        raw = self._call(body)
+        if isinstance(raw, Rejected):
+            return raw
+        return _load(raw) if isinstance(raw, (str, bytes)) else raw
+
     def _call(self, body: dict) -> bytes | Rejected:
+        if self.budget is not None and not self.budget.reserve():
+            return Rejected("typesafe_call_budget_exhausted")
         try:
             return self.transport.post(
                 f"{self.base_url}{self.path}",
@@ -261,6 +332,8 @@ def _authorize(decision: Decision, state: RouterState) -> Decision | Rejected:
         return Rejected("rescan_targets_measured_finding")
     if decision.action == "ESCALATE" and not targets <= {f.id for f in state.problems}:
         return Rejected("escalate_targets_nonproblem")
+    if decision.action not in available_actions(state):
+        return Rejected("action_not_available")
     return decision
 
 

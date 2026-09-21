@@ -346,6 +346,80 @@ final class UploadViewModelTests: XCTestCase {
         XCTAssertEqual(createCount, 2)
     }
 
+    func testPhotoManifestUploadsAfterAllFramesAndNotWhenAFrameFails() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // optional-0 and optional-1 are frame artifacts; optional-2 is the manifest.
+        let scan = try makeScan(in: directory, optionalArtifactKinds: [.frames, .frames, .photoManifest])
+        let remoteID = UUID()
+        var uploadedIDs: [String] = []
+        var secondFrameShouldFail = true
+
+        UploadURLProtocolStub.handler = { request in
+            let path = request.url!.path
+            switch request.httpMethod {
+            case "POST" where path == "/api/scans":
+                return .scan(status: 201, id: remoteID, state: .uploading)
+            case "PUT" where path.hasSuffix("/optional-1") && secondFrameShouldFail:
+                secondFrameShouldFail = false
+                return StubResponse(status: 500, data: Data())
+            case "PUT":
+                let artifact = try XCTUnwrap(scan.artifacts.first { path.hasSuffix("/\($0.id)") })
+                if artifact.id.hasPrefix("optional") { uploadedIDs.append(artifact.id) }
+                return StubResponse(status: 201, data: Data("{}".utf8))
+            case "POST" where path.hasSuffix("/complete"):
+                return .scan(status: 200, id: remoteID, state: .ready)
+            default:
+                return StubResponse(status: 500, data: Data())
+            }
+        }
+
+        let model = UploadViewModel(scan: scan, name: "Tea House", client: makeClient(), pollInterval: .milliseconds(5))
+        model.start()
+        try await waitUntil { model.optionalUploadErrorMessage != nil }
+
+        XCTAssertFalse(uploadedIDs.contains("optional-2"), "the manifest must not upload while a frame upload has failed")
+        XCTAssertEqual(uploadedIDs, ["optional-0"])
+
+        model.retry()
+        try await waitUntil { model.pendingOptionalUploadCount == 0 }
+
+        XCTAssertEqual(uploadedIDs, ["optional-0", "optional-1", "optional-2"])
+    }
+
+    func testPhotoManifestUploadsLastRegardlessOfArtifactArrayOrder() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // The manifest sits BEFORE its frame in the scan's own artifact
+        // array, so only an explicit dependency check (not array order)
+        // can keep it from uploading too early.
+        let scan = try makeScan(in: directory, optionalArtifactKinds: [.photoManifest, .frames])
+        let remoteID = UUID()
+        var uploadedIDs: [String] = []
+
+        UploadURLProtocolStub.handler = { request in
+            let path = request.url!.path
+            switch request.httpMethod {
+            case "POST" where path == "/api/scans":
+                return .scan(status: 201, id: remoteID, state: .uploading)
+            case "PUT":
+                let artifact = try XCTUnwrap(scan.artifacts.first { path.hasSuffix("/\($0.id)") })
+                if artifact.id.hasPrefix("optional") { uploadedIDs.append(artifact.id) }
+                return StubResponse(status: 201, data: Data("{}".utf8))
+            case "POST" where path.hasSuffix("/complete"):
+                return .scan(status: 200, id: remoteID, state: .ready)
+            default:
+                return StubResponse(status: 500, data: Data())
+            }
+        }
+
+        let model = UploadViewModel(scan: scan, name: "Tea House", client: makeClient(), pollInterval: .milliseconds(5))
+        model.start()
+        try await waitUntil { model.state == .ready && model.pendingOptionalUploadCount == 0 }
+
+        XCTAssertEqual(uploadedIDs, ["optional-1", "optional-0"])
+    }
+
     private func makeClient() -> ScanUploadClient {
         ScanUploadClient(
             baseURL: URL(string: "https://standard.physics")!,

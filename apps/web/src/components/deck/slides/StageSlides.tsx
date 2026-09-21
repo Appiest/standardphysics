@@ -21,33 +21,28 @@ function StageCaption({ children, source }: { children: ReactNode; source?: stri
 export function ScanSlide() {
   return (
     <StageCaption>
-      <ScanWipe delay={0.2} duration={1.2}>Scan your</ScanWipe>
-      <ScanWipe delay={0.4} duration={1.2}>shop with</ScanWipe>
-      <ScanWipe delay={0.6} duration={1.2}>an iPhone.</ScanWipe>
+      <ScanWipe delay={0.2} duration={1.2}>Sara walks</ScanWipe>
+      <ScanWipe delay={0.4} duration={1.2}>through her shop</ScanWipe>
+      <ScanWipe delay={0.6} duration={1.2}>with an iPhone.</ScanWipe>
     </StageCaption>
   );
 }
 
 export function FindSlide() {
   return (
-    <StageCaption source={facts.counterHeightInLawsuit.source}>
-      <MaskedLines lines={["The counter was", `about ${facts.counterHeightInLawsuit.value} inches.`]} delay={0.9} />
+    <StageCaption source={`${facts.counterHeightInLawsuit.source}; ${facts.accessibleCounterMaxHeight.source}`}>
+      <MaskedLines
+        lines={["The counter is", `${facts.counterHeightInLawsuit.value} inches high.`, `The limit is ${facts.accessibleCounterMaxHeight.value}.`]}
+        delay={0.9}
+      />
     </StageCaption>
   );
 }
 
 export function FixSlide() {
   return (
-    <StageCaption source={`${facts.accessibleCounterMaxHeight.source} and Advisory 904.2`}>
-      <MaskedLines lines={["Move the card", "reader to the", "low counter."]} delay={0.2} />
-    </StageCaption>
-  );
-}
-
-export function DemoSlide() {
-  return (
-    <StageCaption>
-      <MaskedLines lines={["Let’s try it."]} delay={0.5} />
+    <StageCaption source={facts.accessibleCounterMaxHeight.source}>
+      <MaskedLines lines={["Move the card", "reader to the", "lower counter."]} delay={0.2} />
     </StageCaption>
   );
 }

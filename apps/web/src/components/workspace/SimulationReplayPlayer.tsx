@@ -31,7 +31,7 @@ export function SimulationReplayPlayer({ replay }: { replay: SimulationReplay })
     {error && <p role="alert" className="text-problem">The video could not load. Reload this page or download the recording below.</p>}
     <p id="replay-description" className="max-w-3xl text-sm text-ink-muted">Both views replay the same wheelchair journey through the scanned room. The third-person view cuts away upper surfaces for visibility. Props are hypothetical and hand motion is illustrative. Select a task to seek, then press play.</p>
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <h2 className="text-xl font-semibold">Recorded tasks</h2>
+      <h2 className="heading-display text-xl">Recorded tasks</h2>
       <a className="py-2 text-sm text-accent underline underline-offset-4" href={`${base}/video.mp4`} download="simulation-replay.mp4">Download video</a>
     </div>
     <ol className="grid gap-2 sm:grid-cols-2">

@@ -1,7 +1,7 @@
 from uuid import uuid4
 
-from standardphysics_contracts import LidarMesh, LidarMeshPart, Vec3
 from standardphysics_agents.mesh_collision import MeshCollisionIndex
+from standardphysics_contracts import LidarMesh, LidarMeshPart, Mat4, SceneNode, Vec3
 
 
 def mesh(vertices, triangles):
@@ -33,3 +33,31 @@ def test_capsule_radius_and_floor_offset_are_used():
     index = MeshCollisionIndex(captured)
     assert index.collides([Vec3(x=0,y=0.2,z=0)], 10)
     assert not index.collides([Vec3(x=0,y=0.3,z=0)], 10)
+
+
+def test_movable_footprint_exclusion_keeps_unrelated_fixed_geometry():
+    captured = mesh(
+        [
+            -0.4, 0.4, 0,
+            0.4, 0.4, 0,
+            -0.4, 1.0, 0,
+            2, 0.4, -0.5,
+            2, 0.4, 0.5,
+            2, 1.0, 0,
+        ],
+        [0, 1, 2, 3, 4, 5],
+    )
+    furniture = SceneNode(
+        id=uuid4(),
+        kind="object",
+        label="Chair",
+        raw_category="chair",
+        dimensions=Vec3(x=1, y=1, z=1),
+        transform=Mat4.translation(0, 0, 0.5),
+        movable=True,
+    )
+    original = MeshCollisionIndex(captured)
+    filtered = original.excluding_nodes([furniture])
+    assert original.collides([Vec3(x=0, y=-1, z=0), Vec3(x=0, y=1, z=0)], 2)
+    assert not filtered.collides([Vec3(x=0, y=-1, z=0), Vec3(x=0, y=1, z=0)], 2)
+    assert filtered.collides([Vec3(x=2, y=-1, z=0), Vec3(x=2, y=1, z=0)], 2)

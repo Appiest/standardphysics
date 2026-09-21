@@ -25,7 +25,14 @@ from standardphysics_contracts import (
     to_meters,
 )
 from standardphysics_fixtures.shop import FIX_SHIFT_INCHES, node_id
-from standardphysics_pipeline import PipelineMeasurements, contains_point, floor_polygon, footprint, gap_between, polygon_bounds
+from standardphysics_pipeline import (
+    PipelineMeasurements,
+    contains_point,
+    floor_polygon,
+    footprint,
+    gap_between,
+    polygon_bounds,
+)
 
 CASE_EAST = node_id("case_east")
 CASE_WEST = node_id("case_west")
@@ -497,3 +504,59 @@ class TestASealedRoute:
         )
         assert not outcome.found
         assert outcome.relaxation.kind == "unlock"
+
+
+class TestMovingThingsThatShareFloorSpace:
+    """Furniture overlaps from above all the time without touching."""
+
+    def _room(self, *pieces):
+        floor = _node("share_floor", "floor", "Floor", (0.0, 0.0, 0.0), (6.0, 6.0, 0.01), False)
+        return SceneGraph(scan_id=node_id("share_room"), nodes=[floor, *pieces])
+
+    def _table(self):
+        return _node("share_table", "object", "Table", (0.0, 0.0, 0.375), (1.2, 0.8, 0.75), False)
+
+    def _slide(self, graph, piece, dx, dy=0.0):
+        return apply_moves(graph, [NodeMove(node_id=piece.id, delta_translation=Vec3(x=dx, y=dy, z=0.0))])
+
+    def test_a_chair_tucked_under_a_table_can_be_pulled_out(self):
+        chair = _node("share_chair", "object", "Chair", (0.3, 0.3, 0.45), (0.45, 0.45, 0.9), True)
+        graph = self._room(self._table(), chair)
+        assert "collided" not in _kinds(graph, self._slide(graph, chair, 0.0, 0.8))
+
+    def test_a_chair_pushed_into_a_table_it_was_clear_of_still_collides(self):
+        chair = _node("share_chair", "object", "Chair", (2.0, 0.0, 0.45), (0.45, 0.45, 0.9), True)
+        graph = self._room(self._table(), chair)
+        assert "collided" in _kinds(graph, self._slide(graph, chair, -2.0))
+
+    def test_a_laptop_slides_across_the_desk_it_sits_on(self):
+        laptop = _node("share_laptop", "object", "Laptop", (-0.3, 0.0, 0.765), (0.35, 0.25, 0.03), True)
+        graph = self._room(self._table(), laptop)
+        slid = self._slide(graph, laptop, 0.5)
+        assert violations(graph, slid) == []
+        assert slid.by_id(laptop.id).transform.position.z == pytest.approx(0.765)
+
+    def test_a_pillow_lifted_off_a_table_settles_on_the_floor(self):
+        pillow = _node("share_pillow", "object", "Pillow", (0.0, 0.0, 0.85), (0.4, 0.4, 0.2), True)
+        graph = self._room(self._table(), pillow)
+        dropped = self._slide(graph, pillow, 2.0)
+        assert dropped.by_id(pillow.id).transform.position.z == pytest.approx(0.1)
+
+    def test_a_pillow_carried_onto_another_table_lands_on_its_top(self):
+        pillow = _node("share_pillow", "object", "Pillow", (0.0, 0.0, 0.85), (0.4, 0.4, 0.2), True)
+        high_table = _node("share_high", "object", "Table", (2.0, 0.0, 0.5), (1.0, 1.0, 1.0), False)
+        graph = self._room(self._table(), high_table, pillow)
+        carried = self._slide(graph, pillow, 2.0)
+        assert carried.by_id(pillow.id).transform.position.z == pytest.approx(1.1)
+        assert violations(graph, carried) == []
+
+    def test_a_chair_standing_on_the_floor_keeps_its_height(self):
+        chair = _node("share_chair", "object", "Chair", (2.0, 0.0, 0.45), (0.45, 0.45, 0.9), True)
+        graph = self._room(self._table(), chair)
+        assert self._slide(graph, chair, 0.5).by_id(chair.id).transform.position.z == pytest.approx(0.45)
+
+    def test_a_piece_the_scan_left_past_the_floor_edge_can_move_along_it(self):
+        lamp = _node("share_lamp", "object", "Lamp", (2.95, 0.0, 0.6), (0.3, 0.3, 1.2), True)
+        graph = self._room(lamp)
+        assert "left_the_floor" not in _kinds(graph, self._slide(graph, lamp, 0.0, 0.5))
+        assert "left_the_floor" in _kinds(graph, self._slide(graph, lamp, 0.5))

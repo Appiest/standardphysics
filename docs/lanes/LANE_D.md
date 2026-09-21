@@ -32,6 +32,7 @@ Contracts and fixtures are already committed, including a synthetic boba shop wi
 | Keep the demo machine stable and awake | Physical machine | Continuous |
 | Submit a working version by noon Sunday | Someone clicks submit | **Sun 12:00** |
 | Three timed rehearsals | People talking | Sun 11:00 |
+| A team project on W&B with Smart features on, then an ARIA session ([`docs/aria.md`](../aria.md)) | ARIA only answers in a team project, and an org admin turns the feature on | **Sun 09:00** |
 
 ## Build order
 
@@ -69,6 +70,8 @@ The measurement label is what sells this. Project the 3D midpoint to screen spac
 **11. Report.** Print-ready. One block per finding with its render, measurement, fix and citation. Then next steps as actions. Then **What we checked** — the paths measured, the rules checked, who reviewed it and when.
 
 **12. CI.** Typecheck, pytest, contract generation. Clean-clone startup with one command, tested on a machine that has never run it.
+
+**13. The reactive notebook.** `notebooks/scenario_sweep.py`, described in [`docs/marimo.md`](../marimo.md). Sliders set the shop's dimensions and the routine walked through it, and the same `run_case` the evaluation grid calls reads the room they build. The notebook draws findings and reads scorers; it measures nothing itself. *Done when moving a slider changes a finding, and the sweep chart's sampled boundary lands on the number the check cites.*
 
 ## Copy
 

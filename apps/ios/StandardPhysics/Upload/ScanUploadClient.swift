@@ -39,15 +39,25 @@ struct ScanUploadClient {
 
     let baseURL: URL
     let session: URLSession
+    /// The signed-in owner's session. Every scan route needs one; without it
+    /// the server cannot tell whose shop this is and answers 401.
+    let token: String?
 
-    init(baseURL: URL, session: URLSession = .shared) {
+    init(baseURL: URL, session: URLSession = .shared, token: String? = nil) {
         self.baseURL = baseURL
         self.session = session
+        self.token = token
+    }
+
+    private func authorized(_ url: URL, method: String) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        return request
     }
 
     func createScan(name: String, duration: TimeInterval) async throws -> RemoteScan {
-        var request = URLRequest(url: baseURL.appendingPathComponent("api/scans"))
-        request.httpMethod = "POST"
+        var request = authorized(baseURL.appendingPathComponent("api/scans"), method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(CreateScanRequest(
             name: name,
@@ -63,8 +73,7 @@ struct ScanUploadClient {
             .appendingPathComponent(scanID.uuidString)
             .appendingPathComponent("artifacts")
             .appendingPathComponent(artifact.id)
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
+        var request = authorized(url, method: "PUT")
         request.setValue(try SHA256Digest.hexDigest(of: artifact.fileURL), forHTTPHeaderField: "X-Checksum-SHA256")
         request.setValue(artifact.kind.rawValue, forHTTPHeaderField: "X-Artifact-Kind")
         let (_, response) = try await session.upload(for: request, fromFile: artifact.fileURL)
@@ -72,18 +81,19 @@ struct ScanUploadClient {
     }
 
     func complete(scanID: UUID) async throws -> RemoteScan {
-        var request = URLRequest(
-            url: baseURL.appendingPathComponent("api/scans")
+        let request = authorized(
+            baseURL.appendingPathComponent("api/scans")
                 .appendingPathComponent(scanID.uuidString)
-                .appendingPathComponent("complete")
+                .appendingPathComponent("complete"),
+            method: "POST"
         )
-        request.httpMethod = "POST"
         return try await send(request, expectedStatus: 200, expectedScanID: scanID)
     }
 
     func scan(id: UUID) async throws -> RemoteScan {
-        let request = URLRequest(
-            url: baseURL.appendingPathComponent("api/scans").appendingPathComponent(id.uuidString)
+        let request = authorized(
+            baseURL.appendingPathComponent("api/scans").appendingPathComponent(id.uuidString),
+            method: "GET"
         )
         return try await send(request, expectedStatus: 200, expectedScanID: id)
     }
@@ -106,6 +116,9 @@ struct ScanUploadClient {
         guard let response = response as? HTTPURLResponse else {
             throw UploadClientError.unexpectedResponse
         }
+        if response.statusCode == 401 {
+            throw UploadClientError.signedOut
+        }
         if response.statusCode == 404 || response.statusCode == 410 {
             throw UploadClientError.remoteScanMissing
         }
@@ -117,9 +130,8 @@ struct ScanUploadClient {
     /// Removes a scan from the server. A scan that is already gone counts as
     /// deleted: the phone asked for it to not be there, and it is not there.
     func delete(id: UUID) async throws {
-        var request = URLRequest(url: baseURL.appendingPathComponent("api/scans/\(id.uuidString)"))
-        request.httpMethod = "DELETE"
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let request = authorized(baseURL.appendingPathComponent("api/scans/\(id.uuidString)"), method: "DELETE")
+        let (_, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { return }
         guard http.statusCode == 204 || http.statusCode == 404 else {
             throw UploadClientError.unexpectedResponse
@@ -143,6 +155,9 @@ enum UploadClientError: Error, Equatable {
     case unexpectedResponse
     case mismatchedScanIdentifier
     case remoteScanMissing
+    /// The session expired or was signed out elsewhere. Retrying the upload
+    /// will not help; the owner has to sign in again.
+    case signedOut
 }
 
 private enum DeviceModel {

@@ -79,12 +79,14 @@ class FakeModel:
 
 
 def test_there_is_an_executor_for_every_kind_of_question():
-    assert set(EXECUTORS) == KINDS
+    """KINDS became a registry keyed by name, so it is compared by its keys."""
+    assert set(EXECUTORS) == set(KINDS)
 
 
 class TestTheQuestionShape:
     def test_the_schema_comes_from_the_model(self):
-        assert query_schema() == Query.model_json_schema()
+        """Generated, never written by hand, so it cannot drift from Query."""
+        assert set(query_schema()["properties"]) == set(Query.model_fields)
 
     def test_prose_instead_of_a_question(self, graph):
         assert parse_query("how many chairs", graph).reason == (
@@ -92,10 +94,14 @@ class TestTheQuestionShape:
         )
 
     def test_a_kind_outside_the_set(self, graph):
+        """Still refused, now for the reason that names it.
+
+        A closed type used to throw this out while checking the shape, before the
+        check written for exactly this case could run. With kinds registered by
+        their executors, that check is what catches it.
+        """
         payload = {"kind": "PAINT_IT", "restated": "Paint the walls."}
-        assert parse_query(payload, graph).reason == (
-            "question_does_not_fit_the_shape"
-        )
+        assert parse_query(payload, graph).reason == "unknown_question"
 
     def test_a_count_naming_nothing(self, graph):
         assert parse_query({"kind": "COUNT", "restated": "How many?"}, graph).reason == (
@@ -208,8 +214,19 @@ class TestTheModelCall:
         pieces = catalogue(graph, scenario)
         assert pieces
         assert set(pieces[0]) == {
-            "id", "label", "movable", "toward_back_inches", "toward_right_inches"
+            "id", "label", "movable", "toward_back_inches", "toward_right_inches",
+            "width_inches", "depth_inches", "height_inches",
         }
+
+    def test_every_piece_carries_what_it_measures(self, graph, scenario):
+        """So a piece can be picked out by what it is like, not what it is called.
+
+        Given only labels, the one way to answer "the two desks" is to match the
+        word, and a scan that called them tables then has no desks in it.
+        """
+        for piece in catalogue(graph, scenario):
+            assert piece["width_inches"] > 0
+            assert piece["height_inches"] > 0
 
     def test_prose_back_from_the_model_answers_nothing(self, graph, scenario):
         client = FakeModel("You have six chairs")
@@ -274,10 +291,17 @@ class TestCounting:
         assert result.locus is not None
         assert len(result.locus.node_ids) == 6
 
-    def test_a_count_of_none_is_still_an_answer(self, answer):
+    def test_a_count_of_none_says_it_cannot_tell_rather_than_zero(self, answer):
+        """Changed on purpose, because what it asserted was the wrong behaviour.
+
+        It used to require "You have no sofas", which states as a fact something
+        the scan never looked for: a model names what the scanner recognised, so
+        the absence of a word is not the absence of the thing. The same defect
+        told a library with fifteen hundred books that it had none.
+        """
         result = answer("how many sofas do I have?")
-        assert result.text.startswith("You have no sofas.")
-        assert "six chairs" in result.text
+        assert result.rejected == "could_not_establish"
+        assert "does not have a name for sofas" in result.text
 
     def test_it_counts_doors_when_asked_about_doors(self, answer):
         assert answer("how many doors do I have?").data["total"] == 1
@@ -404,7 +428,7 @@ class TestStandards:
     def test_is_my_front_door_wide_enough(self, answer):
         result = answer("is my front door wide enough?")
         assert result.kind == "CHECK"
-        assert "The front door is wide enough" in result.text
+        assert "Measure the front doorway" in result.text
         assert result.data["citation"].endswith("404.2.3")
 
     def test_it_gives_the_same_sentence_as_the_report(self, answer, context):
@@ -543,7 +567,7 @@ class TestWhichCheckAQuestionIsAbout:
         """Not with the photograph we also want of its handle."""
         result = answer("is my front door wide enough")
         assert result.data["citation"].endswith("404.2.3")
-        assert "wide enough" in result.text
+        assert "Measure the front doorway" in result.text
 
     def test_turning_round_is_measured_even_where_the_rule_is_silent(self, answer):
         """304.3 asks for a turning space where one is required, which is at a

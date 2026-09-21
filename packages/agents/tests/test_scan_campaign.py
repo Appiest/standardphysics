@@ -1,21 +1,35 @@
-from uuid import uuid4
 import json
+from uuid import uuid4
 
 import numpy as np
 import pytest
 from scipy import ndimage
-from standardphysics_contracts import LidarMesh, Mat4, SceneGraph, SceneNode, Vec3
-from standardphysics_pipeline import Grid
-
 from standardphysics_agents.evaluation.scan_campaign import (
-    TaskDomain, bfs_path, evaluate_domain, make_replay, unique_indices,
+    TaskDomain,
+    bfs_path,
+    evaluate_domain,
+    make_replay,
+    run_campaign,
     task_domain,
+    unique_indices,
 )
 from standardphysics_agents.evaluation.scan_space import (
-    BodyProfile, ScanSpace, build_spaces, floor_polygon, world_triangles,
+    BodyProfile,
+    ScanSpace,
+    build_spaces,
+    floor_polygon,
+    world_triangles,
 )
-from standardphysics_agents.evaluation.scan_tasks import ScanTask, TaskSuite, choose_task, validate_tasks
+from standardphysics_agents.evaluation.scan_tasks import (
+    ScanTask,
+    TaskSuite,
+    choose_task,
+    validate_tasks,
+)
 from standardphysics_agents.router.typesafe import TypeSafeRouter
+from standardphysics_contracts import LidarMesh, Mat4, SceneGraph, SceneNode, Vec3
+from standardphysics_fixtures import build_graph, node_id
+from standardphysics_pipeline import Grid
 
 
 def task(task_id="medicine", node_id=None):
@@ -83,8 +97,19 @@ class Transport:
     def post(self, url, body, headers):
         request = json.loads(body)
         assert set(request['questions']['task']['criteria']) == {'medicine', 'computer'}
-        return json.dumps({'answers':{'task':{'choice':self.choice,'confidence':0.9}},
-                           'usage':{'input_tokens':10,'output_tokens':1}}).encode()
+        return json.dumps({
+            'model': 'jev-test',
+            'answers': {'task': {
+                'type': 'choice',
+                'choice': self.choice,
+                'probabilities': {
+                    'medicine': 1.0 if self.choice == 'medicine' else 0.0,
+                    'computer': 1.0 if self.choice == 'computer' else 0.0,
+                },
+                'confidence': 1.0,
+            }},
+            'usage': {'input_tokens': 10, 'output_tokens': 1},
+        }).encode()
 
 
 def test_real_choice_shape_controls_next_batch_and_unknown_choice_authorizes_none():
@@ -93,7 +118,7 @@ def test_real_choice_shape_controls_next_batch_and_unknown_choice_authorizes_non
     assert picked.id == 'computer'
     assert receipt['calls'] == 1
     assert receipt['response']['usage']['input_tokens'] == 10
-    with pytest.raises(ValueError, match="no batch authorized"):
+    with pytest.raises(RuntimeError, match="response_choice_unknown"):
         choose_task(tasks, [], TypeSafeRouter(api_key='test', transport=Transport('invented')))
 
 
@@ -140,3 +165,43 @@ def test_actual_mesh_height_blocks_a_tall_body_but_not_a_lower_body():
     assert low.traversable[point]
     assert not tall.traversable[point]
     assert not np.any(tall.traversable & ~low.traversable)
+
+
+def test_campaign_runs_distinct_bounded_cases_and_preserves_the_scan(tmp_path):
+    graph = build_graph()
+    mesh = LidarMesh.model_validate({'floorY': 0, 'parts': [{'id': str(uuid4()),
+        'transform': [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+        'vertices': [0, 0, 0, 1, 0, 0, 0, 0, -1], 'triangles': [0, 1, 2]}]})
+    props = [
+        'medicine', 'computer', 'drink', 'book', 'phone',
+        'food', 'bag', 'paper', 'personal_item', 'table_edge',
+    ]
+    suite = TaskSuite(tasks=[
+        ScanTask(
+            id=f'task-{index}',
+            title=f'Task {index}',
+            target_node_id=node_id(f'table_{index % 4 + 1}'),
+            action='operate',
+            prop=prop,
+            assumption='Hypothetical prop on a measured table',
+        )
+        for index, prop in enumerate(props)
+    ])
+    original = graph.model_dump_json()
+
+    result = run_campaign(
+        graph,
+        mesh,
+        suite,
+        evaluations=40,
+        seed=7,
+        output=tmp_path / 'campaign.json',
+        planner=lambda remaining, history: (
+            remaining[0], {'source': 'test', 'calls': 0}
+        ),
+    )
+    assert result['complete']
+    assert result['evaluations'] == 40
+    assert sum(result['outcomes'].values()) == 40
+    assert len(result['batches']) == 10
+    assert graph.model_dump_json() == original

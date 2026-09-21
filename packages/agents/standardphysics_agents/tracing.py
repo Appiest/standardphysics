@@ -11,6 +11,8 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import threading
+from contextlib import contextmanager
 from typing import Any, Callable, TypeVar
 
 Fn = TypeVar("Fn", bound=Callable[..., Any])
@@ -73,6 +75,22 @@ class _Tracing:
 
 
 _TRACING = _Tracing()
+_THREAD_STATE = threading.local()
+
+
+@contextmanager
+def suspend_tracing():
+    """Skip per-operation telemetry inside high-concurrency simulation lanes.
+
+    The simulation result remains identical; this only prevents hundreds of
+    provider workers from serializing on Weave's local trace store.
+    """
+    previous = getattr(_THREAD_STATE, "suspended", False)
+    _THREAD_STATE.suspended = True
+    try:
+        yield
+    finally:
+        _THREAD_STATE.suspended = previous
 
 
 def _import_weave() -> Any:
@@ -135,7 +153,7 @@ def traced(name: str) -> Callable[[Fn], Fn]:
     def decorate(fn: Fn) -> Fn:
         @functools.wraps(fn)
         def call(*args: Any, **kwargs: Any) -> Any:
-            if not _TRACING.live:
+            if not _TRACING.live or getattr(_THREAD_STATE, "suspended", False):
                 return fn(*args, **kwargs)
             return _TRACING.op(name, fn)(*args, **kwargs)
 

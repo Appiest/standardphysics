@@ -1,0 +1,39 @@
+@import "tailwindcss";
+@import "../drafting.css";
+
+@theme {
+  --color-paper: #ecebe6;
+  --color-sheet: #f8f7f3;
+  --color-ink: #121212;
+  --color-ink-muted: #56554f;
+  --color-rule: #121212;
+  --color-grid-minor: #e6e4dd;
+  --color-grid-major: #d6d3ca;
+
+  --font-sans: var(--font-karla), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-libre-franklin), ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer components {
+  .drafting-sheet {
+    background-color: var(--color-sheet);
+  }
+}
+
+@layer base {
+  html {
+    background: var(--color-paper);
+    color: var(--color-ink);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+}
+

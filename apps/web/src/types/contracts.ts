@@ -3,8 +3,28 @@
  * Change the Pydantic models instead, then regenerate.
  */
 
+/**
+ * One line of `POST /api/scans/{scan_id}/loop/stream`, which reports each pass as it finishes.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "LoopEvent".
+ */
+export type LoopEvent = LoopStarted | LoopPassFinished | LoopFinished | LoopFailed;
+
 export interface StandardPhysicsContracts {
   [k: string]: unknown;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "AdaptiveRoundResult".
+ */
+export interface AdaptiveRoundResult {
+  accepted: boolean;
+  astra_model: string | null;
+  base_graph_hash: string;
+  jev_preferred_candidate: string | null;
+  reasons: string[];
+  round: number;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -41,7 +61,15 @@ export interface Artifact {
   bytes: number;
   id: string;
   kind:
-    "room_usdz" | "room_json" | "room_metadata" | "walkthrough_mp4" | "frames" | "poses" | "coverage" | "lidar_mesh";
+    | "room_usdz"
+    | "room_json"
+    | "room_metadata"
+    | "walkthrough_mp4"
+    | "frames"
+    | "poses"
+    | "coverage"
+    | "lidar_mesh"
+    | "photo_manifest";
   sha256: string;
   stored_path: string | null;
 }
@@ -237,6 +265,105 @@ export interface DisplayAppearance {
   source: "astra";
 }
 /**
+ * A completed visual part inside the measured object's normalized bounds.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "DisplayPart".
+ */
+export interface DisplayPart {
+  axis: "x" | "y" | "z";
+  base_color: string;
+  bevel: number;
+  /**
+   * @minItems 3
+   * @maxItems 3
+   */
+  center: [number, number, number, ...number[]];
+  material: "paint" | "wood" | "fabric" | "metal" | "stone" | "glass" | "neutral";
+  name: string;
+  primitive: "box" | "cylinder" | "ellipsoid";
+  /**
+   * @minItems 3
+   * @maxItems 3
+   */
+  size: [number, number, number, ...number[]];
+}
+/**
+ * Photo-informed completion. Never a recovered measurement or verified clearance.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "DisplayReconstruction".
+ */
+export interface DisplayReconstruction {
+  confidence: number;
+  /**
+   * @minItems 1
+   * @maxItems 6
+   */
+  evidence_frame_ids: [string, ...string[]];
+  /**
+   * @minItems 1
+   * @maxItems 32
+   */
+  parts: [DisplayPart, ...DisplayPart[]];
+  source: "astra";
+  summary: string;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "EnvironmentPhysicsResult".
+ */
+export interface EnvironmentPhysicsResult {
+  cashiers_found: number;
+  exits_found: number;
+  limitations: string[];
+  mesh_triangles_checked: number;
+  observations: PhysicsObservation[];
+  resolution_inches: number;
+  routes: PhysicsRoute[];
+  seats_found: number;
+  surface_samples: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PhysicsObservation".
+ */
+export interface PhysicsObservation {
+  kind: "surface_slope" | "uncontrolled_roll" | "wheelchair_tip" | "level_change" | "stair_or_step" | "turning";
+  measured_value: number | null;
+  node_ids: string[];
+  point: Vec3 | null;
+  reference_value: number | null;
+  source: "lidar_mesh" | "scene_graph" | "route_geometry";
+  status: "clear" | "potential_barrier" | "needs_measurement";
+  title: string;
+  unit: string | null;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PhysicsRoute".
+ */
+export interface PhysicsRoute {
+  blocking_node_ids: string[];
+  clear_width_inches: number | null;
+  destination_node_id: string;
+  distance_inches: number | null;
+  origin_node_id: string;
+  purpose: "customer_access" | "evacuation" | "seat_to_cashier";
+  reachable: boolean;
+}
+/**
+ * What a result was read off, and where to look to see it.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "Evidence".
+ */
+export interface Evidence {
+  at: Vec3 | null;
+  frames: string[];
+  subjects: string[];
+}
+/**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "HeightResult".
  */
@@ -323,6 +450,25 @@ export interface LidarMeshPart {
   vertices: [number, number, number, ...number[]];
 }
 /**
+ * Sent before the first pass runs.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "LoopStarted".
+ */
+export interface LoopStarted {
+  base_revision: number;
+  decided_by: string;
+  kind: "started";
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "LoopPassFinished".
+ */
+export interface LoopPassFinished {
+  kind: "pass";
+  loop_pass: LoopPass;
+}
+/**
  * One trip round the loop: what the router chose and what came of it.
  *
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -341,13 +487,12 @@ export interface LoopPass {
   questions: number;
 }
 /**
- * Run Lane C's loop on this layout until it clears what it can or stops.
- *
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
- * via the `definition` "LoopRequest".
+ * via the `definition` "LoopFinished".
  */
-export interface LoopRequest {
-  base_revision: number;
+export interface LoopFinished {
+  kind: "finished";
+  result: LoopResult;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -358,6 +503,25 @@ export interface LoopResult {
   decided_by: string;
   moves: NodeMove[];
   passes: LoopPass[];
+}
+/**
+ * The loop broke partway through; nothing was saved.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "LoopFailed".
+ */
+export interface LoopFailed {
+  error: string;
+  kind: "failed";
+}
+/**
+ * Run Lane C's loop on this layout until it clears what it can or stops.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "LoopRequest".
+ */
+export interface LoopRequest {
+  base_revision: number;
 }
 /**
  * Row-major 4x4 transform.
@@ -389,6 +553,155 @@ export interface Mat4 {
     number,
     ...number[]
   ];
+}
+/**
+ * Nodes the primitive selected, such as everything standing on a desk.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "NodeSet".
+ */
+export interface NodeSet {
+  node_ids: string[];
+  type: "nodes";
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "NodeTextureCoverage".
+ */
+export interface NodeTextureCoverage {
+  node_id: string;
+  textured_fraction: number;
+}
+/**
+ * Written by the phone after its photos upload. A build waits until every listed frame is stored.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PhotoManifest".
+ */
+export interface PhotoManifest {
+  /**
+   * @minItems 1
+   * @maxItems 4000
+   */
+  frames: [PhotoManifestFrame, ...PhotoManifestFrame[]];
+  manifest_version: 1;
+  poses_sha256: string;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PhotoManifestFrame".
+ */
+export interface PhotoManifestFrame {
+  bytes: number;
+  frame_id: string;
+  sha256: string;
+}
+/**
+ * One keyframe in poses.json. Version 1 records lack the image metadata.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PoseRecord".
+ */
+export interface PoseRecord {
+  calibration_height: number | null;
+  calibration_width: number | null;
+  frame_id: string | null;
+  image: string;
+  image_height: number | null;
+  image_orientation: "sensor" | null;
+  image_width: number | null;
+  /**
+   * @minItems 9
+   * @maxItems 9
+   */
+  intrinsics: [number, number, number, number, number, number, number, number, number, ...number[]];
+  metadata_version: number;
+  orientation: string;
+  timestamp: number;
+  /**
+   * @minItems 16
+   * @maxItems 16
+   */
+  transform: [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    ...number[]
+  ];
+}
+/**
+ * One primitive's answer, with everything needed to show or cite it.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrimitiveResult".
+ */
+export interface PrimitiveResult {
+  evidence: Evidence;
+  note: string | null;
+  payload: (Quantity | NodeSet | TextSet | Truth) | null;
+  primitive: string;
+  quality: "measured" | "needs_another_look" | "not_measurable";
+}
+/**
+ * One measured number, in the unit the standard is written in.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "Quantity".
+ */
+export interface Quantity {
+  type: "quantity";
+  unit: string;
+  value: number;
+}
+/**
+ * Words read off surfaces in the room.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "TextSet".
+ */
+export interface TextSet {
+  texts: string[];
+  type: "texts";
+}
+/**
+ * A yes or no the geometry settled, such as whether a body fits.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "Truth".
+ */
+export interface Truth {
+  type: "truth";
+  value: boolean;
+}
+/**
+ * A primitive as a model is shown it: a name, what it does, its arguments.
+ *
+ * This is the whole vocabulary a planner gets. A plan naming anything outside
+ * it is refused before it runs.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrimitiveSpec".
+ */
+export interface PrimitiveSpec {
+  arguments: {
+    [k: string]: unknown;
+  };
+  name: string;
+  returns: "quantity" | "nodes" | "texts" | "truth";
+  summary: string;
 }
 /**
  * Ask the fix agent for a layout that clears these findings.
@@ -507,6 +820,7 @@ export interface Stop {
  */
 export interface SceneGraph {
   base_hash: string | null;
+  capture_to_room?: Mat4 | null;
   nodes: SceneNode[];
   revision: number;
   scan_id: string;
@@ -519,14 +833,36 @@ export interface SceneNode {
   appearance?: DisplayAppearance | null;
   dimensions: Vec3;
   id: string;
-  kind: "wall" | "door" | "window" | "opening" | "floor" | "object";
+  kind: string;
   label: string;
-  labeled_by: "roomplan" | "astra" | "owner";
+  labeled_by: string;
   movable: boolean;
   parent_id: string | null;
   quality: "measured" | "needs_another_look" | "confirmed";
   raw_category: string;
+  reconstruction?: DisplayReconstruction | null;
+  relation?: string | null;
+  texts?: SurfaceText[];
   transform: Mat4;
+}
+/**
+ * Words read off a surface, and the frames they were read from.
+ *
+ * A whiteboard, a sign, a label on a box. The text is evidence about what the
+ * room says, never about what it measures.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "SurfaceText".
+ */
+export interface SurfaceText {
+  confidence: number;
+  /**
+   * @minItems 1
+   * @maxItems 8
+   */
+  evidence_frame_ids: [string, ...string[]];
+  face: ("top" | "front" | "back" | "left" | "right" | "bottom") | null;
+  text: string;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -597,11 +933,14 @@ export interface SimulationReplay {
  * via the `definition` "SimulationRequest".
  */
 export interface SimulationRequest {
+  astra_rounds: number;
   base_revision: number;
+  exhaustive_evaluations: number;
   max_workers: number;
   refine_with_astra: boolean;
   router: "local" | "typesafe";
   samples: number;
+  typesafe_call_limit: number;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -611,10 +950,20 @@ export interface SimulationResult {
   action_counts: {
     [k: string]: number;
   };
+  ada_rule_violations: number;
+  adaptive_rounds: AdaptiveRoundResult[];
+  astra_calls: number;
   completed_runs: number;
+  converged: boolean;
+  exhaustive_evaluations: number;
+  exhaustive_outcomes: {
+    [k: string]: number;
+  };
   feedback: SimulationFeedback[];
   limitations: string[];
+  loop_cycles: number;
   mesh_checked: boolean;
+  physics: EnvironmentPhysicsResult | null;
   preview: boolean;
   recommended_graph: SceneGraph | null;
   redesign_accepted: boolean;
@@ -627,7 +976,9 @@ export interface SimulationResult {
   rules_checked: number;
   rules_total: number;
   total_runs: number;
+  typesafe_calls: number;
   unique_layouts: number;
+  violating_trials: number;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -635,12 +986,60 @@ export interface SimulationResult {
  */
 export interface SimulationStatus {
   base_revision: number;
+  candidate_graph: SceneGraph | null;
   completed: number;
+  cycle: number;
   error: string | null;
+  exhaustive_evaluations: number;
   result: SimulationResult | null;
   router: "local" | "typesafe";
   samples: number;
   state: "queued" | "running" | "done" | "failed";
+  typesafe_call_limit: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "TextureBuild".
+ */
+export interface TextureBuild {
+  bake_graph: SceneGraph;
+  build_id: string;
+  coverage: TextureCoverage;
+  coverage_mask_urls: string[];
+  frames_used: number;
+  glb_url: string;
+  scan_glb_url: string | null;
+  seconds: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "TextureCoverage".
+ */
+export interface TextureCoverage {
+  needs_another_view: string[];
+  nodes: NodeTextureCoverage[];
+  textured_fraction: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "TextureRequest".
+ */
+export interface TextureRequest {
+  revision?: number | null;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "TextureStatus".
+ */
+export interface TextureStatus {
+  build: TextureBuild | null;
+  can_retry: boolean;
+  error: string | null;
+  exact: boolean;
+  revision: number;
+  scan_id: string;
+  stale_node_ids: string[];
+  state: "needs_photos" | "waiting_for_photos" | "not_started" | "queued" | "running" | "complete" | "failed";
 }
 /**
  * The bottleneck of a route leg, and where it is.

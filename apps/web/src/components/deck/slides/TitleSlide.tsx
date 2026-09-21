@@ -1,7 +1,7 @@
 import { MaskedLines } from "../primitives";
 import { ScanWipe } from "../ScanWipe";
 
-export function TitleSlide() {
+function NameAndTagline({ tagline }: { tagline: string }) {
   return (
     <div className="deck-gutter flex h-full flex-col justify-between">
       <h1 className="font-display text-display font-extrabold">
@@ -13,8 +13,13 @@ export function TitleSlide() {
         </ScanWipe>
       </h1>
       <p className="font-display text-lede font-bold text-ink-muted">
-        <MaskedLines lines={["We’re students, and we built this", "at CoreWeave Hacks."]} delay={1.9} />
+        <MaskedLines lines={[tagline]} delay={1.9} />
       </p>
     </div>
   );
 }
+
+export function TitleSlide() {
+  return <NameAndTagline tagline="Making accessibility more accessible." />;
+}
+

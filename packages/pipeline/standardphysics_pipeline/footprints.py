@@ -84,6 +84,13 @@ def contains_point(polygon: Polygon, point: Point, margin: float = 0.0) -> bool:
     return True
 
 
+def distance_outside(polygon: Polygon, point: Point, margin: float = 0.0) -> float:
+    """How far a point sits beyond a convex polygon's edge, or zero inside it."""
+    if len(polygon) < 3 or contains_point(polygon, point, margin):
+        return 0.0
+    return min(_point_to_segment(point, start, end) for start, end in _edges(polygon))
+
+
 def _convex_hull(points: list[Point]) -> Polygon:
     """Monotone-chain hull keeps a floor boundary ordered without an AABB."""
     unique = sorted(set(points))

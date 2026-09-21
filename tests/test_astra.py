@@ -3,11 +3,13 @@
 import base64
 import io
 import json
+import time
 import uuid
 
+import numpy as np
 import pytest
-from PIL import Image
 import standardphysics_pipeline.astra as astra
+from PIL import Image
 from standardphysics_pipeline.astra import (
     MAX_IMAGE_BYTES,
     MAX_OUTPUT_TOKENS,
@@ -58,6 +60,39 @@ def patch_for(node, label="Display case", movable=True, quality="measured", appe
     if appearance is not None:
         raw += ',"appearance":' + json.dumps(appearance, separators=(",", ":"))
     return raw + "}"
+
+
+def reconstruction_for(node, frame_id="frame-0000", *, center=(0, 0, 0), size=(0.9, 0.9, 0.1)):
+    return {
+        "summary": "A thin rounded tabletop on metal legs.",
+        "confidence": 0.82,
+        "evidence_frame_ids": [frame_id],
+        "parts": [{
+            "name": "top", "primitive": "box", "center": list(center), "size": list(size),
+            "axis": "z", "bevel": 0.04, "base_color": "#8d6847", "material": "wood",
+        }],
+    }
+
+
+def patch_with_reconstruction(node, reconstruction):
+    return patch_for(node)[:-1] + ',"reconstruction":' + json.dumps(reconstruction, separators=(",", ":")) + "}"
+
+
+def calibrated_pose(index=0, camera_x=0.0):
+    return {
+        "metadata_version": 2,
+        "frame_id": f"frame-{index:04d}",
+        "image": f"frames/frame_{index:04d}.jpg",
+        "timestamp": float(index),
+        "transform": column_major(camera_x, 0.0, 0.0),
+        "intrinsics": [50, 0, 50, 0, 50, 40, 50, 40, 1],
+        "orientation": "portrait",
+        "image_width": 100,
+        "image_height": 80,
+        "calibration_width": 100,
+        "calibration_height": 80,
+        "image_orientation": "sensor",
+    }
 
 
 def test_local_rebuild_keeps_roomplan_provenance_and_measured_identity():
@@ -270,3 +305,214 @@ def test_invalid_frame_bytes_are_skipped_without_breaking_label_request(tmp_path
     content = body["messages"][1]["content"]
     assert isinstance(content, list)
     assert len(content) == 2
+
+
+def test_calibrated_object_crop_association_allows_a_photo_reconstruction(tmp_path):
+    graph = parse_room_json({"objects": [element("table", at=(0.0, 0.0, -2.0))]})
+    table = graph.nodes[0]
+    frame = tmp_path / "frame-0000"
+    Image.new("RGB", (100, 80), "red").save(frame, format="JPEG")
+    poses = tmp_path / "poses.json"
+    poses.write_text(json.dumps([calibrated_pose()]))
+
+    body = _chat_body(graph, frame_paths=[frame], poses_path=poses)
+    context = json.loads(body["messages"][1]["content"][0]["text"])
+    assert context["photo_evidence"] == [{
+        "frame_id": "frame-0000", "object_ids": [str(table.id)], "camera_local": [0.0, -4.0, 0.0],
+    }]
+
+    result = reconstruct_result(
+        graph,
+        frame_paths=[frame],
+        poses_path=poses,
+        transport=lambda *_: model_response(patch_with_reconstruction(table, reconstruction_for(table))),
+    )
+    assert result.source == "astra"
+    assert result.graph.nodes[0].reconstruction.evidence_frame_ids == ["frame-0000"]
+    assert result.graph.nodes[0].reconstruction.parts[0].name == "top"
+
+
+def test_reconstruction_rejects_frames_not_associated_with_its_object(tmp_path):
+    graph = parse_room_json({"objects": [element("table", at=(0.0, 0.0, -2.0))]})
+    table = graph.nodes[0]
+    frame = tmp_path / "frame-0000"
+    Image.new("RGB", (100, 80), "red").save(frame, format="JPEG")
+    poses = tmp_path / "poses.json"
+    poses.write_text(json.dumps([calibrated_pose()]))
+
+    result = reconstruct_result(
+        graph,
+        frame_paths=[frame],
+        poses_path=poses,
+        transport=lambda *_: model_response(patch_with_reconstruction(table, reconstruction_for(table, "frame-9999"))),
+    )
+    assert result.source == "astra"
+    assert result.graph.nodes[0].reconstruction is None
+    assert result.graph.nodes[0].label == "Display case"
+
+
+def test_reconstruction_rejects_parts_outside_measured_bounds(tmp_path):
+    graph = parse_room_json({"objects": [element("table", at=(0.0, 0.0, -2.0))]})
+    table = graph.nodes[0]
+    frame = tmp_path / "frame-0000"
+    Image.new("RGB", (100, 80), "red").save(frame, format="JPEG")
+    poses = tmp_path / "poses.json"
+    poses.write_text(json.dumps([calibrated_pose()]))
+
+    malformed = reconstruction_for(table, center=(0.48, 0, 0), size=(0.2, 0.2, 0.2))
+    result = reconstruct_result(
+        graph,
+        frame_paths=[frame],
+        poses_path=poses,
+        transport=lambda *_: model_response(patch_with_reconstruction(table, malformed)),
+    )
+    assert result.source == "astra"
+    assert result.graph.nodes[0].reconstruction is None
+    assert result.graph.nodes[0].label == "Display case"
+
+
+def test_reconstruction_never_accepts_unassociated_full_frames():
+    graph = parse_room_json({"objects": [element("table")]})
+    table = graph.nodes[0]
+
+    result = reconstruct_result(
+        graph,
+        transport=lambda *_: model_response(patch_with_reconstruction(table, reconstruction_for(table))),
+    )
+    assert result.source == "astra"
+    assert result.graph.nodes[0].reconstruction is None
+
+
+def test_mismatched_photo_dimensions_cannot_enable_calibrated_reconstruction(tmp_path):
+    graph = parse_room_json({"objects": [element("table", at=(0.0, 0.0, -2.0))]})
+    table = graph.nodes[0]
+    frame = tmp_path / "frame-0000"
+    Image.new("RGB", (100, 80), "red").save(frame, format="JPEG")
+    pose = calibrated_pose()
+    pose["image_width"] = 101
+    poses = tmp_path / "poses.json"
+    poses.write_text(json.dumps([pose]))
+
+    result = reconstruct_result(
+        graph,
+        frame_paths=[frame],
+        poses_path=poses,
+        transport=lambda *_: model_response(patch_with_reconstruction(table, reconstruction_for(table))),
+    )
+    assert result.source == "astra"
+    assert result.graph.nodes[0].reconstruction is None
+
+
+def test_photo_reconstruction_can_enrich_a_confirmed_owner_node_without_relabeling_it(tmp_path):
+    graph = parse_room_json({"objects": [element("table", at=(0.0, 0.0, -2.0))]})
+    table = graph.nodes[0].model_copy(update={"label": "Owner table", "labeled_by": "owner", "quality": "confirmed", "movable": False})
+    graph = graph.model_copy(update={"nodes": [table]})
+    frame = tmp_path / "frame-0000"
+    Image.new("RGB", (100, 80), "red").save(frame, format="JPEG")
+    poses = tmp_path / "poses.json"
+    poses.write_text(json.dumps([calibrated_pose()]))
+
+    result = reconstruct_result(
+        graph,
+        frame_paths=[frame],
+        poses_path=poses,
+        transport=lambda *_: model_response(patch_with_reconstruction(table, reconstruction_for(table))),
+    )
+    rebuilt = result.graph.nodes[0]
+    assert rebuilt.label == "Owner table"
+    assert rebuilt.labeled_by == "owner"
+    assert rebuilt.quality == "confirmed"
+    assert not rebuilt.movable
+    assert rebuilt.reconstruction is not None
+
+
+def test_photo_reconstruction_batches_more_than_six_objects_without_starving_later_objects(tmp_path):
+    graph = parse_room_json({"objects": [
+        element("table", at=(0.0, 0.0, -2.0)) for _ in range(7)
+    ]})
+    frame = tmp_path / "frame-0000"
+    Image.new("RGB", (100, 80), "red").save(frame, format="JPEG")
+    poses = tmp_path / "poses.json"
+    poses.write_text(json.dumps([calibrated_pose()]))
+    batch_sizes = []
+
+    def transport(_url, body, _headers):
+        content = body["messages"][1]["content"]
+        context = json.loads(content[0]["text"])
+        batch_sizes.append(len(context["objects"]))
+        frames_by_object = {
+            object_id: evidence["frame_id"]
+            for evidence in context["photo_evidence"]
+            for object_id in evidence["object_ids"]
+        }
+        nodes = [{
+            "id": item["id"], "label": "Table", "movable": True, "quality": "measured",
+            "appearance": None,
+            "reconstruction": reconstruction_for(None, frames_by_object[item["id"]]),
+        } for item in context["objects"]]
+        return {"choices": [{"message": {"content": json.dumps({"nodes": nodes})}}]}
+
+    result = reconstruct_result(graph, frame_paths=[frame], poses_path=poses, transport=transport)
+    assert result.source == "astra"
+    assert sorted(batch_sizes) == [1, 3, 3]
+    assert all(node.reconstruction is not None for node in result.graph.nodes)
+
+
+def test_calibrated_evidence_includes_a_separated_second_view_for_each_object(tmp_path):
+    graph = parse_room_json({"objects": [element("table", at=(0.0, 0.0, -2.0))]})
+    frames = []
+    for index in range(2):
+        frame = tmp_path / f"frame-{index:04d}"
+        Image.new("RGB", (100, 80), "red").save(frame, format="JPEG")
+        frames.append(frame)
+    poses = tmp_path / "poses.json"
+    poses.write_text(json.dumps([calibrated_pose(0), calibrated_pose(1, camera_x=0.3)]))
+
+    body = _chat_body(graph, frame_paths=frames, poses_path=poses)
+    context = json.loads(body["messages"][1]["content"][0]["text"])
+    assert [item["frame_id"] for item in context["photo_evidence"]] == ["frame-0000", "frame-0001"]
+    assert len(body["messages"][1]["content"]) == 3
+
+
+def test_object_crop_rejects_near_plane_and_mostly_clipped_boxes():
+    graph = parse_room_json({"objects": [element("table")]})
+    table = graph.nodes[0]
+
+    class NearPlaneCamera:
+        width, height = 100, 80
+        def project(self, points):
+            return np.full(len(points), 50.0), np.full(len(points), 40.0), np.array([0.05] + [1.0] * (len(points) - 1))
+
+    class ClippedCamera:
+        width, height = 100, 80
+        def project(self, points):
+            if len(points) == 1:
+                return np.array([50.0]), np.array([40.0]), np.array([1.0])
+            return np.array([-300.0] * 7 + [50.0]), np.array([10.0] * 8), np.ones(8)
+
+    assert astra._projected_object_crop(table, NearPlaneCamera())[0] is None
+    assert astra._projected_object_crop(table, ClippedCamera())[0] is None
+
+
+def test_calibrated_crop_rotates_after_sensor_coordinate_crop_for_portrait_model_input(tmp_path):
+    frame = tmp_path / "sensor.jpg"
+    Image.new("RGB", (100, 60), "red").save(frame, format="JPEG")
+
+    # The crop is already tall, but the original sensor image is wide. Rotate
+    # based on the sensor image before cropping, not the crop's own aspect.
+    encoded = astra._encode_crop(frame, (10, 5, 40, 55), "portrait")
+    assert Image.open(io.BytesIO(encoded)).size == (50, 30)
+
+
+def test_reconstruction_wall_deadline_does_not_wait_for_stalled_workers(monkeypatch):
+    graph = parse_room_json({"objects": [element("table") for _ in range(7)]})
+    monkeypatch.setattr(astra, "RECONSTRUCTION_WALL_TIMEOUT_SECONDS", 0.05)
+
+    def stalled_transport(*_args):
+        time.sleep(0.25)
+        return model_response()
+
+    started = time.monotonic()
+    result = reconstruct_result(graph, transport=stalled_transport)
+    assert time.monotonic() - started < 0.18
+    assert result.source == "roomplan"

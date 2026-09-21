@@ -15,6 +15,7 @@ from standardphysics_agents.router import (
     ACTIONS,
     LocalPolicyRouter,
     Rejected,
+    TypeSafeCallBudget,
     TypeSafeRouter,
     action_schema,
     extract_payload,
@@ -61,7 +62,7 @@ class TestTheClosedSet:
     def test_the_schema_comes_from_the_contract(self):
         """A schema written by hand drifts from Decision the first time either
         changes, and then valid output stops parsing."""
-        assert action_schema() == Decision.model_json_schema()
+        assert set(action_schema()["properties"]) == set(Decision.model_fields)
 
     def test_the_schema_names_every_action_and_nothing_else(self):
         assert set(json.dumps(action_schema()).split('"')) >= ACTIONS
@@ -332,7 +333,7 @@ class TestTypeSafeClient:
         assert body["state"] == router_state.summary()
         assert body["model"] == "jev-latest"
         assert body["questions"]["action"]["type"] == "choice"
-        assert set(body["questions"]["action"]["criteria"]) == ACTIONS
+        assert set(body["questions"]["action"]["criteria"]) == {"FIX", "ASK_OWNER", "ESCALATE"}
         assert "schema" not in body
         assert "instruction" not in body
         assert "input" not in body
@@ -382,10 +383,23 @@ class TestTypeSafeClient:
         assert set(answer.target_finding_ids) == expected
 
     def test_a_done_choice_never_targets_a_passing_finding(self, router_state, passing):
+        from dataclasses import replace
         router, _ = _router(_typesafe_response("DONE"))
-        answer = router.decide(router_state)
+        answer = router.decide(replace(router_state, findings=[passing], fixable_finding_ids=()))
         assert isinstance(answer, Decision)
         assert passing.id not in answer.target_finding_ids
+
+    def test_done_cannot_skip_measured_furniture_work(self, router_state):
+        router, _ = _router(_typesafe_response("DONE"))
+        assert router.decide(router_state) == Rejected("action_not_available")
+
+    def test_rescan_is_not_repeated_while_furniture_work_remains(self, router_state):
+        from dataclasses import replace
+        state = replace(router_state, actions_taken=("RESCAN_AREA", "ASK_OWNER", "ESCALATE"),
+                        rescan_finding_ids=(router_state.findings[0].id,))
+        router, _ = _router(_typesafe_response("RESCAN_AREA"))
+        assert router.request_body(state)["questions"]["action"]["criteria"].keys() == {"FIX"}
+        assert router.decide(state) == Rejected("action_not_available")
 
     def test_a_truncated_answer_authorizes_nothing(self, router_state):
         body = _typesafe_response("FIX")[:-1]
@@ -397,6 +411,50 @@ class TestTypeSafeClient:
         answer = router.decide(router_state)
         assert isinstance(answer, Rejected)
         assert answer.reason == "transport_error"
+
+
+class TestTheAnswerInTheTrace:
+    """`decide` returns a `Decision`, which has no room for a confidence.
+
+    How close the call was is worth having when a loop did something
+    surprising, so the answer is traced where it arrives.
+    """
+
+    def test_the_answer_comes_back_decoded(self, router_state):
+        answered = json.dumps(
+            {
+                "model": "jev-1.13.0",
+                "answers": {
+                    "action": {
+                        "type": "choice",
+                        "choice": "DONE",
+                        "confidence": 0.35,
+                        "probabilities": {"DONE": 0.4, "FIX": 0.38},
+                    }
+                },
+                "usage": {"input_tokens": 1828, "output_tokens": 51},
+            }
+        ).encode()
+        router, _ = _router(answered)
+        answer = router.ask(router.request_body(router_state))
+        assert answer["answers"]["action"]["confidence"] == 0.35
+        assert answer["answers"]["action"]["probabilities"]["FIX"] == 0.38
+        assert answer["usage"]["input_tokens"] == 1828
+
+    def test_it_is_named_as_its_own_call(self):
+        assert TypeSafeRouter.ask.traced_name == "router.typesafe.systemone"
+
+    def test_a_service_that_is_down_is_not_mistaken_for_an_answer(self, router_state):
+        router, _ = _router(OSError("connection refused"))
+        assert router.ask(router.request_body(router_state)) == Rejected("transport_error")
+
+    def test_the_budget_is_still_what_stops_a_paid_call(self, router_state):
+        router, transport = _router(b'{"answers": {}}')
+        router.budget = TypeSafeCallBudget(limit=1, used=1)
+        assert router.ask(router.request_body(router_state)) == Rejected(
+            "typesafe_call_budget_exhausted"
+        )
+        assert transport.calls == []
 
 
 class TestLocalPolicy:

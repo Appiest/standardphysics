@@ -65,7 +65,7 @@ install_python() {
   [ "$(cat "$stamp" 2>/dev/null)" = "$wanted" ] && return
   echo "Installing Python packages"
   install_into_venv -e . -e packages/contracts -e packages/fixtures -e packages/pipeline \
-    -e "packages/agents[observability]" -e "services/api[test]"
+    -e "packages/agents[observability,notebook]" -e "services/api[test]"
   echo "$wanted" >"$stamp"
 }
 
@@ -80,7 +80,7 @@ install_web() {
 
 wait_for_api() {
   for _ in $(seq 1 60); do
-    curl -fsS http://127.0.0.1:8787/api/scans >/dev/null 2>&1 && return
+    curl -fsS http://127.0.0.1:8787/health >/dev/null 2>&1 && return
     kill -0 "$API_PID" 2>/dev/null || fail "The API stopped while starting. Its log is above."
     sleep 1
   done

@@ -16,6 +16,7 @@ from ..tracing import traced
 from .clear_floor import fits_turning_circle, square_side
 from .context import CheckContext
 from .observation import Observation
+from .rectangles import intruders, rectangle
 from .route_geometry import reversal_stops, setback_point
 
 RULE_ID = "turning_space"
@@ -41,7 +42,10 @@ def _at_stop(ctx: CheckContext, rule: RuleSpec, stop_index: int) -> Observation:
         satisfied=satisfied,
         measured_inches=square_side(space),
         required_inches=rule.parameter("circle_diameter_inches"),
-        locus=region_locus(space, []),
+        locus=region_locus(space, intruders(ctx.graph, rectangle(
+            at, to_meters(rule.parameter("circle_diameter_inches")),
+            to_meters(rule.parameter("circle_diameter_inches")),
+        )) if not satisfied else [], circle=True),
         facts={"stop": stops[stop_index].name},
         dedupe_key=(RULE_ID, stops[stop_index].name),
         reason="measured" if satisfied else "too_tight",

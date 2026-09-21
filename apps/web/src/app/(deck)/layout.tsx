@@ -1,19 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Atkinson_Hyperlegible_Next, Bricolage_Grotesque } from "next/font/google";
+import { appFontVariables } from "../fonts";
 import "./globals.css";
-
-const bricolageGrotesque = Bricolage_Grotesque({
-  variable: "--font-bricolage-grotesque",
-  subsets: ["latin"],
-  axes: ["opsz", "wdth"],
-});
-
-const atkinsonHyperlegibleNext = Atkinson_Hyperlegible_Next({
-  variable: "--font-atkinson-hyperlegible-next",
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-});
 
 export const metadata: Metadata = {
   title: "Standard Physics",
@@ -22,10 +10,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${bricolageGrotesque.variable} ${atkinsonHyperlegibleNext.variable} h-full`}
-    >
+    <html lang="en" className={`${appFontVariables} h-full`}>
       <body className="min-h-full">{children}</body>
     </html>
   );

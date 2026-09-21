@@ -15,5 +15,8 @@ dependencies = [
   "Pillow>=10.0",
 ]
 
+[project.optional-dependencies]
+reconstruction = ["numba>=0.61", "opencv-python-headless>=4.10", "trimesh>=4.5", "fast-simplification>=0.1"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["standardphysics_pipeline"]

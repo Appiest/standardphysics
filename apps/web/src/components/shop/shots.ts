@@ -12,6 +12,7 @@ export type StageLevels = {
   readerMoved: number;
   route: number;
   frameShift: number;
+  frameDrop: number;
   turntable: number;
   sway: number;
 };
@@ -32,6 +33,7 @@ const hiddenLevels: StageLevels = {
   readerMoved: 0,
   route: 0,
   frameShift: 0.18,
+  frameDrop: 0,
   turntable: 1,
   sway: 0,
 };
@@ -58,7 +60,7 @@ export const shots: Record<ShotName, Shot> = {
   cloud: {
     cameraPosition: [12.5, 10, 14.5],
     cameraTarget: [0, -1.1, 0],
-    levels: { ...hiddenLevels, presence: 1, scattered: 0, frameShift: 0.17 },
+    levels: { ...hiddenLevels, presence: 1, scattered: 0, frameShift: 0.26, frameDrop: 0.1 },
   },
   awayBeforeScan: {
     cameraPosition: [14, 15, 16],

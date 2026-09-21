@@ -129,6 +129,12 @@ final class UploadViewModel: ObservableObject {
             guard isActive(runID) else { return }
             errorMessage = "This scan is linked to a different upload server."
             finish(runID)
+        } catch UploadClientError.signedOut {
+            guard isActive(runID) else { return }
+            state = .failed
+            try? uploadStore.record(state: .failed)
+            errorMessage = "Your session ended. Sign in again, then upload this scan."
+            finish(runID)
         } catch UploadClientError.remoteScanMissing {
             guard isActive(runID) else { return }
             state = .failed
@@ -186,7 +192,8 @@ final class UploadViewModel: ObservableObject {
         to scanID: UUID,
         runID: UUID
     ) async throws {
-        for artifact in artifacts where uploadStore.needsUpload(artifactID: artifact.id) {
+        for artifact in artifacts
+        where uploadStore.needsUpload(artifactID: artifact.id) && canUploadNow(artifact) {
             try requireActive(runID)
             try await client.upload(artifact, to: scanID)
             try requireActive(runID)
@@ -194,6 +201,21 @@ final class UploadViewModel: ObservableObject {
             uploadedCount = uploadStore.completedArtifactIDs.count
             refreshPendingOptionalUploadCount()
         }
+    }
+
+    /// The photo manifest describes every frame artifact in the scan, so the
+    /// server should only ever see it once every frame has actually arrived.
+    /// This is checked explicitly rather than relying on artifacts happening
+    /// to be uploaded in array order: a failed frame upload in this run, or a
+    /// gap left by a prior run, must both hold the manifest back until a
+    /// later retry finishes the remaining frames.
+    private func canUploadNow(_ artifact: CaptureArtifact) -> Bool {
+        guard artifact.kind == .photoManifest else { return true }
+        return frameArtifacts().allSatisfy { !uploadStore.needsUpload(artifactID: $0.id) }
+    }
+
+    private func frameArtifacts() -> [CaptureArtifact] {
+        scan.artifacts.filter { $0.kind == .frames }
     }
 
     private func finalizedRemoteScan(id scanID: UUID, runID: UUID) async throws -> RemoteScan {
@@ -239,9 +261,16 @@ final class UploadViewModel: ObservableObject {
     }
 
     private func optionalArtifacts() -> [CaptureArtifact] {
-        scan.artifacts.filter { artifact in
+        let optional = scan.artifacts.filter { artifact in
             !Self.coreArtifactKinds.contains(artifact.kind) && artifact.kind != .lidarMesh
         }
+
+        // A manifest is a receipt for the complete photo set. Keep it last
+        // even when a recovered or future capture happens to order artifacts
+        // differently, so one successful upload run never needs a second
+        // retry merely to send the receipt.
+        return optional.filter { $0.kind != .photoManifest }
+            + optional.filter { $0.kind == .photoManifest }
     }
 
     private func refreshPendingOptionalUploadCount() {

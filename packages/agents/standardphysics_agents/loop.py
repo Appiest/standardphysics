@@ -15,7 +15,7 @@ if the gate accepts it.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Callable
+from typing import Callable, Iterator
 from uuid import UUID
 
 from standardphysics_contracts import (
@@ -95,8 +95,12 @@ class Loop:
     candidate_rejection: CandidateRejection | None = None
     actions_taken: tuple[RouterAction, ...] = ()
     fix_attempts: int = 0
+    initial_pass: Pass | None = None
+    fix_handler: Callable[["Loop", Pass, Decision], StepResult] | None = None
 
     def look(self, pass_number: int) -> Pass:
+        if pass_number == 1 and self.initial_pass is not None:
+            return self.initial_pass
         return assess(
             self.graph,
             self.scenario,
@@ -227,7 +231,7 @@ def run_pass(loop: Loop, pass_number: int = 1) -> LoopStep:
             result=StepResult(graph=loop.graph),
         )
 
-    handler = HANDLERS[answer.action]
+    handler = loop.fix_handler if answer.action == "FIX" and loop.fix_handler else HANDLERS[answer.action]
     result = handler(loop, current, answer)
     return LoopStep(
         pass_number=pass_number,
@@ -286,7 +290,41 @@ def run_loop(
     max_tier: Tier = 1,
     max_passes: int = MAX_PASSES,
     candidate_rejection: CandidateRejection | None = None,
+    initial_pass: Pass | None = None,
+    fix_handler: Callable[[Loop, Pass, Decision], StepResult] | None = None,
 ) -> list[LoopStep]:
+    return list(
+        loop_steps(
+            graph,
+            scenario,
+            measure,
+            router,
+            rules=rules,
+            ledger=ledger,
+            max_tier=max_tier,
+            max_passes=max_passes,
+            candidate_rejection=candidate_rejection,
+            initial_pass=initial_pass,
+            fix_handler=fix_handler,
+        )
+    )
+
+
+def loop_steps(
+    graph: SceneGraph,
+    scenario: Scenario,
+    measure: MeasurementProvider,
+    router,
+    *,
+    rules: AgentRulePack | None = None,
+    ledger: VerificationLedger | None = None,
+    max_tier: Tier = 1,
+    max_passes: int = MAX_PASSES,
+    candidate_rejection: CandidateRejection | None = None,
+    initial_pass: Pass | None = None,
+    fix_handler: Callable[[Loop, Pass, Decision], StepResult] | None = None,
+) -> Iterator[LoopStep]:
+    """The same loop as `run_loop`, handing over each pass as soon as it finishes."""
     loop = Loop(
         graph=graph,
         scenario=scenario,
@@ -296,6 +334,8 @@ def run_loop(
         ledger=ledger if ledger is not None else load_ledger(),
         max_tier=max_tier,
         candidate_rejection=candidate_rejection,
+        initial_pass=initial_pass,
+        fix_handler=fix_handler,
     )
     steps: list[LoopStep] = []
     for pass_number in range(1, max_passes + 1):

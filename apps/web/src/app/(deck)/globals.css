@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-display: var(--font-bricolage-grotesque), ui-sans-serif, system-ui, sans-serif;
-  --font-body: var(--font-atkinson-hyperlegible-next), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-libre-franklin), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-karla), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-body);
 }
 
@@ -30,6 +30,8 @@
   --text-headline--line-height: 0.92;
   --text-lede: min(3.2vw, 5.6vh);
   --text-lede--line-height: 1.1;
+  --text-figure: min(5vw, 8.8vh);
+  --text-figure--line-height: 1;
   --text-caption: min(1.9vw, 3.4vh);
   --text-caption--line-height: 1.2;
   --text-fineprint: min(1vw, 1.8vh);
@@ -37,8 +39,16 @@
 
   --spacing-deck-gap: 4vw;
   --spacing-deck-rise: 4vh;
+  --spacing-deck-printer: 14vh;
   --spacing-deck-hairline: 1.5vh;
   --spacing-deck-art: 78vh;
+  --spacing-receipt: 19em;
+  --spacing-deck-portrait: 24vh;
+  --spacing-stretched-time: 36vh;
+  --spacing-stretched-money: 100vh;
+  --spacing-deck-bar: min(5vw, 9vh);
+  --spacing-deck-stage: 42vh;
+  --spacing-deck-copy: 26vh;
 }
 
 @layer base {
@@ -81,6 +91,97 @@
   box-shadow: 0 0 0.5em 0.12em var(--color-tape);
 }
 
+@utility flying-dot {
+  width: 0.9vh;
+  height: 0.9vh;
+  translate: -50% -50%;
+  background-image: radial-gradient(circle at 32% 30%, #fffbe8 0 14%, var(--color-tape) 46%, var(--color-tape-deep) 100%);
+  box-shadow: 0 0 0.7vh 0.05vh color-mix(in srgb, var(--color-tape) 60%, transparent);
+}
+
+@utility loop-node-icon {
+  width: 40px;
+  height: 40px;
+}
+
+@utility loop-node-title {
+  font-size: 30px;
+  margin-top: 6px;
+}
+
+@utility loop-node-tool {
+  font-size: 22px;
+  margin-top: 6px;
+}
+
+@utility stretched-circle {
+  width: 36vh;
+  height: 36vh;
+}
+
+@utility stretched-clock {
+  width: 44vh;
+  height: 44vh;
+}
+
+@utility stretched-briefcase {
+  width: 22vh;
+  height: 22vh;
+}
+
+@utility stretched-stage {
+  height: 66vh;
+}
+
+@utility stretched-scale {
+  width: 72vh;
+  height: 63vh;
+}
+
+@utility closing-portrait {
+  width: 44vh;
+  height: 44vh;
+}
+
+@utility payout-bill {
+  width: 2.8vh;
+  height: 1.4vh;
+  outline: 0.25vh solid var(--color-ink);
+}
+
+@utility payout-bill-seal {
+  width: 0.7vh;
+  height: 0.7vh;
+  outline: 0.2vh solid var(--color-ink);
+}
+
+@utility slider-thumb {
+  width: 3vh;
+  height: 3vh;
+  translate: -50% -50%;
+}
+
+@utility app-capture-wide {
+  width: min(78vw, 128vh);
+}
+
+@utility step-badge {
+  width: 1.2em;
+  height: 1.2em;
+  flex: none;
+}
+
+@utility step-connector {
+  left: calc(0.6em - 2px);
+  top: 1.2em;
+  width: 4px;
+}
+
+@utility step-icon {
+  width: 0.6em;
+  height: 0.6em;
+}
+
 @utility icon-em {
   width: 0.72em;
   height: 0.72em;
@@ -94,6 +195,10 @@
   inset-block: 0.05em;
   z-index: -1;
   background: var(--color-tape);
+}
+
+@utility receipt-shadow {
+  filter: drop-shadow(0 0 1px color-mix(in srgb, var(--color-ink) 45%, transparent));
 }
 
 @utility receipt-tear {

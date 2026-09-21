@@ -11,12 +11,13 @@ dependencies = [
   "standardphysics-contracts",
   "standardphysics-pipeline",
   "pydantic>=2.7",
-  "openai>=1.0",
+  "openai>=1.40",
   "pillow>=10",
 ]
 
 [project.optional-dependencies]
-observability = ["weave>=0.51"]
+observability = ["weave>=0.51", "wandb>=0.18"]
+notebook = ["marimo>=0.24"]
 replay = ["imageio-ffmpeg>=0.5"]
 
 [project.scripts]

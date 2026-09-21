@@ -8,7 +8,7 @@ complaint in the pitch is that the point of sale still sat on the high part.
 
 from __future__ import annotations
 
-from standardphysics_contracts import SceneNode, to_inches
+from standardphysics_contracts import SceneNode, to_inches, to_meters
 from standardphysics_pipeline import footprint, gap_between, region_locus
 from standardphysics_pipeline.locus import height_locus
 
@@ -18,6 +18,7 @@ from . import roles
 from .clear_floor import fits_rectangle
 from .context import CheckContext
 from .observation import Observation
+from .rectangles import facing, intruders, rectangle
 from .vertical import mounted_locus
 
 HEIGHT_RULE = "service_counter_height"
@@ -104,7 +105,12 @@ def _approach(ctx: CheckContext, rule: RuleSpec, counter, result) -> Observation
         measured_inches=min(result.inches_wide, result.inches_deep),
         required_inches=rule.threshold,
         relied_on=(counter.id,),
-        locus=region_locus(result, [counter.id]),
+        locus=region_locus(result, [counter.id, *(
+            intruders(ctx.graph, rectangle(
+                result.center, to_meters(required_wide), to_meters(required_deep),
+                facing(ctx.graph, counter),
+            ), ignoring=frozenset({counter.id})) if not satisfied else []
+        )], rotation=facing(ctx.graph, counter)),
         facts={
             "counter": counter.label,
             "measured_wide": result.inches_wide,

@@ -124,6 +124,36 @@ final class WorkspaceWebViewTests: XCTestCase {
         XCTAssertFalse(origin?.contains(URL(string: "https://standard.physics/scans/123")!) == true)
         XCTAssertFalse(origin?.contains(URL(string: "https://other.standard.physics:8443/scans/123")!) == true)
     }
+
+    func testDownloadDestinationKeepsSuggestedFilesInSeparateTemporaryDirectories() throws {
+        let first = try WorkspaceDownloadDestination.fileURL(suggestedFilename: "../../floor-plan.zip")
+        let second = try WorkspaceDownloadDestination.fileURL(suggestedFilename: "floor-plan.zip")
+        let firstDirectory = first.deletingLastPathComponent()
+        let secondDirectory = second.deletingLastPathComponent()
+        defer {
+            try? FileManager.default.removeItem(at: firstDirectory)
+            try? FileManager.default.removeItem(at: secondDirectory)
+        }
+
+        XCTAssertEqual(first.lastPathComponent, "floor-plan.zip")
+        XCTAssertNotEqual(firstDirectory, secondDirectory)
+        XCTAssertEqual(firstDirectory.deletingLastPathComponent().lastPathComponent, "StandardPhysicsDownloads")
+        XCTAssertTrue(first.path.hasPrefix(FileManager.default.temporaryDirectory.path))
+
+        try Data("first".utf8).write(to: first)
+        try Data("second".utf8).write(to: second)
+        try FileManager.default.removeItem(at: first)
+        WorkspaceDownloadDestination.removeDirectory(containing: first)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: firstDirectory.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: second.path))
+    }
+
+    func testDownloadDestinationUsesSafeFallbackForEmptyName() {
+        XCTAssertEqual(WorkspaceDownloadDestination.safeFilename(""), "architecture.zip")
+        XCTAssertEqual(WorkspaceDownloadDestination.safeFilename(".."), "architecture.zip")
+        XCTAssertEqual(WorkspaceDownloadDestination.safeFilename("folder\\plan.zip"), "plan.zip")
+    }
 }
 
 private final class URLProtocolStub: URLProtocol {

@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy import ndimage
 from scipy.spatial import ConvexHull
-from standardphysics_contracts import LidarMesh, SceneGraph
+from standardphysics_contracts import LidarMesh, SceneGraph, lies_flat
 from standardphysics_pipeline import Grid
 from standardphysics_pipeline.footprints import footprint
 
@@ -52,7 +52,7 @@ class ScanSpace:
 def floor_polygon(graph: SceneGraph) -> np.ndarray:
     points: list[np.ndarray] = []
     for node in graph.nodes:
-        if node.kind != "floor":
+        if not lies_flat(node):
             continue
         dims = node.dimensions
         matrix = np.asarray(node.transform.m).reshape(4, 4)

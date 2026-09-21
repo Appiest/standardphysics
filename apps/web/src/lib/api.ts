@@ -1,10 +1,26 @@
-import type { Assessment, Report, Scan, ScanList, Scenario, SceneGraph, SimulationReplay } from "@/types/contracts";
+import { cookies } from "next/headers";
+import type { Assessment, Report, Scan, ScanList, Scenario, SceneGraph, SimulationReplay, TextureStatus } from "@/types/contracts";
+import type { RoomGroup } from "./room-groups";
+import type { CapturedSplats } from "./captured-splats";
 import { API_ORIGIN } from "./api-origin";
 
 export class NotReady extends Error {}
+export class NotSignedIn extends Error {}
+
+export const SESSION_COOKIE = "sp_session";
+
+/** The browser's session, forwarded by hand.
+ *
+ * These functions run on the server, where a fetch carries no cookie jar of
+ * its own. Without this the API would answer 401 to a signed-in owner. */
+async function sessionHeader(): Promise<HeadersInit> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  return token ? { cookie: `${SESSION_COOKIE}=${token}` } : {};
+}
 
 async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_ORIGIN}${path}`, { cache: "no-store" });
+  const response = await fetch(`${API_ORIGIN}${path}`, { cache: "no-store", headers: await sessionHeader() });
+  if (response.status === 401) throw new NotSignedIn(path);
   if (response.status === 404) throw new NotReady(path);
   if (!response.ok) throw new Error(`${path} answered ${response.status}`);
   return (await response.json()) as T;
@@ -28,7 +44,23 @@ export const getAssessment = (scanId: string, revision?: number) =>
   getOptional<Assessment>(`/api/scans/${scanId}/assessment${revision === undefined ? "" : `?revision=${revision}`}`);
 
 export const sceneGlbUrl = (scanId: string, revision?: number) => `/api/scans/${scanId}/scene.glb${revision === undefined ? "" : `?revision=${revision}`}`;
+
+/** Whether the exported model is there yet, without pulling it down. */
+export const headSceneGlb = async (scanId: string, revision?: number) =>
+  fetch(`${API_ORIGIN}${sceneGlbUrl(scanId, revision)}`, {
+    method: "HEAD",
+    cache: "no-store",
+    headers: await sessionHeader(),
+  });
 export const getReport = (scanId: string) => getOptional<Report>(`/api/scans/${scanId}/report`);
 export const getScenarioSuggestion = (scanId: string) => getOptional<Scenario>(`/api/scans/${scanId}/scenario/suggestion`);
 export const getSimulationReplay = (scanId: string, revision: number) =>
   getOptional<SimulationReplay>(`/api/scans/${scanId}/revisions/${revision}/replay`);
+export const getTextureStatus = (scanId: string, revision: number) =>
+  getOptional<TextureStatus>(`/api/scans/${scanId}/textures?revision=${revision}`);
+
+export const getRooms = (scanId: string) =>
+  getOptional<{ rooms: RoomGroup[] }>(`/api/scans/${scanId}/rooms`);
+
+export const getCapturedSplats = (scanId: string, revision: number) =>
+  getOptional<CapturedSplats>(`/api/scans/${scanId}/splats?revision=${revision}`);

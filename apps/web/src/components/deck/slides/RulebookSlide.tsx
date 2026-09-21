@@ -120,7 +120,7 @@ export function RulebookSlide() {
         <PageStack progress={progress} />
       </div>
       <div className="flex h-full flex-col justify-center">
-        <p className="font-display text-poster font-extrabold figures-tabular">
+        <p className="font-display text-display font-extrabold figures-tabular">
           <CountFromProgress progress={progress} total={pageCount} />
         </p>
         <p className="font-display text-lede font-bold">

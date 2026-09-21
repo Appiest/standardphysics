@@ -6,7 +6,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: K4Z2L5279D
     CODE_SIGN_STYLE: Automatic
 targets:
   StandardPhysics:
@@ -25,13 +25,41 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         UILaunchStoryboardName: LaunchScreen
+        UIAppFonts:
+          - LibreFranklin-Bold.ttf
+          - LibreFranklin-ExtraBold.ttf
+          - Karla-Regular.ttf
+          - Karla-Medium.ttf
+          - Karla-Bold.ttf
+          - AtkinsonHyperlegibleMono-Regular.ttf
+          - AtkinsonHyperlegibleMono-Medium.ttf
+        # The sheet is drawn with square corners throughout, and iOS 26 rounds
+        # every system control it draws for us, swipe actions among them. This
+        # is the supported way back to the squared-off controls.
+        UIDesignRequiresCompatibility: true
         UIRequiresFullScreen: true
+        # Without ARKit there is no scan to take, so the App Store should not
+        # offer the app to a device that cannot run it at all. RoomPlan needs
+        # LiDAR on top of this, which no Info.plist key expresses; AppRootView
+        # asks RoomCaptureSession at launch and says so.
+        UIRequiredDeviceCapabilities:
+          - arkit
+        # Only HTTPS and the system keychain, so the yearly self-classification
+        # is exempt. Without this every upload to App Store Connect stops to
+        # ask the same question again.
+        ITSAppUsesNonExemptEncryption: false
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.standardphysics.capture
         TARGETED_DEVICE_FAMILY: "1,2"
+        # Fill both in before archiving for TestFlight or the App Store, with
+        # the two names from docs/DEPLOY.md. Empty is the right value while
+        # there is no server: AppEnvironment falls back to the connection
+        # screen, which is what a developer pointing the phone at a laptop
+        # wants and what an owner must never see. A build shipped with these
+        # empty is a build App Review cannot sign in to.
         CAPTURE_API_BASE_URL: ""
         CAPTURE_WORKSPACE_BASE_URL: ""
     scheme:

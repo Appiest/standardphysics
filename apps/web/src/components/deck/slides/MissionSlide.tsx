@@ -5,7 +5,7 @@ import { easeDrawn, easeSweep, exitTransition } from "@/lib/motion";
 import { salesCountersExcerpt } from "@/lib/facts";
 
 const [beforeHighlight, highlighted, afterHighlight] = salesCountersExcerpt.split("|");
-const missionLines = ["We want to make", "accessibility law", "accessible."];
+const missionLines = ["That’s why we built", "Standard Physics."];
 
 const legalWall: Variants = {
   enter: { opacity: 0, y: "0vh" },

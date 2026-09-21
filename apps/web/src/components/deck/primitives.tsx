@@ -63,10 +63,13 @@ export function CountFromProgress({ progress, total, format = (value) => wholeNu
   format?: (value: number) => string;
 }) {
   const text = useTransform(progress, (value) => format(Math.round(value * total)));
+  const opacity = useTransform(progress, (value) => (value > 0 ? 1 : 0));
   return (
     <span className="inline-grid">
       <span aria-hidden className="invisible col-start-1 row-start-1">{format(total)}</span>
-      <motion.span className="col-start-1 row-start-1">{text}</motion.span>
+      <motion.span className="col-start-1 row-start-1" style={{ opacity }}>
+        {text}
+      </motion.span>
     </span>
   );
 }

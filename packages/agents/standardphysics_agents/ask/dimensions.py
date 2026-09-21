@@ -7,14 +7,14 @@ and depth is the short one, because that is how furniture is sold.
 
 from __future__ import annotations
 
-from standardphysics_contracts import SceneNode, to_inches
+from standardphysics_contracts import SceneNode, lies_flat, to_inches
 
 from ..numbers import by, inches, plural, span, things
 from ..tracing import traced
 from . import subjects
 from .answer import Answer, AskContext
 from .locus import subject_locus
-from .query import Dimension, Query
+from .query import Dimension, Query, register_dimensions
 
 SAME_WITHIN_INCHES = 0.5
 """Two pieces this close in size are the same size, as far as anybody cares."""
@@ -39,6 +39,11 @@ READERS = {
     "width": length_inches,
     "depth": depth_inches,
 }
+
+AREAS = frozenset({"footprint"})
+"""Measurements answered as a width by a depth rather than as one figure."""
+
+register_dimensions({*READERS, *AREAS})
 
 WORDS: dict[str, str] = {
     "height": "tall",
@@ -93,7 +98,7 @@ def measure(query: Query, context: AskContext) -> Answer:
     subject = _subject_phrase(found)
     text = (
         _footprint_text(found, subject)
-        if dimension == "footprint"
+        if dimension in AREAS
         else _measure_text(found, dimension, subject)
     )
     return Answer(
@@ -124,7 +129,7 @@ def _subject_phrase(nodes: list[SceneNode]) -> str:
 
 
 def _room(query: Query, context: AskContext) -> Answer:
-    floors = [node for node in context.graph.nodes if node.kind == "floor"]
+    floors = [node for node in context.graph.nodes if lies_flat(node)]
     if not floors:
         return _not_here(query)
     floor = floors[0]

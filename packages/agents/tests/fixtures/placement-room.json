@@ -1,0 +1,951 @@
+{
+  "graph": {
+    "scan_id": "731cc48e-bd67-4402-b33d-6a696a30754f",
+    "revision": 4,
+    "base_hash": "38a54a2543908afc5c8b208b774f40efa87761b75f7a69c8f6f8084cd34b7288",
+    "nodes": [
+      {
+        "id": "274efdd6-4819-4781-b7fc-8f7ef9a2e450",
+        "kind": "wall",
+        "label": "Wall",
+        "raw_category": "wall",
+        "dimensions": {
+          "x": 5.549994,
+          "y": 0.0,
+          "z": 3.12
+        },
+        "transform": {
+          "m": [
+            -0.99963325,
+            0.027079916,
+            0.0,
+            -2.64289,
+            -0.027079917,
+            -0.99963325,
+            0.0,
+            -4.3761106,
+            0.0,
+            0.0,
+            1.0,
+            1.55999996,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": false,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "1d7dc938-af75-4cc3-8475-a4c16caf6c1f",
+        "kind": "wall",
+        "label": "Wall",
+        "raw_category": "wall",
+        "dimensions": {
+          "x": 0.480925,
+          "y": 0.0,
+          "z": 4.369367
+        },
+        "transform": {
+          "m": [
+            0.027079761,
+            0.9996333,
+            0.0,
+            0.12457763,
+            -0.9996333,
+            0.027079761,
+            0.0,
+            -4.060589,
+            0.0,
+            0.0,
+            1.0,
+            2.1846836,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": false,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "f4ce55b1-db9e-4fb4-994f-f0a0eba731da",
+        "kind": "wall",
+        "label": "Wall",
+        "raw_category": "wall",
+        "dimensions": {
+          "x": 0.44189283,
+          "y": 0.0,
+          "z": 4.4756947
+        },
+        "transform": {
+          "m": [
+            0.99963325,
+            -0.02708012,
+            0.0,
+            0.18624878,
+            0.027080122,
+            0.99963325,
+            0.0,
+            1.6656709,
+            0.0,
+            0.0,
+            1.0,
+            2.2378471,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": false,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "8fb179f5-5b83-4d14-9095-26e03b67ce74",
+        "kind": "wall",
+        "label": "Wall",
+        "raw_category": "wall",
+        "dimensions": {
+          "x": 0.44173804,
+          "y": 0.0,
+          "z": 4.369367
+        },
+        "transform": {
+          "m": [
+            -0.027079675,
+            -0.99963325,
+            0.0,
+            -5.481171,
+            0.99963325,
+            -0.027079677,
+            0.0,
+            1.7296375,
+            0.0,
+            0.0,
+            1.0,
+            2.1846836,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": false,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "bf1e85dd-5a00-40f8-859c-292f232af141",
+        "kind": "wall",
+        "label": "Wall",
+        "raw_category": "wall",
+        "dimensions": {
+          "x": 0.42738053,
+          "y": 0.0,
+          "z": 4.369367
+        },
+        "transform": {
+          "m": [
+            -0.9996333,
+            0.027079737,
+            0.0,
+            0.33167788,
+            -0.027079737,
+            -0.9996333,
+            0.0,
+            -3.8144279,
+            0.0,
+            0.0,
+            1.0,
+            2.1846836,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": false,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "6c878d9c-71a2-42f8-aa01-1903f10e185f",
+        "kind": "wall",
+        "label": "Wall",
+        "raw_category": "wall",
+        "dimensions": {
+          "x": 0.40191758,
+          "y": 0.0,
+          "z": 4.4756947
+        },
+        "transform": {
+          "m": [
+            0.027079854,
+            0.9996333,
+            0.0,
+            -0.040058527,
+            -0.9996333,
+            0.027079854,
+            0.0,
+            1.8605727,
+            0.0,
+            0.0,
+            1.0,
+            2.2378471,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": false,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "e41351df-52d2-4f3a-a9c8-bf2e05c6c2eb",
+        "kind": "wall",
+        "label": "Wall",
+        "raw_category": "wall",
+        "dimensions": {
+          "x": 0.35999984,
+          "y": 0.0,
+          "z": 4.369367
+        },
+        "transform": {
+          "m": [
+            0.9996333,
+            -0.027080026,
+            0.0,
+            -5.655124,
+            0.027080026,
+            0.9996333,
+            0.0,
+            1.503975,
+            0.0,
+            0.0,
+            1.0,
+            2.1846836,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": false,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "d2512d74-ec74-4c61-8b3f-f35f2bcf8113",
+        "kind": "wall",
+        "label": "Wall",
+        "raw_category": "wall",
+        "dimensions": {
+          "x": 0.44000092,
+          "y": 0.0,
+          "z": 3.12
+        },
+        "transform": {
+          "m": [
+            -0.02707944,
+            -0.99963325,
+            0.0,
+            -5.4228263,
+            0.99963325,
+            -0.027079443,
+            0.0,
+            -4.231337,
+            0.0,
+            0.0,
+            1.0,
+            1.55999996,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": false,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "b32a15b9-23be-4850-9401-76862f6adf77",
+        "kind": "wall",
+        "label": "Wall",
+        "raw_category": "wall",
+        "dimensions": {
+          "x": 2.6824567,
+          "y": 0.0,
+          "z": 4.7733335
+        },
+        "transform": {
+          "m": [
+            -0.027080033,
+            -0.9996333,
+            0.0,
+            -5.5469027,
+            0.9996333,
+            -0.027080033,
+            0.0,
+            -1.7110336,
+            0.0,
+            0.0,
+            1.0000001,
+            2.3866666,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": false,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "b49d4fe2-eba9-49d2-ac4a-274860011dfd",
+        "kind": "floor",
+        "label": "Floor",
+        "raw_category": "floor",
+        "dimensions": {
+          "x": 11.220307,
+          "y": 0.0,
+          "z": 10.557267
+        },
+        "transform": {
+          "m": [
+            0.9996333,
+            0.0,
+            -0.027079854,
+            -3.1393082,
+            0.027079882,
+            0.0,
+            0.9996333,
+            0.77995247,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": false,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "773dfe08-4426-49d8-b4ee-f78147d5e3a9",
+        "kind": "object",
+        "label": "Table",
+        "raw_category": "table",
+        "dimensions": {
+          "x": 1.9789612,
+          "y": 0.86976606,
+          "z": 0.784945
+        },
+        "transform": {
+          "m": [
+            -0.02707978,
+            -0.99963325,
+            0.0,
+            -5.0034003,
+            0.99963325,
+            -0.027079782,
+            0.0,
+            -1.978786,
+            0.0,
+            0.0,
+            1.0,
+            0.39247260000000006,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "needs_another_look",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "889be6f3-1acb-4037-9061-239f6448f24a",
+        "kind": "object",
+        "label": "Chair",
+        "raw_category": "chair",
+        "dimensions": {
+          "x": 0.6348267,
+          "y": 0.6724854,
+          "z": 0.99087054
+        },
+        "transform": {
+          "m": [
+            0.02708022600936119,
+            0.9996332634317858,
+            0.0,
+            -0.6405224383483706,
+            -0.9996332634317858,
+            0.02708022600936119,
+            0.0,
+            -0.5634230858858733,
+            0.0,
+            0.0,
+            1.0,
+            0.4954353,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "needs_another_look",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": "39949407-e4e8-459d-a6d1-5ec5157b1812"
+      },
+      {
+        "id": "172ab6f6-d0cf-4631-96f4-e8700a23802e",
+        "kind": "object",
+        "label": "Chair",
+        "raw_category": "chair",
+        "dimensions": {
+          "x": 0.624471,
+          "y": 0.70544463,
+          "z": 1.0340068
+        },
+        "transform": {
+          "m": [
+            -0.027079595,
+            -0.9996333,
+            0.0,
+            -2.6359403,
+            0.9996333,
+            -0.027079595,
+            0.0,
+            -0.7760804,
+            0.0,
+            0.0,
+            1.0,
+            0.5170034000000001,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "needs_another_look",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": "4f04bd0b-1d6c-4bf0-952c-3c7ebb034871"
+      },
+      {
+        "id": "4bb8d1c3-c1a5-43a4-8c27-c58e78144e64",
+        "kind": "object",
+        "label": "Chair",
+        "raw_category": "chair",
+        "dimensions": {
+          "x": 0.58935547,
+          "y": 0.65649396,
+          "z": 0.95289797
+        },
+        "transform": {
+          "m": [
+            0.29616976,
+            0.9551354,
+            0.0,
+            -4.075524,
+            -0.9551353,
+            0.29616976,
+            0.0,
+            -2.5325148,
+            0.0,
+            0.0,
+            1.0000001,
+            0.47644885000000003,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "needs_another_look",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "4f04bd0b-1d6c-4bf0-952c-3c7ebb034871",
+        "kind": "object",
+        "label": "Ordering counter",
+        "raw_category": "table",
+        "dimensions": {
+          "x": 4.318225,
+          "y": 1.040701,
+          "z": 0.83195066
+        },
+        "transform": {
+          "m": [
+            0.02707991059533599,
+            0.9996332719763527,
+            0.0,
+            -1.549155959282026,
+            -0.9996332719763527,
+            0.02707991059533599,
+            0.0,
+            -2.0348832779969803,
+            0.0,
+            0.0,
+            1.0,
+            0.4159754000000001,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": false,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "95d36655-79f7-4c78-a624-8dc8b29fdb7e",
+        "kind": "object",
+        "label": "Display case",
+        "raw_category": "storage",
+        "dimensions": {
+          "x": 0.49032974,
+          "y": 0.5173057,
+          "z": 1.8437116
+        },
+        "transform": {
+          "m": [
+            0.027079830653999697,
+            0.9996332741419479,
+            0.0,
+            -0.44217434078416534,
+            -0.9996332741419479,
+            0.027079830653999697,
+            0.0,
+            1.8406190137963911,
+            0.0,
+            0.0,
+            1.0,
+            0.9218557700000001,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "a5cb738b-5fdf-4065-a4d4-9a5b6975239c",
+        "kind": "object",
+        "label": "Chair",
+        "raw_category": "chair",
+        "dimensions": {
+          "x": 0.6244711,
+          "y": 0.7054444,
+          "z": 1.0340071
+        },
+        "transform": {
+          "m": [
+            -0.027078446,
+            -0.99963325,
+            0.0,
+            -2.5969608,
+            0.99963325,
+            -0.027078448,
+            0.0,
+            -2.2149608,
+            0.0,
+            0.0,
+            1.0,
+            0.5170034000000001,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "needs_another_look",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": "4f04bd0b-1d6c-4bf0-952c-3c7ebb034871"
+      },
+      {
+        "id": "63a8ea40-d712-4808-9bca-357b4ee3bfc0",
+        "kind": "object",
+        "label": "Table",
+        "raw_category": "table",
+        "dimensions": {
+          "x": 1.6685368,
+          "y": 1.0164891,
+          "z": 0.77157736
+        },
+        "transform": {
+          "m": [
+            0.027079690756659936,
+            0.9996332779317242,
+            0.0,
+            1.1771061125316793,
+            -0.9996332779317242,
+            0.027079690756659936,
+            0.0,
+            -0.9743427005124348,
+            0.0,
+            0.0,
+            1.0,
+            0.38578876000000006,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "9c4024e7-e928-41b0-9971-bfaaa74e48b7",
+        "kind": "object",
+        "label": "Chair",
+        "raw_category": "chair",
+        "dimensions": {
+          "x": 0.6244709,
+          "y": 0.70544463,
+          "z": 1.0340071
+        },
+        "transform": {
+          "m": [
+            -0.027080365,
+            -0.99963325,
+            0.0,
+            -2.5579824,
+            0.99963325,
+            -0.027080366,
+            0.0,
+            -3.6538415,
+            0.0,
+            0.0,
+            1.0,
+            0.5170034000000001,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "needs_another_look",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": "4f04bd0b-1d6c-4bf0-952c-3c7ebb034871"
+      },
+      {
+        "id": "1dc86d8b-42fe-49cb-bb37-6049b7d65939",
+        "kind": "object",
+        "label": "Chair",
+        "raw_category": "chair",
+        "dimensions": {
+          "x": 0.6049804,
+          "y": 0.6796869,
+          "z": 0.95865035
+        },
+        "transform": {
+          "m": [
+            0.02707974,
+            0.9996332,
+            0.0,
+            -4.6705923,
+            -0.99963325,
+            0.02707974,
+            0.0,
+            -1.9697704,
+            0.0,
+            0.0,
+            0.99999994,
+            0.4793251300000001,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "needs_another_look",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": "773dfe08-4426-49d8-b4ee-f78147d5e3a9"
+      },
+      {
+        "id": "54736801-fe6e-482d-a477-bf40d058f664",
+        "kind": "object",
+        "label": "service counter",
+        "raw_category": "chair",
+        "dimensions": {
+          "x": 0.5908205,
+          "y": 0.6394041,
+          "z": 0.9741245
+        },
+        "transform": {
+          "m": [
+            0.2330733,
+            0.97245914,
+            0.0,
+            -0.3616808,
+            -0.97245914,
+            0.23307331,
+            0.0,
+            0.15659802,
+            0.0,
+            0.0,
+            1.0,
+            0.48706230000000006,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "needs_another_look",
+        "movable": false,
+        "labeled_by": "owner",
+        "parent_id": null
+      },
+      {
+        "id": "fa25e333-fdaf-43ad-91ba-81cea0e87202",
+        "kind": "object",
+        "label": "Chair",
+        "raw_category": "chair",
+        "dimensions": {
+          "x": 0.6348267,
+          "y": 0.6724855,
+          "z": 0.9908704
+        },
+        "transform": {
+          "m": [
+            -0.9996332685209832,
+            0.02708003814723429,
+            0.0,
+            1.2965098824232026,
+            -0.02708003814723429,
+            -0.9996332685209832,
+            0.0,
+            -2.4758740246711928,
+            0.0,
+            0.0,
+            1.0,
+            0.4954351,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "needs_another_look",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": "39949407-e4e8-459d-a6d1-5ec5157b1812"
+      },
+      {
+        "id": "61f71ac0-09bb-4008-9a5b-f6d5aaf49b82",
+        "kind": "object",
+        "label": "Chair",
+        "raw_category": "chair",
+        "dimensions": {
+          "x": 0.4742432,
+          "y": 0.5380859,
+          "z": 0.8470772
+        },
+        "transform": {
+          "m": [
+            0.995472702697065,
+            -0.09504787312192037,
+            0.0,
+            -1.597048681588623,
+            0.09504787312192037,
+            0.995472702697065,
+            0.0,
+            0.6436861288090958,
+            0.0,
+            0.0,
+            1.0,
+            0.42353850000000004,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "needs_another_look",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "39949407-e4e8-459d-a6d1-5ec5157b1812",
+        "kind": "object",
+        "label": "Table",
+        "raw_category": "table",
+        "dimensions": {
+          "x": 2.166279,
+          "y": 0.7702412,
+          "z": 0.8409475
+        },
+        "transform": {
+          "m": [
+            -0.027080090463340752,
+            -0.9996332671037401,
+            0.0,
+            -0.04580200486311514,
+            0.9996332671037401,
+            -0.027080090463340752,
+            0.0,
+            -2.370512188715991,
+            0.0,
+            0.0,
+            1.0,
+            0.42047365000000003,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "measured",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "49319b9f-e9c0-4143-b47a-305a76027479",
+        "kind": "object",
+        "label": "Chair",
+        "raw_category": "chair",
+        "dimensions": {
+          "x": 0.5367431,
+          "y": 0.64868164,
+          "z": 1.0565344
+        },
+        "transform": {
+          "m": [
+            -0.114216566,
+            -0.9934558,
+            0.0,
+            -3.81034,
+            0.9934558,
+            -0.114216566,
+            0.0,
+            -3.7955084,
+            0.0,
+            0.0,
+            1.0,
+            0.5282672,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "needs_another_look",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      },
+      {
+        "id": "344d9a88-969d-4203-b796-e6b6b7fad892",
+        "kind": "object",
+        "label": "Chair",
+        "raw_category": "chair",
+        "dimensions": {
+          "x": 0.45810437,
+          "y": 0.525393,
+          "z": 1.0247599
+        },
+        "transform": {
+          "m": [
+            -0.95419633,
+            -0.29918134,
+            0.0,
+            -2.9782946,
+            0.29918134,
+            -0.95419633,
+            0.0,
+            -4.0622125,
+            0.0,
+            0.0,
+            1.0,
+            0.5123799600000001,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "quality": "needs_another_look",
+        "movable": true,
+        "labeled_by": "roomplan",
+        "parent_id": null
+      }
+    ]
+  },
+  "scenario": {
+    "name": "Walk through the room",
+    "stops": [
+      {
+        "name": "Entrance",
+        "position": {
+          "x": -5.881236270183285,
+          "y": 0.6030584416061586,
+          "z": 0.0
+        },
+        "anchor_node_id": null
+      },
+      {
+        "name": "Seat",
+        "position": {
+          "x": -2.7577628003349672,
+          "y": -0.7370709638684778,
+          "z": 0.0
+        },
+        "anchor_node_id": "4f04bd0b-1d6c-4bf0-952c-3c7ebb034871"
+      },
+      {
+        "name": "Exit",
+        "position": {
+          "x": -5.881236270183285,
+          "y": 0.6030584416061586,
+          "z": 0.0
+        },
+        "anchor_node_id": null
+      }
+    ]
+  }
+}

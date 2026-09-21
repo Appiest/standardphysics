@@ -3,8 +3,9 @@
 import json
 import uuid
 
-from conftest import FIXTURE_DATA, create_scan, drain, put_artifact
 from standardphysics_pipeline import glb_node_names, reconstruct
+
+from conftest import FIXTURE_DATA, create_scan, drain, put_artifact
 from standardphysics_api.stages import Stages
 
 REAL = FIXTURE_DATA / "real"
@@ -152,8 +153,9 @@ def test_seeding_twice_keeps_one_sample_shop(make_client):
 
 
 def test_without_verified_rules_the_sample_shop_reports_nothing(make_client):
-    from conftest import no_blender_stages
     from standardphysics_agents import VerificationLedger
+
+    from conftest import no_blender_stages
 
     with make_client(seed=True, stages=no_blender_stages(ledger_factory=VerificationLedger)) as client:
         drain(client)
@@ -162,8 +164,9 @@ def test_without_verified_rules_the_sample_shop_reports_nothing(make_client):
 
 
 def test_an_assessment_says_how_many_rules_ran(make_client):
-    from conftest import no_blender_stages
     from standardphysics_agents import VerificationLedger
+
+    from conftest import no_blender_stages
 
     with make_client(seed=True, stages=no_blender_stages(ledger_factory=VerificationLedger)) as client:
         drain(client)

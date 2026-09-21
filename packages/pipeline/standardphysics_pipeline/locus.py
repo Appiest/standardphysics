@@ -22,10 +22,11 @@ from standardphysics_contracts import (
     SceneNode,
     Vec3,
     WidthResult,
+    lies_flat,
     to_meters,
 )
 
-from .footprints import closest_points, footprint
+from .footprints import closest_points, floor_polygon, footprint, rotation_about_z
 
 EYE_PITCH_DEGREES = 55.0
 """How far above the floor the camera sits, in degrees from horizontal.
@@ -77,6 +78,27 @@ def _viewing_side(
     return across
 
 
+def _standing_room(graph: SceneGraph, subject: Vec3) -> Vec3 | None:
+    """Somewhere inside the room to look from, for a measurement no route reaches.
+
+    A doorway has no customer path leading to it, so nothing said which side to
+    stand on, and half the time the camera was put outside the building looking
+    at the back of a wall. The middle of the floor is always somewhere a person
+    could stand and see in.
+    """
+    floor = next((node for node in graph.nodes if lies_flat(node)), None)
+    if floor is None:
+        return None
+    polygon = floor_polygon(floor)
+    if not polygon:
+        return None
+    return Vec3(
+        x=sum(point[0] for point in polygon) / len(polygon),
+        y=sum(point[1] for point in polygon) / len(polygon),
+        z=subject.z,
+    )
+
+
 def camera_for(
     subject: Vec3,
     radius: float,
@@ -120,7 +142,7 @@ def width_locus(
     subject = _midpoint(start, end)
 
     across = _perpendicular(end.x - start.x, end.y - start.y)
-    approach = result.path[0] if result.path else None
+    approach = result.path[0] if result.path else _standing_room(graph, subject)
     direction = _viewing_side(subject, across, approach)
 
     radius = _framing_radius(graph, result, subject, span_between=start, and_=end)
@@ -168,8 +190,14 @@ def _measurement_endpoints(
 ) -> tuple[Vec3, Vec3]:
     """Where the dimension line actually attaches.
 
-    With two named blockers the line runs between their facing surfaces. With
-    anything else the best we can honestly draw is a span centred on the pinch.
+    With two named blockers the line runs between their facing surfaces.
+
+    With one, the width belongs to that thing, so the line lies along its own
+    width axis. A doorway turned forty degrees out of the world grid is still a
+    doorway, and a line drawn along world X across it measures nothing a person
+    could walk through, even when its length is right.
+
+    With none, a span centred on the pinch is the most that can honestly be drawn.
     """
     if len(result.blocking_node_ids) == 2:
         a, b = (graph.by_id(node_id) for node_id in result.blocking_node_ids)
@@ -181,10 +209,25 @@ def _measurement_endpoints(
 
     half = to_meters(result.inches) / 2
     pinch = result.pinch_point
+    along_x, along_y = _width_axis(graph, result.blocking_node_ids)
     return (
-        Vec3(x=pinch.x - half, y=pinch.y, z=draw_height),
-        Vec3(x=pinch.x + half, y=pinch.y, z=draw_height),
+        Vec3(x=pinch.x - half * along_x, y=pinch.y - half * along_y, z=draw_height),
+        Vec3(x=pinch.x + half * along_x, y=pinch.y + half * along_y, z=draw_height),
     )
+
+
+def _width_axis(graph: SceneGraph, blocking_node_ids: list) -> tuple[float, float]:
+    """The direction a single blocker's width runs in, or world X when there is none."""
+    if len(blocking_node_ids) != 1:
+        return (1.0, 0.0)
+    try:
+        node = graph.by_id(blocking_node_ids[0])
+    except KeyError:
+        return (1.0, 0.0)
+    cos_t, sin_t = rotation_about_z(node)
+    if node.dimensions.y > node.dimensions.x:
+        return (-sin_t, cos_t)
+    return (cos_t, sin_t)
 
 
 CIRCLE_SEGMENTS = 32

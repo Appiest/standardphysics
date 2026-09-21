@@ -51,14 +51,15 @@ def _scan(connection: sqlite3.Connection, row: sqlite3.Row) -> Scan:
 def insert_scan(
     connection: sqlite3.Connection,
     request: CreateScanRequest,
+    owner_id: uuid.UUID,
     scan_id: uuid.UUID | None = None,
     state: str = "uploading",
 ) -> uuid.UUID:
     scan_id = scan_id or uuid.uuid4()
     connection.execute(
-        "INSERT INTO scans (id, name, created_at, device_model, duration_seconds, state)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
-        (str(scan_id), request.name, now(), request.device_model, request.duration_seconds, state),
+        "INSERT INTO scans (id, name, created_at, device_model, duration_seconds, state, owner_id)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (str(scan_id), request.name, now(), request.device_model, request.duration_seconds, state, str(owner_id)),
     )
     return scan_id
 
@@ -68,8 +69,18 @@ def get_scan(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Scan | None:
     return _scan(connection, row) if row else None
 
 
-def list_scans(connection: sqlite3.Connection) -> list[Scan]:
-    rows = connection.execute("SELECT * FROM scans ORDER BY created_at DESC").fetchall()
+def scan_owner(connection: sqlite3.Connection, scan_id: uuid.UUID) -> uuid.UUID | None:
+    """Who owns this scan, or None when the scan is missing or unclaimed."""
+    row = connection.execute("SELECT owner_id FROM scans WHERE id = ?", (str(scan_id),)).fetchone()
+    if row is None or row["owner_id"] is None:
+        return None
+    return uuid.UUID(row["owner_id"])
+
+
+def list_scans(connection: sqlite3.Connection, owner_id: uuid.UUID) -> list[Scan]:
+    rows = connection.execute(
+        "SELECT * FROM scans WHERE owner_id = ? ORDER BY created_at DESC", (str(owner_id),)
+    ).fetchall()
     return [_scan(connection, row) for row in rows]
 
 
@@ -77,7 +88,7 @@ def scan_exists(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
     return connection.execute("SELECT 1 FROM scans WHERE id = ?", (str(scan_id),)).fetchone() is not None
 
 
-CHILD_TABLES = ("simulations", "assessments", "scenarios", "revisions", "jobs", "artifacts")
+CHILD_TABLES = ("texture_builds", "simulations", "assessments", "scenarios", "revisions", "jobs", "artifacts")
 """Everything that references a scan, deepest first.
 
 SQLite does not enforce the foreign keys by default, so leaving a child row
@@ -163,11 +174,13 @@ def queue_job_again(connection: sqlite3.Connection, scan_id: uuid.UUID, kind: st
     )
 
 
-def claim_job(connection: sqlite3.Connection) -> sqlite3.Row | None:
+def claim_job(connection: sqlite3.Connection, texture_only: bool | None = None) -> sqlite3.Row | None:
     return connection.execute(
         "UPDATE jobs SET state = 'running', attempts = attempts + 1"
-        " WHERE id = (SELECT id FROM jobs WHERE state = 'queued' ORDER BY id LIMIT 1)"
-        " RETURNING id, scan_id, kind, revision"
+        " WHERE id = (SELECT id FROM jobs WHERE state = 'queued'"
+        " AND (? IS NULL OR (kind='texture')=?) ORDER BY id LIMIT 1)"
+        " RETURNING id, scan_id, kind, revision",
+        (texture_only, texture_only),
     ).fetchone()
 
 
@@ -181,7 +194,9 @@ def retry_failed_jobs(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Non
     kinds = {
         row["kind"]
         for row in connection.execute(
-            "SELECT kind FROM jobs WHERE scan_id = ? AND state = 'failed' AND kind NOT IN ('display', 'simulate')", (str(scan_id),)
+            "SELECT kind FROM jobs WHERE scan_id = ? AND state = 'failed'"
+            " AND kind NOT IN ('display', 'simulate', 'texture')",
+            (str(scan_id),),
         )
     }
     if not kinds:
@@ -189,13 +204,25 @@ def retry_failed_jobs(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Non
     state = "measuring" if "process" in kinds else "checking"
     connection.execute("UPDATE scans SET state = ? WHERE id = ?", (state, str(scan_id)))
     connection.execute(
-        "UPDATE jobs SET state = 'queued', error = NULL WHERE scan_id = ? AND state = 'failed' AND kind NOT IN ('display', 'simulate')",
+        "UPDATE jobs SET state = 'queued', error = NULL WHERE scan_id = ? AND state = 'failed'"
+        " AND kind NOT IN ('display', 'simulate', 'texture')",
         (str(scan_id),),
     )
 
 
 def requeue_interrupted_jobs(connection: sqlite3.Connection) -> None:
     connection.execute("UPDATE jobs SET state = 'queued' WHERE state = 'running'")
+
+
+_REVISION_WRITE = {"owner": "INSERT INTO", "ingest": "INSERT INTO", "other": "INSERT OR IGNORE INTO"}
+_REVISION_CONFLICT = {
+    "ingest": " ON CONFLICT (scan_id, revision) DO UPDATE SET"
+              " graph_hash = excluded.graph_hash, graph_json = excluded.graph_json,"
+              " created_at = excluded.created_at",
+}
+"""An ingest revision is derived entirely from the uploaded artifacts, so running
+ingest again replaces it. Everything an owner did stands on its own revision and
+is never overwritten."""
 
 
 def save_revision(
@@ -205,11 +232,11 @@ def save_revision(
     base_revision: int | None = None,
     glb_path: str | None = None,
 ) -> None:
-    verb = "INSERT INTO" if source == "owner" else "INSERT OR IGNORE INTO"
     connection.execute(
-        f"{verb} revisions"
+        f"{_REVISION_WRITE[source if source in _REVISION_WRITE else 'other']} revisions"
         " (scan_id, revision, graph_hash, graph_json, source, base_revision, glb_path, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        f"{_REVISION_CONFLICT.get(source, '')}",
         (str(graph.scan_id), graph.revision, graph_hash(graph), graph.model_dump_json(),
          source, base_revision, glb_path, now()),
     )
@@ -231,7 +258,9 @@ def graph_of(row: sqlite3.Row) -> SceneGraph:
     return SceneGraph.model_validate_json(row["graph_json"])
 
 
-def display_geometry(connection: sqlite3.Connection, scan_id: uuid.UUID, revision: int | None = None) -> tuple[str, int] | None:
+def display_geometry(
+    connection: sqlite3.Connection, scan_id: uuid.UUID, revision: int | None = None
+) -> tuple[str, int] | None:
     """The newest GLB, and the revision whose layout it was exported from."""
     row = connection.execute(
         "SELECT glb_path, revision FROM revisions WHERE scan_id = ? AND glb_path IS NOT NULL"

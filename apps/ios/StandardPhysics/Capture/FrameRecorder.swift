@@ -1,15 +1,8 @@
 import ARKit
 import AVFoundation
 import CoreImage
+import CoreVideo
 import UIKit
-
-struct PoseRecord: Codable, Sendable {
-    let image: String
-    let timestamp: TimeInterval
-    let transform: [Float]
-    let intrinsics: [Float]
-    let orientation: String
-}
 
 struct RecordingResult: Sendable {
     let videoURL: URL?
@@ -45,7 +38,7 @@ final class FrameRecorder: NSObject {
     private let imageQueue = DispatchQueue(label: "com.standardphysics.keyframes", qos: .utility)
     private let recordingFailures = RecordingFailureState()
     private var displayLink: CADisplayLink?
-    private var poseRecords: [PoseRecord] = []
+    private var keyframeBook = KeyframeBook()
     private var frameURLs: [URL] = []
     private var startUptime: TimeInterval?
     private var startTimestamp: TimeInterval?
@@ -81,7 +74,7 @@ final class FrameRecorder: NSObject {
 
         let completionGroup = DispatchGroup()
         let stopResults = RecordingStopResults()
-        let poses = poseRecords
+        let book = keyframeBook
         let completedFrameURLs = frameURLs
         let outputDirectory = directory
         let failures = recordingFailures
@@ -96,8 +89,8 @@ final class FrameRecorder: NSObject {
             let jpegFailure = failures.first
             do {
                 let posesURL = outputDirectory.appendingPathComponent("poses.json")
-                let savedPoses = poses.filter {
-                    FileManager.default.fileExists(atPath: outputDirectory.appendingPathComponent($0.image).path)
+                let savedPoses = book.savedRecords {
+                    FileManager.default.fileExists(atPath: outputDirectory.appendingPathComponent($0).path)
                 }
                 let data = try JSONEncoder.standardPhysics.encode(savedPoses)
                 try data.write(to: posesURL, options: .atomic)
@@ -128,15 +121,15 @@ final class FrameRecorder: NSObject {
         displayLink?.invalidate()
         displayLink = nil
 
-        let poses = poseRecords
+        let book = keyframeBook
         let outputDirectory = directory
         videoRecorder.cancel()
         imageQueue.async {
             let error: Error?
             do {
                 let posesURL = outputDirectory.appendingPathComponent("poses.json")
-                let savedPoses = poses.filter {
-                    FileManager.default.fileExists(atPath: outputDirectory.appendingPathComponent($0.image).path)
+                let savedPoses = book.savedRecords {
+                    FileManager.default.fileExists(atPath: outputDirectory.appendingPathComponent($0).path)
                 }
                 let data = try JSONEncoder.standardPhysics.encode(savedPoses)
                 try data.write(to: posesURL, options: .atomic)
@@ -177,15 +170,19 @@ final class FrameRecorder: NSObject {
     }
 
     private func saveKeyframe(_ frame: ARFrame) {
-        let sequence = poseRecords.count
-        let filename = String(format: "frame_%04d.jpg", sequence)
-        let fileURL = framesDirectory.appendingPathComponent(filename)
-        poseRecords.append(PoseRecord(
-            image: "frames/\(filename)",
+        let sequence = keyframeBook.reserveNextNumber()
+        let fileURL = framesDirectory.appendingPathComponent(FrameIdentity.fileName(forNumber: sequence))
+        let calibrationResolution = frame.camera.imageResolution
+        keyframeBook.append(PoseRecord.keyframe(
+            frameNumber: sequence,
             timestamp: frame.timestamp,
             transform: frame.camera.transform.flattened,
             intrinsics: frame.camera.intrinsics.flattened,
-            orientation: UIApplication.shared.interfaceOrientation.name
+            orientation: UIApplication.shared.interfaceOrientation.name,
+            imageWidth: CVPixelBufferGetWidth(frame.capturedImage),
+            imageHeight: CVPixelBufferGetHeight(frame.capturedImage),
+            calibrationWidth: Int(calibrationResolution.width),
+            calibrationHeight: Int(calibrationResolution.height)
         ))
         frameURLs.append(fileURL)
 

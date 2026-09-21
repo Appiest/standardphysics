@@ -1,6 +1,6 @@
-from conftest import drain, no_blender_stages
-
 from standardphysics_agents import VerificationLedger
+
+from conftest import drain, no_blender_stages
 
 
 def test_the_report_carries_findings_and_who_verified_each_rule(make_client):

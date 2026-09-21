@@ -30,6 +30,9 @@ from .tracing import project_url, traced
 
 ASSESSMENT_NAMESPACE = uuid.UUID("7b3c1f04-5e2a-4c6b-9d18-000000000003")
 
+STRENGTH = ("problem", "question", "passes")
+"""Which verdict speaks for a check that reported more than one finding."""
+
 
 @dataclass(frozen=True)
 class Pass:
@@ -49,6 +52,33 @@ class Pass:
     @property
     def questions(self) -> list[Finding]:
         return self.assessment.questions
+
+    @property
+    def verdicts(self) -> dict[str, str]:
+        """One verdict per check: what it said about this room.
+
+        A check reports a measurement per leg of the routine, so a problem on
+        any leg is the check's answer for the room.
+        """
+        said: dict[str, str] = {}
+        for finding in self.findings:
+            seen = said.get(finding.check_id)
+            said[finding.check_id] = (
+                finding.outcome
+                if seen is None
+                else min((seen, finding.outcome), key=STRENGTH.index)
+            )
+        return said
+
+    @property
+    def held(self) -> dict[str, str]:
+        """Rules this room could not answer, and what each is waiting on.
+
+        A rule can be held and still have said something: `exit_path` measures
+        a width and holds the rest of the section. Holding rides alongside the
+        verdict rather than replacing it, so neither one hides the other.
+        """
+        return {gap.rule_id: gap.waiting_on for gap in self.unevaluated}
 
 
 def _assessment_id(graph_fingerprint: str, version: str, pass_number: int) -> uuid.UUID:

@@ -1,15 +1,32 @@
-"""Lane C's whole loop on one layout, reported pass by pass."""
+"""Lane C's whole loop on one layout, reported pass by pass: all at once, or as each pass finishes."""
 
 from __future__ import annotations
 
+import logging
 import uuid
+from collections.abc import Iterable, Iterator
 
 from standardphysics_agents import LoopStep
-from standardphysics_contracts import LoopPass, LoopRequest, LoopResult, NodeMove, Vec3
+from standardphysics_contracts import (
+    LoopEvent,
+    LoopFailed,
+    LoopFinished,
+    LoopPass,
+    LoopPassFinished,
+    LoopRequest,
+    LoopResult,
+    LoopStarted,
+    NodeMove,
+    Vec3,
+)
 
 from .db import Database
 from .proposals import fix_inputs
 from .stages import Stages
+
+log = logging.getLogger(__name__)
+
+STOPPED_PARTWAY = "Unable to finish the loop. Nothing was changed, so you can try again."
 
 
 def _kept_moves(step: LoopStep) -> list[NodeMove]:
@@ -53,13 +70,45 @@ def combine_moves(moves: list[NodeMove]) -> list[NodeMove]:
     return list(combined.values())
 
 
-def run(database: Database, stages: Stages, scan_id: uuid.UUID, body: LoopRequest) -> LoopResult:
+def _start(database: Database, stages: Stages, scan_id: uuid.UUID, body: LoopRequest) -> tuple[str, Iterable[LoopStep]]:
     graph, scenario, _ = fix_inputs(database, scan_id, body.base_revision)
-    decided_by, steps = stages.loop(graph, scenario)
-    passes = [_to_pass(step) for step in steps]
+    return stages.loop(graph, scenario)
+
+
+def _result(body: LoopRequest, decided_by: str, passes: list[LoopPass]) -> LoopResult:
     return LoopResult(
         base_revision=body.base_revision,
         decided_by=decided_by,
         passes=passes,
         moves=combine_moves([move for loop_pass in passes for move in loop_pass.moves]),
     )
+
+
+def run(database: Database, stages: Stages, scan_id: uuid.UUID, body: LoopRequest) -> LoopResult:
+    decided_by, steps = _start(database, stages, scan_id, body)
+    return _result(body, decided_by, [_to_pass(step) for step in steps])
+
+
+def stream(database: Database, stages: Stages, scan_id: uuid.UUID, body: LoopRequest) -> Iterator[str]:
+    """Refuses a missing layout or route before the response starts, then yields one JSON line per event."""
+    decided_by, steps = _start(database, stages, scan_id, body)
+    return _event_lines(body, decided_by, steps)
+
+
+def _event_lines(body: LoopRequest, decided_by: str, steps: Iterable[LoopStep]) -> Iterator[str]:
+    yield _line(LoopStarted(base_revision=body.base_revision, decided_by=decided_by))
+    passes: list[LoopPass] = []
+    try:
+        for step in steps:
+            passes.append(_to_pass(step))
+            yield _line(LoopPassFinished(loop_pass=passes[-1]))
+    except Exception:
+        # The status line is already sent, so the failure has to travel as an event.
+        log.exception("the streamed loop failed after %d passes", len(passes))
+        yield _line(LoopFailed(error=STOPPED_PARTWAY))
+        return
+    yield _line(LoopFinished(result=_result(body, decided_by, passes)))
+
+
+def _line(event: LoopStarted | LoopPassFinished | LoopFinished | LoopFailed) -> str:
+    return LoopEvent(event).model_dump_json() + "\n"

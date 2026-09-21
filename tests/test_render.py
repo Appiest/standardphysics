@@ -1,12 +1,11 @@
 """Blender-backed output. Skipped where Blender is not installed."""
 
-import pathlib
+import json
 from math import cos, pi, sin
 from uuid import uuid4
 
 import pytest
-
-from standardphysics_contracts import Mat4, SceneNode, Vec3
+from standardphysics_contracts import DisplayPart, DisplayReconstruction, Mat4, SceneNode, Vec3
 from standardphysics_fixtures import build_graph, build_scenario
 from standardphysics_pipeline.blender import (
     MIN_DISPLAY_WALL_THICKNESS,
@@ -108,6 +107,37 @@ def test_exported_sofa_stays_inside_its_measured_envelope(tmp_path):
 
     assert low == pytest.approx((0.0, 1.5, 0.5), abs=0.02)
     assert high == pytest.approx((2.0, 2.5, 1.5), abs=0.02)
+
+
+@needs_blender
+def test_reconstructed_parts_keep_one_selectable_node_and_their_own_finishes(tmp_path):
+    reconstruction = DisplayReconstruction(
+        summary="Rounded cabinet with metal legs and glass display.", confidence=0.8,
+        evidence_frame_ids=["frame-0001"],
+        parts=[
+            DisplayPart(name="body", primitive="box", center=[0, 0, 0], size=[1, 1, 1], bevel=0.08, base_color="#7a5432", material="wood"),
+            DisplayPart(name="legs", primitive="cylinder", axis="z", center=[0.3, 0.3, -0.35], size=[0.12, 0.12, 0.3], bevel=0.1, base_color="#353535", material="metal"),
+            DisplayPart(name="display", primitive="ellipsoid", center=[0, -0.2, 0.15], size=[0.5, 0.08, 0.4], base_color="#a9d8e8", material="glass"),
+        ],
+    )
+    cabinet = _node("object", "storage", (2.0, 1.0, 1.0), Mat4.translation(1.0, 2.0, 1.0)).model_copy(
+        update={"reconstruction": reconstruction}
+    )
+    graph = build_graph().model_copy(update={"nodes": [cabinet]})
+    glb = export_glb(graph, tmp_path / "cabinet.glb")
+    low, high = glb_mesh_bounds(glb, str(cabinet.id))
+    raw = glb.read_bytes()
+    json_length = int.from_bytes(raw[12:16], "little")
+    exported = json.loads(raw[20:20 + json_length].decode("utf-8"))
+    materials = {material["name"] for material in exported["materials"]}
+    mesh = exported["meshes"][exported["nodes"][0]["mesh"]]
+
+    assert glb_node_names(glb).count(str(cabinet.id)) == 1
+    assert low == pytest.approx((0.0, 1.5, 0.5), abs=0.02)
+    assert high == pytest.approx((2.0, 2.5, 1.5), abs=0.02)
+    assert {"finish:#7a5432:wood", "finish:#353535:metal", "finish:#a9d8e8:glass"} <= materials
+    assert len(mesh["primitives"]) == 3
+    assert {primitive["material"] for primitive in mesh["primitives"]} == {0, 1, 2}
 
 
 @needs_blender

@@ -17,6 +17,9 @@ Owners spend less on consultants and more time building the shop of their dreams
 | Lane C, checks and evaluation | [`docs/lanes/LANE_C.md`](docs/lanes/LANE_C.md) |
 | Lane D, contracts, API, web | [`docs/lanes/LANE_D.md`](docs/lanes/LANE_D.md) |
 | Anyone writing UI or copy | [`CLAUDE.md`](CLAUDE.md), then section 2 of the plan |
+| Anyone pointing ARIA at the evaluation | [`docs/aria.md`](docs/aria.md) |
+| Anyone putting this in front of a real shop | [`docs/DEPLOY.md`](docs/DEPLOY.md), then [`docs/APP_STORE.md`](docs/APP_STORE.md) |
+| Anyone opening the reactive notebook | [`docs/marimo.md`](docs/marimo.md) |
 
 ## Setup
 
@@ -26,19 +29,85 @@ You need Python 3.11 or newer and Node 20.9 or newer. From a fresh clone:
 ./start.sh
 ```
 
-That installs the Python packages into `.venv` and the web packages into `apps/web`, then starts the API on port 8787 and the web workspace at http://localhost:3000. The workspace lists scans that came off a phone. To load the two in `datasets/phone` without a phone, run `.venv/bin/python scripts/import_scan.py datasets/phone/*` while it's running. To add the sample shop, start it with `SP_SEED_SAMPLE_SHOP=1 ./start.sh`. Ctrl-C stops both. For the demo, `./start.sh --prod` runs a production build instead.
+That installs the Python packages into `.venv` and the web packages into `apps/web`, then starts the API on port 8787 and the web workspace at http://localhost:3000. Ctrl-C stops both. For the demo, `./start.sh --prod` runs a production build instead.
 
-Findings come only from rules a person has verified, with `.venv/bin/standardphysics-agents rules verify <rule> --by "<name>"` from Lane C. Until someone does that, `SP_PREVIEW_UNVERIFIED_RULES=1 ./start.sh` runs every rule anyway, for development only.
+Open the workspace and create an account. A scan belongs to the owner who uploaded it, and the list only ever shows your own shops, so a fresh account starts empty.
 
-To run the tests:
+To start with a shop already in it, run `SP_SEED_SAMPLE_SHOP=1 ./start.sh`. That seeds the sample boba shop and the demo account that owns it, and prints the email and password to sign in as. Set `SP_SEED_OWNER_PASSWORD` to choose the password yourself; leave it unset and the server generates one and logs it.
+
+To load the phone scans in `datasets/phone`, run `.venv/bin/python scripts/import_scan.py datasets/phone/*` while it's running.
+
+Findings come only from rules whose threshold has been checked against the text it cites. `scripts/verify_rulepack.py` does that check and writes the ledger, which is committed, so a clean clone reports findings without any flag. Two rules are left off it and the script says why for each. A person who has read a section adds their name with `.venv/bin/standardphysics-agents rules second-check <rule> --by "<name>"`. `SP_PREVIEW_UNVERIFIED_RULES=1` runs every rule including the two, for development only, and stamps the report as unreviewed.
+
+To run the tests and the linter:
 
 ```bash
 .venv/bin/python -m pytest
 .venv/bin/python -m pytest packages/agents services/api/tests -q
+.venv/bin/python -m ruff check .
 (cd apps/web && npm run lint && npm run typecheck && npm run test)
 ```
 
+To ask how many of something is in a scan:
+
+```bash
+.venv/bin/standardphysics-agents count books --scan services/api/var/scans/<id>
+```
+
+Every measured region has sides with a measured area. Each side is cut into patches of a known size, each patch is projected into the frame that photographed it most squarely, and a model is asked one question about each crop: how many of the named thing can you see here. The engine does the rest, so the density, the multiplication and the coverage are arithmetic over measurements and no figure in the answer came out of a sentence.
+
+Nothing in the code matches the word you type. Ask for chairs and the shelving returns nothing; ask for books and the desks do. It follows that the answer covers only the surface a walk actually photographed, and the report says how much that was and what share was never seen.
+
+`--patch` sets the patch size in metres, `--readings` how many times each patch is counted before taking the median, and `--workers` how many run at once. It needs `DISCOVERY_API_KEY`, `DISCOVERY_BASE_URL` and `DISCOVERY_MODEL` set, and refuses to run rather than guessing without them.
+
+To score the app on rooms it was not built against:
+
+```bash
+.venv/bin/standardphysics-agents held-out --seed 21
+```
+
+That writes fresh questions about a scanned room, asks them, and scores each answer against the room rather than against an expected string. It then does the whole thing again over the same geometry with every name replaced by a nonsense token, and prints what the names were worth. A gap between the two is something answering from an English word instead of from a measurement.
+
+Around one question in eight has no answer in the scan. Saying so scores as a pass and answering it anyway scores as a failure, which is the part a system that games the rest fails hardest.
+
+It needs real scans and refuses to run without them, and it needs a model to write and judge. `--questions` sets how many per room (80 for a full run, fewer for a look), `--hold-out` how many rooms are scored on, and `--model`, `--base-url` and `--api-key-env` point it at an endpoint other than the configured one:
+
+```bash
+.venv/bin/standardphysics-agents held-out --seed 21 --questions 12 \
+  --model accounts/fireworks/models/kimi-k3 \
+  --base-url https://api.fireworks.ai/inference/v1 --api-key-env FIREWORKS_API_KEY
+```
+
+To move the shop's dimensions by hand and watch the same checks read the new room:
+
+```bash
+.venv/bin/marimo edit notebooks/scenario_sweep.py
+```
+
+That is a marimo notebook, installed by `./start.sh`. [`docs/marimo.md`](docs/marimo.md) says what each slider does.
+
 Lane B additionally needs Blender 5.x. `brew install --cask --force blender` — the `--force` matters, because a plain install silently does nothing when Blender was installed by hand.
+
+## Deploying it
+
+```bash
+docker compose up --build
+```
+
+That builds one image and runs two containers from it, the API and the web workspace, with the scans in a named volume. Open http://localhost:3000. Add `SP_SEED_SAMPLE_SHOP=1` to the environment to seed the sample shop and its demo account.
+
+On a host that gives you a single container and a single port, run the same image with no argument. The entrypoint then serves the workspace on `$PORT` and runs the API beside it on 8787:
+
+```bash
+docker build -t standardphysics .
+docker run -p 3000:3000 -v scans:/data standardphysics
+```
+
+The scans and every uploaded artifact live in `/data`. Mount it, or a restart loses every shop anyone has scanned.
+
+`/health` answers without a session, so a load balancer can ask. It reads from the database, because a process that is listening but cannot read its own scans is not healthy in any way that matters.
+
+Two things the image does not do. Blender is not installed, so an uploaded scan shows as boxes and its report has no pictures; the seeded sample shop carries a committed model and is unaffected. And `/present` and `/brush` are not part of the product, so they answer 404 unless `SP_SHOW_DEMO_ROUTES=1` asks for them.
 
 ## What already works
 

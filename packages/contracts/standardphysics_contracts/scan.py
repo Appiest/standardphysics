@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 ArtifactKind = Literal[
     "room_usdz", "room_json", "room_metadata", "walkthrough_mp4",
-    "frames", "poses", "coverage", "lidar_mesh",
+    "frames", "poses", "coverage", "lidar_mesh", "photo_manifest",
 ]
 
 ScanState = Literal["uploading", "measuring", "checking", "ready", "failed"]

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 import pytest
-from standardphysics_fixtures.shop import node_id
 from standardphysics_agents.evaluation import (
     LOWER_IS_BETTER,
     SCORERS,
@@ -23,6 +22,7 @@ from standardphysics_agents.evaluation.scorers import (
     router_action_match,
 )
 from standardphysics_agents.router import LocalPolicyRouter, Rejected, state_for
+from standardphysics_fixtures.shop import node_id
 
 EXPECTED_SCORERS = {
     "finding_precision",
@@ -233,3 +233,112 @@ class TestRetrievableResults:
         from standardphysics_agents.evaluation.runner import publish_to_weave
 
         assert publish_to_weave(evaluation) is None
+
+    def test_a_run_that_did_not_publish_says_so(self, evaluation):
+        assert evaluation.dataset_url is None
+
+    def test_the_saved_record_says_where_the_rows_went(self, evaluation, tmp_path):
+        saved = json.loads(save(evaluation, tmp_path / "e.json").read_text())
+        assert "dataset_url" in saved
+
+
+class FakeRef:
+    """What `weave.publish` hands back: a ref, with no URL on it."""
+
+    entity = "acme"
+    project = "physics"
+    name = "standardphysics-1.0.0"
+    digest = "vDIGEST"
+
+
+class FakeUrls:
+    @staticmethod
+    def object_version_path(entity, project, name, digest) -> str:
+        return f"https://wandb.ai/{entity}/{project}/weave/objects/{name}/versions/{digest}"
+
+
+class FakeTrace:
+    urls = FakeUrls
+
+
+class FakeWeave:
+    """Enough of the publish surface, including a third party refusing."""
+
+    def __init__(self, failure: Exception | None = None) -> None:
+        self.failure = failure
+        self.datasets: list[dict] = []
+
+    def Dataset(self, name, rows):  # noqa: N802 - matches weave.Dataset
+        return {"name": name, "rows": rows}
+
+    def publish(self, dataset):
+        if self.failure is not None:
+            raise self.failure
+        self.datasets.append(dataset)
+        return FakeRef()
+
+
+@pytest.fixture
+def weave(monkeypatch):
+    import sys
+
+    fake = FakeWeave()
+    monkeypatch.setitem(sys.modules, "weave", fake)
+    monkeypatch.setitem(sys.modules, "weave.trace", FakeTrace)
+    return fake
+
+
+class TestWhereTheRowsLanded:
+    """`weave.publish` returns a ref with no URL attribute on it, so the URL
+    comes from Weave's own path builder. Reading an attribute that is not there
+    reported no link on every successful publish."""
+
+    def test_publishing_reports_the_object_url(self, evaluation, weave):
+        from standardphysics_agents.evaluation.runner import publish_to_weave
+
+        published = publish_to_weave(evaluation)
+        assert published == (
+            "https://wandb.ai/acme/physics/weave/objects/standardphysics-1.0.0/versions/vDIGEST"
+        )
+
+    def test_the_dataset_is_named_for_the_rule_pack(self, evaluation, weave):
+        from standardphysics_agents.evaluation.runner import publish_to_weave
+
+        publish_to_weave(evaluation)
+        assert weave.datasets[0]["name"] == f"standardphysics-{evaluation.rulepack_version}"
+
+    def test_every_case_is_a_row(self, evaluation, weave):
+        from standardphysics_agents.evaluation.runner import publish_to_weave
+
+        publish_to_weave(evaluation)
+        assert len(weave.datasets[0]["rows"]) == len(evaluation.outcomes)
+
+    def test_a_refused_publish_still_returns_nothing(self, evaluation, monkeypatch):
+        import sys
+
+        from standardphysics_agents.evaluation.runner import publish_to_weave
+
+        monkeypatch.setitem(sys.modules, "weave", FakeWeave(failure=ValueError("no")))
+        monkeypatch.setitem(sys.modules, "weave.trace", FakeTrace)
+        assert publish_to_weave(evaluation) is None
+
+    def test_a_published_run_carries_the_url(self, pack, ledger, pipeline, weave, monkeypatch):
+        from standardphysics_agents.evaluation import runner
+
+        monkeypatch.setattr(runner, "is_live", lambda: True)
+        result = runner.evaluate(
+            measure=pipeline, rules=pack, ledger=ledger,
+            cases=[by_id("aisle_31")], run_fixes=False, publish=True,
+        )
+        assert result.dataset_url.endswith("/objects/standardphysics-1.0.0/versions/vDIGEST")
+
+    def test_a_run_told_not_to_publish_does_not(self, pack, ledger, pipeline, weave, monkeypatch):
+        from standardphysics_agents.evaluation import runner
+
+        monkeypatch.setattr(runner, "is_live", lambda: True)
+        result = runner.evaluate(
+            measure=pipeline, rules=pack, ledger=ledger,
+            cases=[by_id("aisle_31")], run_fixes=False, publish=False,
+        )
+        assert result.dataset_url is None
+        assert weave.datasets == []

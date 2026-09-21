@@ -1,3 +1,180 @@
 {
-  "entries": []
+  "entries": [
+    {
+      "rule_id": "route_clear_width",
+      "section": "403.5.1",
+      "threshold": 36.0,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098423Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "403.5.1: the clear width of walking surfaces shall be 36 inches (915 mm) minimum."
+    },
+    {
+      "rule_id": "passing_space",
+      "section": "403.5.3",
+      "threshold": 60.0,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098528Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "403.5.3: passing spaces shall be either a 60 inch (1525 mm) minimum by 60 inch (1525 mm) minimum space, or an intersection of two walking surfaces providing a T-shaped space."
+    },
+    {
+      "rule_id": "turning_space",
+      "section": "304.3.1",
+      "threshold": 60.0,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098540Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "304.3.1: the turning space shall be a space of 60 inches (1525 mm) diameter minimum."
+    },
+    {
+      "rule_id": "door_clear_width",
+      "section": "404.2.3",
+      "threshold": 32.0,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098548Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "404.2.3: door openings shall provide a clear width of 32 inches (815 mm) minimum."
+    },
+    {
+      "rule_id": "service_counter_height",
+      "section": "904.4.1",
+      "threshold": 36.0,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098558Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "904.4.1: a portion of the counter surface 36 inches (915 mm) long minimum and 36 inches (915 mm) high maximum above the finish floor."
+    },
+    {
+      "rule_id": "point_of_sale_height",
+      "section": "904.4",
+      "threshold": 36.0,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098568Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "904.4, through 904.4.1 and 904.4.2: the accessible portion of a sales or service counter is 36 inches (915 mm) high maximum above the finish floor."
+    },
+    {
+      "rule_id": "service_counter_approach",
+      "section": "305.3",
+      "threshold": 48.0,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098576Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "305.3: the clear floor or ground space shall be 30 inches (760 mm) minimum by 48 inches (1220 mm) minimum."
+    },
+    {
+      "rule_id": "entrance_threshold",
+      "section": "303.3",
+      "threshold": 0.5,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098588Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "303.3: changes in level between 1/4 inch (6.4 mm) high minimum and 1/2 inch (13 mm) high maximum shall be beveled with a slope not steeper than 1:2."
+    },
+    {
+      "rule_id": "door_hardware",
+      "section": "404.2.7",
+      "threshold": 48.0,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098600Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "404.2.7: handles, pulls, latches, locks and other operable parts shall be 34 inches (865 mm) minimum and 48 inches (1220 mm) maximum above the finish floor."
+    },
+    {
+      "rule_id": "door_opening_force",
+      "section": "404.2.9",
+      "threshold": 5.0,
+      "unit": "lbf",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098609Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "404.2.9: interior hinged doors and gates, 5 pounds (22.2 N) maximum."
+    },
+    {
+      "rule_id": "floor_surface",
+      "section": "302",
+      "threshold": 0.5,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098618Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "302.3: openings shall not allow passage of a sphere more than 1/2 inch (13 mm) diameter."
+    },
+    {
+      "rule_id": "restroom_turning_space",
+      "section": "603.2.1",
+      "threshold": 60.0,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098626Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "603.2.1: turning space complying with 304 shall be provided within the room, which 304.3.1 sets at 60 inches (1525 mm) diameter minimum."
+    },
+    {
+      "rule_id": "door_maneuvering_clearance",
+      "section": "404.2.4",
+      "threshold": 60.0,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098635Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "404.2.4 and table 404.2.4.1: a front approach to the pull side of a swinging door requires 60 inches (1525 mm) minimum perpendicular to the doorway."
+    },
+    {
+      "rule_id": "protruding_objects",
+      "section": "307.2",
+      "threshold": 4.0,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098643Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "307.2: objects with leading edges more than 27 inches (685 mm) and not more than 80 inches (2030 mm) above the finish floor shall protrude 4 inches (100 mm) maximum horizontally."
+    },
+    {
+      "rule_id": "reach_range",
+      "section": "308.2.1",
+      "threshold": 48.0,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098651Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "308.2.1: where a forward reach is unobstructed, the high forward reach shall be 48 inches (1220 mm) maximum above the finish floor."
+    },
+    {
+      "rule_id": "dining_surface_height",
+      "section": "902.3",
+      "threshold": 34.0,
+      "unit": "in",
+      "verified_by": "Automated threshold check (needs a person's second check)",
+      "verified_at": "2026-09-14T02:47:53.098661Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "902.3: the tops of dining surfaces and work surfaces shall be 28 inches (710 mm) minimum and 34 inches (865 mm) maximum above the finish floor."
+    }
+  ]
 }

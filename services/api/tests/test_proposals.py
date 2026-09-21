@@ -1,6 +1,6 @@
-from conftest import drain
-
 from standardphysics_fixtures import node_id
+
+from conftest import drain
 
 
 def _sample(make_client):

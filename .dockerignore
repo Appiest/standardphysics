@@ -1,0 +1,12 @@
+.git
+.venv
+**/node_modules
+**/.next
+**/__pycache__
+**/*.pyc
+services/api/var
+datasets
+apps/ios
+.env
+.env.*
+!.env.example

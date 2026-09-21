@@ -19,9 +19,18 @@ from .observation import Observation
 RULE_ID = "door_clear_width"
 
 
-def needs_measurement(result: WidthResult) -> bool:
-    """Read off the result, so this starts working the day Lane D adds it."""
-    return bool(getattr(result, "needs_measurement", False))
+def needs_measurement(result: WidthResult, threshold: float | None) -> bool:
+    """Whether a tape measure would change the answer.
+
+    The scan sees the hole in the wall, and the clear width with the door open
+    is always smaller than that. So an opening already under the requirement is
+    a certain problem, and no measurement can rescue it. An opening over the
+    requirement settles nothing, because the leaf, its hardware and the stop
+    all eat into it, and that is the one worth asking about.
+    """
+    if not bool(getattr(result, "needs_measurement", False)):
+        return False
+    return threshold is None or result.inches >= threshold
 
 
 @traced("checks.door_clear_width")
@@ -30,7 +39,7 @@ def door_clear_width(ctx: CheckContext) -> list[Observation]:
     observations = []
     for door in roles.doors(ctx.graph):
         result = ctx.measure.door_clear_width(ctx.graph, door.id)
-        asking = needs_measurement(result)
+        asking = needs_measurement(result, rule.threshold)
         observations.append(
             Observation(
                 rule_id=RULE_ID,

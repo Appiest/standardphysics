@@ -26,7 +26,8 @@ def test_ingest_passes_uploaded_frames_to_the_default_astra_labeler(client, monk
     }]
     captured = {}
 
-    def transport(url, body, headers):
+    def transport(url, body, headers, *, deadline=None):
+        assert deadline is not None
         captured["url"] = url
         captured["body"] = body
         content = body["messages"][1]["content"]

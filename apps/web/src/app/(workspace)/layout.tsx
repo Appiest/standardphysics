@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Atkinson_Hyperlegible_Mono, Atkinson_Hyperlegible_Next } from "next/font/google";
+import { PaperInk } from "@/components/blueprint/PaperInk";
+import { appFontVariables } from "../fonts";
 import "./globals.css";
-
-const atkinsonNext = Atkinson_Hyperlegible_Next({ subsets: ["latin"], variable: "--font-atkinson-next" });
-const atkinsonMono = Atkinson_Hyperlegible_Mono({ subsets: ["latin"], variable: "--font-atkinson-mono" });
 
 export const metadata: Metadata = {
   title: "Standard Physics",
@@ -13,8 +11,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${atkinsonNext.variable} ${atkinsonMono.variable}`}>
-      <body className="min-h-dvh">{children}</body>
+    <html lang="en" className={appFontVariables}>
+      <body className="min-h-dvh">
+        <PaperInk>{children}</PaperInk>
+      </body>
     </html>
   );
 }

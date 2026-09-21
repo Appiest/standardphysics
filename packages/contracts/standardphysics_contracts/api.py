@@ -7,10 +7,10 @@ against, and the mock server's error bodies.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 
 from .findings import Finding, Locus
 from .loop import Assessment, NodeMove, Proposal, RouterAction
@@ -153,3 +153,34 @@ class LoopResult(BaseModel):
     passes: list[LoopPass]
     moves: list[NodeMove]
     """Every kept move from the base layout, combined per piece."""
+
+
+class LoopStarted(BaseModel):
+    """Sent before the first pass runs."""
+
+    kind: Literal["started"] = "started"
+    base_revision: int
+    decided_by: str
+
+
+class LoopPassFinished(BaseModel):
+    kind: Literal["pass"] = "pass"
+    loop_pass: LoopPass
+
+
+class LoopFinished(BaseModel):
+    kind: Literal["finished"] = "finished"
+    result: LoopResult
+
+
+class LoopFailed(BaseModel):
+    """The loop broke partway through; nothing was saved."""
+
+    kind: Literal["failed"] = "failed"
+    error: str
+
+
+class LoopEvent(
+    RootModel[Annotated[LoopStarted | LoopPassFinished | LoopFinished | LoopFailed, Field(discriminator="kind")]]
+):
+    """One line of `POST /api/scans/{scan_id}/loop/stream`, which reports each pass as it finishes."""

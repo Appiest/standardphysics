@@ -1,0 +1,65 @@
+# Standard Physics on one DigitalOcean Droplet.
+#
+#   cd deploy/digitalocean && docker compose up -d --build
+#
+# Three containers: Caddy holds the certificates and is the only one bound to
+# a public port, the API holds the scans, and the workspace serves the pages.
+# The two application containers come from the one image at the repository
+# root, the same image the compose file up there builds.
+#
+# Scans live on the attached Block Storage volume rather than the Droplet's
+# own disk, so the disk can be resized or the Droplet rebuilt without losing
+# a shop. SCANS_PATH is where the volume is mounted; setup.sh sets it.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-certificates:/data
+      - caddy-state:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: standardphysics:latest
+    command: ["api"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SP_API_PORT: "8787"
+      SP_DATA_DIR: /data
+    volumes:
+      - ${SCANS_PATH:?set SCANS_PATH in .env}:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  web:
+    image: standardphysics:latest
+    command: ["web"]
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      SP_API_ORIGIN: http://api:8787
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  caddy-certificates:
+  caddy-state:

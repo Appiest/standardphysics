@@ -1,8 +1,11 @@
 """Applying a proposal to a layout.
 
-A move translates on the floor and turns about Z. Nothing here can change a
-dimension, because there is no code path that writes one: the candidate node is
-copied from the original with a new transform and nothing else.
+A move translates across the room and turns about Z. Furniture standing on the
+floor keeps its height. A piece that was resting on something else, a laptop on
+a desk or a pillow on a sofa, settles onto whatever is under it where it lands,
+or onto the floor when nothing is. Nothing here can change a dimension, because
+there is no code path that writes one: the candidate node is copied from the
+original with a new transform and nothing else.
 """
 
 from __future__ import annotations
@@ -10,9 +13,12 @@ from __future__ import annotations
 import math
 from uuid import UUID
 
-from standardphysics_contracts import Mat4, NodeMove, SceneGraph, SceneNode, Vec3
-from standardphysics_pipeline import footprint
+from standardphysics_contracts import Mat4, NodeMove, SceneGraph, SceneNode, Vec3, bounds_the_room, lies_flat
+from standardphysics_pipeline import contains_point, footprint
 from standardphysics_pipeline.footprints import rotation_about_z
+
+RESTING_GAP = 0.12
+"""A piece whose underside is more than this above the floor was resting on something."""
 
 
 def _turned(node: SceneNode, degrees: float, position: Vec3) -> Mat4:
@@ -48,14 +54,53 @@ def move_node(node: SceneNode, move: NodeMove) -> SceneNode:
     )
 
 
+def floor_height(graph: SceneGraph) -> float:
+    floor = next((node for node in graph.nodes if lies_flat(node)), None)
+    return floor.transform.position.z if floor else 0.0
+
+
+def underside(node: SceneNode) -> float:
+    return node.transform.position.z - node.dimensions.z / 2
+
+
+def top_of(node: SceneNode) -> float:
+    return node.transform.position.z + node.dimensions.z / 2
+
+
+def rests_on_something(node: SceneNode, floor_z: float) -> bool:
+    return not bounds_the_room(node) and underside(node) > floor_z + RESTING_GAP
+
+
+def _surface_under(graph: SceneGraph, node: SceneNode, floor_z: float) -> float:
+    """The highest top among the pieces directly under this one's centre."""
+    centre = (node.transform.position.x, node.transform.position.y)
+    tops = [
+        top_of(other)
+        for other in graph.nodes
+        if other.id != node.id and not bounds_the_room(other) and contains_point(footprint(other), centre)
+    ]
+    return max([floor_z, *tops])
+
+
+def settle(graph: SceneGraph, node: SceneNode, floor_z: float) -> SceneNode:
+    """The node lowered or raised so its underside sits on the surface below it."""
+    position = node.transform.position
+    resting_at = _surface_under(graph, node, floor_z) + node.dimensions.z / 2
+    return node.model_copy(
+        update={"transform": _turned(node, 0.0, Vec3(x=position.x, y=position.y, z=resting_at))}
+    )
+
+
 def apply_moves(graph: SceneGraph, moves: list[NodeMove]) -> SceneGraph:
     """A new layout. The original is never touched, so a rejected candidate
     cannot leave anything behind."""
     by_node: dict[UUID, NodeMove] = {move.node_id: move for move in moves}
-    nodes = [
-        move_node(node, by_node[node.id]) if node.id in by_node else node
-        for node in graph.nodes
-    ]
+    floor_z = floor_height(graph)
+    resting = {node.id for node in graph.nodes if node.id in by_node and rests_on_something(node, floor_z)}
+    moved = graph.model_copy(
+        update={"nodes": [move_node(node, by_node[node.id]) if node.id in by_node else node for node in graph.nodes]}
+    )
+    nodes = [settle(moved, node, floor_z) if node.id in resting else node for node in moved.nodes]
     return graph.model_copy(
         update={"nodes": nodes, "revision": graph.revision + 1, "base_hash": None}
     )

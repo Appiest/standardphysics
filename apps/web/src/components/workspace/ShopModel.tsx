@@ -3,18 +3,19 @@
 import { Edges, Html, useGLTF } from "@react-three/drei";
 import { useThree, type ThreeEvent } from "@react-three/fiber";
 import { Lock } from "@phosphor-icons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { BoxGeometry, Matrix4, Mesh, Plane, Raycaster, Vector3, type BufferGeometry, type Intersection, type Material } from "three";
-import { displayScale, needsDisplayBoxFallback } from "@/lib/display-geometry";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { BoxGeometry, Matrix4, Mesh, MeshStandardMaterial, Plane, Raycaster, Vector3, type BufferGeometry, type Intersection, type Material } from "three";
+import { canUseCapturedGlbGeometry, displayScale, MAX_DISPLAY_WALL_HEIGHT } from "@/lib/display-geometry";
+import { groupGlbPrimitives } from "@/lib/glb-parts";
 import { displayMatrix, toViewerMatrix } from "@/lib/scene-matrix";
 import type { SceneGraph, SceneNode } from "@/types/contracts";
 import { MODEL, nodeColor, WALL_CUT_HEIGHT } from "./palette";
 
 const UNIT_BOX = new BoxGeometry(1, 1, 1);
 /** Viewer supplies one stable ground plane; RoomPlan floors are often rotated zero-depth shells. */
-const HIDDEN_KINDS = new Set<SceneNode["kind"]>(["door", "window", "opening", "floor"]);
-const FLOOR = new Plane(new Vector3(0, 1, 0), 0);
+const HIDDEN_KINDS = new Set<SceneNode["kind"]>(["door", "window", "opening"]);
 const WALL_CLIP_PLANE = new Plane(new Vector3(0, -1, 0), WALL_CUT_HEIGHT);
+const WALL_CLIP_PLANES = [WALL_CLIP_PLANE];
 
 type Placed = { node: SceneNode; geometry: BufferGeometry; matrix: Matrix4; sourceMaterial: Material | Material[] | null };
 
@@ -27,30 +28,41 @@ export type ArrangeHandlers = {
 };
 
 function boxMatrix(node: SceneNode): Matrix4 {
-  const scale = new Matrix4().makeScale(...displayScale(node));
-  return toViewerMatrix(node.transform).multiply(scale);
-}
-
-function placeFromGlb(meshes: Map<string, Mesh>, node: SceneNode, exported: SceneNode | undefined): Placed {
-  const mesh = meshes.get(node.id);
-  if (!mesh || !exported) return { node, geometry: UNIT_BOX, matrix: boxMatrix(node), sourceMaterial: null };
-  const matrix = displayMatrix(mesh.matrixWorld, exported.transform, node.transform);
-  if (needsDisplayBoxFallback(node, mesh.geometry, matrix)) {
-    return { node, geometry: UNIT_BOX, matrix: boxMatrix(node), sourceMaterial: null };
+  const [sx, sy, sz] = displayScale(node);
+  const scale = new Matrix4().makeScale(sx, sy, sz);
+  const matrix = toViewerMatrix(node.transform);
+  if (node.kind === "wall" && node.dimensions.z > MAX_DISPLAY_WALL_HEIGHT) {
+    const drop = (node.dimensions.z - MAX_DISPLAY_WALL_HEIGHT) / 2;
+    matrix.multiply(new Matrix4().makeTranslation(0, -drop, 0));
   }
-  return { node, geometry: mesh.geometry, matrix, sourceMaterial: mesh.material };
+  return matrix.multiply(scale);
 }
 
-function useGlbMeshes(url: string): Map<string, Mesh> {
+function fallbackPlacement(node: SceneNode): Placed {
+  return { node, geometry: UNIT_BOX, matrix: boxMatrix(node), sourceMaterial: null };
+}
+
+// eslint-disable-next-line complexity
+function placeFromGlb(meshes: Mesh[] | undefined, node: SceneNode, exported: SceneNode | undefined, stale: boolean): Placed[] {
+  // RoomPlan floor shells can have a zero axis. Only draw a floor when the GLB
+  // supplies real triangles; a unit-box fallback would make a black slab.
+  if ((!meshes || !exported) && node.kind === "floor") return [];
+  if (!meshes || !exported || stale) return [fallbackPlacement(node)];
+  const placed = meshes.flatMap((mesh) => {
+    const matrix = displayMatrix(mesh.matrixWorld, exported.transform, node.transform);
+    if (!canUseCapturedGlbGeometry(node, mesh.geometry, matrix, false)) return [];
+    return [{ node, geometry: mesh.geometry, matrix, sourceMaterial: mesh.material }];
+  });
+  if (placed.length > 0) return placed;
+  return node.kind === "floor" ? [] : [fallbackPlacement(node)];
+}
+
+function useGlbMeshes(url: string, nodeIds: Set<string>): Map<string, Mesh[]> {
   const { scene } = useGLTF(url);
   return useMemo(() => {
     scene.updateMatrixWorld(true);
-    const found = new Map<string, Mesh>();
-    scene.traverse((object) => {
-      if (object instanceof Mesh) found.set(object.name, object);
-    });
-    return found;
-  }, [scene]);
+    return groupGlbPrimitives(scene, nodeIds);
+  }, [scene, nodeIds]);
 }
 
 type ModelProps = {
@@ -59,39 +71,98 @@ type ModelProps = {
   focusColor: string;
   onSelectNode: (nodeId: string) => void;
   arrange: ArrangeHandlers | null;
+  dragAllNodes?: boolean;
+  lightweight?: boolean;
   cutWalls?: boolean;
+  materialMode?: "reconstructed" | "captured" | "plain" | "coverage";
+  staleNodeIds?: Set<string>;
+  coverage?: Map<string, number>;
+  /** Keep SceneGraph geometry interactive without drawing the measured bounds. */
+  pickOnly?: boolean;
 };
 
-function floorHit(event: ThreeEvent<PointerEvent>): Vector3 | null {
-  return event.ray.intersectPlane(FLOOR, new Vector3());
+const SCRATCH_HIT = new Vector3();
+
+/** A level plane at the height the piece was grabbed, so it stays under the pointer instead of the floor below it. */
+function grabPlane(event: ThreeEvent<PointerEvent>): Plane {
+  return new Plane(new Vector3(0, 1, 0), -event.point.y);
+}
+
+function planeHit(event: ThreeEvent<PointerEvent>, plane: Plane, target: Vector3 = SCRATCH_HIT): Vector3 | null {
+  return event.ray.intersectPlane(plane, target);
 }
 
 function setCursor(cursor: string) {
   document.body.style.cursor = cursor;
 }
 
-function useDrag(node: SceneNode, arrange: ArrangeHandlers | null) {
+function useDrag(node: SceneNode, arrange: ArrangeHandlers | null, dragAllNodes: boolean | undefined) {
   const from = useRef<Vector3 | null>(null);
-  if (!arrange || !node.movable || node.kind !== "object") return {};
+  const plane = useRef<Plane | null>(null);
+  const pendingDelta = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
+  const rafId = useRef<number | null>(null);
+  const arrangeRef = useRef(arrange);
+  useEffect(() => {
+    arrangeRef.current = arrange;
+  }, [arrange]);
+
+  useEffect(() => {
+    return () => {
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+    };
+  }, []);
+
+  if (!arrange || (!dragAllNodes && (!node.movable || node.kind !== "object"))) return {};
+
   return {
     onPointerDown(event: ThreeEvent<PointerEvent>) {
       event.stopPropagation();
       (event.target as unknown as Element).setPointerCapture(event.pointerId);
-      from.current = floorHit(event);
+      plane.current = grabPlane(event);
+      from.current = planeHit(event, plane.current, new Vector3());
+      pendingDelta.current.dx = 0;
+      pendingDelta.current.dy = 0;
       arrange.onGrab(node.id);
       setCursor("grabbing");
     },
     onPointerMove(event: ThreeEvent<PointerEvent>) {
-      const hit = from.current && floorHit(event);
-      if (!from.current || !hit) return;
-      arrange.onDrag(node.id, hit.x - from.current.x, -(hit.z - from.current.z));
-      from.current = hit;
+      if (!from.current || !plane.current) return;
+      const hit = planeHit(event, plane.current, SCRATCH_HIT);
+      if (!hit) return;
+      const dx = hit.x - from.current.x;
+      const dy = -(hit.z - from.current.z);
+      from.current.copy(hit);
+      pendingDelta.current.dx += dx;
+      pendingDelta.current.dy += dy;
+
+      if (rafId.current === null) {
+        rafId.current = requestAnimationFrame(() => {
+          rafId.current = null;
+          const currentDx = pendingDelta.current.dx;
+          const currentDy = pendingDelta.current.dy;
+          if (currentDx !== 0 || currentDy !== 0) {
+            pendingDelta.current.dx = 0;
+            pendingDelta.current.dy = 0;
+            arrangeRef.current?.onDrag(node.id, currentDx, currentDy);
+          }
+        });
+      }
     },
     onPointerUp(event: ThreeEvent<PointerEvent>) {
       if (!from.current) return;
       (event.target as unknown as Element).releasePointerCapture(event.pointerId);
       from.current = null;
-      arrange.onDrop(node.id);
+      if (rafId.current !== null) {
+        cancelAnimationFrame(rafId.current);
+        rafId.current = null;
+      }
+      const { dx, dy } = pendingDelta.current;
+      if (dx !== 0 || dy !== 0) {
+        pendingDelta.current.dx = 0;
+        pendingDelta.current.dy = 0;
+        arrangeRef.current?.onDrag(node.id, dx, dy);
+      }
+      arrangeRef.current?.onDrop(node.id);
       setCursor("grab");
     },
   };
@@ -119,27 +190,30 @@ function nodeState(node: SceneNode, props: Omit<ModelProps, "shown">) {
   return {
     faded: props.focus !== null && !props.focus.has(node.id),
     outline: edgeColor(node, props),
-    lockable: props.arrange !== null && node.kind === "object" && !node.movable,
+    lockable: props.arrange !== null && !props.dragAllNodes && node.kind === "object" && !node.movable,
     selectable: props.focus === null || props.focus.has(node.id) ? props.arrange === null : false,
   };
 }
 
-function styledMaterial(source: Material | Material[], faded: boolean, clippingPlanes: Plane[] | null): Material | Material[] {
+function styledMaterial(source: Material | Material[], faded: boolean, clippingPlanes: Plane[] | null, stripPhotoMap: boolean): Material | Material[] {
+  // eslint-disable-next-line complexity
   const style = (material: Material) => {
     const copy = material.clone();
+    if (stripPhotoMap && copy instanceof MeshStandardMaterial) copy.map = null;
     copy.transparent = faded || material.transparent;
     copy.opacity = faded ? material.opacity * 0.15 : material.opacity;
     copy.depthWrite = faded ? false : material.depthWrite;
     copy.clippingPlanes = clippingPlanes?.map((plane) => plane.clone()) ?? material.clippingPlanes?.map((plane) => plane.clone()) ?? null;
+    copy.clipShadows = Boolean(clippingPlanes && clippingPlanes.length > 0);
     return copy;
   };
   return Array.isArray(source) ? source.map(style) : style(source);
 }
 
-function useSourceMaterial(source: Material | Material[] | null, faded: boolean, clipWall: boolean) {
+function useSourceMaterial(source: Material | Material[] | null, faded: boolean, clipWall: boolean, stripPhotoMap: boolean) {
   const material = useMemo(
-    () => source ? styledMaterial(source, faded, clipWall ? [WALL_CLIP_PLANE] : null) : null,
-    [source, faded, clipWall],
+    () => source ? styledMaterial(source, faded, clipWall ? WALL_CLIP_PLANES : null, stripPhotoMap) : null,
+    [source, faded, clipWall, stripPhotoMap],
   );
   useEffect(() => () => {
     if (Array.isArray(material)) material.forEach((item) => item.dispose());
@@ -148,16 +222,26 @@ function useSourceMaterial(source: Material | Material[] | null, faded: boolean,
   return material;
 }
 
-function DisplayMaterial({ source, node, faded, clipWall }: { source: Material | Material[] | null; node: SceneNode; faded: boolean; clipWall: boolean }) {
-  const material = useSourceMaterial(source, faded, clipWall);
+function coverageColor(fraction: number): string {
+  if (fraction >= 0.8) return "#2f8f5b";
+  if (fraction >= 0.4) return "#c99a32";
+  return "#bd5252";
+}
+
+// eslint-disable-next-line complexity
+function DisplayMaterial({ source, node, faded, clipWall, mode = "plain", stale = false, coverage, pickOnly = false }: { source: Material | Material[] | null; node: SceneNode; faded: boolean; clipWall: boolean; mode?: ModelProps["materialMode"]; stale?: boolean; coverage?: number; pickOnly?: boolean }) {
+  const canUseSource = mode !== "coverage" && !stale;
+  const material = useSourceMaterial(!pickOnly && canUseSource ? source : null, faded, clipWall, mode === "plain");
+  if (pickOnly) return <meshBasicMaterial colorWrite={false} depthWrite={false} />;
   if (material) return <primitive attach="material" object={material} />;
   return <meshStandardMaterial
-    color={nodeColor(node)}
+    color={mode === "coverage" ? coverageColor(coverage ?? 0) : nodeColor(node)}
     roughness={0.92}
     transparent={faded}
     opacity={faded ? 0.15 : 1}
     depthWrite={!faded}
-    clippingPlanes={clipWall ? [WALL_CLIP_PLANE] : null}
+    clippingPlanes={clipWall ? WALL_CLIP_PLANES : null}
+    clipShadows={clipWall}
   />;
 }
 
@@ -179,11 +263,58 @@ function meshRaycast(faded: boolean, clipWall: boolean) {
   return clipWall ? clippedWallRaycast : undefined;
 }
 
-function ModelNode({ placed, ...props }: { placed: Placed } & Omit<ModelProps, "shown">) {
+type ModelNodeProps = { placed: Placed } & Omit<ModelProps, "shown">;
+
+// eslint-disable-next-line complexity
+function areModelNodePropsEqual(prev: ModelNodeProps, next: ModelNodeProps): boolean {
+  if (prev.placed !== next.placed) return false;
+  if (prev.cutWalls !== next.cutWalls) return false;
+  if (prev.lightweight !== next.lightweight) return false;
+  if (prev.dragAllNodes !== next.dragAllNodes) return false;
+  if (prev.materialMode !== next.materialMode) return false;
+  if (prev.pickOnly !== next.pickOnly) return false;
+  if (prev.onSelectNode !== next.onSelectNode) return false;
+  if (prev.focusColor !== next.focusColor) return false;
+
+  const nodeId = prev.placed.node.id;
+
+  const prevFaded = prev.focus !== null && !prev.focus.has(nodeId);
+  const nextFaded = next.focus !== null && !next.focus.has(nodeId);
+  if (prevFaded !== nextFaded) return false;
+
+  const prevFocused = prev.focus?.has(nodeId) ?? false;
+  const nextFocused = next.focus?.has(nodeId) ?? false;
+  if (prevFocused !== nextFocused) return false;
+
+  const prevStale = prev.staleNodeIds?.has(nodeId) ?? false;
+  const nextStale = next.staleNodeIds?.has(nodeId) ?? false;
+  if (prevStale !== nextStale) return false;
+
+  const prevCoverage = prev.coverage?.get(nodeId);
+  const nextCoverage = next.coverage?.get(nodeId);
+  if (prevCoverage !== nextCoverage) return false;
+
+  const prevActive = prev.arrange?.activeId === nodeId;
+  const nextActive = next.arrange?.activeId === nodeId;
+  if (prevActive !== nextActive) return false;
+
+  const prevBlocked = prev.arrange?.blockedIds.has(nodeId) ?? false;
+  const nextBlocked = next.arrange?.blockedIds.has(nodeId) ?? false;
+  if (prevBlocked !== nextBlocked) return false;
+
+  const prevArrangeEnabled = prev.arrange !== null;
+  const nextArrangeEnabled = next.arrange !== null;
+  if (prevArrangeEnabled !== nextArrangeEnabled) return false;
+
+  return true;
+}
+
+// eslint-disable-next-line complexity
+const ModelNode = memo(function ModelNode({ placed, ...props }: ModelNodeProps) {
   const { node, geometry, matrix } = placed;
   const [hovered, setHovered] = useState(false);
   const { faded, outline, lockable, selectable } = nodeState(node, props);
-  const drag = useDrag(node, props.arrange);
+  const drag = useDrag(node, props.arrange, props.dragAllNodes);
   const draggable = "onPointerDown" in drag;
   const clipWall = clipsWall(node, props.cutWalls);
 
@@ -202,8 +333,8 @@ function ModelNode({ placed, ...props }: { placed: Placed } & Omit<ModelProps, "
       geometry={geometry}
       matrix={matrix}
       matrixAutoUpdate={false}
-      castShadow={!faded && node.kind !== "floor"}
-      receiveShadow
+      castShadow={!props.pickOnly && !props.lightweight && !faded && node.kind !== "floor"}
+      receiveShadow={!props.pickOnly && !props.lightweight}
       onClick={selectable ? select : undefined}
       onPointerOver={() => hover(true)}
       onPointerOut={() => hover(false)}
@@ -211,42 +342,65 @@ function ModelNode({ placed, ...props }: { placed: Placed } & Omit<ModelProps, "
       name={node.id}
       {...drag}
     >
-      <DisplayMaterial source={placed.sourceMaterial} node={node} faded={faded} clipWall={clipWall} />
-      {outline && <Edges threshold={20} lineWidth={3} color={outline} renderOrder={5} clippingPlanes={clipWall ? [WALL_CLIP_PLANE] : null} />}
-      {lockable && hovered && <LockMark node={node} />}
+      <DisplayMaterial source={placed.sourceMaterial} node={node} faded={faded} clipWall={clipWall} mode={props.materialMode} stale={props.staleNodeIds?.has(node.id)} coverage={props.coverage?.get(node.id)} pickOnly={props.pickOnly} />
+      {outline && !props.pickOnly && !props.lightweight && <Edges threshold={20} lineWidth={3} color={outline} renderOrder={5} clippingPlanes={clipWall ? WALL_CLIP_PLANES : null} />}
+      {lockable && hovered && !props.pickOnly && <LockMark node={node} />}
     </mesh>
   );
-}
+}, areModelNodePropsEqual);
 
 function ModelNodes({ placements, ...props }: { placements: Placed[] } & Omit<ModelProps, "shown">) {
   const invalidate = useThree((state) => state.invalidate);
   useEffect(() => invalidate(), [placements, props.focus, props.arrange, invalidate]);
   return (
     <group>
-      {placements.map((placed) => (
-        <ModelNode key={placed.node.id} placed={placed} {...props} />
+      {placements.map((placed, index) => (
+        <ModelNode key={`${placed.node.id}-${index}`} placed={placed} {...props} />
       ))}
     </group>
   );
 }
 
-function visibleNodes(scene: SceneGraph): SceneNode[] {
-  return scene.nodes.filter((node) => !HIDDEN_KINDS.has(node.kind));
+function visibleNodes(scene: SceneGraph, includeFloors = false): SceneNode[] {
+  return scene.nodes.filter((node) => !HIDDEN_KINDS.has(node.kind) && (includeFloors || node.kind !== "floor"));
 }
 
+const glbPlacementCache = new WeakMap<SceneNode, { stale: boolean; placed: Placed[] }>();
+const boxPlacementCache = new WeakMap<SceneNode, Placed>();
+
 export function GlbShopModel({ url, exported, ...props }: ModelProps & { url: string; exported: SceneGraph }) {
-  const meshes = useGlbMeshes(url);
+  const nodeIds = useMemo(() => new Set(exported.nodes.map((node) => node.id)), [exported.nodes]);
+  const meshes = useGlbMeshes(url, nodeIds);
+
   const placements = useMemo(() => {
     const exportedById = new Map(exported.nodes.map((node) => [node.id, node]));
-    return visibleNodes(props.shown).map((node) => placeFromGlb(meshes, node, exportedById.get(node.id)));
-  }, [meshes, exported, props.shown]);
+    return visibleNodes(props.shown, true).flatMap((node) => {
+      const stale = props.staleNodeIds?.has(node.id) ?? false;
+      const cached = glbPlacementCache.get(node);
+      if (cached && cached.stale === stale) {
+        return cached.placed;
+      }
+      const fresh = placeFromGlb(meshes.get(node.id), node, exportedById.get(node.id), stale);
+      glbPlacementCache.set(node, { stale, placed: fresh });
+      return fresh;
+    });
+  }, [meshes, exported, props.shown, props.staleNodeIds]);
+
   return <ModelNodes placements={placements} {...props} />;
 }
 
 export function BoxShopModel(props: ModelProps) {
   const placements = useMemo(
-    () => visibleNodes(props.shown).map((node) => ({ node, geometry: UNIT_BOX, matrix: boxMatrix(node), sourceMaterial: null })),
+    () =>
+      visibleNodes(props.shown).map((node) => {
+        const cached = boxPlacementCache.get(node);
+        if (cached) return cached;
+        const fresh: Placed = { node, geometry: UNIT_BOX, matrix: boxMatrix(node), sourceMaterial: null };
+        boxPlacementCache.set(node, fresh);
+        return fresh;
+      }),
     [props.shown],
   );
+
   return <ModelNodes placements={placements} {...props} />;
 }

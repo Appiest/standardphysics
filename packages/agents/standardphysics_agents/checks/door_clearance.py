@@ -23,6 +23,7 @@ from standardphysics_contracts import (
     SceneGraph,
     SceneNode,
     Vec3,
+    lies_flat,
     to_inches,
     to_meters,
 )
@@ -68,7 +69,7 @@ def _interior_side(graph: SceneGraph, door: SceneNode) -> tuple[float, float]:
     A door sits in a wall at the edge of the floor, so the room is whichever
     way the middle of the floor lies.
     """
-    floors = [node for node in graph.nodes if node.kind == "floor"]
+    floors = [node for node in graph.nodes if lies_flat(node)]
     middle = floors[0].transform.position if floors else Vec3(x=0.0, y=0.0, z=0.0)
     position = door.transform.position
     dx, dy = middle.x - position.x, middle.y - position.y

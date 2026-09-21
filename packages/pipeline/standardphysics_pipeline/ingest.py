@@ -16,9 +16,9 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3
+from standardphysics_contracts import Mat4, SceneGraph, SceneNode, lies_flat
 
-from .coords import dimensions_to_z_up, transform_from_arkit
+from .coords import capture_to_room, dimensions_to_z_up, transform_from_arkit
 
 SURFACE_KINDS = {
     "walls": "wall",
@@ -109,6 +109,7 @@ def _parent(element: dict) -> uuid.UUID | None:
 def _node(element: dict, kind: str, index: int) -> SceneNode:
     category = _enum_name(element.get("category", kind), "category")
     width, height, depth = _vector(element["dimensions"], "dimensions")
+    parent = _parent(element)
 
     return SceneNode(
         id=_identifier(element, f"{kind}-{index}"),
@@ -120,7 +121,8 @@ def _node(element: dict, kind: str, index: int) -> SceneNode:
         quality=_quality(element),
         movable=_is_movable(kind, category),
         labeled_by="roomplan",
-        parent_id=_parent(element),
+        parent_id=parent,
+        relation="cut_into" if parent is not None else None,
     )
 
 
@@ -149,13 +151,22 @@ def parse_room_json(payload: dict, scan_id: uuid.UUID | None = None) -> SceneGra
     if not nodes:
         raise RoomParseError("no walls, surfaces or objects in the export")
 
-    _stand_on_the_floor(nodes)
+    floor_height = _stand_on_the_floor(nodes)
 
     return SceneGraph(
         scan_id=scan_id or _identifier(payload, "scan"),
         revision=0,
         nodes=nodes,
+        capture_to_room=capture_to_room(floor_height),
     )
+
+
+def capture_to_room_from_payload(payload: dict) -> Mat4:
+    """The ARKit-to-room transform ingest applies, for graphs saved before it was recorded."""
+    floors = payload.get("floors") or [] if isinstance(payload, dict) else []
+    if not floors:
+        return capture_to_room(0.0)
+    return capture_to_room(_matrix(floors[0]["transform"])[13])
 
 
 def missing_coverage(graph: SceneGraph) -> list[SceneNode]:
@@ -176,7 +187,7 @@ def to_arkit_columns(node: SceneNode) -> list[float]:
     return [result[r][c] for c in range(4) for r in range(4)]
 
 
-def _stand_on_the_floor(nodes: list[SceneNode]) -> None:
+def _stand_on_the_floor(nodes: list[SceneNode]) -> float:
     """Move the whole room so its floor sits at z = 0.
 
     RoomPlan puts the origin wherever the phone happened to be when the scan
@@ -188,13 +199,11 @@ def _stand_on_the_floor(nodes: list[SceneNode]) -> None:
     Shifting once here means nothing downstream has to know where the phone was
     standing. Heights are heights above the floor everywhere after this.
     """
-    floor = next((node for node in nodes if node.kind == "floor"), None)
+    floor = next((node for node in nodes if lies_flat(node)), None)
     if floor is None:
-        return
+        return 0.0
 
     drop = floor.transform.position.z
-    if drop == 0.0:
-        return
-
     for node in nodes:
         node.transform.m[11] -= drop
+    return drop

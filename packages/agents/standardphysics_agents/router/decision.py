@@ -21,6 +21,8 @@ from uuid import UUID
 from standardphysics_contracts import Decision, Finding
 from standardphysics_contracts.loop import RouterAction
 
+from ..strict_schema import strict_schema
+
 ACTIONS: frozenset[str] = frozenset(
     {"FIX", "RESCAN_AREA", "ASK_OWNER", "ESCALATE", "DONE"}
 )
@@ -47,9 +49,11 @@ def action_schema() -> dict:
     """The schema the router is constrained to, generated from the contract.
 
     Handing over a schema written by hand means it drifts from `Decision` the
-    first time either changes, and then valid output stops parsing.
+    first time either changes, and then valid output stops parsing. Strict, so
+    a router that does support schema enforcement is held to the whole shape
+    and one that does not is parsed the same way either way.
     """
-    return Decision.model_json_schema()
+    return strict_schema(Decision)
 
 
 def _as_object(raw: Any) -> dict | Rejected:

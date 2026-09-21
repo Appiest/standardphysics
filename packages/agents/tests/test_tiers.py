@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from standardphysics_agents import assess, load_pack
+from standardphysics_agents import assess
 from standardphysics_agents.checks import COVERED, door_verdict
 from standardphysics_agents.checks.dining import (
     required_count,
@@ -18,7 +18,7 @@ from standardphysics_agents.checks.protrusions import (
 )
 from standardphysics_agents.checks.rectangles import clear_floor, intruders, rectangle
 from standardphysics_agents.evaluation import variants as v
-from standardphysics_agents.router import LocalPolicyRouter, state_for
+from standardphysics_agents.router import state_for
 from standardphysics_contracts import Mat4, Vec3, to_inches, to_meters
 from standardphysics_fixtures.shop import node_id
 

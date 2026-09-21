@@ -10,11 +10,14 @@ final class AppModel: ObservableObject {
         case upload(UploadViewModel)
         case workspace(UUID)
         case connection
+        case signIn
     }
 
+    let session = SessionStore()
     @Published var screen: Screen = .start
     @Published private(set) var savedScans = CaptureLibrary.all()
     @Published var deletionMessage: String?
+    @Published var accountDeletionMessage: String?
     @Published private(set) var captureSessionID = UUID()
     @Published private(set) var recoveryDirectories: [URL] = []
     @Published private(set) var recoveryMessage: String?
@@ -33,7 +36,36 @@ final class AppModel: ObservableObject {
     func connectionChanged() {
         uploads.values.forEach { $0.cancel() }
         uploads.removeAll()
+        // A token is only good at the server that issued it.
+        session.serverChanged()
         showStart()
+    }
+
+    func signOut() {
+        uploads.values.forEach { $0.cancel() }
+        uploads.removeAll()
+        session.signOut()
+        screen = .signIn
+    }
+
+    /// Ends the account, then clears what this phone was holding for it.
+    ///
+    /// The server goes first. If it refuses, the scans are still on the phone
+    /// and still on the server, and the owner can try again knowing nothing
+    /// was half-done.
+    func deleteAccount() async {
+        do {
+            try await session.deleteAccount()
+        } catch {
+            accountDeletionMessage = error.localizedDescription
+            return
+        }
+        uploads.values.forEach { $0.cancel() }
+        uploads.removeAll()
+        CaptureLibrary.all().forEach { try? CaptureLibrary.remove($0) }
+        savedScans = CaptureLibrary.all()
+        accountDeletionMessage = nil
+        screen = .signIn
     }
 
     func recoverSavedRoom(_ directory: URL) async {
@@ -55,6 +87,10 @@ final class AppModel: ObservableObject {
             screen = .connection
             return
         }
+        guard let token = session.token else {
+            screen = .signIn
+            return
+        }
         if let existing = uploads[scan.id], existing.totalCount == scan.artifacts.count {
             screen = .upload(existing)
             return
@@ -63,7 +99,7 @@ final class AppModel: ObservableObject {
         let model = UploadViewModel(
             scan: scan,
             name: name,
-            client: ScanUploadClient(baseURL: baseURL)
+            client: ScanUploadClient(baseURL: baseURL, token: token)
         )
         uploads[scan.id] = model
         model.start()
@@ -86,7 +122,7 @@ final class AppModel: ObservableObject {
         savedScans = CaptureLibrary.all()
 
         guard let remoteID, let baseURL = AppEnvironment.apiBaseURL else { return }
-        try? await ScanUploadClient(baseURL: baseURL).delete(id: remoteID)
+        try? await ScanUploadClient(baseURL: baseURL, token: session.token).delete(id: remoteID)
     }
 
     func refreshSavedScanStates() async {
@@ -98,9 +134,10 @@ final class AppModel: ObservableObject {
             for scan in savedScans {
                 let store = ResumableUploadStore(captureDirectory: scan.directory)
                 guard store.scanID != nil, uploads[scan.id] == nil,
-                      let baseURL = AppEnvironment.apiBaseURL else { continue }
+                      let baseURL = AppEnvironment.apiBaseURL,
+                      let token = session.token else { continue }
                 let model = UploadViewModel(scan: scan, name: scan.name ?? "Shop scan",
-                    client: ScanUploadClient(baseURL: baseURL))
+                    client: ScanUploadClient(baseURL: baseURL, token: token))
                 uploads[scan.id] = model
                 model.start()
             }
@@ -153,6 +190,8 @@ private struct SupportedAppView: View {
             WorkspaceScreen(appModel: model, scanID: scanID)
         case .connection:
             ConnectionScreen(model: model)
+        case .signIn:
+            SignInScreen(model: model, session: model.session)
         }
     }
 }
@@ -163,51 +202,101 @@ private struct StartView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.canvas.ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: AppTheme.Spacing.page) {
-                        Spacer(minLength: 64)
-                        Image(systemName: "viewfinder")
-                            .font(.system(size: 54, weight: .light))
-                            .foregroundStyle(AppTheme.accent)
-                            .accessibilityHidden(true)
-                        Text("Measure your shop")
-                            .font(AppTheme.Typography.hero)
-                            .foregroundStyle(AppTheme.ink)
-                        Text("Walk once around the room. We’ll show you where to point.")
-                            .font(.title3)
-                            .foregroundStyle(AppTheme.mutedInk)
-                        Button("Start scanning") { model.beginCapture() }
-                            .buttonStyle(AppButtonStyle())
-                        Button("Connection") { model.screen = .connection }
-                            .buttonStyle(AppButtonStyle(.secondary))
-                        if !model.savedScans.isEmpty {
-                            SavedScansView(
-                                scans: model.savedScans,
-                                select: { model.screen = .review($0) },
-                                delete: { scan in Task { await model.deleteScan(scan) } }
-                            )
-                        }
-                        if let message = model.deletionMessage {
-                            Text(message).foregroundStyle(AppTheme.mutedInk)
-                        }
-                        ForEach(model.recoveryDirectories, id: \.self) { directory in
-                            Button("Recover saved room") {
-                                Task { await model.recoverSavedRoom(directory) }
-                            }.buttonStyle(AppButtonStyle(.secondary))
-                        }
-                        if let message = model.recoveryMessage { Text(message) }
+                DraftingPaper()
+                List {
+                    masthead
+                    controls
+                    AccountRow(model: model, session: model.session)
+                        .plainRow(top: AppTheme.Spacing.section)
+                    if !model.savedScans.isEmpty {
+                        SavedScansSection(
+                            scans: model.savedScans,
+                            select: { model.screen = .review($0) },
+                            delete: { scan in Task { await model.deleteScan(scan) } }
+                        )
                     }
-                    .padding(AppTheme.Spacing.page)
+                    if let message = model.deletionMessage {
+                        Text(message)
+                            .font(AppTheme.Typography.secondary)
+                            .foregroundStyle(AppTheme.mutedInk)
+                            .plainRow(top: AppTheme.Spacing.compact)
+                    }
+                    recovery
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .environment(\.defaultMinListRowHeight, 0)
+                .contentMargins(.horizontal, AppTheme.Spacing.page, for: .scrollContent)
             }
             .toolbar(.hidden, for: .navigationBar)
             .task { await model.refreshSavedScanStates() }
         }
     }
+
+    private var masthead: some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.compact) {
+            Image(systemName: "viewfinder")
+                .font(.system(size: 54, weight: .light))
+                .foregroundStyle(AppTheme.accent)
+                .accessibilityHidden(true)
+            Text("Measure your shop")
+                .font(AppTheme.Typography.hero)
+                .foregroundStyle(AppTheme.ink)
+            Text("Walk once around the room. We\u{2019}ll show you where to point.")
+                .font(AppTheme.Typography.lead)
+                .foregroundStyle(AppTheme.mutedInk)
+        }
+        .plainRow(top: 64)
+    }
+
+    private var controls: some View {
+        VStack(spacing: AppTheme.Spacing.small) {
+            Button("Start scanning") { model.beginCapture() }
+                .buttonStyle(AppButtonStyle())
+            Button("Change the upload address") { model.screen = .connection }
+                .buttonStyle(AppButtonStyle(.secondary))
+        }
+        .plainRow(top: AppTheme.Spacing.page)
+    }
+
+    @ViewBuilder private var recovery: some View {
+        ForEach(model.recoveryDirectories, id: \.self) { directory in
+            Button("Recover saved room") {
+                Task { await model.recoverSavedRoom(directory) }
+            }
+            .buttonStyle(AppButtonStyle(.secondary))
+            .plainRow(top: AppTheme.Spacing.small)
+        }
+        if let message = model.recoveryMessage {
+            Text(message)
+                .font(AppTheme.Typography.secondary)
+                .foregroundStyle(AppTheme.mutedInk)
+                .plainRow(top: AppTheme.Spacing.compact)
+        }
+    }
 }
 
-private struct SavedScansView: View {
+private extension View {
+    /// A list row that carries none of a list row's furniture: no separator, no
+    /// grey backing, no inset. The list is here for its swipe actions and its
+    /// row recycling, not for its looks.
+    func plainRow(top: CGFloat = 0) -> some View {
+        listRowBackground(AppTheme.transparent)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: top, leading: 0, bottom: 0, trailing: 0))
+    }
+}
+
+/// The scans on this phone, each one swipeable the way every other iOS list is.
+///
+/// The swipe is the system's rather than a gesture of our own: it rubber-bands,
+/// rests open, closes when the list scrolls, completes on a full swipe, and
+/// arrives in VoiceOver as an action on the row. None of that is worth
+/// rebuilding, and a rebuild is what made the old one feel broken.
+///
+/// Deleting takes the room, the walkthrough and the findings with it and there
+/// is no undo, so the swipe asks first.
+private struct SavedScansSection: View {
     let scans: [CapturedScan]
     let select: (CapturedScan) -> Void
     let delete: (CapturedScan) -> Void
@@ -215,18 +304,36 @@ private struct SavedScansView: View {
     @State private var pendingDeletion: CapturedScan?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
-            Text("Saved scans")
-                .font(.title2.bold())
+        Section {
             ForEach(scans) { scan in
-                SavedScanRow(
-                    scan: scan,
-                    select: { select(scan) },
-                    requestDelete: { pendingDeletion = scan }
-                )
+                SavedScanRow(scan: scan, select: { select(scan) })
+                    .listRowBackground(AppTheme.panel)
+                    .listRowSeparatorTint(AppTheme.rule)
+                    .listRowInsets(EdgeInsets(
+                        top: AppTheme.Spacing.compact,
+                        leading: AppTheme.Spacing.card,
+                        bottom: AppTheme.Spacing.compact,
+                        trailing: AppTheme.Spacing.card
+                    ))
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            pendingDeletion = scan
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .labelStyle(.iconOnly)
+                    }
             }
+        } header: {
+            Text("Saved scans")
+                .font(AppTheme.Typography.title)
+                .foregroundStyle(AppTheme.ink)
+                .textCase(nil)
+                .padding(.top, AppTheme.Spacing.section)
+                .padding(.bottom, AppTheme.Spacing.small)
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
         }
-        .padding(.top, AppTheme.Spacing.compact)
+        .listRowBackground(AppTheme.transparent)
         .confirmationDialog(
             "Delete this scan?",
             isPresented: .init(
@@ -246,109 +353,92 @@ private struct SavedScansView: View {
     }
 }
 
-/// One saved scan. Swipe it left, or press the trash.
-///
-/// Swipe alone is not enough: it is invisible until someone already knows to
-/// try it. The button is what makes the gesture discoverable, so the two ship
-/// together rather than either on its own.
 private struct SavedScanRow: View {
     let scan: CapturedScan
     let select: () -> Void
-    let requestDelete: () -> Void
-
-    @State private var offset: CGFloat = 0
-    @GestureState private var dragging: CGFloat = 0
-
-    private let revealWidth: CGFloat = 96
-    private let triggerDistance: CGFloat = 72
 
     var body: some View {
-        ZStack(alignment: .trailing) {
-            deleteTrack
-            card
-                .offset(x: min(0, offset + dragging))
-                .gesture(swipe)
-                .animation(.snappy(duration: 0.22), value: offset)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.control, style: .continuous))
-    }
-
-    private var deleteTrack: some View {
-        Button(action: confirm) {
-            Text("Delete")
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(width: revealWidth)
-                .frame(maxHeight: .infinity)
-                .background(AppTheme.warning)
+        Button(action: select) {
+            HStack(spacing: AppTheme.Spacing.compact) {
+                Image(systemName: "cube.transparent")
+                    .font(.title2)
+                    .foregroundStyle(AppTheme.accent)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(scan.name ?? "Shop scan")
+                        .font(AppTheme.Typography.heading)
+                        .foregroundStyle(AppTheme.ink)
+                    Text(ResumableUploadStore(captureDirectory: scan.directory).historyText)
+                        .font(AppTheme.Typography.measurement)
+                        .foregroundStyle(AppTheme.mutedInk)
+                }
+                Spacer(minLength: AppTheme.Spacing.small)
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(AppTheme.faintInk)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityHidden(offset == 0)
     }
+}
 
-    private var swipe: some Gesture {
-        DragGesture(minimumDistance: 18)
-            .updating($dragging) { value, state, _ in
-                state = min(0, value.translation.width)
-            }
-            .onEnded { value in
-                let travelled = -value.translation.width
-                if travelled > triggerDistance {
-                    offset = 0
-                    confirm()
-                } else {
-                    offset = 0
+/// Who this phone uploads as, and the way to change it.
+///
+/// Scans go to whichever account is signed in here, so the shop's name is on
+/// screen before anyone starts a scan rather than after the upload fails.
+private struct AccountRow: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var session: SessionStore
+
+    @State private var confirmingDeletion = false
+
+    var body: some View {
+        if let owner = session.owner {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(owner.shopName)
+                        .font(AppTheme.Typography.heading)
+                        .foregroundStyle(AppTheme.ink)
+                    Text(owner.email)
+                        .font(AppTheme.Typography.measurement)
+                        .foregroundStyle(AppTheme.mutedInk)
+                }
+                Button("Sign out") { model.signOut() }
+                    .buttonStyle(AppButtonStyle(.secondary))
+                Button("Delete account") { confirmingDeletion = true }
+                    .buttonStyle(AppButtonStyle(.destructive))
+                if let message = model.accountDeletionMessage {
+                    Text(message)
+                        .font(AppTheme.Typography.secondary)
+                        .foregroundStyle(AppTheme.problem)
                 }
             }
-    }
-
-    private func confirm() {
-        offset = 0
-        requestDelete()
-    }
-
-    private var card: some View {
-        HStack(spacing: 0) {
-            Button(action: select) {
-                        HStack(spacing: AppTheme.Spacing.compact) {
-                            Image(systemName: "cube.transparent")
-                                .font(.title2)
-                                .foregroundStyle(AppTheme.accent)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(scan.name ?? "Shop scan")
-                                    .font(.headline)
-                                Text(ResumableUploadStore(captureDirectory: scan.directory).historyText)
-                                    .font(.subheadline)
-                                    .foregroundStyle(AppTheme.mutedInk)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-
-            Button(action: confirm) {
-                Image(systemName: "trash")
-                    .font(.title3)
-                    .foregroundStyle(AppTheme.mutedInk)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+            .confirmationDialog(
+                "Delete your account?",
+                isPresented: $confirmingDeletion,
+                titleVisibility: .visible
+            ) {
+                Button("Delete account", role: .destructive) {
+                    Task { await model.deleteAccount() }
+                }
+                Button("Keep it", role: .cancel) { confirmingDeletion = false }
+            } message: {
+                Text("Every shop you have scanned, and every measurement taken in one, goes from this phone and from the server. There is no undo.")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Delete \(scan.name ?? "this scan")")
+        } else {
+            Button("Sign in to upload") { model.screen = .signIn }
+                .buttonStyle(AppButtonStyle(.secondary))
         }
-        .padding(AppTheme.Spacing.card)
-        .background(AppTheme.panel)
     }
 }
 
 private struct UnsupportedDeviceView: View {
     var body: some View {
         ZStack {
-            AppTheme.canvas.ignoresSafeArea()
+            DraftingPaper()
             Text("Use an iPhone Pro or Pro Max with LiDAR (12 or later), or an iPad Pro with LiDAR (2020 or later).")
-                .font(.title2.weight(.semibold))
+                .font(AppTheme.Typography.title)
                 .foregroundStyle(AppTheme.ink)
                 .multilineTextAlignment(.center)
                 .padding(AppTheme.Spacing.page)

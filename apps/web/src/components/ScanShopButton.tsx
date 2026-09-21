@@ -20,7 +20,7 @@ export function ScanShopButton() {
 
   return (
     <div className="flex flex-col items-start gap-3">
-      <Button variant="primary" onClick={startScan}>
+      <Button variant="primary" squared onClick={startScan}>
         <Scan size={20} weight="bold" aria-hidden />
         Scan your shop
       </Button>

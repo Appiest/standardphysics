@@ -1,6 +1,6 @@
 {
   "lane": "B",
-  "updated": "2026-09-12T17:05:00Z",
+  "updated": "2026-09-13T09:14:12.653342+00:00",
   "done": [
     "blender check",
     "coordinate conversion + tests",
@@ -14,8 +14,8 @@
     "ADA 403.5.2 180 degree turn rule",
     "per-finding renders for the report"
   ],
-  "in_progress": null,
-  "blocked_on": "OPENROUTER_API_KEY for the Astra label and clean passes",
+  "in_progress": "verifying textures/camera.py projection and orientation; writing the tests it has none of",
+  "blocked_on": null,
   "ready_for_others": [
     "standardphysics_pipeline.PipelineMeasurements implements MeasurementProvider",
     "standardphysics_pipeline.turn_detail for ADA 403.5.2",

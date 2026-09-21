@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 
-from standardphysics_contracts import Scenario, SceneGraph
+from standardphysics_contracts import Scenario, SceneGraph, stands_upright
 
 from ..models import OpenRouter
 from ..router.decision import Rejected
@@ -39,8 +39,11 @@ INSTRUCTION = (
     "REARRANGE: move furniture. Set direction, and distance_inches only if "
     "they said one.\n"
     "CHECK: whether something meets the accessibility standards.\n"
-    "Name what they asked about in subject_labels, in their own words. Use "
-    "subject_node_ids only when you are certain which piece they meant. "
+    "Put the pieces they meant in subject_node_ids, chosen from the ids you were "
+    "given. Judge by the measurements and where each piece is, not by whether its "
+    "label is the word they used: somebody asking about their desks means the "
+    "pieces that are desk-shaped and desk-height, whatever the scan called them. "
+    "Use subject_labels only when no piece in the list is what they meant. "
     "Restate the question in one short sentence so they can see it was read "
     "correctly."
 )
@@ -248,6 +251,11 @@ def catalogue(graph: SceneGraph, scenario: Scenario) -> list[dict]:
 
     Positions are given in the shop's own terms rather than as coordinates,
     because "the table near the front on the left" is what people say.
+
+    Every piece carries its measurements, so that a piece can be picked out by
+    what it is like rather than by what it is called. Without them the only way
+    to answer "the two desks" is to match the word against a label, and a scan
+    that called them tables has no desks in it.
     """
     from standardphysics_contracts import to_inches
 
@@ -259,6 +267,9 @@ def catalogue(graph: SceneGraph, scenario: Scenario) -> list[dict]:
             "id": str(node.id),
             "label": node.label,
             "movable": node.movable,
+            "width_inches": round(to_inches(node.dimensions.x), 1),
+            "depth_inches": round(to_inches(node.dimensions.y), 1),
+            "height_inches": round(to_inches(node.dimensions.z), 1),
             "toward_back_inches": round(
                 to_inches(
                     node.transform.position.x * back[0]
@@ -275,11 +286,39 @@ def catalogue(graph: SceneGraph, scenario: Scenario) -> list[dict]:
             ),
         }
         for node in graph.nodes
-        if node.kind in ("object", "door", "floor")
+        if not stands_upright(node)
     ]
 
 
+class FallbackResolver:
+    """The model first, and the keywords whenever it does not come back with a query.
+
+    The model reads phrasing the keywords never will, so it leads. But it can
+    fail for reasons that have nothing to do with the question: no credit left,
+    a rate limit, a timeout, a reply that would not parse. Treating those as
+    "we did not follow that one" tells the owner their question was bad when
+    the truth is that a server was busy, and it throws away an answer the
+    keywords could have given from measurements already in hand.
+    """
+
+    provider = "openrouter"
+
+    def __init__(self, models: OpenRouter | None = None) -> None:
+        self.model = ModelResolver(models)
+        self.keywords = KeywordResolver()
+
+    @property
+    def configured(self) -> bool:
+        return self.model.configured
+
+    def resolve(self, text: str, graph: SceneGraph, scenario: Scenario):
+        answer = self.model.resolve(text, graph, scenario)
+        if not isinstance(answer, Rejected):
+            return answer
+        return self.keywords.resolve(text, graph, scenario)
+
+
 def resolver(models: OpenRouter | None = None):
-    """The model when it is configured, and keywords when it is not."""
-    model = ModelResolver(models)
-    return model if model.configured else KeywordResolver()
+    """The model backed by the keywords, or the keywords alone when it is not configured."""
+    chain = FallbackResolver(models)
+    return chain if chain.configured else chain.keywords

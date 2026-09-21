@@ -143,6 +143,7 @@ class FixtureMeasurements:
             inches=to_inches(door.dimensions.x),
             pinch_point=door.transform.position,
             blocking_node_ids=[door_id],
+            needs_measurement=True,
         )
 
     def counter_height(self, graph: SceneGraph, counter_id: UUID) -> HeightResult:

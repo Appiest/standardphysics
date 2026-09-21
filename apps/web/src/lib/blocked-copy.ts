@@ -19,7 +19,7 @@ const SENTENCE: Record<string, (detail: string) => string> = {
     return `The ${lower(moved)} is in the way of the ${door}.`;
   },
   moved_something_fixed: (detail) => `The ${lower(detail)} stays where it is.`,
-  left_the_floor: (detail) => `The ${lower(detail)} has to stay on the floor.`,
+  left_the_floor: (detail) => `The ${lower(detail)} would go past the edge of the room.`,
 };
 
 export function blockedSentence(blocked: Blocked): string {

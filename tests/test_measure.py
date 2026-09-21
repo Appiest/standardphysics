@@ -6,8 +6,7 @@ checks are measuring something other than what they think.
 """
 
 import pytest
-
-from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3, to_inches, to_meters
+from standardphysics_contracts import Mat4, Scenario, SceneGraph, SceneNode, Stop, Vec3, to_inches, to_meters
 from standardphysics_fixtures import (
     FIX_SHIFT_INCHES,
     PINCH_INCHES,
@@ -15,7 +14,14 @@ from standardphysics_fixtures import (
     build_scenario,
     node_id,
 )
-from standardphysics_pipeline.footprints import contains_point, floor_polygon, footprint, gap_between, gap_between_nodes, polygon_bounds
+from standardphysics_pipeline.footprints import (
+    contains_point,
+    floor_polygon,
+    footprint,
+    gap_between,
+    gap_between_nodes,
+    polygon_bounds,
+)
 from standardphysics_pipeline.measure import PipelineMeasurements
 from standardphysics_pipeline.occupancy import BLOCKING_HEIGHT, OUTSIDE_MARGIN, blocks_floor, build_grid
 from standardphysics_pipeline.routes import clearance_map, widest_path
@@ -172,6 +178,44 @@ def test_a_route_can_come_in_from_the_street(shop):
     result = measure.route_clear_width(graph, street, 0)
     assert result.reachable
     assert result.inches == pytest.approx(PINCH_INCHES, abs=1e-6)
+
+
+def _open_a_wall(graph):
+    """Take a side wall out, the way a scan that missed one leaves the room."""
+    walls = [node for node in graph.nodes if node.kind == "wall"]
+    west = min(walls, key=lambda node: node.transform.position.x)
+    graph.nodes.remove(west)
+    return west
+
+
+def test_a_gap_in_the_walls_does_not_send_the_route_outside(shop):
+    """Open ground beyond the floor is the widest corridor in any capture, so
+    a bottleneck search offered a way out will take it and report the width of
+    the garden. Both of these stops are in the room, so the trip is too."""
+    graph, scenario, measure = shop
+    _open_a_wall(graph)
+    polygon = floor_polygon(next(n for n in graph.nodes if n.kind == "floor"))
+    path = measure.route_clear_width(graph, scenario, 0).path
+    assert path
+    assert all(contains_point(polygon, (step.x, step.y), 0.05) for step in path)
+
+
+def test_a_stop_outside_still_reaches_the_ground_it_stands_on(shop):
+    """Holding the outside back cannot strand a customer arriving from the
+    street: the floor only confines a trip whose two stops are both on it."""
+    from standardphysics_contracts import Scenario, Stop, Vec3
+
+    graph, _, measure = shop
+    polygon = floor_polygon(next(n for n in graph.nodes if n.kind == "floor"))
+    street = Scenario(
+        name="From the street",
+        stops=[
+            Stop(name="Street", position=Vec3(x=0.0, y=-5.0, z=0.0)),
+            Stop(name="Counter", position=Vec3(x=-0.8, y=3.1, z=0.0)),
+        ],
+    )
+    path = measure.route_clear_width(graph, street, 0).path
+    assert any(not contains_point(polygon, (step.x, step.y)) for step in path)
 
 
 def test_the_search_does_not_wander_off_into_the_padding(shop):
@@ -332,10 +376,48 @@ def test_repeated_measurements_reuse_paths_but_moves_invalidate_them(shop, monke
     measure.route_path_clearances(graph, scenario, 1)
     measure.route_run_below(graph, scenario, 1, 36)
     assert len(calls) == 1
-    from standardphysics_contracts import NodeMove, Vec3
     from standardphysics_agents.fix import apply_moves
+    from standardphysics_contracts import NodeMove, Vec3
     moved = apply_moves(graph, [NodeMove(node_id=graph.movable()[0].id, delta_translation=Vec3(x=0.05, y=0, z=0))])
     measure.route_clear_width(moved, scenario, 1)
     assert len(calls) == 2
     assert measure.route_clear_width(graph, scenario, 1) == before
     assert len(calls) == 2
+
+
+def test_exhaustive_customer_route_matrix_stays_in_the_path_cache(shop, monkeypatch):
+    import standardphysics_pipeline.measure as module
+    from standardphysics_pipeline.routes import PathResult
+
+    graph, _, _ = shop
+    calls = []
+
+    def counted(grid, clearance, start, goal):
+        calls.append((start, goal))
+        return PathResult(1.0, start, [start, goal], reachable=True)
+
+    monkeypatch.setattr(module, "widest_path", counted)
+    measure = module.PipelineMeasurements()
+    scenarios = [
+        Scenario(
+            name=f"route {index}",
+            stops=[
+                Stop(name="Door", position=Vec3(x=0.0, y=-3.7, z=0.0)),
+                Stop(
+                    name=f"Furniture {index}",
+                    position=Vec3(
+                        x=-2.8 + (index % 17) * 0.35,
+                        y=-3.2 + (index // 17) * 0.4,
+                        z=0.0,
+                    ),
+                ),
+            ],
+        )
+        for index in range(257)
+    ]
+
+    for scenario in scenarios:
+        measure.route_clear_width(graph, scenario, 0)
+    measure.route_clear_width(graph, scenarios[0], 0)
+
+    assert len(calls) == len(scenarios)

@@ -13,18 +13,25 @@ the problem legible rather than pretty.
 import argparse
 import json
 import math
+import os
 import sys
 
 import bpy
 from mathutils import Vector
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from build_glb import add_box, join, node_dimensions, wall_parts  # noqa: E402
 
 SUBJECT = (0.85, 0.25, 0.21, 1.0)
 NEUTRAL = (0.82, 0.80, 0.78, 1.0)
 FLOOR = (0.92, 0.91, 0.89, 1.0)
 INK = (0.11, 0.10, 0.10, 1.0)
 
+PORTAL_KINDS = {"door", "window", "opening"}
 LINE_RADIUS = 0.012
 LABEL_HEIGHT = 0.55
+LABEL_STANDOFF = 1.1
+"""How far toward the camera the number stands, clear of the thing it measures."""
 
 
 def parse_args():
@@ -53,22 +60,39 @@ def rotation_z(matrix):
     return math.atan2(matrix[4], matrix[0])
 
 
-def add_node(node, subject_ids, materials):
-    matrix = node["transform"]["m"]
-    dims = node["dimensions"]
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(matrix[3], matrix[7], matrix[11]))
-    obj = bpy.context.active_object
-    obj.name = node["id"]
-    obj.scale = (dims["x"], dims["y"], dims["z"])
-    obj.rotation_euler = (0.0, 0.0, rotation_z(matrix))
+def add_node(node, subject_ids, materials, portals):
+    """One node as it should look, with doorways taken out of the walls they sit in.
 
-    if node["id"] in subject_ids:
-        obj.data.materials.append(materials["subject"])
-    elif node["kind"] == "floor":
-        obj.data.materials.append(materials["floor"])
-    else:
-        obj.data.materials.append(materials["neutral"])
+    A wall drawn as a solid slab hides the very thing a door finding is about:
+    the camera is put somewhere a person could stand, and from there the shot
+    is a blank wall. `wall_parts` cuts the opening out, the same way the
+    viewer's geometry is built, so the doorway is a hole you can see through.
+    """
+    if node["kind"] in PORTAL_KINDS:
+        return None
+    obj = _shape_of(node, portals)
+    if obj is None:
+        return None
+    obj.name = node["id"]
+    obj.data.materials.append(materials[_material_name(node, subject_ids)])
     return obj
+
+
+def _shape_of(node, portals):
+    if node["kind"] == "wall":
+        parts = wall_parts(node, portals)
+        if not parts:
+            return None
+        join(parts, node)
+        return bpy.context.active_object
+    join([add_box(node, (0, 0, 0), node_dimensions(node))], node)
+    return bpy.context.active_object
+
+
+def _material_name(node, subject_ids):
+    if node["id"] in subject_ids:
+        return "subject"
+    return "floor" if node["kind"] == "floor" else "neutral"
 
 
 def draw_line(points, materials):
@@ -99,7 +123,18 @@ def draw_line(points, materials):
 
 
 def add_label(text, at, camera_position, materials):
-    bpy.ops.object.text_add(location=(at["x"], at["y"], at["z"] + LABEL_HEIGHT))
+    """The number, stood in front of whatever it measures.
+
+    A measurement across a doorway sits in the plane of the wall, and a label
+    left there is cut in half by the jambs on either side: "31.8 in" renders as
+    ".8 in". Stepping it toward the camera puts the whole number in clear air.
+    """
+    toward = Vector((camera_position[0] - at["x"], camera_position[1] - at["y"], 0.0))
+    if toward.length > 1e-6:
+        toward = toward.normalized() * LABEL_STANDOFF
+    bpy.ops.object.text_add(location=(
+        at["x"] + toward.x, at["y"] + toward.y, at["z"] + LABEL_HEIGHT,
+    ))
     label = bpy.context.active_object
     label.data.body = text
     label.data.size = 0.30
@@ -160,8 +195,9 @@ def main():
     }
 
     subject_ids = set(locus.get("node_ids") or [])
+    portals = [node for node in graph["nodes"] if node["kind"] in PORTAL_KINDS]
     for node in graph["nodes"]:
-        add_node(node, subject_ids, materials)
+        add_node(node, subject_ids, materials, portals)
 
     annotation = locus["annotation"]
     draw_line(annotation["points"], materials)

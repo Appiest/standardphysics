@@ -17,6 +17,7 @@ const approachByLevel: Record<keyof StageLevels, Approach> = {
   readerMoved: { kind: "damp", smoothTime: 0.55 },
   route: { kind: "sweep", unitsPerSecond: 0.55 },
   frameShift: { kind: "damp", smoothTime: 0.9 },
+  frameDrop: { kind: "damp", smoothTime: 0.9 },
   turntable: { kind: "damp", smoothTime: 0.8 },
   sway: { kind: "damp", smoothTime: 1.2 },
 };

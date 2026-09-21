@@ -7,7 +7,7 @@ next to it.
 
 from __future__ import annotations
 
-from standardphysics_contracts import SceneNode, Vec3, to_inches
+from standardphysics_contracts import SceneNode, Vec3, bounds_the_room, stands_upright, to_inches
 from standardphysics_pipeline import gap_between_nodes
 
 from ..numbers import span, things
@@ -63,7 +63,7 @@ def _nearest_wall(node: SceneNode, walls: list[SceneNode]) -> tuple[SceneNode, f
 
 def _neighbour(node: SceneNode, others: list[SceneNode]) -> tuple[SceneNode, float] | None:
     candidates = [
-        other for other in others if other.id != node.id and other.kind == "object"
+        other for other in others if other.id != node.id and not bounds_the_room(other)
     ]
     if not candidates:
         return None
@@ -88,7 +88,7 @@ def _wall_name(depth: str, side: str, depth_fraction: float, side_fraction: floa
 
 def describe_position(node: SceneNode, context: AskContext) -> str:
     back, right = shop_axes(context.scenario, context.graph)
-    walls = [n for n in context.graph.nodes if n.kind == "wall"]
+    walls = [n for n in context.graph.nodes if stands_upright(n)]
     reference = walls or context.graph.nodes
     depth_fraction = _fraction(node, back, reference)
     side_fraction = _fraction(node, right, reference)

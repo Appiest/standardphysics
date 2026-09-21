@@ -55,3 +55,23 @@ describe("candidateMoves", () => {
     expect(candidateMoves(fixed, applyMoves(fixed, withMove({}, "t", 1, 0, 0)))).toBeNull();
   });
 });
+
+describe("settling", () => {
+  const floor: SceneNode = { ...table, id: "f", kind: "floor", label: "Floor", movable: false, dimensions: { x: 6, y: 6, z: 0.01 }, transform: { m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] } };
+  const laptop: SceneNode = { ...table, id: "l", label: "Laptop", dimensions: { x: 0.3, y: 0.2, z: 0.04 }, transform: { m: [1, 0, 0, 2, 0, 1, 0, 2.2, 0, 0, 1, 0.77, 0, 0, 0, 1] } };
+  const scene = { scan_id: "s", revision: 0, base_hash: null, nodes: [floor, { ...table, movable: false }, laptop] };
+  const heightOf = (moved: ReturnType<typeof applyMoves>, id: string) => +moved.nodes.find((node) => node.id === id)!.transform.m[11].toFixed(6);
+
+  it("drops something lifted off a table onto the floor", () => {
+    expect(heightOf(applyMoves(scene, withMove({}, "l", 2, 0, 0)), "l")).toBe(0.02);
+  });
+
+  it("keeps something on the table it slides across", () => {
+    expect(heightOf(applyMoves(scene, withMove({}, "l", 0.1, 0, 0)), "l")).toBe(0.77);
+  });
+
+  it("leaves floor-standing furniture at its height", () => {
+    const loose = { ...scene, nodes: [floor, table] };
+    expect(heightOf(applyMoves(loose, withMove({}, "t", 1, 0, 0)), "t")).toBe(0.375);
+  });
+});

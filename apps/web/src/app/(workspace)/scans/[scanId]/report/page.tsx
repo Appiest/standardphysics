@@ -6,6 +6,7 @@ import { PrintButton } from "@/components/PrintButton";
 import { getReport } from "@/lib/api";
 import { formatInches, groupFindings } from "@/lib/findings";
 import type { Finding, ReviewedRule, Scenario } from "@/types/contracts";
+import { requireSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -85,7 +86,7 @@ function WhatWeChecked({ scenario, passes, rules }: { scenario: Scenario | null;
   const measured = legs(scenario);
   return (
     <section className="mt-12 break-inside-avoid">
-      <h2 className="text-2xl font-semibold">What we checked</h2>
+      <h2 className="heading-display text-2xl">What we checked</h2>
       {measured.length > 0 && (
         <>
           <h3 className="mt-6 font-semibold">Paths measured</h3>
@@ -122,7 +123,7 @@ function ProblemsSection({ problems }: { problems: Finding[] }) {
   if (problems.length === 0) return null;
   return (
     <section className="mt-12">
-      <h2 className="text-2xl font-semibold">What to fix</h2>
+      <h2 className="heading-display text-2xl">What to fix</h2>
       <div className="mt-4">
         {problems.map((finding) => (
           <ProblemBlock key={finding.id} finding={finding} />
@@ -136,7 +137,7 @@ function NextStepsSection({ questions }: { questions: Finding[] }) {
   if (questions.length === 0) return null;
   return (
     <section className="mt-12 break-inside-avoid">
-      <h2 className="text-2xl font-semibold">Next steps</h2>
+      <h2 className="heading-display text-2xl">Next steps</h2>
       <ol className="mt-4 flex list-decimal flex-col gap-4 pl-5">
         {questions.map((finding) => (
           <li key={finding.id}>
@@ -145,6 +146,26 @@ function NextStepsSection({ questions }: { questions: Finding[] }) {
           </li>
         ))}
       </ol>
+    </section>
+  );
+}
+
+function WhatThisIsNot() {
+  return (
+    <section className="mt-12 break-inside-avoid border-t border-rule pt-8">
+      <h2 className="heading-display text-2xl">What this report is not</h2>
+      <div className="mt-3 flex flex-col gap-3 text-ink-muted">
+        <p>
+          Standard Physics measures what the scan could see and compares it against the 2010 ADA
+          Standards for Accessible Design. It does not measure what the scan could not see, and the
+          coverage above says how much of the shop that was.
+        </p>
+        <p>
+          This is not an inspection and it is not legal advice. Only a Certified Access Specialist
+          can inspect your shop in person, and only their report carries legal weight. Fixing what
+          is listed here first makes that inspection shorter and cheaper.
+        </p>
+      </div>
     </section>
   );
 }
@@ -159,6 +180,7 @@ function PreviewNotice({ preview }: { preview: boolean }) {
 }
 
 export default async function ReportPage({ params }: PageProps<"/scans/[scanId]/report">) {
+  await requireSession();
   const { scanId } = await params;
   const report = await getReport(scanId);
   if (!report) notFound();
@@ -179,7 +201,7 @@ export default async function ReportPage({ params }: PageProps<"/scans/[scanId]/
       <PreviewNotice preview={report.preview} />
       <header className="grid items-end gap-6 sm:grid-cols-[1fr_9rem]">
         <div>
-          <h1 className="text-4xl font-bold leading-tight">{scan.name}</h1>
+          <h1 className="heading-display text-4xl">{scan.name}</h1>
           <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-ink-muted">
             <dt>Checked</dt>
             <dd className="text-ink">{longDate.format(checkedOn)}</dd>
@@ -196,6 +218,7 @@ export default async function ReportPage({ params }: PageProps<"/scans/[scanId]/
       <NextStepsSection questions={groups.questions} />
 
       <WhatWeChecked scenario={scenario} passes={groups.passes} rules={rules} />
+      <WhatThisIsNot />
     </main>
   );
 }

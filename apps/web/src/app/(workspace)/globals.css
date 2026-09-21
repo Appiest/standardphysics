@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../drafting.css";
 
 @theme {
   --color-paper: #f6f5f1;
@@ -8,11 +9,16 @@
   --color-ink-muted: #5d5e61;
   --color-ink-faint: #8a8a88;
   --color-accent: #2f5e9e;
+  --color-grid-minor: #ecebe5;
+  --color-grid-major: #e0ded6;
   --color-problem: #c8372d;
   --color-pass: #2e7d4f;
 
-  --font-sans: var(--font-atkinson-next), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-karla), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-libre-franklin), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-atkinson-mono), ui-monospace, monospace;
+
+  --shadow-float: 0 1px 2px rgb(27 28 30 / 0.12), 0 4px 16px rgb(27 28 30 / 0.08);
 
   --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
 }

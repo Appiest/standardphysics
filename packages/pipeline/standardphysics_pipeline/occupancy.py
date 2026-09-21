@@ -11,8 +11,7 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 import numpy as np
-
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3, to_meters
+from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, to_meters
 
 from .footprints import floor_polygon, polygon_bounds
 
@@ -48,6 +47,12 @@ clearance, so a bottleneck search explores every cell of it before it ever
 reaches the goal. A route from the street needs a little ground outside; it
 does not need a field."""
 
+INDOOR_MARGIN = 0.05
+"""Metres of slack when asking whether a cell is on the scanned floor.
+
+The grid quantises at 25 mm and a doorway is cut right at the wall line, so a
+cell straddling the floor's edge is still somewhere a customer stands."""
+
 CANE_DETECTABLE = to_meters(27.0)
 """Height below which an object counts as being in the way.
 
@@ -81,6 +86,15 @@ class Grid:
     """
 
     node_ids: list[UUID] = field(default_factory=list)
+
+    indoors: np.ndarray | None = None
+    """Which free cells are the scanned floor, as against the ground outside it.
+
+    `OUTSIDE_MARGIN` leaves open ground beyond the walls so a route can start
+    on the pavement, and `routes.widest_path` has to tell that ground from the
+    room to keep a trip between two stops inside from using it. `None` where
+    the capture returned no floor, which leaves the two indistinguishable.
+    """
 
     def owner_at(self, row: int, col: int) -> UUID | None:
         index = int(self.owner[row, col])
@@ -134,7 +148,7 @@ def _rotation_2d(node: SceneNode) -> tuple[float, float]:
 
 
 def _bounds(graph: SceneGraph) -> tuple[float, float, float, float]:
-    floor = next((node for node in graph.nodes if node.kind == "floor"), None)
+    floor = next((node for node in graph.nodes if lies_flat(node)), None)
     if floor is not None:
         min_x, min_y, max_x, max_y = polygon_bounds(floor_polygon(floor))
         return (
@@ -152,6 +166,8 @@ def _bounds(graph: SceneGraph) -> tuple[float, float, float, float]:
 
 def build_grid(graph: SceneGraph, cell_size: float = CELL_SIZE) -> Grid:
     min_x, min_y, max_x, max_y = _bounds(graph)
+    if _measures_nothing(graph):
+        return _all_blocked(min_x, min_y, max_x, max_y, cell_size)
     cols = max(int(np.ceil((max_x - min_x) / cell_size)), 1)
     rows = max(int(np.ceil((max_y - min_y) / cell_size)), 1)
     occupied = np.zeros((rows, cols), dtype=bool)
@@ -173,7 +189,38 @@ def build_grid(graph: SceneGraph, cell_size: float = CELL_SIZE) -> Grid:
             _punch(occupied, owner, node, world_x, world_y)
 
     _bound_the_world(occupied, graph, world_x, world_y)
-    return Grid(min_x, min_y, cell_size, occupied, owner, node_ids)
+    return Grid(
+        min_x, min_y, cell_size, occupied, owner, node_ids,
+        _floor_mask(graph, world_x, world_y, INDOOR_MARGIN),
+    )
+
+
+def _measures_nothing(graph: SceneGraph) -> bool:
+    """Whether the capture handed back a region with no size in any direction.
+
+    A wall is allowed to have no thickness and a floor no height, but nothing
+    real has no extent at all. One of those in the graph means the capture did
+    not measure what it claims to describe, and a room whose shape is unknown
+    has no walkable ground in it until somebody scans it again.
+    """
+    return any(
+        max(node.dimensions.as_tuple()) <= 0 for node in graph.nodes
+    )
+
+
+def _all_blocked(
+    min_x: float, min_y: float, max_x: float, max_y: float, cell_size: float
+) -> Grid:
+    """Nothing walkable, which is the safe way to be wrong about a room."""
+    cols = max(int(np.ceil((max_x - min_x) / cell_size)), 1)
+    rows = max(int(np.ceil((max_y - min_y) / cell_size)), 1)
+    return Grid(
+        min_x, min_y, cell_size,
+        np.ones((rows, cols), dtype=bool),
+        np.full((rows, cols), -1, dtype=np.int32),
+        [],
+        None,
+    )
 
 
 def _mark(
@@ -237,11 +284,20 @@ def _bound_the_world(
     which is both slow and meaningless. Keeps a margin so a route can still
     start on the pavement outside the front door.
     """
-    floor = next((node for node in graph.nodes if node.kind == "floor"), None)
-    if floor is None:
+    walkable = _floor_mask(graph, world_x, world_y, OUTSIDE_MARGIN)
+    if walkable is None:
         return
-    walkable = _inside_convex_polygon(floor_polygon(floor), world_x, world_y, OUTSIDE_MARGIN)
     occupied[~walkable] = True
+
+
+def _floor_mask(
+    graph: SceneGraph, world_x: np.ndarray, world_y: np.ndarray, margin: float
+) -> np.ndarray | None:
+    """Which cells lie on the scanned floor, give or take `margin` metres."""
+    floor = next((node for node in graph.nodes if lies_flat(node)), None)
+    if floor is None:
+        return None
+    return _inside_convex_polygon(floor_polygon(floor), world_x, world_y, margin)
 
 
 def _inside_convex_polygon(polygon, world_x: np.ndarray, world_y: np.ndarray, margin: float) -> np.ndarray:

@@ -10,18 +10,19 @@ python -m pytest packages/agents -q
 ## The shape of it
 
 ```
-rules/          the thresholds, and the ledger that decides which ones run
-checks/         one module per section, each answering one geometric question
-copy.py         every sentence the owner reads
-numbers.py      the display boundary, where inches become words
-findings.py     a measurement becomes a problem, a pass or a request
-assess.py       one pass over a shop
-ask/            any question about the room, answered from the measured model
-router/         the closed action set, validated before it authorizes anything
-fix/            rearrangements that keep the owner's furniture
-loop.py         the action choosing the branch, and the gate letting it through
-evaluation/     the labelled dataset, the scorers and the acceptance gate
-models.py       every model call, through OpenRouter
+rules/            the thresholds, and the ledger that decides which ones run
+checks/           one module per section, each answering one geometric question
+copy.py           every sentence the owner reads
+numbers.py        the display boundary, where inches become words
+findings.py       a measurement becomes a problem, a pass or a request
+assess.py         one pass over a shop
+ask/              any question about the room, answered from the measured model
+router/           the closed action set, validated before it authorizes anything
+fix/              rearrangements that keep the owner's furniture
+loop.py           the action choosing the branch, and the gate letting it through
+evaluation/       the labelled dataset, the scorers and the acceptance gate
+models.py         every model call, through OpenRouter
+strict_schema.py  the shape a model is held to, generated from the model
 ```
 
 ## The ask box
@@ -54,6 +55,41 @@ with the question has that height ignored, and there is a test that says so.
 Every answer carries a locus, so asking about the tables sends the camera to
 the tables. That is the difference between a room you can talk to and a list of
 measurements.
+
+**The endpoint enforces the shape, so a malformed answer never reaches an
+executor.** The call asks for strict structured output against `Query`, which
+`strict_schema.py` generates from the model: every property named in
+`required`, `additionalProperties: false`, and the keywords strict mode refuses
+left out. An optional field says so by being nullable, the way Pydantic already
+writes `X | None`. Handing over the raw Pydantic schema is a 400 on every call,
+and the ask box answers "we did not follow that one" when a call is refused, so
+the failure reads as a question nobody understood. `parse_query` still rejects
+what arrives: a kind outside the set, a measurement longer than a shop, a
+question that names nothing.
+
+## The router
+
+**TypeSafe picks the next action and the code names what it acts on.** The
+request is one Choice question over the five actions, with the measured state
+as its content, so the answer is `FIX`, `RESCAN_AREA`, `ASK_OWNER`, `ESCALATE`
+or `DONE` by construction. System One answers typed questions and does not
+generate arrays of UUIDs, so the targets are assembled from the findings after
+the choice, then validated by the same `parse_decision` every router goes
+through. `_authorize` is the last gate: a fix only where furniture can clear
+the problem and only while attempts remain, a rescan only on geometry somebody
+wants another look at, an escalation only on a problem.
+
+The answer also carries a confidence and a probability for each action it did
+not pick, which a `Decision` has no room for. `router.typesafe.systemone` is
+traced on its own for that reason, so a trace says how close the call was when
+a loop does something surprising. In practice the calls land between 0.5 and
+0.9, often with two actions within 0.05 of each other.
+
+An action the shop has no work for, a body that is not the shape the service
+documents, and a service that is down all come back as `Rejected`, which no
+handler is registered for. `TypeSafeCallBudget` caps paid calls for a campaign.
+Without `TYPESAFE_BASE_URL` the loop runs `router/local_policy.py` and labels
+every decision `local_policy`, so a trace always says which one answered.
 
 ## Turning a check on
 
@@ -143,3 +179,30 @@ Weave rejects logs a warning and leaves the server running untraced.
 
 `evaluate` writes per-case results to `runs/evaluation.json` either way, so a
 run can always be looked at again.
+
+## Evaluations in Weave
+
+    standardphysics-agents weave-eval
+
+The same 39 cases and the same seven scorers, run through `weave.Evaluation` so
+the Evals tab holds them: a mean per scorer, the per-case table behind each
+mean, and a side by side of the configurations in
+`evaluation/weave_eval.py:DEFAULT_SETUPS`. Each configuration changes one part
+of the system without touching what a correct answer is, so the difference
+between two columns says what that part is worth.
+
+Swapping Lane B's pipeline for the fixtures' simplified stand-in is the sharpest
+of them. On the shipped shop the stand-in agrees; across the 39 cases, which
+move the geometry, it merges axis-aligned boxes along a straight leg and gets a
+mean error of 8 inches, `finding_precision` of 0.38 against the pipeline's 1.00,
+and a different router action on 13% of cases. Nearly all of the score rests on
+measuring the room.
+
+Scoring stays in `evaluation/scorers.py`. A scorer reads a whole `CaseOutcome`,
+which is more than a dataset row can hold, so each Weave scorer reports the
+number that module computed instead of recomputing it from the row.
+
+`--cases N` scores the first N for a quick look. `--preview-unverified` scores
+as if a person had verified every rule, which is development only and the same
+escape hatch as the server's `SP_PREVIEW_UNVERIFIED_RULES`: without it, a rule
+nobody has read is not scored.

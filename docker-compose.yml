@@ -1,0 +1,37 @@
+# Two containers from one image: the workspace people open, and the API that
+# holds the scans. Bring it up with `docker compose up --build`, then open
+# http://localhost:3000.
+services:
+  api:
+    build: .
+    command: ["api"]
+    environment:
+      SP_API_PORT: "8787"
+      SP_DATA_DIR: /data
+      # Set this to seed a sample shop and a demo account to sign in as.
+      SP_SEED_SAMPLE_SHOP: "${SP_SEED_SAMPLE_SHOP:-}"
+      SP_SEED_OWNER_EMAIL: "${SP_SEED_OWNER_EMAIL:-demo@standardphysics.app}"
+      SP_SEED_OWNER_PASSWORD: "${SP_SEED_OWNER_PASSWORD:-}"
+    volumes:
+      - scans:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  web:
+    build: .
+    command: ["web"]
+    environment:
+      PORT: "3000"
+      SP_API_ORIGIN: http://api:8787
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  scans:

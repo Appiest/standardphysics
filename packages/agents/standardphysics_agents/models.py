@@ -44,6 +44,14 @@ account setting is the other half and a person sets that one.
 """
 
 REQUEST_TIMEOUT_SECONDS = 30.0
+"""Long enough for one structured answer about a room.
+
+A caller that asks a model to write eighty questions in one go needs longer, and
+passes its own. Thirty seconds stays the default because a shop owner is waiting
+on the other calls.
+"""
+
+TIMEOUT_ENV = "OPENROUTER_TIMEOUT_SECONDS"
 
 
 @dataclass(frozen=True)
@@ -53,10 +61,17 @@ class ModelAnswer:
     model: str | None
 
 
-def _client(api_key: str, base_url: str) -> Any:
+def _client(api_key: str, base_url: str, timeout: float) -> Any:
     from openai import OpenAI
 
-    return OpenAI(api_key=api_key, base_url=base_url, timeout=REQUEST_TIMEOUT_SECONDS)
+    return OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
+
+
+def _configured_timeout() -> float:
+    try:
+        return float(os.environ.get(TIMEOUT_ENV, REQUEST_TIMEOUT_SECONDS))
+    except ValueError:
+        return REQUEST_TIMEOUT_SECONDS
 
 
 class OpenRouter:
@@ -68,10 +83,12 @@ class OpenRouter:
         model: str | None = None,
         base_url: str | None = None,
         client: Any = None,
+        timeout: float | None = None,
     ) -> None:
         self.api_key = api_key or os.environ.get(API_KEY_ENV)
         self.model = model or os.environ.get(MODEL_ENV) or DEFAULT_MODEL
         self.base_url = base_url or os.environ.get(BASE_URL_ENV) or DEFAULT_BASE_URL
+        self.timeout = timeout or _configured_timeout()
         self._client = client
 
     @property
@@ -80,7 +97,7 @@ class OpenRouter:
 
     def client(self) -> Any | None:
         if self._client is None and self.api_key:
-            self._client = _client(self.api_key, self.base_url)
+            self._client = _client(self.api_key, self.base_url, self.timeout)
         return self._client
 
     @traced("model.openrouter")
@@ -98,13 +115,23 @@ class OpenRouter:
                 instruction, payload, schema, schema_name
             ))
         except Exception as error:  # a third party being down decides nothing
-            return Rejected(f"model_error:{type(error).__name__}")
+            status = getattr(error, "status_code", None)
+            return Rejected(f"model_error:{type(error).__name__}" + (f":{status}" if status else ""))
         return self._answer(response)
+
+    @property
+    def routes_through_openrouter(self) -> bool:
+        """Provider pinning is OpenRouter's own field, and nowhere else's.
+
+        Sending it to an endpoint that merely speaks the same shape gets the
+        whole request refused, so it goes only where it means something.
+        """
+        return "openrouter.ai" in self.base_url
 
     def _request(
         self, instruction: str, payload: dict, schema: dict, schema_name: str
     ) -> dict:
-        return {
+        request = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": instruction},
@@ -118,8 +145,10 @@ class OpenRouter:
                     "schema": schema,
                 },
             },
-            "extra_body": {"provider": PROVIDER_ROUTING},
         }
+        if self.routes_through_openrouter:
+            request["extra_body"] = {"provider": PROVIDER_ROUTING}
+        return request
 
     def _answer(self, response: Any) -> ModelAnswer | Rejected:
         content = self._content(response)

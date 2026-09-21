@@ -7,7 +7,7 @@ lives here once rather than as a string comparison inside each check.
 
 from __future__ import annotations
 
-from standardphysics_contracts import SceneGraph, SceneNode
+from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room, lies_flat
 
 SERVICE_COUNTER_LABELS = frozenset(
     {
@@ -50,7 +50,7 @@ def service_counters(graph: SceneGraph) -> list[SceneNode]:
     return [
         node
         for node in graph.nodes
-        if node.kind == "object" and _normalized(node.label) in SERVICE_COUNTER_LABELS
+        if not bounds_the_room(node) and _normalized(node.label) in SERVICE_COUNTER_LABELS
     ]
 
 
@@ -75,7 +75,7 @@ def dining_surfaces(graph: SceneGraph) -> list[SceneNode]:
     return [
         node
         for node in graph.nodes
-        if node.kind == "object" and _normalized(node.label) in DINING_SURFACE_LABELS
+        if not bounds_the_room(node) and _normalized(node.label) in DINING_SURFACE_LABELS
     ]
 
 
@@ -83,7 +83,7 @@ def lowered_sections(graph: SceneGraph) -> list[SceneNode]:
     return [
         node
         for node in graph.nodes
-        if node.kind == "object" and _normalized(node.label) in LOWERED_SECTION_LABELS
+        if not bounds_the_room(node) and _normalized(node.label) in LOWERED_SECTION_LABELS
     ]
 
 
@@ -91,12 +91,12 @@ def point_of_sale(graph: SceneGraph) -> list[SceneNode]:
     return [
         node
         for node in graph.nodes
-        if node.kind == "object" and _normalized(node.label) in POINT_OF_SALE_LABELS
+        if not bounds_the_room(node) and _normalized(node.label) in POINT_OF_SALE_LABELS
     ]
 
 
 def floors(graph: SceneGraph) -> list[SceneNode]:
-    return [node for node in graph.nodes if node.kind == "floor"]
+    return [node for node in graph.nodes if lies_flat(node)]
 
 
 def needs_another_look(graph: SceneGraph, node_ids) -> list[SceneNode]:

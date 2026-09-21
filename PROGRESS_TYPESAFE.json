@@ -1,0 +1,72 @@
+{
+  "objective": "Implement fourteen bounded Jev accessibility-intelligence capabilities around deterministic measurements, geometry, rules, and authorization.",
+  "invariants": [
+    "Jev selects or scores only code-supplied labels and identifiers.",
+    "Geometry, measurements, rule thresholds, legal conclusions, and physical edits remain deterministic.",
+    "Malformed, incomplete, contradictory, or out-of-range provider responses fail closed.",
+    "High-risk or uncertain results are routed to a reasoning model or human instead of being executed.",
+    "Tests use a fake transport and do not spend TypeSafe credits."
+  ],
+  "groups": {
+    "system_one_client": "complete",
+    "perception_and_evidence_1_3_6_14": "complete",
+    "routing_and_goals_2_9_12": "complete",
+    "ranking_4_5_10_13": "complete",
+    "verification_and_guardrails_7_8_11": "complete",
+    "tests_and_verification": "complete"
+  },
+  "verification": {
+    "focused_tests": "23 passed",
+    "full_agent_tests": "479 passed",
+    "api_tests": "100 passed",
+    "ruff": "all changed Python files passed",
+    "compileall": "passed",
+    "diff_check": "passed",
+    "live_typesafe_calls": 0
+  },
+  "deep_scan_campaign": {
+    "objective": "Run a bounded adaptive Jev and Astra campaign after a scan is assessed, with one-inch environment physics, all-pairs customer and evacuation routes, and deterministic candidate validation.",
+    "invariants": [
+      "No model may change captured geometry, legal thresholds, fixed fixtures, or owner inventory.",
+      "Jev prioritizes and ranks; deterministic geometry and physics decide pass, failure, and improvement.",
+      "Astra candidates remain recommendations and are never saved as the measured room automatically.",
+      "The result is accessibility and safety screening, not ADA, fire-code, or legal certification.",
+      "Every live provider loop has per-scan call and iteration caps."
+    ],
+    "groups": {
+      "one_inch_surface_and_mobility_physics": "complete",
+      "environment_wide_routes_and_evacuation": "complete",
+      "budgeted_jev_astra_adaptive_loop": "complete",
+      "automatic_post_scan_queueing": "complete",
+      "contracts_tests_and_verification": "complete"
+    },
+    "task_model_tiers": [
+      {"task": "Physics model and safety invariants", "tier": "Fable / Sol"},
+      {"task": "Settled API and worker integration", "tier": "Terra"},
+      {"task": "Deterministic campaign tests", "tier": "Local / Luna"}
+    ],
+    "limits": {
+      "default_workflow_samples": 1000,
+      "default_typesafe_calls_per_scan": 3000,
+      "default_astra_redesign_rounds": 4,
+      "default_deterministic_evaluations": 1000000,
+      "automatic_activation": "SP_AUTO_DEEP_SIMULATION=1",
+      "live_campaigns_run_during_tests": 0
+    },
+    "verification": {
+      "deep_focused_tests": "22 passed",
+      "full_agent_tests": "484 passed",
+      "api_tests": "101 passed",
+      "ruff": "all implementation and affected test files passed",
+      "compileall": "passed",
+      "diff_check": "passed",
+      "live_typesafe_calls": 0,
+      "live_astra_calls": 0
+    }
+  },
+  "task_model_tiers": [
+    {"task": "Trust-boundary client and architecture", "tier": "Fable / Sol"},
+    {"task": "Fourteen scoped judgments", "tier": "Terra"},
+    {"task": "Fake-transport tests and verification", "tier": "Local / Luna"}
+  ]
+}

@@ -1,5 +1,6 @@
 """One wire report shared by the real-room CLI and HTTP jobs."""
 from dataclasses import asdict
+
 from standardphysics_contracts import LidarMesh, SimulationFeedback, SimulationResult, graph_hash
 
 SIMULATION_LIMITATIONS = (

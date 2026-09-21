@@ -27,7 +27,7 @@ struct CaptureScreen: View {
                     .frame(height: AppTheme.Size.coverageMapHeight)
                 if capture.hasDetailedGeometry && capture.phase == .scanning {
                     Label("Recording room details", systemImage: "checkmark")
-                        .font(.subheadline).foregroundStyle(AppTheme.onDark)
+                        .font(AppTheme.Typography.secondary).foregroundStyle(AppTheme.onDark)
                 }
                 finishButton
             }
@@ -60,7 +60,7 @@ struct CaptureScreen: View {
             .accessibilityLabel("Cancel scan")
 
             Text(capture.instruction)
-                .font(.headline)
+                .font(AppTheme.Typography.heading)
                 .foregroundStyle(AppTheme.onDark)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, AppTheme.Spacing.card)
@@ -81,7 +81,7 @@ struct CaptureScreen: View {
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.control, style: .continuous))
         case .failed(let message):
             VStack(spacing: AppTheme.Spacing.small) {
-                Text(message).font(.headline).foregroundStyle(AppTheme.onDark)
+                Text(message).font(AppTheme.Typography.heading).foregroundStyle(AppTheme.onDark)
                 if capture.canRetrySave {
                     Button("Save again") { capture.retrySave() }
                         .buttonStyle(AppButtonStyle(.primary))

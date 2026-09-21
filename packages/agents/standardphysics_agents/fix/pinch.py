@@ -12,7 +12,7 @@ import math
 from dataclasses import dataclass
 from uuid import UUID
 
-from standardphysics_contracts import Finding, SceneGraph, SceneNode, Vec3, to_meters
+from standardphysics_contracts import Finding, SceneGraph, SceneNode, Vec3, bounds_the_room, to_meters
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,7 @@ def _unlockable(node: SceneNode) -> bool:
     wall is not a lock anybody can release, so offering to unlock one would be
     offering nothing.
     """
-    return not node.movable and node.kind == "object"
+    return not node.movable and not bounds_the_room(node)
 
 
 def pinch_from(finding: Finding, graph: SceneGraph) -> Pinch | None:
@@ -92,11 +92,13 @@ def pinch_from(finding: Finding, graph: SceneGraph) -> Pinch | None:
         return None
 
     nodes = _nodes(graph, finding.locus.node_ids)
-    if len(nodes) < 2:
+    if not nodes:
         return None
 
     line = _measurement_line(finding)
-    if line is None:
+    if finding.locus.annotation.kind == "region":
+        centre, across = finding.locus.point, (1.0, 0.0)
+    elif line is None:
         centre, across = _axes_from_nodes(nodes)
     else:
         start, end = line

@@ -9,13 +9,15 @@ confirmation: it cannot be satisfied by someone who did not read the section.
 from __future__ import annotations
 
 import argparse
+import json
 import math
+import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, TypeVar
+from typing import TypeVar
 
 from pydantic import BaseModel
-
 from standardphysics_contracts import (
     LidarMesh,
     Scenario,
@@ -25,24 +27,36 @@ from standardphysics_contracts import (
 from .ask import ask as ask_question
 from .ask import resolver
 from .assess import assess
-from .simulation_report import simulation_result
 from .evaluation import (
+    DEFAULT_GRID,
+    DEFAULT_SETUPS,
+    blocker,
     evaluate,
+    evaluate_in_weave,
+    log_experiments,
+    previewing,
     run_accessibility_sweep,
+    run_grid,
     save,
     save_accessibility_sweep,
+    save_experiments,
+    target,
 )
+from .evaluation import dataset as labelled_cases
 from .evaluation.accessibility_sweep import (
     DEFAULT_EVALUATIONS,
-    DEFAULT_OUTPUT_PATH as DEFAULT_SWEEP_OUTPUT_PATH,
     DEFAULT_SEED,
 )
-from .evaluation.scorers import LOWER_IS_BETTER
+from .evaluation.accessibility_sweep import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_SWEEP_OUTPUT_PATH,
+)
+from .evaluation.scorers import LOWER_IS_BETTER, SCORERS
 from .loop import run_loop
 from .router import LocalPolicyRouter, TypeSafeRouter
 from .rules import RuleSpec, load_ledger, load_pack, save_ledger
+from .simulation_report import simulation_result
 from .tracing import init as init_tracing
-from .tracing import is_live
+from .tracing import is_live, project_url
 from .workflows import (
     DEFAULT_PROFILES,
     TypeSafeWorkflowConfigurationError,
@@ -62,6 +76,8 @@ DEFAULT_SIMULATION_PATH = "runs/simulation.json"
 
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
+
+DEFAULT_GRID_PATH = "runs/experiments.json"
 
 
 def _measurements(name: str):
@@ -227,6 +243,13 @@ NOTHING_ENABLED = (
     'No checks are enabled. Run: rules review --by "<name>"'
 )
 
+WEAVE_NOT_CONFIGURED = (
+    "Weave is not configured. Set WANDB_PROJECT and WANDB_ENTITY, then try again."
+)
+
+GRID_STAYED_LOCAL = "The grid is on disk. To put it where ARIA reads it: "
+
+
 
 def _nothing_enabled(pack, ledger) -> bool:
     if pack.enabled(ledger, max_tier=1):
@@ -256,6 +279,8 @@ def _evaluate(args) -> int:
     print(f"per-case results: {written}")
     if result.weave_url:
         print(f"traces: {result.weave_url}")
+    if result.dataset_url:
+        print(f"rows in weave: {result.dataset_url}")
     return 0 if result.completed else 1
 
 
@@ -371,6 +396,100 @@ def _simulate(args) -> int:
     return 0
 
 
+def _weave_eval(args) -> int:
+    """Every configuration against every case, left in Weave's Evals tab."""
+    if not is_live():
+        print(WEAVE_NOT_CONFIGURED, file=sys.stderr)
+        return 1
+    if not args.preview_unverified and _nothing_enabled(load_pack(), load_ledger()):
+        return 1
+    setups = previewing(DEFAULT_SETUPS) if args.preview_unverified else DEFAULT_SETUPS
+    cases = labelled_cases()[: args.cases] if args.cases else None
+    for label, result in evaluate_in_weave(setups, cases=cases).items():
+        print(f"\n{label}")
+        _print_weave_scores(result)
+    print(f"\nevals: {project_url()}")
+    return 0
+
+
+def _print_weave_scores(result: dict) -> None:
+    for name in sorted(SCORERS):
+        mean = _mean_of(result.get(name))
+        direction = "lower is better" if name in LOWER_IS_BETTER else ""
+        reading = f"{mean:.4f}" if mean is not None else "nothing to score"
+        print(f"  {name:24} {reading:>16}  {direction}")
+
+
+def _mean_of(scored) -> float | None:
+    """Weave summarizes a numeric scorer as {"mean": value}."""
+    if isinstance(scored, dict):
+        return scored.get("mean")
+    return scored if isinstance(scored, (int, float)) else None
+
+
+def _experiments(args) -> int:
+    """The grid as W&B runs, which is the form ARIA reads."""
+    if not args.preview_unverified and _nothing_enabled(load_pack(), load_ledger()):
+        return 1
+    setups = previewing(DEFAULT_GRID) if args.preview_unverified else list(DEFAULT_GRID)
+    if args.dry_run:
+        for configuration in setups:
+            print(f"  {configuration.label}")
+        return 0
+    cases = labelled_cases()[: args.cases] if args.cases else None
+    experiments = run_grid(setups, cases=cases)
+    _print_grid(experiments)
+    print(f"\nthe grid: {save_experiments(experiments, Path(args.out))}")
+    _print_runs(experiments)
+    return 0 if all(e.result.completed for e in experiments) else 1
+
+
+GRID_HEADER = (
+    f"{'configuration':34} {'weakest score':28} {'error in':>9} "
+    f"{'measurements':>13} {'seconds':>8}"
+)
+
+
+def _print_grid(experiments) -> None:
+    print(f"\n{GRID_HEADER}")
+    for experiment in experiments:
+        metrics = experiment.metrics()
+        print(
+            f"{experiment.setup.label:34} {_weakest(metrics):28} "
+            f"{_reading(metrics.get('measurement_error_in')):>9} "
+            f"{metrics['cost/measurements_taken']:>13} "
+            f"{metrics['cost/wall_seconds']:>8.1f}"
+        )
+
+
+def _weakest(metrics: dict) -> str:
+    """The lowest of the scores where higher is better, and which one it is."""
+    scored = {
+        name: value
+        for name, value in metrics.items()
+        if name in SCORERS and name not in LOWER_IS_BETTER
+    }
+    if not scored:
+        return "nothing to score"
+    name = min(scored, key=lambda key: scored[key])
+    return f"{scored[name]:.4f} {name}"
+
+
+def _reading(value: float | None) -> str:
+    return f"{value:.4f}" if value is not None else "-"
+
+
+def _print_runs(experiments) -> None:
+    reason = blocker()
+    if reason is not None:
+        print(f"{GRID_STAYED_LOCAL}{reason}", file=sys.stderr)
+        return
+    project, team = target()
+    print(f"\n{len(experiments)} runs in {team or 'your default entity'}/{project}")
+    for url in log_experiments(experiments):
+        print(f"  {url}")
+
+
 def _ask(args) -> int:
     pack, ledger = load_pack(), load_ledger()
     graph, scenario = _fixture_shop()
@@ -430,6 +549,72 @@ def _loop(args) -> int:
     return 0
 
 
+def _count_on_surfaces(args) -> int:
+    """How many of something is on the surfaces of a scanned room."""
+    from standardphysics_pipeline import surfaces
+
+    thing = " ".join(args.thing)
+    try:
+        scan = surfaces.open_scan(Path(args.scan))
+        read = surfaces.counter()
+    except (surfaces.ScanNotReadable, surfaces.NoCounterConfigured) as refusal:
+        print(refusal)
+        return 1
+    mesh = "with lidar" if scan.cloud is not None else "no lidar, nothing can be tested for occlusion"
+    print(f"{scan.frame_count} frames, {len(scan.graph.nodes)} regions, {mesh}", file=sys.stderr)
+    result = surfaces.tally(
+        scan.graph, scan.cameras, scan.frames, thing, read,
+        size=args.patch, readings=args.readings, workers=args.workers, cloud=scan.cloud,
+    )
+    print(surfaces.report(result))
+    return 0
+
+
+def _suite_model(args):
+    """Whichever endpoint is asked for, defaulting to the one models.py knows.
+
+    The writer and the judge are the measuring instrument rather than the app, so
+    which model runs them is a separate decision from the provider policy the app
+    itself follows.
+    """
+    from .models import OpenRouter
+
+    if not (args.model or args.base_url or args.api_key_env or args.timeout):
+        return None
+    return OpenRouter(
+        api_key=os.environ.get(args.api_key_env) if args.api_key_env else None,
+        model=args.model,
+        base_url=args.base_url,
+        timeout=args.timeout,
+    )
+
+
+def _held_out(args) -> int:
+    """Score the app on rooms it was not developed against."""
+    from .evaluation import held_out
+
+    try:
+        result = held_out.run(
+            Path(args.root),
+            seed=args.seed,
+            per_scene=args.questions,
+            held_out=args.hold_out,
+            model=_suite_model(args),
+            workers=args.workers,
+            watch=lambda line: print(line, file=sys.stderr, flush=True),
+        )
+    except (held_out.NoRealScenes, held_out.CouldNotWriteQuestions, held_out.CouldNotJudge) as refusal:
+        print(refusal)
+        return 1
+    print(held_out.report(result))
+    if args.transcript:
+        Path(args.transcript).write_text(
+            "\n".join(json.dumps(row) for row in held_out.transcript(result)) + "\n"
+        )
+        print(f"every question written to {args.transcript}")
+    return 0
+
+
 HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "rules.list": _list,
     "rules.show": _show,
@@ -440,8 +625,12 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "evaluate": _evaluate,
     "accessibility-sweep": _accessibility_sweep,
     "simulate": _simulate,
+    "weave-eval": _weave_eval,
+    "experiments": _experiments,
     "loop": _loop,
     "ask": _ask,
+    "held-out": _held_out,
+    "count": _count_on_surfaces,
 }
 
 
@@ -521,10 +710,78 @@ def build_parser() -> argparse.ArgumentParser:
     simulation.add_argument("--router", choices=ROUTERS, default="local")
     simulation.add_argument("--out", default=DEFAULT_SIMULATION_PATH)
 
+    in_weave = commands.add_parser(
+        "weave-eval",
+        help="score every configuration in Weave, where the Evals tab compares them",
+    )
+    in_weave.add_argument(
+        "--cases", type=int, default=None, help="only the first N cases, for a quick look"
+    )
+    in_weave.add_argument(
+        "--preview-unverified",
+        action="store_true",
+        help="development only: score as if a person had verified every rule",
+    )
+
+    grid = commands.add_parser(
+        "experiments",
+        help="score the grid of configurations as W&B runs, for ARIA to read",
+    )
+    grid.add_argument("--out", default=DEFAULT_GRID_PATH)
+    grid.add_argument(
+        "--cases", type=int, default=None, help="only the first N cases, for a quick look"
+    )
+    grid.add_argument(
+        "--dry-run", action="store_true", help="name the configurations and stop"
+    )
+    grid.add_argument(
+        "--preview-unverified",
+        action="store_true",
+        help="development only: score as if a person had verified every rule",
+    )
+
     loop = commands.add_parser("loop", help="run the whole loop on the fixture shop")
     loop.add_argument("--provider", choices=PROVIDERS, default="pipeline")
     loop.add_argument("--router", choices=ROUTERS, default="typesafe")
     loop.add_argument("--tier", type=int, default=1)
+
+    tally = commands.add_parser(
+        "count",
+        help="how many of something is on the surfaces a scan photographed",
+    )
+    tally.add_argument("thing", nargs="+", help="what to count, in your own words")
+    tally.add_argument("--scan", required=True, help="a scan directory")
+    tally.add_argument("--patch", type=float, default=0.6, help="patch size in metres")
+    tally.add_argument("--readings", type=int, default=3, help="readings per patch")
+    tally.add_argument("--workers", type=int, default=8, help="patches read at once")
+
+    suite = commands.add_parser(
+        "held-out",
+        help="score the app on scanned rooms it was not developed against",
+    )
+    suite.add_argument("--seed", type=int, required=True, help="picks the split and the questions")
+    suite.add_argument("--questions", type=int, default=80, help="questions per scene")
+    suite.add_argument("--hold-out", type=int, default=2, help="scenes to score on")
+    suite.add_argument("--root", default=".", help="the repository, where scans are found")
+    suite.add_argument("--model", default=None, help="the model that writes and judges")
+    suite.add_argument("--base-url", default=None, help="an OpenAI-shaped endpoint")
+    suite.add_argument(
+        "--api-key-env",
+        default=None,
+        help="the environment variable holding that endpoint's key",
+    )
+    suite.add_argument(
+        "--workers", type=int, default=8, help="questions scored at once"
+    )
+    suite.add_argument(
+        "--transcript", default=None, help="write every question and answer here, as JSON lines"
+    )
+    suite.add_argument(
+        "--timeout",
+        type=float,
+        default=240.0,
+        help="seconds to wait for one batch of questions or one verdict",
+    )
 
     question = commands.add_parser(
         "ask", help="ask the fixture shop a question about itself"

@@ -9,8 +9,9 @@ export class SimulationRequestError extends Error {
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: "" }));
-    throw new SimulationRequestError(response.status, String(body.error || "The request could not be completed."));
+    const body = await response.json().catch(() => ({ error: "", need: [] }));
+    const fields = Array.isArray(body.need) && body.need.length > 0 ? ` (${body.need.join(", ")})` : "";
+    throw new SimulationRequestError(response.status, `${String(body.error || "The request could not be completed.")}${fields}`);
   }
   return (await response.json()) as T;
 }
@@ -28,5 +29,7 @@ export function startSimulation(scanId: string, body: SimulationRequest) {
 }
 
 export function getSimulation(scanId: string, revision: number) {
-  return request<SimulationStatus>(`/api/scans/${scanId}/simulations?revision=${revision}`);
+  return request<SimulationStatus>(`/api/scans/${scanId}/simulations?revision=${revision}`, {
+    cache: "no-store",
+  });
 }
