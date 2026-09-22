@@ -171,11 +171,52 @@ class TestProtrudingObjects:
             _shelf("s", (-2.8, 1.5, 0.5), (0.3, 1.2, 0.3)), rule
         )
 
+    def test_the_band_is_exclusive_above_27(self, pack):
+        """307.2 reads 'more than 27 inches', so exactly 27 is outside."""
+        rule = pack.by_id("protruding_objects")
+        edge = to_meters(27.0) + (0.3 / 2)
+        assert not in_the_hazard_band(
+            _shelf("s", (-2.8, 1.5, edge), (0.3, 1.2, 0.3)), rule
+        )
+
+    def test_the_band_is_inclusive_at_80(self, pack):
+        """307.2 reads 'not more than 80 inches', so exactly 80 is inside."""
+        rule = pack.by_id("protruding_objects")
+        edge = to_meters(80.0) + (0.3 / 2)
+        assert in_the_hazard_band(
+            _shelf("s", (-2.8, 1.5, edge), (0.3, 1.2, 0.3)), rule
+        )
+
     def test_projection_is_measured_from_the_wall_face(self, graph):
         wall = graph.by_id(WEST_WALL)
         shelf = _shelf("s", (-2.8, 1.5, 1.1), (0.3, 1.2, 0.3))
         centre = Vec3(x=0.0, y=0.0, z=0.0)
         assert projection_inches(shelf, wall, centre) == pytest.approx(11.8, abs=0.1)
+
+    def test_a_shelf_right_at_the_four_inch_limit_passes(
+        self, graph, scenario, pipeline, pack, ledger
+    ):
+        """The limit is inclusive: 4 inches exactly meets 307.2."""
+        rule = pack.by_id("protruding_objects")
+        depth = rule.parameter("wall_mounted_max_projection_inches") * 0.0254
+        centre_x = -3.0 + 0.1 / 2 + depth / 2
+        at_limit = v.add(
+            graph, _shelf("wall_shelf", (centre_x, 1.5, 1.1), (depth, 1.2, 0.3))
+        )
+        found = _findings(
+            at_limit, scenario, pipeline, pack, ledger, "protruding_objects"
+        )
+        assert found[0].outcome == "passes"
+        assert found[0].measured_inches == pytest.approx(4.0, abs=0.1)
+
+    def test_a_shelf_a_hair_past_the_limit_is_a_problem(
+        self, graph, scenario, pipeline, pack, ledger
+    ):
+        depth = 0.11
+        centre_x = -3.0 + 0.1 / 2 + depth / 2
+        over = v.add(graph, _shelf("wall_shelf", (centre_x, 1.5, 1.1), (depth, 1.2, 0.3)))
+        found = _findings(over, scenario, pipeline, pack, ledger, "protruding_objects")
+        assert found[0].outcome == "problem"
 
     def test_a_deep_shelf_at_head_height_is_a_problem(
         self, graph, scenario, pipeline, pack, ledger

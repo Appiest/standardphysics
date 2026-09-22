@@ -130,7 +130,7 @@ def _observation(ctx: CheckContext, rule: RuleSpec, node: SceneNode) -> Observat
     limit = _limit(node, ctx.graph, rule)
     return Observation(
         rule_id=RULE_ID,
-        satisfied=projection <= limit,
+        satisfied=rule.satisfied_by(projection),
         measured_inches=projection,
         required_inches=limit,
         relied_on=(node.id,),
