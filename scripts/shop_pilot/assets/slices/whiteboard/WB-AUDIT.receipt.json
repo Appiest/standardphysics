@@ -4,7 +4,7 @@
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "7b3393122813919ee9f36b3b7ff0dd8a63180d29",
+  "source_commit": "23e8722cc475096971433284908e15bc3f26f536",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
@@ -13,7 +13,7 @@
   "output_artifacts": [
     {
       "path": "whiteboard-audit.json",
-      "sha256": "4906301fadc93f25183b74eec05ffb666f037be398acb8c48f1afebd55a236c7",
+      "sha256": "f34cf63c4fc6fe5f6092ed9bf8f9d0fe9e099903788d0f96a1e2bcf340c429ae",
       "size_bytes": 5441,
       "content_type": "application/json"
     }
@@ -29,15 +29,15 @@
     "python": "3.11",
     "provider": "none; read-only audit, no API mutation"
   },
-  "started_at": "2026-09-21T18:15:18.007894-07:00",
-  "finished_at": "2026-09-21T18:15:18.007894-07:00",
+  "started_at": "2026-09-21T20:42:40.572988-07:00",
+  "finished_at": "2026-09-21T20:42:40.572988-07:00",
   "exit_code": 0,
   "assertions": [
     {
       "id": "log-hash",
       "measurement_method": "file_sha256",
-      "expected": "4906301fadc93f25183b74eec05ffb666f037be398acb8c48f1afebd55a236c7",
-      "observed": "4906301fadc93f25183b74eec05ffb666f037be398acb8c48f1afebd55a236c7",
+      "expected": "f34cf63c4fc6fe5f6092ed9bf8f9d0fe9e099903788d0f96a1e2bcf340c429ae",
+      "observed": "f34cf63c4fc6fe5f6092ed9bf8f9d0fe9e099903788d0f96a1e2bcf340c429ae",
       "params": {
         "artifact": "whiteboard-audit.json"
       },
