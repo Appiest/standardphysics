@@ -1,0 +1,97 @@
+{
+  "receipt_id": "SLICE-I1-PROBE",
+  "gate_id": "G02",
+  "run_id": "opencode-20260921-170615",
+  "lane_id": "Q",
+  "evidence_kind": "synthetic_production_path",
+  "source_commit": "5bd28b2a303a4c237448ef602147d18c08794bf2",
+  "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+  "dirty_source_files": {},
+  "contract_hash": "65a72e69c31c625ed189c2d2921257d41d8d2c13044cd960c3be590f01129148",
+  "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
+  "input_artifacts": [],
+  "output_artifacts": [
+    {
+      "path": "i1-probe.json",
+      "sha256": "9ac139007f557253a1848a08570e8a5a1f3a7efd7c39b3088f001ad35fc3c2f4",
+      "size_bytes": 2804,
+      "content_type": "application/json"
+    }
+  ],
+  "scan_id": null,
+  "revision_id": null,
+  "scenario_hash": null,
+  "scope_manifest_hash": null,
+  "evidence_manifest_hash": null,
+  "command_or_recorded_ui_steps": "PYTHONPATH=... .venv/bin/python -m scripts.shop_pilot.slice_probe",
+  "working_directory": ".",
+  "environment_versions": {
+    "python": "3.11",
+    "provider": "none (no external detection calls)",
+    "blender": "not launched; fixture stage stubbed like the API test suite"
+  },
+  "started_at": "2026-09-21T17:43:34.409574-07:00",
+  "finished_at": "2026-09-21T17:43:35.489786-07:00",
+  "exit_code": 0,
+  "assertions": [
+    {
+      "id": "log-hash",
+      "measurement_method": "file_sha256",
+      "expected": "9ac139007f557253a1848a08570e8a5a1f3a7efd7c39b3088f001ad35fc3c2f4",
+      "observed": "9ac139007f557253a1848a08570e8a5a1f3a7efd7c39b3088f001ad35fc3c2f4",
+      "params": {
+        "artifact": "i1-probe.json"
+      },
+      "evidence_paths": [
+        "i1-probe.json"
+      ]
+    },
+    {
+      "id": "probe-completed",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i1-probe.json",
+        "substring": "\"state\": \"probed\""
+      },
+      "evidence_paths": [
+        "i1-probe.json"
+      ]
+    },
+    {
+      "id": "complete-reached-measuring",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i1-probe.json",
+        "substring": "\"state\""
+      },
+      "evidence_paths": [
+        "i1-probe.json"
+      ]
+    },
+    {
+      "id": "log-secret-free",
+      "measurement_method": "text_clean",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i1-probe.json"
+      },
+      "evidence_paths": [
+        "i1-probe.json"
+      ]
+    }
+  ],
+  "raw_log_path": "i1-probe.json",
+  "evaluator_identity": {
+    "actor": "lane-Q",
+    "attestation": "independent observation of the real app on fixture bytes"
+  },
+  "deficits_observed": [
+    "late evidence uploaded after completion is accepted (201) but queues zero reprocessing jobs; current contract cannot close a new evidence bundle",
+    "exactly one processing job is queued per finalize, but late evidence changes do not schedule dependent work"
+  ]
+}

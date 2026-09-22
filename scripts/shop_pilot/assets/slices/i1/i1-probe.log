@@ -1,0 +1,60 @@
+{
+  "ok": true,
+  "observations": [
+    {
+      "step": "sign-up",
+      "status": 201
+    },
+    {
+      "step": "create-scan",
+      "status": 201,
+      "body": "{\"id\":\"fd687ef0-9cbf-4b32-9a92-907a8dab423c\",\"name\":\"I1 probe scan\",\"created_at\":\"2026-09-22T00:43:34.461210Z\",\"device_model\":\"iPhone 17 Pro\",\"duration_seconds\":12.5,\"state\":\"uploading\",\"artifacts\":[],\"coverage\":[],\"content_hash\":null}"
+    },
+    {
+      "step": "upload-room-json",
+      "status": 201
+    },
+    {
+      "step": "upload-room-usdz",
+      "status": 201
+    },
+    {
+      "step": "complete",
+      "status": 200,
+      "body": "{\"id\":\"fd687ef0-9cbf-4b32-9a92-907a8dab423c\",\"name\":\"I1 probe scan\",\"created_at\":\"2026-09-22T00:43:34.461210Z\",\"device_model\":\"iPhone 17 Pro\",\"duration_seconds\":12.5,\"state\":\"measuring\",\"artifacts\":[{\"id\":\"room-json\",\"kind\":\"room_json\",\"sha256\":\"80d6ac84d85872b92637527c21cb147dca0e4b286a2d6355e4068c97bec83784\",\"bytes\":230881,\"stored_path\":null},{\"id\":\"room-usdz\",\"kind\":\"room_usdz\",\"sha256\":\"eb615f"
+    },
+    {
+      "step": "repeat-complete",
+      "status": 200,
+      "body": "{\"id\":\"fd687ef0-9cbf-4b32-9a92-907a8dab423c\",\"name\":\"I1 probe scan\",\"created_at\":\"2026-09-22T00:43:34.461210Z\",\"device_model\":\"iPhone 17 Pro\",\"duration_seconds\":12.5,\"state\":\"measuring\",\"artifacts\":[{\"id\":\"room-json\",\"kind\":\"room_json\",\"sha256\":\"80d6ac84d85872b92637527c21cb147dca0e4b286a2d6355e4068c97bec83784\",\"bytes\":230881,\"stored_path\":null},{\"id\":\"room-usdz\",\"kind\":\"room_usdz\",\"sha256\":\"eb615f"
+    },
+    {
+      "step": "jobs-after-drain",
+      "jobs": [
+        {
+          "id": 1,
+          "state": "done"
+        },
+        {
+          "id": 2,
+          "state": "done"
+        }
+      ]
+    },
+    {
+      "step": "scan-after-worker",
+      "status": 200,
+      "body": "{\"id\":\"fd687ef0-9cbf-4b32-9a92-907a8dab423c\",\"name\":\"I1 probe scan\",\"created_at\":\"2026-09-22T00:43:34.461210Z\",\"device_model\":\"iPhone 17 Pro\",\"duration_seconds\":12.5,\"state\":\"ready\",\"artifacts\":[{\"id\":\"room-json\",\"kind\":\"room_json\",\"sha256\":\"80d6ac84d85872b92637527c21cb147dca0e4b286a2d6355e4068c97bec83784\",\"bytes\":230881,\"stored_path\":null},{\"id\":\"room-usdz\",\"kind\":\"room_usdz\",\"sha256\":\"eb615f06d961fe6741b55c4024de7a91a1cecfdaa3c802a0fc587b31593ac077\",\"bytes\":33,\"stored_path\":null}],\"coverage\":[],\"content_hash\":\"0222892f3a071cafd897e85ca859756c01af6b3952f1862d84e5d02a1005a5f9\"}"
+    },
+    {
+      "step": "late-walkthrough-after-complete",
+      "status": 201
+    },
+    {
+      "step": "job-count-after-late-evidence",
+      "count": 2
+    }
+  ],
+  "state": "probed",
+  "started_at": "2026-09-21T17:43:34.409574-07:00"
+}
