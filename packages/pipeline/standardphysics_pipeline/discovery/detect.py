@@ -278,10 +278,13 @@ def detect_objects(
 ) -> list[Detection]:
     """Every object the model finds in one frame, boxed in that frame's stored pixels.
 
-    `recorded`, when given, receives one `ModelRequestInfo` per actual request:
-    provider, model, provider request id, usage and orientation. Entries are
-    only appended for real requests, never for cache hits, so a replay that
-    asked nothing records nothing.
+    `recorded`, when given, receives one `ModelRequestInfo` per actual provider
+    response: provider, model, provider request id, usage and orientation.
+    The entry is captured from the response envelope the moment it arrives,
+    before any parsing, so a billed response whose content later fails to
+    parse still leaves its request metadata in the trail. Entries are only
+    appended for real responses: never for cache hits (the caller asks the
+    model only on a miss), never for a request that ended without a response.
     """
     frame = encode_frame(image_path, orientation)
     api_key = _api_key()
@@ -291,9 +294,9 @@ def detect_objects(
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             payload = _post(transport, body, api_key)
-            detections = _detections_from(payload, frame, frame_id)
             if recorded is not None:
                 recorded.append(_request_info(payload, frame_id, orientation))
+            detections = _detections_from(payload, frame, frame_id)
             return detections
         except (DetectionAuthError, DetectionSchemaError):
             raise

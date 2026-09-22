@@ -11,6 +11,7 @@ Pins the semantics lane's guarantees:
 
 from __future__ import annotations
 
+import io
 import json
 import math
 import pathlib
@@ -280,6 +281,55 @@ class TestModelRequestRecording:
         assert request.model
         assert request.usage == {"prompt_tokens": 12, "completion_tokens": 34}
         assert request.provider != ""
+
+    def test_billed_response_with_unparseable_content_still_records_metadata(self, tmp_path: pathlib.Path):
+        """The real run lost request ids for frames 0023/0026 whose answers could
+        not be parsed. A billed response must leave its metadata in the trail
+        even when its content raises DetectionSchemaError afterwards."""
+        from standardphysics_pipeline.discovery.detect import detect_objects
+
+        img = Image.new("RGB", (640, 480), color=(90, 90, 90))
+        img_path = tmp_path / "frame.jpg"
+        img.save(img_path)
+
+        recorded = []
+
+        def billed_broken_transport(url, body, headers):
+            return {
+                "id": "chatcmpl-billed-unparseable",
+                "model": body["model"],
+                "usage": {"prompt_tokens": 7, "completion_tokens": 0},
+                "choices": [{"message": {"content": "not parseable"}}],
+            }
+
+        with pytest.raises(DetectionSchemaError):
+            detect_objects(img_path, "frame-0023", transport=billed_broken_transport, recorded=recorded)
+
+        assert len(recorded) == 1
+        info = recorded[0]
+        assert info.frame_id == "frame-0023"
+        assert info.request_id == "chatcmpl-billed-unparseable"
+        assert info.usage == {"prompt_tokens": 7, "completion_tokens": 0}
+
+    def test_request_that_ends_without_a_response_records_nothing(self, tmp_path: pathlib.Path):
+        """No envelope, no record: an auth failure before any provider response
+        must not invent request metadata."""
+        import urllib.error
+
+        from standardphysics_pipeline.discovery.detect import DetectionAuthError, detect_objects
+
+        img = Image.new("RGB", (640, 480), color=(90, 90, 90))
+        img_path = tmp_path / "frame.jpg"
+        img.save(img_path)
+        recorded = []
+
+        def auth_failure_transport(url, body, headers):
+            raise urllib.error.HTTPError(url, 401, "Unauthorized", {}, io.BytesIO(b"Unauthorized"))
+
+        with pytest.raises(DetectionAuthError):
+            detect_objects(img_path, "frame-0001", transport=auth_failure_transport, recorded=recorded)
+
+        assert recorded == []
 
     def test_cached_frames_record_no_new_requests(self, tmp_path: pathlib.Path):
         builder = TestDiscoveryWiresSecondaryCorrections()
