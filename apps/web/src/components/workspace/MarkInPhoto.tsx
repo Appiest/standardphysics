@@ -4,7 +4,7 @@ import { Camera, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { getFrames, manualMarkRefusal, markObservation, type FrameEntry } from "@/lib/review-client";
-import { isUsablePointerBox, pointerBoxLabel, sensorBoxFromPointer, type PointerBox } from "@/lib/sensor-box";
+import { isUsablePointerBox, overlayGeometryFor, pointerBoxLabel, sensorBoxFromPointer, type PointerBox, type RectLike } from "@/lib/sensor-box";
 import { TARGET_CLASS_LABEL, type TargetClass } from "@/lib/review-targets";
 import type { SceneGraph } from "@/types/contracts";
 
@@ -73,6 +73,7 @@ function DrawFrame({ frame, alt, surfaceRef, onDown, onMove, onUp }: {
       src={frame.image_url}
       alt={alt}
       draggable={false}
+      style={{ aspectRatio: `${frame.width} / ${frame.height}` }}
       className="max-h-[42vh] w-full touch-none select-none object-contain lg:max-h-[50vh]"
       onError={() => setFailed(true)}
       onPointerDown={onDown}
@@ -105,11 +106,45 @@ function ListStatus({ listState, listingError, onRetry }: { listState: ListState
   return null;
 }
 
-function FramePicker({ frames, targetLabel, selected, box, listRef, surfaceRef, onChoose, onDown, onMove, onUp }: {
+/** The user's draft region, painted over the exact photo pixels it designates. */
+function MarkOverlay({ box, boxAnchor }: { box: PointerBox | null; boxAnchor: { rect: RectLike; width: number; height: number } | null }) {
+  if (boxAnchor === null) return null;
+  const overlay = overlayGeometryFor(boxAnchor.rect, { width: boxAnchor.width, height: boxAnchor.height }, box);
+  if (overlay === null) return null;
+  return (
+    <div
+      aria-hidden
+      data-mark-overlay
+      className="pointer-events-none absolute"
+      style={{
+        left: `${overlay.content.left}%`,
+        top: `${overlay.content.top}%`,
+        width: `${overlay.content.width}%`,
+        height: `${overlay.content.height}%`,
+      }}
+    >
+      {overlay.box !== null && (
+        <div
+          className="absolute rounded-sm border-2 border-amber-500/90 bg-amber-400/10"
+          style={{
+            left: `${overlay.box.left}%`,
+            top: `${overlay.box.top}%`,
+            width: `${overlay.box.width}%`,
+            height: `${overlay.box.height}%`,
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function FramePicker({ frames, unreadableCount, targetLabel, selected, box, boxAnchor, listRef, surfaceRef, onChoose, onDown, onMove, onUp }: {
   frames: FrameEntry[];
+  unreadableCount: number;
   targetLabel: string;
   selected: FrameEntry | null;
   box: PointerBox | null;
+  boxAnchor: { rect: RectLike; width: number; height: number } | null;
   listRef: React.RefObject<HTMLDivElement | null>;
   surfaceRef: React.RefObject<HTMLImageElement | null>;
   onChoose: (frame: FrameEntry) => void;
@@ -120,7 +155,7 @@ function FramePicker({ frames, targetLabel, selected, box, listRef, surfaceRef, 
   if (frames.length === 0) {
     return (
       <p role="status" className="rounded-lg bg-rule/30 p-3 text-xs text-ink-muted">
-        This scan has no stored photographs to mark in. Take more photos in the app, upload them, then try again.
+        This scan has no readable photographs to mark in. Take more photos in the app, upload them, then try again.
       </p>
     );
   }
@@ -129,6 +164,11 @@ function FramePicker({ frames, targetLabel, selected, box, listRef, surfaceRef, 
       <p className="text-xs text-ink-muted">
         Pick the photo that shows the {targetLabel}, then drag a box around it.
       </p>
+      {unreadableCount > 0 && (
+        <p className="text-[11px] text-amber-800 dark:text-amber-300">
+          {unreadableCount} stored photo{unreadableCount === 1 ? "" : "s"} could not be read on the server and are not shown.
+        </p>
+      )}
       <div ref={listRef} role="group" aria-label="Your scan photos" className="grid max-h-40 grid-cols-4 gap-2 overflow-y-auto pr-1 sm:grid-cols-6">
         {frames.map((frame, index) => (
           <div key={frame.frame_id} className="shrink-0">
@@ -141,20 +181,24 @@ function FramePicker({ frames, targetLabel, selected, box, listRef, surfaceRef, 
         <p className="text-xs text-ink-muted">Choose a photo above to start marking.</p>
       ) : (
         <div className="overflow-hidden rounded-xl bg-rule/40">
-          <DrawFrame
-            key={selected.frame_id}
-            frame={selected}
-            alt={`Photo ${selected.frame_id}. Drag a box around the ${targetLabel} with your finger`}
-            surfaceRef={surfaceRef}
-            onDown={onDown}
-            onMove={onMove}
-            onUp={onUp}
-          />
-          {box && isUsablePointerBox(box) && (
-            <p className="px-2 py-1 text-[11px] text-ink-muted">
-              {pointerBoxLabel(box)}. Saved marks keep this spot as photographed evidence.
-            </p>
-          )}
+          <div className="relative">
+            <DrawFrame
+              key={selected.frame_id}
+              frame={selected}
+              alt={`Photo ${selected.frame_id}. Drag a box around the ${targetLabel} with your finger`}
+              surfaceRef={surfaceRef}
+              onDown={onDown}
+              onMove={onMove}
+              onUp={onUp}
+            />
+            <MarkOverlay box={box} boxAnchor={boxAnchor} />
+          </div>
+          {/* Reserved status slot: always present, same height whether the box
+              label is showing or not, so the bottom-aligned dialog cannot grow
+              (and shift the photo) the moment a usable box appears. */}
+          <p aria-live="polite" className="min-h-6 px-2 py-1 text-[11px] text-ink-muted">
+            {box && isUsablePointerBox(box) ? pointerBoxLabel(box) : null}
+          </p>
         </div>
       )}
     </>
@@ -223,14 +267,17 @@ function MarkForm({ suggestedNodeId, attachNode, setAttachNode, note, setNote, s
 export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, onClose, onSaved }: MarkInPhotoProps) {
   const [listState, setListState] = useState<ListState>("loading");
   const [frames, setFrames] = useState<FrameEntry[]>([]);
+  const [unreadable, setUnreadable] = useState<string[]>([]);
   const [listingError, setListingError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [box, setBox] = useState<PointerBox | null>(null);
+  const [boxAnchor, setBoxAnchor] = useState<{ rect: RectLike; width: number; height: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [attachNode, setAttachNode] = useState(suggestedNodeId !== null);
   const [note, setNote] = useState("");
   const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const pressAnchor = useRef<{ rect: RectLike; width: number; height: number } | null>(null);
   const surfaceRef = useRef<HTMLImageElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
@@ -247,14 +294,18 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
       const listing = await getFrames(scanId);
       if (listing === null) {
         setFrames([]);
+        setUnreadable([]);
         setListState("unavailable");
         return;
       }
       setFrames(listing.frames);
+      // Older server builds predate the `unreadable` key in the frozen shape.
+      setUnreadable(listing.unreadable ?? []);
       setListState("ready");
       requestAnimationFrame(() => listRef.current?.querySelector<HTMLButtonElement>("button")?.focus());
     } catch (error) {
       setFrames([]);
+      setUnreadable([]);
       setListingError((error as { error?: string }).error ?? "The photo list could not be read. Try again.");
       setListState("failed");
     }
@@ -277,24 +328,38 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
   const choose = useCallback((frame: FrameEntry) => {
     setSelectedId(frame.frame_id);
     setBox(null);
+    setBoxAnchor(null);
+    pressAnchor.current = null;
   }, []);
 
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
     event.preventDefault();
     dragStart.current = { x: event.clientX, y: event.clientY };
+    const surface = surfaceRef.current;
+    if (surface && selected) {
+      const rect = surface.getBoundingClientRect();
+      const anchor = {
+        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        // The frame's stored sensor size is authoritative (see FrameEntry):
+        // the natural size lags the bytes but must never change the mapping.
+        width: selected.width,
+        height: selected.height,
+      };
+      pressAnchor.current = anchor;
+      setBoxAnchor(anchor);
+    }
     event.currentTarget.setPointerCapture(event.pointerId);
-  }, []);
+  }, [selected]);
 
   const onPointerMove = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
-    if (!dragStart.current || !surfaceRef.current || selected === null) return;
-    const natural = { width: surfaceRef.current.naturalWidth, height: surfaceRef.current.naturalHeight };
-    const rect = surfaceRef.current.getBoundingClientRect();
-    if (natural.width === 0 || natural.height === 0) return;
-    setBox(sensorBoxFromPointer(dragStart.current, { x: event.clientX, y: event.clientY }, rect, natural));
-  }, [selected]);
+    if (!dragStart.current || !pressAnchor.current) return;
+    const { rect, width, height } = pressAnchor.current;
+    setBox(sensorBoxFromPointer(dragStart.current, { x: event.clientX, y: event.clientY }, rect, { width, height }));
+  }, []);
 
   const onPointerEnd = useCallback(() => {
     dragStart.current = null;
+    pressAnchor.current = null;
   }, []);
 
   const canSubmit = selected !== null && box !== null && isUsablePointerBox(box) && !saving;
@@ -343,9 +408,11 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
           <>
             <FramePicker
               frames={frames}
+              unreadableCount={unreadable.length}
               targetLabel={targetLabel}
               selected={selected}
               box={box}
+              boxAnchor={boxAnchor}
               listRef={listRef}
               surfaceRef={surfaceRef}
               onChoose={choose}

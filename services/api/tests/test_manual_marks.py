@@ -8,7 +8,7 @@ hardening; U consumes these exact shapes.
 
 import json
 
-from conftest import create_scan, drain, put_artifact, usdz_fixture
+from conftest import create_scan, drain, put_artifact, usdz_fixture, usdz_fixture
 
 
 def _stages():
@@ -49,15 +49,23 @@ def _mesh_bytes() -> bytes:
     }]}).encode()
 
 
+def _jpeg(width: int = 64, height: int = 48) -> bytes:
+    import io
+    from PIL import Image
+    buffer = io.BytesIO()
+    Image.new("RGB", (width, height), (120, 130, 140)).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
 def _ready_scan(make_client):
     stages = _stages()
     client = make_client(stages=stages)
     scan_id = create_scan(client)
     put_artifact(client, scan_id, "room-json", _room_payload(), "room_json")
     put_artifact(client, scan_id, "room-usdz", usdz_fixture(), "room_usdz")
-    put_artifact(client, scan_id, "frames", b"frames", "frames")
     put_artifact(client, scan_id, "poses", b"{}", "poses")
     put_artifact(client, scan_id, "lidar-mesh", _mesh_bytes(), "lidar_mesh")
+    put_artifact(client, scan_id, "frame-0000", _jpeg(), "frames")
     client.post(f"/api/scans/{scan_id}/complete")
     drain(client)
     return client, scan_id
@@ -73,8 +81,8 @@ def test_manual_mark_on_a_node_is_manual_and_persists(make_client):
             json={
                 "target_class": "outlet",
                 "node_id": table["id"],
-                "frame_id": "frame-1",
-                "sensor_box": [10, 20, 30, 40],
+                "frame_id": "frame-0000",
+                "sensor_box": [4, 4, 40, 30],
                 "note": "owner spotted this",
             },
         )
@@ -101,8 +109,8 @@ def test_mark_without_a_node_stays_unlocalized_and_authentication_holds(make_cli
             f"/api/scans/{scan_id}/revisions/0/observations",
             json={
                 "target_class": "television",
-                "frame_id": "frame-2",
-                "sensor_box": [50, 60, 70, 80],
+                "frame_id": "frame-0000",
+                "sensor_box": [8, 8, 44, 36],
             },
         )
         assert response.status_code == 201, response.text
@@ -134,7 +142,7 @@ def test_marking_a_missing_node_is_a_clear_404(make_client):
             json={
                 "target_class": "outlet",
                 "node_id": "11111111-2222-3333-4444-555555555555",
-                "frame_id": "frame-3",
+                "frame_id": "frame-0000",
                 "sensor_box": [0, 0, 10, 10],
             },
         )
@@ -146,11 +154,11 @@ def test_conflicting_concurrent_revision_is_explicit(make_client):
     with client:
         first = client.put(
             f"/api/scans/{scan_id}/revisions/0/observations",
-            json={"target_class": "outlet", "frame_id": "fresh", "sensor_box": [0, 0, 1, 1]},
+            json={"target_class": "outlet", "frame_id": "frame-0000", "sensor_box": [2, 2, 20, 16]},
         )
         assert first.status_code == 201, first.text
         stale = client.put(
             f"/api/scans/{scan_id}/revisions/0/observations",
-            json={"target_class": "outlet", "frame_id": "old", "sensor_box": [0, 0, 1, 1]},
+            json={"target_class": "outlet", "frame_id": "frame-0000", "sensor_box": [2, 2, 20, 16]},
         )
         assert stale.status_code == 409
