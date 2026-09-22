@@ -1,0 +1,30 @@
+.......FF...............                                                 [100%]
+=================================== FAILURES ===================================
+____ TestThresholdStraddling.test_a_minimum_straddled_asks_for_verification ____
+
+self = <test_rule_intervals.TestThresholdStraddling object at 0x1071ddd50>
+
+    def test_a_minimum_straddled_asks_for_verification(self):
+>       assert rule_verdict(_bounds(36.0, 34.0, 38.0), ROUTE) == "needs_verification"
+E       AssertionError: assert 'satisfied' == 'needs_verification'
+E         
+E         - needs_verification
+E         + satisfied
+
+packages/agents/tests/test_rule_intervals.py:64: AssertionError
+____ TestThresholdStraddling.test_a_maximum_straddled_asks_for_verification ____
+
+self = <test_rule_intervals.TestThresholdStraddling object at 0x1071de350>
+
+    def test_a_maximum_straddled_asks_for_verification(self):
+>       assert rule_verdict(_bounds(36.0, 34.0, 38.0), COUNTER) == "needs_verification"
+E       AssertionError: assert 'satisfied' == 'needs_verification'
+E         
+E         - needs_verification
+E         + satisfied
+
+packages/agents/tests/test_rule_intervals.py:67: AssertionError
+=========================== short test summary info ============================
+FAILED packages/agents/tests/test_rule_intervals.py::TestThresholdStraddling::test_a_minimum_straddled_asks_for_verification
+FAILED packages/agents/tests/test_rule_intervals.py::TestThresholdStraddling::test_a_maximum_straddled_asks_for_verification
+2 failed, 22 passed in 0.03s

@@ -1,0 +1,19 @@
+F..........                                                              [100%]
+=================================== FAILURES ===================================
+______________ test_every_requested_requirement_has_a_visible_row ______________
+
+manifest = ScopeManifest(id=UUID('b7be583a-a070-5b71-9803-f52cc46f7730'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), v...he declared area', evidence_refs=[], measurement=None, source_version=None, legal_review_status='unreviewed_preview')])
+
+    def test_every_requested_requirement_has_a_visible_row(manifest):
+        present = {row.requirement_id for row in manifest.rows if row.requested}
+>       assert set(manifest.requested_requirements) <= present
+E       AssertionError: assert {'coverage:ou...r_width', ...} <= {'coverage:ou...r_width', ...}
+E         
+E         Extra items in the left set:
+E         'turning_space'
+E         'point_of_sale_height'
+
+packages/agents/tests/test_scope_rows.py:51: AssertionError
+=========================== short test summary info ============================
+FAILED packages/agents/tests/test_scope_rows.py::test_every_requested_requirement_has_a_visible_row
+1 failed, 10 passed in 0.78s

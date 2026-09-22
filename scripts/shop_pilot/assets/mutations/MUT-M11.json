@@ -1,36 +1,36 @@
 {
-  "receipt_id": "MUT-M16",
+  "receipt_id": "MUT-M11",
   "gate_id": "G00",
-  "mutation_id": "M16",
+  "mutation_id": "M11",
   "outcome": "killed",
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
   "source_commit": "e5c0e90c0a36e33273cde84609c184a42dcbdfd3",
-  "eval_source_head": "base 54e09e4 (pre-freeze)",
+  "eval_source_head": "bb8ded9 (final K HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
   "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
   "input_artifacts": [
     {
-      "path": "detect.py.original",
-      "sha256": "ccbc485f3baef5e99ace191aee351d04c89b7a75e396c6fcf0ef6a0fa51679a4",
-      "size_bytes": 20958,
+      "path": "scope_manifest.py.original",
+      "sha256": "41f325e83b6ddf5ff8d7eca6be7b68c6f6f8bea869d121ea1927d98190fd4f96",
+      "size_bytes": 15511,
       "content_type": "text/plain"
     }
   ],
   "output_artifacts": [
     {
-      "path": "M16-mutated.log",
-      "sha256": "a6c4f118ec12f8d631a45303bcb8fd202218f6fbc88d5978075e7d5a7d930cf7",
-      "size_bytes": 1411,
+      "path": "M11-mutated.log",
+      "sha256": "f84d3aaa866bbd400fcc8f5cd64316b8718ddc040cfb77559c7091aafe8550ac",
+      "size_bytes": 1886,
       "content_type": "text/plain"
     },
     {
-      "path": "M16-clean-after.log",
-      "sha256": "2207aede3effc76057a2a3e57150b95838d002e9383df950aadd0fec45f590e8",
-      "size_bytes": 98,
+      "path": "M11-clean-after.log",
+      "sha256": "f85c5b3a2091c2c7dfd13a6d2bca1172753fd6c56693a44cf3a07c5f6b617267",
+      "size_bytes": 99,
       "content_type": "text/plain"
     }
   ],
@@ -39,7 +39,7 @@
   "scenario_hash": null,
   "scope_manifest_hash": null,
   "evidence_manifest_hash": null,
-  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate packages/pipeline/standardphysics_pipeline/discovery/detect.py; pytest <owning suite> -q (record outcome); restore source",
+  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate services/api/standardphysics_api/scope_manifest.py; pytest <owning suite> -q (record outcome); restore source",
   "working_directory": "/tmp/q-mutations or /tmp/q-review-s (disposable worktrees)",
   "environment_versions": {
     "python": "3.11"
@@ -54,11 +54,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "DID NOT RAISE DetectionAuthError",
-        "artifact": "M16-mutated.log"
+        "substring": "applicability='not_applicable'",
+        "artifact": "M11-mutated.log"
       },
       "evidence_paths": [
-        "M16-mutated.log"
+        "M11-mutated.log"
       ]
     },
     {
@@ -67,11 +67,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "packages/pipeline/tests/test_outlet_detection.py::test_det_03_error_distinction_and_no_retry_for_auth",
-        "artifact": "M16-mutated.log"
+        "substring": "packages/agents/tests/test_scope_rows.py::test_no_row_becomes_not_applicable_on_its_own",
+        "artifact": "M11-mutated.log"
       },
       "evidence_paths": [
-        "M16-mutated.log"
+        "M11-mutated.log"
       ]
     },
     {
@@ -81,21 +81,21 @@
       "observed": true,
       "params": {
         "substring": "passed",
-        "artifact": "M16-clean-after.log"
+        "artifact": "M11-clean-after.log"
       },
       "evidence_paths": [
-        "M16-clean-after.log"
+        "M11-clean-after.log"
       ]
     },
     {
       "id": "restored-source-hash",
       "measurement_method": "file_sha256",
-      "expected": "ccbc485f3baef5e99ace191aee351d04c89b7a75e396c6fcf0ef6a0fa51679a4",
+      "expected": "41f325e83b6ddf5ff8d7eca6be7b68c6f6f8bea869d121ea1927d98190fd4f96",
       "params": {
-        "artifact": "detect.py.original"
+        "artifact": "scope_manifest.py.original"
       },
       "evidence_paths": [
-        "detect.py.original"
+        "scope_manifest.py.original"
       ]
     },
     {
@@ -103,10 +103,10 @@
       "measurement_method": "text_clean",
       "expected": true,
       "params": {
-        "artifact": "M16-mutated.log"
+        "artifact": "M11-mutated.log"
       },
       "evidence_paths": [
-        "M16-mutated.log"
+        "M11-mutated.log"
       ]
     },
     {
@@ -121,22 +121,22 @@
       "evidence_paths": []
     }
   ],
-  "raw_log_path": "M16-mutated.log",
+  "raw_log_path": "M11-mutated.log",
   "evaluator_identity": {
     "actor": "lane-Q",
     "attestation": "independent fault injection in a disposable worktree, reverted and hash-verified"
   },
   "fault": {
-    "id": "M16",
-    "source_head": "base 54e09e4 (pre-freeze)",
+    "id": "M11",
+    "source_head": "bb8ded9 (final K HEAD)",
     "outcome": "killed",
-    "fault": "detect.py: provider auth/schema/error converted to empty successful detection",
-    "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/detect.py",
-    "restored_sha256": "ccbc485f3baef5e99ace191aee351d04c89b7a75e396c6fcf0ef6a0fa51679a4",
-    "killed_by": "packages/pipeline/tests/test_outlet_detection.py::test_det_03_error_distinction_and_no_retry_for_auth",
-    "behavioral_assertion": "DID NOT RAISE DetectionAuthError",
-    "mutated_log": "M16-mutated.log",
-    "clean_log": "M16-clean-after.log",
-    "original_copy": "detect.py.original"
+    "fault": "scope_manifest.py: applicability forced to not_applicable without facts (invented N/A)",
+    "fault_file": "services/api/standardphysics_api/scope_manifest.py",
+    "restored_sha256": "41f325e83b6ddf5ff8d7eca6be7b68c6f6f8bea869d121ea1927d98190fd4f96",
+    "killed_by": "packages/agents/tests/test_scope_rows.py::test_no_row_becomes_not_applicable_on_its_own",
+    "behavioral_assertion": "applicability='not_applicable'",
+    "mutated_log": "M11-mutated.log",
+    "clean_log": "M11-clean-after.log",
+    "original_copy": "scope_manifest.py.original"
   }
 }

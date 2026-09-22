@@ -1,36 +1,36 @@
 {
-  "receipt_id": "MUT-M16",
+  "receipt_id": "MUT-M12",
   "gate_id": "G00",
-  "mutation_id": "M16",
+  "mutation_id": "M12",
   "outcome": "killed",
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
   "source_commit": "e5c0e90c0a36e33273cde84609c184a42dcbdfd3",
-  "eval_source_head": "base 54e09e4 (pre-freeze)",
+  "eval_source_head": "bb8ded9 (final K HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
   "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
   "input_artifacts": [
     {
-      "path": "detect.py.original",
-      "sha256": "ccbc485f3baef5e99ace191aee351d04c89b7a75e396c6fcf0ef6a0fa51679a4",
-      "size_bytes": 20958,
+      "path": "verification.py.original",
+      "sha256": "9cb503743b66e70352be797297acc82aaf2f967c1d654dcdd6a9d3d01cf059ea",
+      "size_bytes": 5805,
       "content_type": "text/plain"
     }
   ],
   "output_artifacts": [
     {
-      "path": "M16-mutated.log",
-      "sha256": "a6c4f118ec12f8d631a45303bcb8fd202218f6fbc88d5978075e7d5a7d930cf7",
-      "size_bytes": 1411,
+      "path": "M12-mutated.log",
+      "sha256": "0e20444e21b52086789280fab9c9d4587ae9f4d4128850e3ed52c3851ee40b3d",
+      "size_bytes": 4751,
       "content_type": "text/plain"
     },
     {
-      "path": "M16-clean-after.log",
-      "sha256": "2207aede3effc76057a2a3e57150b95838d002e9383df950aadd0fec45f590e8",
-      "size_bytes": 98,
+      "path": "M12-clean-after.log",
+      "sha256": "391fe3393230a3f7d6ced7d2a7c3207e71f09024f26689794cf10a89984d4910",
+      "size_bytes": 115,
       "content_type": "text/plain"
     }
   ],
@@ -39,7 +39,7 @@
   "scenario_hash": null,
   "scope_manifest_hash": null,
   "evidence_manifest_hash": null,
-  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate packages/pipeline/standardphysics_pipeline/discovery/detect.py; pytest <owning suite> -q (record outcome); restore source",
+  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate packages/agents/standardphysics_agents/rules/verification.py; pytest <owning suite> -q (record outcome); restore source",
   "working_directory": "/tmp/q-mutations or /tmp/q-review-s (disposable worktrees)",
   "environment_versions": {
     "python": "3.11"
@@ -54,11 +54,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "DID NOT RAISE DetectionAuthError",
-        "artifact": "M16-mutated.log"
+        "substring": "where False = all(",
+        "artifact": "M12-mutated.log"
       },
       "evidence_paths": [
-        "M16-mutated.log"
+        "M12-mutated.log"
       ]
     },
     {
@@ -67,11 +67,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "packages/pipeline/tests/test_outlet_detection.py::test_det_03_error_distinction_and_no_retry_for_auth",
-        "artifact": "M16-mutated.log"
+        "substring": "packages/agents/tests/test_verification_preview.py::TestRealReviewers::test_a_second_check_cannot_promote_a_preview_entry",
+        "artifact": "M12-mutated.log"
       },
       "evidence_paths": [
-        "M16-mutated.log"
+        "M12-mutated.log"
       ]
     },
     {
@@ -81,21 +81,21 @@
       "observed": true,
       "params": {
         "substring": "passed",
-        "artifact": "M16-clean-after.log"
+        "artifact": "M12-clean-after.log"
       },
       "evidence_paths": [
-        "M16-clean-after.log"
+        "M12-clean-after.log"
       ]
     },
     {
       "id": "restored-source-hash",
       "measurement_method": "file_sha256",
-      "expected": "ccbc485f3baef5e99ace191aee351d04c89b7a75e396c6fcf0ef6a0fa51679a4",
+      "expected": "9cb503743b66e70352be797297acc82aaf2f967c1d654dcdd6a9d3d01cf059ea",
       "params": {
-        "artifact": "detect.py.original"
+        "artifact": "verification.py.original"
       },
       "evidence_paths": [
-        "detect.py.original"
+        "verification.py.original"
       ]
     },
     {
@@ -103,10 +103,10 @@
       "measurement_method": "text_clean",
       "expected": true,
       "params": {
-        "artifact": "M16-mutated.log"
+        "artifact": "M12-mutated.log"
       },
       "evidence_paths": [
-        "M16-mutated.log"
+        "M12-mutated.log"
       ]
     },
     {
@@ -121,22 +121,22 @@
       "evidence_paths": []
     }
   ],
-  "raw_log_path": "M16-mutated.log",
+  "raw_log_path": "M12-mutated.log",
   "evaluator_identity": {
     "actor": "lane-Q",
     "attestation": "independent fault injection in a disposable worktree, reverted and hash-verified"
   },
   "fault": {
-    "id": "M16",
-    "source_head": "base 54e09e4 (pre-freeze)",
+    "id": "M12",
+    "source_head": "bb8ded9 (final K HEAD)",
     "outcome": "killed",
-    "fault": "detect.py: provider auth/schema/error converted to empty successful detection",
-    "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/detect.py",
-    "restored_sha256": "ccbc485f3baef5e99ace191aee351d04c89b7a75e396c6fcf0ef6a0fa51679a4",
-    "killed_by": "packages/pipeline/tests/test_outlet_detection.py::test_det_03_error_distinction_and_no_retry_for_auth",
-    "behavioral_assertion": "DID NOT RAISE DetectionAuthError",
-    "mutated_log": "M16-mutated.log",
-    "clean_log": "M16-clean-after.log",
-    "original_copy": "detect.py.original"
+    "fault": "rules/verification.py: preview ledger entries read as personally verified (preview as verified)",
+    "fault_file": "packages/agents/standardphysics_agents/rules/verification.py",
+    "restored_sha256": "9cb503743b66e70352be797297acc82aaf2f967c1d654dcdd6a9d3d01cf059ea",
+    "killed_by": "packages/agents/tests/test_verification_preview.py::TestRealReviewers::test_a_second_check_cannot_promote_a_preview_entry",
+    "behavioral_assertion": "where False = all(",
+    "mutated_log": "M12-mutated.log",
+    "clean_log": "M12-clean-after.log",
+    "original_copy": "verification.py.original"
   }
 }

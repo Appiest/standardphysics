@@ -1,0 +1,53 @@
+............................................................FF...F....   [100%]
+=================================== FAILURES ===================================
+_ TestShippedLedgerIsPreviewOnly.test_preview_entries_keep_the_checks_running __
+
+self = <test_verification_preview.TestShippedLedgerIsPreviewOnly object at 0x109da6490>
+pack = AgentRulePack(version='1.0.0', rules=[RuleSpec(id='route_clear_width', title='The path is too narrow', citation=Citati... of seats, not every seat. The share and the height are two separate checks and this entry only carries the height.')])
+shipped = VerificationLedger(entries=[Verification(rule_id='route_clear_width', section='403.5.1', threshold=36.0, unit='in', ve...rfaces and work surfaces shall be 28 inches (710 mm) minimum and 34 inches (865 mm) maximum above the finish floor.')])
+
+    def test_preview_entries_keep_the_checks_running(self, pack, shipped):
+        """The preview enables calculations; it just never counts as review."""
+        enabled = {r.id for r in pack.rules if shipped.verifies(r)}
+        assert len(enabled) >= 10
+>       assert all(
+            not shipped.personally_verified(r) for r in pack.rules if shipped.verifies(r)
+        )
+E       assert False
+E        +  where False = all(<generator object TestShippedLedgerIsPreviewOnly.test_preview_entries_keep_the_checks_running.<locals>.<genexpr> at 0x10a3c3a00>)
+
+packages/agents/tests/test_verification_preview.py:50: AssertionError
+_ TestShippedLedgerIsPreviewOnly.test_the_contract_pack_carries_no_human_claim _
+
+self = <test_verification_preview.TestShippedLedgerIsPreviewOnly object at 0x109da4910>
+pack = AgentRulePack(version='1.0.0', rules=[RuleSpec(id='route_clear_width', title='The path is too narrow', citation=Citati... of seats, not every seat. The share and the height are two separate checks and this entry only carries the height.')])
+shipped = VerificationLedger(entries=[Verification(rule_id='route_clear_width', section='403.5.1', threshold=36.0, unit='in', ve...rfaces and work surfaces shall be 28 inches (710 mm) minimum and 34 inches (865 mm) maximum above the finish floor.')])
+
+    def test_the_contract_pack_carries_no_human_claim(self, pack, shipped):
+        contract = pack.as_contract_pack(shipped)
+>       assert not any(check.verified_by_human for check in contract.checks)
+E       assert not True
+E        +  where True = any(<generator object TestShippedLedgerIsPreviewOnly.test_the_contract_pack_carries_no_human_claim.<locals>.<genexpr> at 0x109d6d630>)
+
+packages/agents/tests/test_verification_preview.py:56: AssertionError
+_____ TestRealReviewers.test_a_second_check_cannot_promote_a_preview_entry _____
+
+self = <test_verification_preview.TestRealReviewers object at 0x109da6750>
+pack = AgentRulePack(version='1.0.0', rules=[RuleSpec(id='route_clear_width', title='The path is too narrow', citation=Citati... of seats, not every seat. The share and the height are two separate checks and this entry only carries the height.')])
+shipped = VerificationLedger(entries=[Verification(rule_id='route_clear_width', section='403.5.1', threshold=36.0, unit='in', ve...rfaces and work surfaces shall be 28 inches (710 mm) minimum and 34 inches (865 mm) maximum above the finish floor.')])
+
+    def test_a_second_check_cannot_promote_a_preview_entry(self, pack, shipped):
+        rule = pack.by_id("route_clear_width")
+        book = shipped.second_check(rule, "B. Audit")
+        assert not book.double_checked(rule)
+>       assert not book.personally_verified(rule)
+E       AssertionError: assert not True
+E        +  where True = personally_verified(RuleSpec(id='route_clear_width', title='The path is too narrow', citation=Citation(authority='ADA_2010', edition='2010...by segments that are 48 inches (1220 mm) minimum in length and 36 inches (915 mm) minimum in width.', review_note=None))
+E        +    where personally_verified = VerificationLedger(entries=[Verification(rule_id='passing_space', section='403.5.3', threshold=60.0, unit='in', verifi...nfo=datetime.timezone.utc), note='403.5.1: the clear width of walking surfaces shall be 36 inches (915 mm) minimum.')]).personally_verified
+
+packages/agents/tests/test_verification_preview.py:85: AssertionError
+=========================== short test summary info ============================
+FAILED packages/agents/tests/test_verification_preview.py::TestShippedLedgerIsPreviewOnly::test_preview_entries_keep_the_checks_running
+FAILED packages/agents/tests/test_verification_preview.py::TestShippedLedgerIsPreviewOnly::test_the_contract_pack_carries_no_human_claim
+FAILED packages/agents/tests/test_verification_preview.py::TestRealReviewers::test_a_second_check_cannot_promote_a_preview_entry
+3 failed, 67 passed, 771 deselected in 3.16s

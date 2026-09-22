@@ -1,0 +1,16 @@
+.....F.....                                                              [100%]
+=================================== FAILURES ===================================
+________________ test_no_row_becomes_not_applicable_on_its_own _________________
+
+manifest = ScopeManifest(id=UUID('ea5c5879-002c-5f96-88eb-f7bb04c51daf'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), v...he declared area', evidence_refs=[], measurement=None, source_version=None, legal_review_status='unreviewed_preview')])
+
+    def test_no_row_becomes_not_applicable_on_its_own(manifest):
+        for row in manifest.rows:
+            if row.applicability == "not_applicable":
+>               raise AssertionError(row)
+E               AssertionError: item=ScopeItem(item_id=UUID('0741a3f1-0aba-52f0-86e1-364085fe4156'), item_slug='route_clear_width:0741a3f1-0aba-52f0-86e1-364085fe4156', item_kind='object', label='Display case', observed=True, source='measured') requirement_id='route_clear_width' requested=True applicability='not_applicable' applicability_reason='applicability has not been established with evidence; the outcome below is a calculation only and never a verified legal conclusion' applicability_facts=[] outcome='violation' reason="It's 31 inches at the tightest point. Wheelchairs need 36 inches." evidence_refs=['403.5.1', 'https://www.access-board.gov/ada/#ada-403'] measurement={'estimate_inches': 30.999999999999996, 'required_inches': 36.0, 'units': 'in', 'bounds': 'unknown', 'method': 'scan-derived (no stated accuracy)'} source_version='2010 ADA Standards for Accessible Design' legal_review_status='unreviewed_preview'
+
+packages/agents/tests/test_scope_rows.py:87: AssertionError
+=========================== short test summary info ============================
+FAILED packages/agents/tests/test_scope_rows.py::test_no_row_becomes_not_applicable_on_its_own
+1 failed, 10 passed in 0.75s

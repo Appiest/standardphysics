@@ -1,9 +1,9 @@
 {
   "kind": "certificate_matrix_final",
-  "version": 6,
+  "version": 7,
   "run_id": "opencode-20260921-170615",
   "evaluator": "lane Q independent (fireworks-ai deepseek-pro-latest)",
-  "computed_at": "2026-09-21T23:41:30-07:00",
+  "computed_at": "2026-09-21T23:52:39-07:00",
   "integration_head_evaluated": "bb8ded966cff7f2eebe94706af096cc209ccd77f",
   "policy": "frozen docs unchanged",
   "verification_scope_at_this_head": "exact M06 mutation on test_orientation_end_to_end at bb8ded9 (clean 4 passed -> mutant 3 failed behaviorally -> restored hash b2ac0a9b... -> clean rerun 4 passed); M06 receipt rebound to bb8ded9. K states suites green at bb8ded9; no broad rerun of mine per dispatch.",
@@ -11,7 +11,7 @@
     {
       "id": "G00",
       "status": "failed",
-      "blocker": "8 of 18 required behavioral mutation kills (M03/M04/M05/M06/M07/M08/M15/M16). M06 exact turns=0 mutation re-verified KILLED at bb8ded9 (orientation patch round-trip assertions fail 3/4). 10 cases retained."
+      "blocker": "14 of 18 mutation kills at source-bound heads; M09-M14 freshly killed at bb8ded9 (scope row drop, favorable midpoint, invented N/A, preview-as-verified, reach shortcut, false redesign). M01/M02/M18 executed as validator-side negative controls (24-test verifier suite log assets/mutations/M01M02M18/v-negcontrols.log). M17 (cherry-picked render) NOT yet executed: site = packages/pipeline standardphysics_pipeline/textures render evaluator; prereq = render artifacts + K lease. All 18 cases retained in the registry."
     },
     {
       "id": "G01",
@@ -174,5 +174,6 @@
     "ownership repaired b86a89cf->af071129 and live-validated per replay supplement; original B receipt preserved",
     "G15: c11 visual verdict FAILED - source churn reduction is not a quality pass"
   ],
-  "software_line": "K suites green at bb8ded9 per K; Q evidence: all prior recomputes + M06 mutation binding + targeted orientation cycle at this head. G09 portable-network test and G11 user review remain the physical blockers for certificates."
+  "software_line": "K suites green at bb8ded9 per K; Q evidence: all prior recomputes + M06 mutation binding + targeted orientation cycle at this head. G09 portable-network test and G11 user review remain the physical blockers for certificates.",
+  "notes_ten_controls": "M01/M02/M18 are defined by 05-adversarial-tests.txt as receipt/certificate validation failures, executed against my independent verifier with real raw logs; M09-M14 are product fault injections with clean counterparts, observed assertions, restored hashes and clean reruns at bb8ded9; M17 outstanding with exact site recorded."
 }

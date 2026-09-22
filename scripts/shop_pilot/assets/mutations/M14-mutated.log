@@ -1,0 +1,37 @@
+...F..........................................F........                  [100%]
+=================================== FAILURES ===================================
+_________ TestHardConstraints.test_moving_something_fixed_is_rejected __________
+
+self = <test_fix.TestHardConstraints object at 0x10a1c60d0>
+graph = SceneGraph(scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), revision=0, base_hash=None, nodes=[SceneNode(id=UUID(..., texts=[], appearance=None, reconstruction=None, attachment=None)], capture_to_room=None, unlocalized_observations=[])
+
+    def test_moving_something_fixed_is_rejected(self, graph):
+        shoved = apply_moves(
+            graph,
+            [NodeMove(node_id=COUNTER, delta_translation=Vec3(x=0.0, y=-1.0, z=0.0))],
+        )
+>       assert "moved_something_fixed" in _kinds(graph, shoved)
+E       AssertionError: assert 'moved_something_fixed' in set()
+E        +  where set() = _kinds(SceneGraph(scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), revision=0, base_hash=None, nodes=[SceneNode(id=UUID(..., texts=[], appearance=None, reconstruction=None, attachment=None)], capture_to_room=None, unlocalized_observations=[]), SceneGraph(scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), revision=1, base_hash=None, nodes=[SceneNode(id=UUID(..., texts=[], appearance=None, reconstruction=None, attachment=None)], capture_to_room=None, unlocalized_observations=[]))
+
+packages/agents/tests/test_fix.py:149: AssertionError
+____________________ test_model_cannot_move_a_fixed_fixture ____________________
+
+graph = SceneGraph(scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), revision=0, base_hash=None, nodes=[SceneNode(id=UUID(..., texts=[], appearance=None, reconstruction=None, attachment=None)], capture_to_room=None, unlocalized_observations=[])
+scenario = Scenario(name='Order a drink', stops=[Stop(name='Entrance', position=Vec3(x=0.0, y=-3.7, z=0.0), anchor_node_id=UUID('..., Stop(name='Exit', position=Vec3(x=0.0, y=-3.7, z=0.0), anchor_node_id=UUID('b47526c6-ec45-5e7c-b3f4-c7ee4a53227e'))])
+pipeline = <standardphysics_pipeline.measure.PipelineMeasurements object at 0x10a437090>
+pack = AgentRulePack(version='1.0.0', rules=[RuleSpec(id='route_clear_width', title='The path is too narrow', citation=Citati... of seats, not every seat. The share and the height are two separate checks and this entry only carries the height.')])
+ledger = VerificationLedger(entries=[Verification(rule_id='route_clear_width', section='403.5.1', threshold=36.0, unit='in', ve...(2026, 9, 22, 6, 50, 8, 510081, tzinfo=datetime.timezone.utc), second_check_by=None, second_check_at=None, note=None)])
+
+    def test_model_cannot_move_a_fixed_fixture(graph, scenario, pipeline, pack, ledger):
+        result = validate(graph, scenario, pipeline, pack, ledger, [move(node_id('counter'), dx=1)])
+        assert not result.accepted
+>       assert 'moved_something_fixed' in result.reasons
+E       AssertionError: assert 'moved_something_fixed' in ('nothing_measurable_improved',)
+E        +  where ('nothing_measurable_improved',) = RedesignResult(graph=None, model='openai/gpt-6-astra', accepted=False, reasons=('nothing_measurable_improved',)).reasons
+
+packages/agents/tests/test_redesign.py:26: AssertionError
+=========================== short test summary info ============================
+FAILED packages/agents/tests/test_fix.py::TestHardConstraints::test_moving_something_fixed_is_rejected
+FAILED packages/agents/tests/test_redesign.py::test_model_cannot_move_a_fixed_fixture
+2 failed, 53 passed in 8.77s

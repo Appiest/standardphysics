@@ -1,0 +1,54 @@
+........F..........F.......                                              [100%]
+=================================== FAILURES ===================================
+__ TestObstacleBelowReach.test_furniture_pushed_in_front_of_the_outlet_blocks __
+
+self = <test_approach.TestObstacleBelowReach object at 0x10615a750>
+
+    def test_furniture_pushed_in_front_of_the_outlet_blocks(self):
+        """A sofa against the wall under the socket keeps the approach
+        blocked even though the socket itself is untouched: the arm line from
+        any lawful standing point crosses the sofa."""
+        graph = _room("sofa_room")
+        outlet = _outlet(graph, "west")
+        sofa = _box("sofa", "object", "Sofa", "sofa", (-1.95, 0.0, 0.4), (0.9, 2.0, 0.8), True)
+        room = _with(graph, sofa)
+        result = evaluate_approach(
+            room, outlet, _start(room),
+            measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
+        )
+>       assert result.status == "blocked"
+E       AssertionError: assert 'needs_verification' == 'blocked'
+E         
+E         - blocked
+E         + needs_verification
+
+packages/agents/tests/test_approach.py:343: AssertionError
+___ TestFalseClearGuards.test_furniture_covering_the_outlet_is_not_a_support ___
+
+self = <test_approach.TestFalseClearGuards object at 0x106165c10>
+
+    def test_furniture_covering_the_outlet_is_not_a_support(self):
+        """A sofa whose footprint covers the outlet's plan position used to
+        count as the mounting surface and hide its own block. Plan
+        coincidence is not attachment evidence."""
+        graph = _room("covered_outlet")
+        outlet = _outlet(graph, "west")
+        sofa = _box("sofa", "object", "Sofa", "sofa", (-2.05, 0.0, 0.4), (0.8, 2.0, 0.8), True)
+        room = _with(graph, sofa)
+        support = support_of(room, outlet)
+        assert sofa.id not in support
+        result = evaluate_approach(
+            room, outlet, _start(room),
+            measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
+        )
+>       assert result.status == "blocked"
+E       AssertionError: assert 'needs_verification' == 'blocked'
+E         
+E         - blocked
+E         + needs_verification
+
+packages/agents/tests/test_approach.py:545: AssertionError
+=========================== short test summary info ============================
+FAILED packages/agents/tests/test_approach.py::TestObstacleBelowReach::test_furniture_pushed_in_front_of_the_outlet_blocks
+FAILED packages/agents/tests/test_approach.py::TestFalseClearGuards::test_furniture_covering_the_outlet_is_not_a_support
+2 failed, 25 passed in 1.74s
