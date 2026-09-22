@@ -40,6 +40,7 @@ from standardphysics_contracts import (
     ScopeManifest,
     ScopeRow,
 )
+from standardphysics_agents.checks import roles
 
 PILOT_TARGET_CLASSES = ["outlet", "television", "service_counter", "restroom_entrance"]
 
@@ -221,46 +222,36 @@ def _finding_row(
     )
 
 
-_SUBJECT_MATCHES = {
-    "door": lambda node: node.kind in {"door", "opening"}
-    or "door" in (node.raw_category or "").casefold(),
-    "entrance": lambda node: node.kind in {"door", "opening"}
-    or "door" in (node.raw_category or "").casefold(),
-    "service_counter": lambda node: node.kind in {"service_counter", "counter"}
-    or "counter" in (node.raw_category or "").casefold()
-    or "counter" in node.label.casefold(),
-    "point_of_sale": lambda node: node.kind in {"point_of_sale", "counter"}
-    or "counter" in (node.raw_category or "").casefold()
-    or "counter" in node.label.casefold(),
-    "dining_surface": lambda node: "table" in (node.raw_category or "").casefold(),
-    "floor": lambda node: node.kind == "floor"
-    or "floor" in (node.raw_category or "").casefold(),
-    "wall_mounted": lambda node: node.kind == "wall"
-    or "wall" in (node.raw_category or "").casefold(),
-    "restroom": lambda node: "restroom" in (node.raw_category or "").casefold()
-    or "restroom" in node.label.casefold(),
+_SUBJECT_ROLE_FINDERS = {
+    "service_counter": lambda graph: {n.id for n in roles.service_counters(graph)},
+    "point_of_sale": lambda graph: {n.id for n in roles.point_of_sale(graph)},
+    "dining_surface": lambda graph: {n.id for n in roles.dining_surfaces(graph)},
+    "floor": lambda graph: {n.id for n in roles.floors(graph)},
+    "door": lambda graph: {n.id for n in roles.doors(graph)},
+    "entrance": lambda graph: {n.id for n in roles.doors(graph)},
 }
-"""Requirement subjects read from the pack's applies_to, matched against the
-graph's own categories and labels. A locus that mixes a subject with its
-blockers (the counter and the chairs crowding its approach) must row the
-subject, never whatever node happens to come first."""
+"""Requirement subjects resolved by the existing role predicates, which read
+labels and geometry rather than branching on a closed set of kinds. A locus
+that mixes a subject with its blockers (the counter and the chairs crowding
+its approach) must row the subject, never whatever node happens to come first."""
 
 
 def _item_for(
     check: Check, finding: Finding, index: int, total: int, graph: SceneGraph
 ) -> ScopeItem:
-    """The item a finding is about, rooted in the graph's own categories.
+    """The item a finding is about, rooted in the graph's own roles.
 
     A locus that names one node becomes that node. A locus that names several
     (a counter plus the chairs crowding its clear floor space) prefers the
-    node matching the requirement's subject, and only falls back to the first
-    locus node when nothing matches. A finding with no locus keeps the site
-    slug it always had. A question finding observes nothing yet: whatever the
-    row names, it stays unobserved until a capture answers it.
+    node the role predicates call the requirement's subject, and only falls
+    back to the first locus node when nothing matches. A finding with no locus
+    keeps the site slug it always had. A question finding observes nothing
+    yet: whatever the row names, it stays unobserved until a capture answers
+    it.
     """
     nodes = _locus_nodes(finding, graph)
     if nodes:
-        node = _subject_node(nodes, getattr(check, "applies_to", []) or [])
+        node = _subject_node(nodes, getattr(check, "applies_to", []) or [], graph)
         kind = _ITEM_KINDS_FOR_NODES.get(node.kind, "object")
         observed = finding.outcome != "question"
         return ScopeItem(
@@ -282,11 +273,14 @@ def _item_for(
     )
 
 
-def _subject_node(nodes: list, applies_to: list[str]):
-    matchers = [_SUBJECT_MATCHES[subject] for subject in applies_to if subject in _SUBJECT_MATCHES]
-    for matcher in matchers:
+def _subject_node(nodes: list, applies_to: list[str], graph: SceneGraph):
+    for subject in applies_to:
+        finder = _SUBJECT_ROLE_FINDERS.get(subject)
+        if finder is None:
+            continue
+        role_ids = finder(graph)
         for node in nodes:
-            if matcher(node):
+            if node.id in role_ids:
                 return node
     return nodes[0]
 
@@ -487,7 +481,7 @@ def build_evidence_dossier(
 
     allowed = {"satisfied", "violation", "needs_verification", "not_applicable", "unobserved"}
     _bind_assessment_identity(manifest, assessment)
-    before_after = _validated_before_after(before_after)
+    before_after = _validated_before_after(before_after, manifest)
     by_requirement: dict[str, list[dict]] = defaultdict(list)
     for row in manifest.rows:
         if not row.requested:
@@ -610,21 +604,84 @@ def _bind_assessment_identity(manifest: ScopeManifest, assessment: Assessment) -
             raise DossierIdentityError(field, manifest_value, assessment_value)
 
 
-def _validated_before_after(entries: list | None) -> list:
-    """Entries without measured before/after provenance are refused outright."""
-    clean = list(entries or [])
-    for entry in clean:
+def _validated_before_after(entries: list | None, manifest: ScopeManifest) -> list:
+    """Only identity-bound, typed, measured before/after evidence may pass.
+
+    Each entry names a `before` and an `after` record. A record's `measurement`
+    must validate as the pipeline's MeasurementBounds (typed, finite,
+    unit-tagged) with a source revision, and its `provenance` must bind that
+    measurement to this dossier's pinned scan identity: the scan id must parse
+    as a UUID and equal the manifest's, the revision must be an int matching
+    the measurement's source revision, and the method and actor must be real
+    non-empty names. Anything else — strings, shallow dicts, foreign scan ids —
+    is refused, so a fabricated claim can never be marked justified.
+    """
+    from uuid import UUID
+
+    from pydantic import ValidationError
+    from standardphysics_pipeline.primitives.uncertainty import MeasurementBounds
+
+    clean = []
+    for entry in list(entries or []):
         if not isinstance(entry, dict):
             raise DossierProvenanceError(
                 f"before_after entry is not a record: {entry!r}"
             )
         for side in ("before", "after"):
             record = entry.get(side)
-            if not isinstance(record, dict) or not record.get("measurement") or not record.get("provenance"):
+            if not isinstance(record, dict):
                 raise DossierProvenanceError(
-                    f"before_after entry {entry!r} lacks a measured {side} "
-                    "record with measurement and provenance"
+                    f"before_after entry {entry!r} has no {side} record"
                 )
+            provenance = record.get("provenance")
+            if not isinstance(provenance, dict):
+                raise DossierProvenanceError(
+                    f"before_after {side} provenance must be a record, not {provenance!r}"
+                )
+            scan_id = provenance.get("scan_id")
+            try:
+                if not isinstance(scan_id, str) or UUID(scan_id) != manifest.scan_id:
+                    raise DossierProvenanceError(
+                        f"before_after {side} provenance scan_id {scan_id!r} does "
+                        "not bind to the pinned scan identity"
+                    )
+            except ValueError as exc:
+                raise DossierProvenanceError(
+                    f"before_after {side} provenance scan_id {scan_id!r} is not a scan identity"
+                ) from exc
+            revision = provenance.get("revision")
+            if not isinstance(revision, int) or revision < 0:
+                raise DossierProvenanceError(
+                    f"before_after {side} provenance revision {revision!r} is not a revision"
+                )
+            for field in ("method", "actor"):
+                value = provenance.get(field)
+                if not isinstance(value, str) or not value.strip():
+                    raise DossierProvenanceError(
+                        f"before_after {side} provenance {field} {value!r} is not a real name"
+                    )
+            raw_measurement = record.get("measurement")
+            try:
+                bounds = MeasurementBounds.model_validate(raw_measurement)
+            except ValidationError as exc:
+                raise DossierProvenanceError(
+                    f"before_after {side} measurement is not a typed measurement: {exc}"
+                ) from exc
+            if not bounds.method.strip() or not bounds.unit.strip():
+                raise DossierProvenanceError(
+                    f"before_after {side} measurement has no method or unit"
+                )
+            if bounds.source_revision is None:
+                raise DossierProvenanceError(
+                    f"before_after {side} measurement carries no source revision"
+                )
+            if bounds.source_revision != revision:
+                raise DossierProvenanceError(
+                    f"before_after {side} provenance revision {revision} does not "
+                    f"match the measurement source revision {bounds.source_revision}"
+                )
+            record["measurement"] = bounds.model_dump()
+        clean.append(entry)
     return clean
 
 

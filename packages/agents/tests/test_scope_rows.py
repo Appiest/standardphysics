@@ -309,16 +309,76 @@ class TestDossierBeforeAfterProvenance:
         book = load_ledger()
         result = assess(graph, scenario, PipelineMeasurements(),
                         rules=pack, ledger=book, max_tier=3)
+
+        def record(inches):
+            return {
+                "measurement": {
+                    "kind": "bounds",
+                    "estimate": inches,
+                    "low": inches,
+                    "high": inches,
+                    "unit": "in",
+                    "method": "tape measure",
+                    "source_revision": 0,
+                },
+                "provenance": {
+                    "scan_id": str(manifest.scan_id),
+                    "revision": 0,
+                    "method": "tape measure",
+                    "actor": "field technician",
+                },
+            }
+
         dossier = build_evidence_dossier(
             manifest, result.assessment, site={},
             control_measurement_gaps=[], recapture_notes=[],
-            before_after=[{
-                "before": {"measurement": {"inches": 31.0}, "provenance": {"scan": "r0"}},
-                "after": {"measurement": {"inches": 36.0}, "provenance": {"scan": "r1"}},
-            }],
+            before_after=[{"before": record(31.0), "after": record(36.0)}],
         )
         assert dossier["before_after"]["justified"] is True
         assert len(dossier["before_after"]["entries"]) == 1
+
+    def test_fabricated_provenance_strings_are_refused(self, manifest, pack):
+        from standardphysics_api.scope_manifest import DossierProvenanceError
+
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        result = assess(graph, scenario, PipelineMeasurements(),
+                        rules=pack, ledger=book, max_tier=3)
+        with pytest.raises(DossierProvenanceError):
+            build_evidence_dossier(
+                manifest, result.assessment, site={},
+                control_measurement_gaps=[], recapture_notes=[],
+                before_after=[{
+                    "before": {"measurement": "invented", "provenance": "invented"},
+                    "after": {"measurement": "invented", "provenance": "invented"},
+                }],
+            )
+
+    def test_a_foreign_scan_identity_is_refused(self, manifest, pack):
+        from standardphysics_api.scope_manifest import DossierProvenanceError
+
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        result = assess(graph, scenario, PipelineMeasurements(),
+                        rules=pack, ledger=book, max_tier=3)
+        record = {
+            "measurement": {
+                "kind": "bounds", "estimate": 31.0, "low": 31.0, "high": 31.0,
+                "unit": "in", "method": "tape measure", "source_revision": 0,
+            },
+            "provenance": {
+                "scan_id": "78269703-964c-4147-b602-e60bd9d4b097",
+                "revision": 0, "method": "tape measure", "actor": "field technician",
+            },
+        }
+        with pytest.raises(DossierProvenanceError):
+            build_evidence_dossier(
+                manifest, result.assessment, site={},
+                control_measurement_gaps=[], recapture_notes=[],
+                before_after=[{"before": record, "after": record}],
+            )
 
 
 class TestDossierItemRooting:
@@ -329,7 +389,7 @@ class TestDossierItemRooting:
         graph = build_graph()
         chair = graph.by_id(node_id("chair_3"))
         counter = graph.by_id(node_id("counter"))
-        assert _subject_node([chair, counter], ["service_counter"]).id == counter.id
+        assert _subject_node([chair, counter], ["service_counter"], graph).id == counter.id
 
     def test_question_rows_observe_nothing(self, manifest):
         for row in manifest.rows:
