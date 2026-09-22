@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 from standardphysics_api.scope_manifest import (
     PILOT_TARGET_CLASSES,
+    build_evidence_dossier,
     build_scope_manifest,
 )
 from standardphysics_agents import VerificationLedger, assess, load_ledger, load_pack
@@ -165,3 +166,59 @@ def test_the_manifest_hash_covers_rows(pack):
         reviews={"route_clear_width": "needs_review"},
     )
     assert first.manifest_hash != second.manifest_hash
+
+
+class TestEvidenceDossier:
+    def test_a_dossier_covers_every_requested_requirement(self, manifest, pack):
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        result = assess(graph, scenario, PipelineMeasurements(),
+                        rules=pack, ledger=book, max_tier=3)
+        dossier = build_evidence_dossier(
+            manifest, result.assessment,
+            site={"scan": "synthetic fixture"},
+            control_measurement_gaps=["no independent field controls exist"],
+            recapture_notes=["no human inventory recorded"],
+        )
+        assert dossier["coverage"]["outcome_coverage_fraction"] == 1.0
+        assert dossier["coverage"]["unsupported_whole_site_compliance_claims"] == 0
+        assert set(dossier["requirements"]) == set(manifest.requested_requirements)
+        for requirement, rows in dossier["requirements"].items():
+            assert rows, requirement
+            for row in rows:
+                assert row["reason"], requirement
+                assert row["legal_review_status"] in {
+                    "unreviewed_preview", "needs_review", "reviewer_supplied",
+                }
+
+    def test_a_dossier_refuses_an_omitted_requirement(self, manifest, pack):
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        result = assess(graph, scenario, PipelineMeasurements(),
+                        rules=pack, ledger=book, max_tier=3)
+        pruned = manifest.model_copy(
+            update={"rows": [r for r in manifest.rows
+                             if r.requirement_id != "route_clear_width"]},
+        )
+        with pytest.raises(ValueError, match="cannot omit requested requirements"):
+            build_evidence_dossier(
+                pruned, result.assessment,
+                site={},
+                control_measurement_gaps=[],
+                recapture_notes=[],
+            )
+
+    def test_before_after_stays_empty_until_supported(self, manifest, pack):
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        result = assess(graph, scenario, PipelineMeasurements(),
+                        rules=pack, ledger=book, max_tier=3)
+        dossier = build_evidence_dossier(
+            manifest, result.assessment,
+            site={}, control_measurement_gaps=[], recapture_notes=[],
+        )
+        assert dossier["before_after"]["justified"] is False
+        assert dossier["before_after"]["entries"] == []

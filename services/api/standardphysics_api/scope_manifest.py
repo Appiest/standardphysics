@@ -419,6 +419,122 @@ def _stand_in_check(check_id: str, finding: Finding) -> Check:
     )
 
 
+def build_evidence_dossier(
+    manifest: ScopeManifest,
+    assessment: Assessment,
+    *,
+    site: Mapping[str, str],
+    control_measurement_gaps: list[str],
+    recapture_notes: list[str],
+    before_after: list[str] | None = None,
+) -> dict:
+    """The scoped evidence dossier G13 describes, from a frozen manifest.
+
+    Every requested requirement carries its visible rows with provenance
+    (item identity and source), the calculation outcome, the reason or the
+    exact missing input, the source edition and the legal-review status.
+    Outcome coverage over the requested denominator is computed and refused
+    unless complete, so an unreviewed or unevaluated requirement can never
+    fall out of the dossier.
+
+    `before_after` holds recommendation evidence and stays absent (and the
+    dossier says so) when no justified before/after exists at this revision.
+    """
+    from collections import defaultdict
+
+    allowed = {"satisfied", "violation", "needs_verification", "not_applicable", "unobserved"}
+    by_requirement: dict[str, list[dict]] = defaultdict(list)
+    for row in manifest.rows:
+        if not row.requested:
+            continue
+        by_requirement[row.requirement_id].append(
+            {
+                "item": {
+                    "slug": row.item.item_slug,
+                    "kind": row.item.item_kind,
+                    "item_id": str(row.item.item_id) if row.item.item_id else None,
+                    "label": row.item.label,
+                    "observed": row.item.observed,
+                    "source": row.item.source,
+                },
+                "outcome": row.outcome,
+                "reason": row.reason,
+                "applicability": row.applicability,
+                "applicability_reason": row.applicability_reason,
+                "evidence_refs": row.evidence_refs,
+                "measurement": row.measurement,
+                "source_version": row.source_version,
+                "legal_review_status": row.legal_review_status,
+            }
+        )
+
+    requested = sorted(manifest.requested_requirements)
+    covered = [req for req in requested if by_requirement.get(req)]
+    fraction = len(covered) / max(len(requested), 1)
+    if fraction < 1.0:
+        missing = sorted(set(requested) - set(covered))
+        raise ValueError(
+            f"dossier cannot omit requested requirements: {missing}; "
+            f"coverage {fraction:g} < 1.0"
+        )
+    for req in requested:
+        for entry in by_requirement[req]:
+            if entry["outcome"] not in allowed:
+                raise ValueError(f"row for {req} has outcome {entry['outcome']!r}")
+            if not entry.get("reason"):
+                raise ValueError(f"row for {req} has no reason or missing-input note")
+
+    return {
+        "schema_version": 1,
+        "kind": "moffett_scoped_evidence_dossier",
+        "pinned": {
+            "scan_id": str(manifest.scan_id),
+            "graph_revision": manifest.graph_revision,
+            "graph_hash": manifest.graph_hash,
+            "rulepack_version": manifest.rulepack_version,
+            "manifest_id": str(manifest.id),
+            "manifest_hash": manifest.manifest_hash,
+            "assessment_id": str(assessment.id),
+            "assessment_pass_number": assessment.pass_number,
+            "created_at": manifest.created_at.isoformat(),
+        },
+        "site": dict(site),
+        "requested_requirements": requested,
+        "requested_classes": manifest.requested_classes,
+        "route_endpoints": manifest.route_endpoints,
+        "applicability_questions": manifest.applicability_questions,
+        "unresolved_questions": manifest.unresolved_questions,
+        "requirements": {
+            req: by_requirement[req] for req in requested
+        },
+        "legal_review": {
+            "status": "no human reviews recorded at this revision",
+            "per_row_statuses_present": True,
+            "note": "every row carries its own legal_review_status; no row may claim reviewer_supplied unless a review was supplied",
+        },
+        "control_measurements": {
+            "independent_field_controls": [],
+            "gaps": list(control_measurement_gaps),
+        },
+        "recapture_and_verification": list(recapture_notes),
+        "before_after": {
+            "justified": bool(before_after),
+            "entries": list(before_after or []),
+            "note": (
+                "recommendations appear only where a before/after measurement "
+                "set supports them; an empty list means none is justified at this revision"
+            ),
+        },
+        "coverage": {
+            "requested_requirements": len(requested),
+            "requirements_with_explicit_outcome": len(covered),
+            "outcome_coverage_fraction": fraction,
+            "unsupported_whole_site_compliance_claims": 0,
+            "note": "a complete dossier can truthfully contain violations and unknowns, and never certifies the site",
+        },
+    }
+
+
 def _hash(**fields) -> str:
     payload = json.dumps(fields, sort_keys=True, default=str, ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
