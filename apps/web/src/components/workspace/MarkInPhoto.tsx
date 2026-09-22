@@ -4,7 +4,7 @@ import { Camera, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { getFrames, manualMarkRefusal, markObservation, type FrameEntry } from "@/lib/review-client";
-import { isUsablePointerBox, pointerBoxLabel, sensorBoxFromPointer, type PointerBox } from "@/lib/sensor-box";
+import { isUsablePointerBox, pointerBoxLabel, sensorBoxFromPointer, type PointerBox, type RectLike } from "@/lib/sensor-box";
 import { TARGET_CLASS_LABEL, type TargetClass } from "@/lib/review-targets";
 import type { SceneGraph } from "@/types/contracts";
 
@@ -157,11 +157,12 @@ function FramePicker({ frames, unreadableCount, targetLabel, selected, box, list
             onMove={onMove}
             onUp={onUp}
           />
-          {box && isUsablePointerBox(box) && (
-            <p className="px-2 py-1 text-[11px] text-ink-muted">
-              {pointerBoxLabel(box)}. Saved marks keep this spot as photographed evidence.
-            </p>
-          )}
+          {/* Reserved status slot: always present, same height whether the box
+              label is showing or not, so the bottom-aligned dialog cannot grow
+              (and shift the photo) the moment a usable box appears. */}
+          <p aria-live="polite" className="min-h-6 px-2 py-1 text-[11px] text-ink-muted">
+            {box && isUsablePointerBox(box) ? pointerBoxLabel(box) : null}
+          </p>
         </div>
       )}
     </>
@@ -239,6 +240,7 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
   const [attachNode, setAttachNode] = useState(suggestedNodeId !== null);
   const [note, setNote] = useState("");
   const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const pressAnchor = useRef<{ rect: RectLike; width: number; height: number } | null>(null);
   const surfaceRef = useRef<HTMLImageElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
@@ -289,24 +291,35 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
   const choose = useCallback((frame: FrameEntry) => {
     setSelectedId(frame.frame_id);
     setBox(null);
+    pressAnchor.current = null;
   }, []);
 
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
     event.preventDefault();
     dragStart.current = { x: event.clientX, y: event.clientY };
+    const surface = surfaceRef.current;
+    if (surface && selected) {
+      const rect = surface.getBoundingClientRect();
+      pressAnchor.current = {
+        rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+        // The frame's stored sensor size is authoritative (see FrameEntry):
+        // the natural size lags the bytes but must never change the mapping.
+        width: selected.width,
+        height: selected.height,
+      };
+    }
     event.currentTarget.setPointerCapture(event.pointerId);
-  }, []);
+  }, [selected]);
 
   const onPointerMove = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
-    if (!dragStart.current || !surfaceRef.current || selected === null) return;
-    const natural = { width: surfaceRef.current.naturalWidth, height: surfaceRef.current.naturalHeight };
-    const rect = surfaceRef.current.getBoundingClientRect();
-    if (natural.width === 0 || natural.height === 0) return;
-    setBox(sensorBoxFromPointer(dragStart.current, { x: event.clientX, y: event.clientY }, rect, natural));
-  }, [selected]);
+    if (!dragStart.current || !pressAnchor.current) return;
+    const { rect, width, height } = pressAnchor.current;
+    setBox(sensorBoxFromPointer(dragStart.current, { x: event.clientX, y: event.clientY }, rect, { width, height }));
+  }, []);
 
   const onPointerEnd = useCallback(() => {
     dragStart.current = null;
+    pressAnchor.current = null;
   }, []);
 
   const canSubmit = selected !== null && box !== null && isUsablePointerBox(box) && !saving;
