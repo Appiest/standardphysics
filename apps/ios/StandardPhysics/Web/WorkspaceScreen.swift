@@ -81,10 +81,12 @@ struct WorkspaceWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.sessionToken = sessionToken
         context.coordinator.load(url, in: webView)
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        coordinator.detach()
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "nativeCapture")
         webView.navigationDelegate = nil
         webView.stopLoading()
@@ -92,10 +94,15 @@ struct WorkspaceWebView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, WKDownloadDelegate {
         private let allowedOrigin: WebOrigin
-        private let sessionToken: String?
+        /// The signed-in owner's current session. Mutable so a token change or
+        /// a sign-out re-synchronizes the planted cookie instead of leaving
+        /// the old session behind in the web view's data store.
+        var sessionToken: String?
         private let onScanRequested: () -> Void
         private let onFailure: (String) -> Void
-        private var requestedURL: URL?
+        private var loadedURL: URL?
+        private var loadedToken: String?
+        private var cookieGeneration = 0
         private weak var webView: WKWebView?
         private var downloadDestinations: [ObjectIdentifier: URL] = [:]
 
@@ -112,23 +119,44 @@ struct WorkspaceWebView: UIViewRepresentable {
             self.webView = webView
         }
 
+        func detach() {
+            cookieGeneration += 1
+            webView = nil
+        }
+
         func load(_ url: URL, in webView: WKWebView) {
-            guard requestedURL != url, allowedOrigin.allowsLocalDemo, allowedOrigin.contains(url) else { return }
-            requestedURL = url
+            guard allowedOrigin.allowsLocalDemo, allowedOrigin.contains(url) else { return }
+            guard loadedURL != url || loadedToken != sessionToken else { return }
+            loadedURL = url
+            loadedToken = sessionToken
+            cookieGeneration += 1
+            let generation = cookieGeneration
             let request = URLRequest(url: url)
             // The workspace authenticates the same way the phone does: one
             // sp_session cookie on the workspace origin, forwarded by its
-            // server to the API. Hand the signed-in session over before the
-            // first navigation, or the shop opens to a sign-in screen.
-            guard let cookie = WorkspaceSessionBridge.cookie(token: sessionToken, origin: allowedOrigin) else {
-                webView.load(request)
-                return
-            }
-            webView.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) {
+            // server to the API. Plant or clear it before navigating, so the
+            // shop never opens with a previous owner's session.
+            let navigate: () -> Void = {
                 DispatchQueue.main.async {
-                    guard self.webView === webView else { return }
+                    guard generation == self.cookieGeneration, self.webView === webView else { return }
                     webView.load(request)
                 }
+            }
+            switch WorkspaceCookieSync.action(token: sessionToken, origin: allowedOrigin) {
+            case .set:
+                if let cookie = WorkspaceSessionBridge.cookie(token: sessionToken, origin: allowedOrigin) {
+                    webView.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) { navigate() }
+                } else {
+                    navigate()
+                }
+            case .delete:
+                if let removal = WorkspaceSessionBridge.removalCookie(for: allowedOrigin) {
+                    webView.configuration.websiteDataStore.httpCookieStore.delete(removal) { navigate() }
+                } else {
+                    navigate()
+                }
+            case .none:
+                navigate()
             }
         }
 
@@ -333,6 +361,33 @@ struct WorkspaceSessionBridge {
             properties[.secure] = String(true)
         }
         return HTTPCookie(properties: properties)
+    }
+
+    /// A cookie that only ever identifies the planted session for deletion:
+    /// name, domain and path. Its value is never sent.
+    static func removalCookie(for origin: WebOrigin) -> HTTPCookie? {
+        guard origin.allowsLocalDemo else { return nil }
+        return HTTPCookie(properties: [
+            .name: sessionCookieName,
+            .value: "removed",
+            .domain: origin.host,
+            .path: "/",
+        ])
+    }
+}
+
+/// Which cookie action the workspace web view owes before its next navigation.
+struct WorkspaceCookieSync {
+    enum Action: Equatable {
+        case none
+        case set
+        case delete
+    }
+
+    static func action(token: String?, origin: WebOrigin) -> Action {
+        guard origin.allowsLocalDemo else { return .none }
+        guard let token, !token.isEmpty else { return .delete }
+        return .set
     }
 }
 

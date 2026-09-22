@@ -140,6 +140,28 @@ final class WorkspaceWebViewTests: XCTestCase {
         XCTAssertNil(WorkspaceSessionBridge.cookie(token: "", origin: origin))
     }
 
+    func testCookieSyncSetsOnATokenAndDeletesWhenSignedOut() throws {
+        let origin = try XCTUnwrap(WebOrigin(url: URL(string: "http://10.9.104.8:8893")!))
+        XCTAssertEqual(WorkspaceCookieSync.action(token: "fresh-token", origin: origin), .set)
+        XCTAssertEqual(WorkspaceCookieSync.action(token: nil, origin: origin), .delete)
+        XCTAssertEqual(WorkspaceCookieSync.action(token: "", origin: origin), .delete)
+    }
+
+    func testCookieSyncNeverTouchesARemoteOrigin() throws {
+        let remote = try XCTUnwrap(WebOrigin(url: URL(string: "https://workspace.example")!))
+        XCTAssertEqual(WorkspaceCookieSync.action(token: "fresh-token", origin: remote), .none)
+        XCTAssertEqual(WorkspaceCookieSync.action(token: nil, origin: remote), .none)
+        XCTAssertNil(WorkspaceSessionBridge.removalCookie(for: remote))
+    }
+
+    func testRemovalCookieIdentifiesOnlyThePlantedSession() throws {
+        let origin = try XCTUnwrap(WebOrigin(url: URL(string: "http://10.9.104.8:8893")!))
+        let removal = try XCTUnwrap(WorkspaceSessionBridge.removalCookie(for: origin))
+        XCTAssertEqual(removal.name, "sp_session")
+        XCTAssertEqual(removal.domain, "10.9.104.8")
+        XCTAssertEqual(removal.path, "/")
+    }
+
     func testWorkspaceURLKeepsScanPathsAndBareOriginIntact() throws {
         let workspace = URL(string: "http://10.9.104.8:8893")!
         XCTAssertEqual(WorkspaceScreen.url(workspace: workspace, scanID: nil), workspace)
