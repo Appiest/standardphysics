@@ -1,0 +1,45 @@
+.............................................................F.......... [ 39%]
+........................................................................ [ 78%]
+.......................................                                  [100%]
+=================================== FAILURES ===================================
+_________ test_overlay_aligns_capture_floors_without_mutating_payloads _________
+
+    def test_overlay_aligns_capture_floors_without_mutating_payloads() -> None:
+        first = _payload(str(uuid.uuid4()), str(uuid.uuid4()), -1.0, 0.75)
+        second = _payload(str(uuid.uuid4()), str(uuid.uuid4()), -1.2, 0.75)
+        first_before = copy.deepcopy(first)
+        second_before = copy.deepcopy(second)
+    
+        merged = overlay([first, second])
+    
+        assert first == first_before
+        assert second == second_before
+        assert merged["captureMetadata"] == first["captureMetadata"]
+        assert merged["floors"][1]["floorMetadata"] == "preserve me"
+        assert merged["objects"][1]["objectMetadata"] == {"label": "keep me"}
+        assert merged["floors"][1]["transform"][13] == pytest.approx(-1.0)
+        assert merged["objects"][1]["transform"][13] == pytest.approx(-0.25)
+    
+        graph = parse_room_json(merged)
+        floors = [node for node in graph.nodes if node.kind == "floor"]
+        objects = [node for node in graph.nodes if node.kind == "object"]
+>       assert [node.transform.position.z for node in floors] == pytest.approx([0.0, 0.0])
+E       assert [-1.0, -1.0] == approx([0.0 ±....0 ± 1.0e-12])
+E         
+E         comparison failed. Mismatched elements: 2 / 2:
+E         Max absolute difference: 1.0
+E         Max relative difference: 1.0
+E         Index | Obtained | Expected     
+E         0     | -1.0     | 0.0 ± 1.0e-12
+E         1     | -1.0     | 0.0 ± 1.0e-12
+
+services/api/tests/test_combine_scans.py:68: AssertionError
+=============================== warnings summary ===============================
+../../standardphysics/.venv/lib/python3.11/site-packages/starlette/testclient.py:53
+  /Users/yanzihao/Documents/standardphysics/.venv/lib/python3.11/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED services/api/tests/test_combine_scans.py::test_overlay_aligns_capture_floors_without_mutating_payloads
+1 failed, 182 passed, 1 warning in 80.45s (0:01:20)

@@ -1,10 +1,10 @@
 {
-  "receipt_id": "REVIEW-S-AGENTS",
-  "gate_id": "G03",
+  "receipt_id": "REVIEW-K-API",
+  "gate_id": "G00",
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "422d16eab4934a1021720b4d54f15be876071644",
+  "source_commit": "fcf681fb5ae8ce251b9a210adadb379c4ce9f9c3",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "eb8c31f1addb1f7c0e58d01c4b62f222237fc31444bababd7d80e5aa9c01836f",
@@ -12,9 +12,9 @@
   "input_artifacts": [],
   "output_artifacts": [
     {
-      "path": "s-agents.log",
-      "sha256": "ea5c80bde1468f45a5a85e06a83705aa18a885a5ffb88e9d7d7a2c42a1086bdd",
-      "size_bytes": 11801,
+      "path": "k-api.log",
+      "sha256": "dceebb322e67510909bf6f9070c5c31c9d841b087ea8f121fee67aca99ab6ad9",
+      "size_bytes": 2724,
       "content_type": "text/plain"
     }
   ],
@@ -23,8 +23,8 @@
   "scenario_hash": null,
   "scope_manifest_hash": null,
   "evidence_manifest_hash": null,
-  "command_or_recorded_ui_steps": "suite transcription on disposable worktree at lane S HEAD 422d16e",
-  "working_directory": "/tmp/q-review-s",
+  "command_or_recorded_ui_steps": "suite transcription on disposable worktree at lane K HEAD fcf681f",
+  "working_directory": "/tmp/q-review-k",
   "environment_versions": {
     "python": "3.11",
     "node": "shared node_modules (read-only)"
@@ -39,11 +39,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "7 failed",
-        "artifact": "s-agents.log"
+        "substring": "184 passed",
+        "artifact": "k-api.log"
       },
       "evidence_paths": [
-        "s-agents.log"
+        "k-api.log"
       ]
     },
     {
@@ -52,35 +52,36 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "test_workflows.py::test_every_inferred_entrance_gets_a_route_to_every_object",
-        "artifact": "s-agents.log"
+        "substring": "FAILED services/api/tests/test_combine_scans.py::test_overlay_aligns_capture_floors_without_mutating_payloads",
+        "artifact": "k-api.log"
       },
       "evidence_paths": [
-        "s-agents.log"
+        "k-api.log"
       ]
     },
     {
       "id": "log-hash",
       "measurement_method": "file_sha256",
-      "expected": "ea5c80bde1468f45a5a85e06a83705aa18a885a5ffb88e9d7d7a2c42a1086bdd",
-      "observed": "ea5c80bde1468f45a5a85e06a83705aa18a885a5ffb88e9d7d7a2c42a1086bdd",
+      "expected": "dceebb322e67510909bf6f9070c5c31c9d841b087ea8f121fee67aca99ab6ad9",
+      "observed": "dceebb322e67510909bf6f9070c5c31c9d841b087ea8f121fee67aca99ab6ad9",
       "params": {
-        "artifact": "s-agents.log"
+        "artifact": "k-api.log"
       },
       "evidence_paths": [
-        "s-agents.log"
+        "k-api.log"
       ]
     }
   ],
-  "raw_log_path": "s-agents.log",
+  "raw_log_path": "k-api.log",
   "evaluator_identity": {
     "actor": "lane-Q",
     "attestation": "independent recompute on a disposable worktree"
   },
   "findings": {
-    "claim_263_passed_32_skipped": "CONFIRMED",
-    "claim_api_17_passed": "CONFIRMED",
-    "claim_agents_failures_pre_existing": "CONFIRMED (identical 7 at base 54e09e4 and 8f2962f)",
-    "claim_ruff_zero_new": "CONFIRMED zero new; base discovery dir has 9 violations, S HEAD has 8 (S reduced by one)"
+    "claim_api_182_pass_only_combine_fails": "CONFIRMED with 184 passed (K's message understated by 2 test counts) and exactly the one known combine-floor failure",
+    "claim_contracts_pipeline_green": "CONFIRMED (272 passed, 32 skipped)",
+    "claim_agents_7_baseline": "CONFIRMED (identical failure set to base)",
+    "claim_web_tests_134_typecheck_green": "CONFIRMED; generated contracts.ts did not drift from the committed copy",
+    "contract_freeze_consumed": "2857f10 cherry-picked into lane Q worktree; freeze tests 17 passed"
   }
 }

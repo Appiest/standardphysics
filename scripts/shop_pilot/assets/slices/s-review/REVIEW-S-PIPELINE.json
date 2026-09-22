@@ -6,6 +6,7 @@
   "evidence_kind": "synthetic_component",
   "source_commit": "422d16eab4934a1021720b4d54f15be876071644",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+  "dirty_source_files": {},
   "contract_hash": "eb8c31f1addb1f7c0e58d01c4b62f222237fc31444bababd7d80e5aa9c01836f",
   "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
   "input_artifacts": [],
@@ -22,14 +23,14 @@
   "scenario_hash": null,
   "scope_manifest_hash": null,
   "evidence_manifest_hash": null,
-  "command_or_recorded_ui_steps": "pytest (per-review suite) in /tmp/q-review-s at 422d16e",
+  "command_or_recorded_ui_steps": "suite transcription on disposable worktree at lane S HEAD 422d16e",
   "working_directory": "/tmp/q-review-s",
   "environment_versions": {
     "python": "3.11",
-    "provider": "none"
+    "node": "shared node_modules (read-only)"
   },
-  "started_at": "2026-09-21T17:46:50.684298-07:00",
-  "finished_at": "2026-09-21T17:46:50.684298-07:00",
+  "started_at": "2026-09-21T17:56:23.306064-07:00",
+  "finished_at": "2026-09-21T17:56:23.306064-07:00",
   "exit_code": 0,
   "assertions": [
     {
@@ -38,8 +39,8 @@
       "expected": true,
       "observed": true,
       "params": {
-        "artifact": "s-pipeline.log",
-        "substring": "263 passed, 32 skipped"
+        "substring": "263 passed, 32 skipped",
+        "artifact": "s-pipeline.log"
       },
       "evidence_paths": [
         "s-pipeline.log"
@@ -61,12 +62,12 @@
   "raw_log_path": "s-pipeline.log",
   "evaluator_identity": {
     "actor": "lane-Q",
-    "attestation": "independent recompute on a disposable worktree at S HEAD"
+    "attestation": "independent recompute on a disposable worktree"
   },
   "findings": {
-    "S_claim_263_passed_32_skipped": "CONFIRMED",
-    "S_claim_api_17_passed": "CONFIRMED",
-    "S_claim_agents_failures_pre_existing": "CONFIRMED (identical 7 at base 54e09e4 and 8f2962f)",
-    "S_claim_ruff_zero_new": "CONFIRMED zero new; note: base discovery dir has 9 violations, S HEAD has 8 (S reduced by one), so '8 reproduce at base' is imprecise but not wrong"
+    "claim_263_passed_32_skipped": "CONFIRMED",
+    "claim_api_17_passed": "CONFIRMED",
+    "claim_agents_failures_pre_existing": "CONFIRMED (identical 7 at base 54e09e4 and 8f2962f)",
+    "claim_ruff_zero_new": "CONFIRMED zero new; base discovery dir has 9 violations, S HEAD has 8 (S reduced by one)"
   }
 }

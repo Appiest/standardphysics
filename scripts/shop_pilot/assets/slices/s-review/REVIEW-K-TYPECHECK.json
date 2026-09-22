@@ -1,10 +1,10 @@
 {
-  "receipt_id": "REVIEW-S-API",
-  "gate_id": "G03",
+  "receipt_id": "REVIEW-K-TYPECHECK",
+  "gate_id": "G00",
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "422d16eab4934a1021720b4d54f15be876071644",
+  "source_commit": "fcf681fb5ae8ce251b9a210adadb379c4ce9f9c3",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "eb8c31f1addb1f7c0e58d01c4b62f222237fc31444bababd7d80e5aa9c01836f",
@@ -12,9 +12,9 @@
   "input_artifacts": [],
   "output_artifacts": [
     {
-      "path": "s-api.log",
-      "sha256": "5e07cb52f7faf178db2c9cfd76c7bba7c4cf32b50dda6d07a3a97519d9270ae2",
-      "size_bytes": 687,
+      "path": "k-typecheck.log",
+      "sha256": "c41ad314c4c94fd936ff1dabe14bd4238239709d5d01f8e48fbbca70536f7549",
+      "size_bytes": 114,
       "content_type": "text/plain"
     }
   ],
@@ -23,8 +23,8 @@
   "scenario_hash": null,
   "scope_manifest_hash": null,
   "evidence_manifest_hash": null,
-  "command_or_recorded_ui_steps": "suite transcription on disposable worktree at lane S HEAD 422d16e",
-  "working_directory": "/tmp/q-review-s",
+  "command_or_recorded_ui_steps": "suite transcription on disposable worktree at lane K HEAD fcf681f",
+  "working_directory": "/tmp/q-review-k",
   "environment_versions": {
     "python": "3.11",
     "node": "shared node_modules (read-only)"
@@ -39,35 +39,36 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "17 passed",
-        "artifact": "s-api.log"
+        "substring": "Types generated successfully",
+        "artifact": "k-typecheck.log"
       },
       "evidence_paths": [
-        "s-api.log"
+        "k-typecheck.log"
       ]
     },
     {
       "id": "log-hash",
       "measurement_method": "file_sha256",
-      "expected": "5e07cb52f7faf178db2c9cfd76c7bba7c4cf32b50dda6d07a3a97519d9270ae2",
-      "observed": "5e07cb52f7faf178db2c9cfd76c7bba7c4cf32b50dda6d07a3a97519d9270ae2",
+      "expected": "c41ad314c4c94fd936ff1dabe14bd4238239709d5d01f8e48fbbca70536f7549",
+      "observed": "c41ad314c4c94fd936ff1dabe14bd4238239709d5d01f8e48fbbca70536f7549",
       "params": {
-        "artifact": "s-api.log"
+        "artifact": "k-typecheck.log"
       },
       "evidence_paths": [
-        "s-api.log"
+        "k-typecheck.log"
       ]
     }
   ],
-  "raw_log_path": "s-api.log",
+  "raw_log_path": "k-typecheck.log",
   "evaluator_identity": {
     "actor": "lane-Q",
     "attestation": "independent recompute on a disposable worktree"
   },
   "findings": {
-    "claim_263_passed_32_skipped": "CONFIRMED",
-    "claim_api_17_passed": "CONFIRMED",
-    "claim_agents_failures_pre_existing": "CONFIRMED (identical 7 at base 54e09e4 and 8f2962f)",
-    "claim_ruff_zero_new": "CONFIRMED zero new; base discovery dir has 9 violations, S HEAD has 8 (S reduced by one)"
+    "claim_api_182_pass_only_combine_fails": "CONFIRMED with 184 passed (K's message understated by 2 test counts) and exactly the one known combine-floor failure",
+    "claim_contracts_pipeline_green": "CONFIRMED (272 passed, 32 skipped)",
+    "claim_agents_7_baseline": "CONFIRMED (identical failure set to base)",
+    "claim_web_tests_134_typecheck_green": "CONFIRMED; generated contracts.ts did not drift from the committed copy",
+    "contract_freeze_consumed": "2857f10 cherry-picked into lane Q worktree; freeze tests 17 passed"
   }
 }
