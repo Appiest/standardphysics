@@ -17,8 +17,9 @@ import statistics
 from dataclasses import dataclass
 from typing import Literal
 
-from standardphysics_contracts import SceneNode, bounds_the_room, stands_upright, to_inches
+from standardphysics_contracts import SceneNode, bounds_the_room, to_inches
 
+from ..checks.walls import upright_walls
 from ..numbers import COUNT_WORDS, plural, span
 from ..tracing import traced
 from . import subjects
@@ -88,7 +89,7 @@ def _spacing(groups: list[list[float]]) -> float | None:
 def _near_a_wall(nodes: list[SceneNode], context: AskContext) -> int:
     from standardphysics_pipeline import gap_between_nodes
 
-    walls = [node for node in context.graph.nodes if stands_upright(node)]
+    walls = upright_walls(context.graph)
     if not walls:
         return 0
     return sum(
@@ -104,7 +105,7 @@ def _extent(values: list[float]) -> float:
 
 
 def _room_span(context: AskContext, axis: tuple[float, float]) -> float:
-    walls = [node for node in context.graph.nodes if stands_upright(node)]
+    walls = upright_walls(context.graph)
     if not walls:
         return 0.0
     return _extent(_project(walls, axis))

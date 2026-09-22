@@ -17,7 +17,7 @@ there is nothing there to report.
 
 from __future__ import annotations
 
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3, bounds_the_room, lies_flat, stands_upright, to_inches
+from standardphysics_contracts import SceneGraph, SceneNode, Vec3, bounds_the_room, lies_flat, to_inches
 from standardphysics_pipeline import footprint
 from standardphysics_pipeline.footprints import rotation_about_z
 
@@ -25,6 +25,7 @@ from ..rules import RuleSpec
 from ..tracing import traced
 from .context import CheckContext
 from .observation import Observation
+from .walls import upright_walls
 
 RULE_ID = "protruding_objects"
 
@@ -89,7 +90,7 @@ def projection_inches(node: SceneNode, wall: SceneNode, room_centre: Vec3) -> fl
 def _host_wall(node: SceneNode, graph: SceneGraph) -> SceneNode | None:
     """The wall a mounted object belongs to, by its declared parent or by
     whichever one it reaches out of least."""
-    walls = [other for other in graph.nodes if stands_upright(other)]
+    walls = upright_walls(graph)
     if not walls:
         return None
     if node.parent_id is not None:

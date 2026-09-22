@@ -30,6 +30,7 @@ from standardphysics_contracts import (
 from standardphysics_contracts.rules import Tier
 
 from .assess import Pass, assess
+from .checks.walls import is_room_shell
 from .loop import Loop, LoopStep, StepResult, _do_fix, run_loop
 from .mesh_collision import MeshCollisionIndex
 from .router import LocalPolicyRouter, TypeSafeRouter
@@ -201,7 +202,9 @@ def build_entrance_object_workflows(
     }
     workflows = []
     for entrance_index, entrance in enumerate(entrances):
-        for target in (node for node in graph.contents()):
+        for target in (
+            node for node in graph.contents() if not is_room_shell(node)
+        ):
             destination = existing_stops.get(target.id) or _stop_at_node(target)
             workflows.append(
                 Workflow(
