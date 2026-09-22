@@ -41,6 +41,7 @@ from standardphysics_pipeline import (
     clearance_map,
     contains_point,
     footprint,
+    gap_between,
 )
 from standardphysics_pipeline.occupancy import blocks_floor
 
@@ -53,28 +54,51 @@ from .occupancy import (
 
 ApproachStatus = Literal["clear", "blocked", "needs_verification"]
 
+HorizontalStatus = Literal["at_target", "beyond_body_envelope", "unmeasured"]
+
 OBSTRUCTION_STEP_METERS = 0.05
 """How finely the occupant-to-target line is sampled for furniture in the way."""
+
+GROUND_FLOOR_TOLERANCE_METERS = to_meters(12.0)
+"""How far a flat sheet may sit from the plan origin and still be the floor
+under the route. A ceiling over the same footprint lies flat too, and is not
+walkable evidence."""
 
 
 @dataclass(frozen=True)
 class ReachRecord:
-    """Personal reach for one occupant; legal reach is decided in the assessment."""
+    """Personal reach for one occupant; legal reach is decided in the assessment.
+
+    Height is the measured top of the target against the occupant's assumed
+    grasp ceiling. The horizontal distance from the standing point to the
+    target is screened against the occupant's own body envelope (half the
+    footprint diagonal): the body is measured, the arm is not, so nothing
+    beyond the body envelope is ever claimed reachable.
+    """
 
     occupant_id: str
     occupant_title: str
     target_height_inches: float | None
     personal_reach_inches: float | None
     status: Literal["within_personal_reach", "beyond_personal_reach", "unmeasured"]
+    horizontal_distance_inches: float | None
+    horizontal_status: HorizontalStatus
+    body_envelope_radius_inches: float
 
     @property
     def measured(self) -> bool:
-        return self.status != "unmeasured"
+        return self.status != "unmeasured" and self.horizontal_status != "unmeasured"
 
 
 @dataclass(frozen=True)
 class ApproachResult:
-    """Everything measured about one occupant journey to one target."""
+    """Everything measured about one occupant journey to one target.
+
+    `clear` means the measured approach holds for every occupant asked about:
+    path, aisle, turn, mesh sweep, standing floor, a target beside the body
+    and within personal reach. It never means legally compliant, and every
+    unmeasured input keeps the status at `needs_verification`.
+    """
 
     target_id: uuid.UUID
     status: ApproachStatus
@@ -109,11 +133,14 @@ def target_height_inches(node: SceneNode) -> float | None:
 
 
 def support_of(graph: SceneGraph, target: SceneNode) -> frozenset[uuid.UUID]:
-    """The nodes the target hangs off or stands in.
+    """The surfaces the target is attached to, and nothing else.
 
-    Everything whose footprint contains the target's position counts, plus the
-    target itself and anything attached to it in the parent chain. These are
-    the thin attachments that are not solid obstacles for a direct reach.
+    Only room structure (things that bound the space, like the wall a socket
+    hangs in) whose footprint contains the target's plan position counts as a
+    support, plus the target's own parent chain. Furniture is never inferred
+    to be the mounting surface from plan coincidence alone: a sofa pushed
+    over an outlet covers it, and exempting everything that merely covers the
+    point would let it hide the block.
     """
     by_id = {node.id: node for node in graph.nodes}
     position = (target.transform.position.x, target.transform.position.y)
@@ -122,6 +149,7 @@ def support_of(graph: SceneGraph, target: SceneNode) -> frozenset[uuid.UUID]:
         for other in graph.nodes
         if other.id != target.id
         and not lies_flat(other)
+        and bounds_the_room(other)
         and contains_point(footprint(other), position)
     }
     attached: set[uuid.UUID] = set()
@@ -215,11 +243,49 @@ def _line_obstructions(
     return tuple(sorted(found))
 
 
-def _floor_present(graph: SceneGraph) -> bool:
-    return any(lies_flat(node) for node in graph.nodes)
+def _floor_evidence(graph: SceneGraph) -> bool:
+    """Whether the scan carries a ground-plane sheet the route could stand on.
+
+    `lies_flat` alone is not floor evidence: a ceiling over the same
+    footprint lies flat too. The sheet must also sit within a foot of the
+    plan origin to count as the floor under this route.
+    """
+    return any(
+        lies_flat(node)
+        and abs(node.transform.position.z) <= GROUND_FLOOR_TOLERANCE_METERS
+        for node in graph.nodes
+    )
 
 
-def _reach_record(target: SceneNode, profile: OccupantProfile) -> ReachRecord:
+def _plan_gap_inches(stop: Vec3, target: SceneNode) -> float:
+    """Plan distance from the standing point to the target's footprint.
+
+    Measured to the footprint rather than the centre, so a wide built-in
+    surface is not credited as being further than its facing edge. Returns
+    zero when the point stands inside the footprint.
+    """
+    speck = 1e-6
+    probe = [
+        (stop.x - speck, stop.y - speck),
+        (stop.x + speck, stop.y - speck),
+        (stop.x + speck, stop.y + speck),
+        (stop.x - speck, stop.y + speck),
+    ]
+    return to_inches(gap_between(footprint(target), probe))
+
+
+def _reach_record(
+    target: SceneNode, profile: OccupantProfile, stop: Vec3 | None
+) -> ReachRecord:
+    horizontal: HorizontalStatus = "unmeasured"
+    distance: float | None = None
+    if stop is not None:
+        distance = _plan_gap_inches(stop, target)
+        horizontal = (
+            "at_target"
+            if distance <= profile.envelope_radius_inches
+            else "beyond_body_envelope"
+        )
     height = target_height_inches(target)
     if height is None:
         return ReachRecord(
@@ -228,6 +294,9 @@ def _reach_record(target: SceneNode, profile: OccupantProfile) -> ReachRecord:
             target_height_inches=None,
             personal_reach_inches=profile.personal_reach_inches,
             status="unmeasured",
+            horizontal_distance_inches=distance,
+            horizontal_status=horizontal,
+            body_envelope_radius_inches=profile.envelope_radius_inches,
         )
     if profile.personal_reach_inches is None:
         return ReachRecord(
@@ -236,6 +305,9 @@ def _reach_record(target: SceneNode, profile: OccupantProfile) -> ReachRecord:
             target_height_inches=height,
             personal_reach_inches=None,
             status="unmeasured",
+            horizontal_distance_inches=distance,
+            horizontal_status=horizontal,
+            body_envelope_radius_inches=profile.envelope_radius_inches,
         )
     status = (
         "within_personal_reach"
@@ -248,6 +320,9 @@ def _reach_record(target: SceneNode, profile: OccupantProfile) -> ReachRecord:
         target_height_inches=height,
         personal_reach_inches=profile.personal_reach_inches,
         status=status,
+        horizontal_distance_inches=distance,
+        horizontal_status=horizontal,
+        body_envelope_radius_inches=profile.envelope_radius_inches,
     )
 
 
@@ -258,23 +333,58 @@ def _arrival_turning(
     stop: Vec3,
     profile: OccupantProfile,
 ) -> tuple[float, Vec3]:
-    """The widest turning circle anywhere on the measured arrival.
+    """The widest turning circle on the final approach stretch.
 
-    The occupant turns somewhere on the way in, not necessarily with the body
-    pressed against the wall at the stop, and a measured path that hugs a wall
-    because everything else was wide is still an honest arrival. The screen
-    walks the whole measured path backwards from the stop and takes the widest
-    circle found; a route that never offers a full circle anywhere along it —
-    the dead-end aisle — is blocked on turning.
+    A circle somewhere on the whole route — a lobby by the front door — does
+    not prove the occupant can turn where the arrival meets the target. The
+    screen walks the measured path backwards from the stop for one turning
+    diameter, and around each point samples lateral freedom up to the body
+    envelope, so a wall-hugging arrival still finds the circle a body's width
+    to the side when one exists, and a dead-end aisle finds none.
     """
+    diameter = to_meters(profile.turning_diameter_inches)
+    envelope = profile.envelope_radius_meters
+    samples: list[Vec3] = [stop]
+    walked = 0.0
+    paired = list(zip(path[::-1], path[-2::-1]))
+    for direction_from, direction_to in paired:
+        walked += math.dist(
+            (direction_from.x, direction_from.y), (direction_to.x, direction_to.y)
+        )
+        if walked > diameter:
+            break
+        delta = (
+            direction_from.x - direction_to.x,
+            direction_from.y - direction_to.y,
+        )
+        length = math.hypot(*delta)
+        if length < 1e-9:
+            samples.append(direction_from)
+            continue
+        perpendicular = (-delta[1] / length, delta[0] / length)
+        for fraction in (0.5, 1.0):
+            offset = envelope * fraction
+            samples.append(
+                Vec3(
+                    x=direction_from.x + perpendicular[0] * offset,
+                    y=direction_from.y + perpendicular[1] * offset,
+                    z=0.0,
+                )
+            )
+            samples.append(
+                Vec3(
+                    x=direction_from.x - perpendicular[0] * offset,
+                    y=direction_from.y - perpendicular[1] * offset,
+                    z=0.0,
+                )
+            )
     best_inches = 0.0
     best_point: Vec3 = stop
-    points = [stop, *path[::-1]]
-    for back, forward in zip(points, points[1:]):
-        turn = measure.turning_space(graph, back)
+    for sample in samples:
+        turn = measure.turning_space(graph, sample)
         available = min(turn.inches_wide, turn.inches_deep)
         if available > best_inches:
-            best_inches, best_point = available, back
+            best_inches, best_point = available, sample
     return best_inches, best_point
 
 
@@ -327,12 +437,13 @@ def evaluate_approach(
         raise ValueError("at least one occupant profile is required")
 
     support = support_of(graph, target)
-    reaches = tuple(_reach_record(target, profile) for profile in occupants)
-    floor_ok = _floor_present(graph)
+    floor_ok = _floor_evidence(graph)
 
     stop = approach_stop
     if stop is None:
         stop = suggestion_stop(graph, target, occupants)
+
+    reaches = tuple(_reach_record(target, profile, stop) for profile in occupants)
 
     blocked: list[str] = []
     unverified: list[str] = []
@@ -419,6 +530,12 @@ def evaluate_approach(
                 f"target above personal reach for {record.occupant_title} "
                 f"({record.target_height_inches:.1f} in > "
                 f"{record.personal_reach_inches:.1f} in assumed reach)"
+            )
+        if record.horizontal_status == "beyond_body_envelope":
+            blocked.append(
+                f"the approach stop stands {record.horizontal_distance_inches:.1f} in "
+                f"from the target; beyond the {record.occupant_title} body "
+                f"envelope of {record.body_envelope_radius_inches:.1f} in"
             )
 
     if blocked:

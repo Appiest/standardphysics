@@ -59,21 +59,21 @@ def _box(name, kind, label, category, center, dims, movable, parent=None):
     return node
 
 
-def _room(name: str, door_x: float = 0.0) -> SceneGraph:
+def _room(name: str, door_x: float = 0.0, side: float = ROOM) -> SceneGraph:
     """A square room with four named walls, a floor and a door.
 
     `door_x` moves the door off the middle so a test can force the route to
     cross a pinch instead of starting already past it.
     """
-    half = ROOM / 2
+    half = side / 2
     z = WALL_H / 2
     walls = [
-        _box(f"{name}_south", "wall", f"{name} south wall", "wall", (0.0, -half, z), (ROOM, WALL_T, WALL_H), False),
-        _box(f"{name}_north", "wall", f"{name} north wall", "wall", (0.0, half, z), (ROOM, WALL_T, WALL_H), False),
-        _box(f"{name}_west", "wall", f"{name} west wall", "wall", (-half, 0.0, z), (WALL_T, ROOM, WALL_H), False),
-        _box(f"{name}_east", "wall", f"{name} east wall", "wall", (half, 0.0, z), (WALL_T, ROOM, WALL_H), False),
+        _box(f"{name}_south", "wall", f"{name} south wall", "wall", (0.0, -half, z), (side, WALL_T, WALL_H), False),
+        _box(f"{name}_north", "wall", f"{name} north wall", "wall", (0.0, half, z), (side, WALL_T, WALL_H), False),
+        _box(f"{name}_west", "wall", f"{name} west wall", "wall", (-half, 0.0, z), (WALL_T, side, WALL_H), False),
+        _box(f"{name}_east", "wall", f"{name} east wall", "wall", (half, 0.0, z), (WALL_T, side, WALL_H), False),
     ]
-    floor = _box(f"{name}_floor", "floor", "Floor", "floor", (0.0, 0.0, 0.0), (ROOM, ROOM, 0.01), False)
+    floor = _box(f"{name}_floor", "floor", "Floor", "floor", (0.0, 0.0, 0.0), (side, side, 0.01), False)
     door = _box(
         f"{name}_door", "door", "Door", "door",
         (door_x, -half, 1.05), (0.9, WALL_T, 2.1), False,
@@ -404,6 +404,90 @@ class TestRedesignOnApproachFailure:
         )
         assert not outcome.found
         assert outcome.graph is None
+
+
+class TestFalseClearGuards:
+    """Counterexamples from the supervisor review, each one a way the module
+    used to claim reachable with no basis."""
+
+    def test_a_stop_far_from_the_target_is_blocked_on_the_body_envelope(self):
+        """Height reach alone once passed a stop 2.45 metres away. The
+        occupant's body envelope is the measured limit; the arm is not
+        assumed, so beyond it the approach is blocked, never clear."""
+        graph = _room("far_reach")
+        outlet = _outlet(graph, "west")
+        result = evaluate_approach(
+            graph, outlet, _start(graph),
+            measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
+            approach_stop=Vec3(x=0.0, y=0.0, z=0.0),
+        )
+        assert result.status == "blocked"
+        assert any("body" in reason and "envelope" in reason for reason in result.reasons)
+        record = result.reaches[0]
+        assert record.horizontal_status == "beyond_body_envelope"
+        assert record.horizontal_distance_inches > record.body_envelope_radius_inches
+
+    def test_furniture_covering_the_outlet_is_not_a_support(self):
+        """A sofa whose footprint covers the outlet's plan position used to
+        count as the mounting surface and hide its own block. Plan
+        coincidence is not attachment evidence."""
+        graph = _room("covered_outlet")
+        outlet = _outlet(graph, "west")
+        sofa = _box("sofa", "object", "Sofa", "sofa", (-2.05, 0.0, 0.4), (0.8, 2.0, 0.8), True)
+        room = _with(graph, sofa)
+        support = support_of(room, outlet)
+        assert sofa.id not in support
+        result = evaluate_approach(
+            room, outlet, _start(room),
+            measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
+        )
+        assert result.status == "blocked"
+        assert "Sofa" in result.obstruction_labels
+
+    def test_a_ceiling_is_not_floor_evidence(self):
+        """A flat sheet high up lies flat just like a floor, but nothing can
+        stand on it; the route may measure, the support stays unverified."""
+        graph = _room("ceiling_room")
+        ceiling = _box("ceiling", "object", "Ceiling", "ceiling", (0.0, 0.0, 2.7), (5.0, 5.0, 0.01), False)
+        no_floor = graph.model_copy(
+            update={"nodes": [*(n for n in graph.nodes if n.kind != "floor"), ceiling]}
+        )
+        outlet = _outlet(no_floor, "west")
+        result = evaluate_approach(
+            no_floor, outlet, _start(no_floor),
+            measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
+        )
+        assert result.status in ("needs_verification", "blocked")
+        assert any("floor is unobserved" in reason for reason in result.reasons)
+
+    def test_a_wide_lobby_does_not_clear_the_turn_at_the_target(self):
+        """Turning room somewhere earlier on the route is not turning room at
+        the arrival: only the final approach stretch counts."""
+        graph = _room("lobby_room", side=6.0)
+        west = _box("aisle_west", "object", "Partition", "storage", (-0.55, 2.0, 1.5), (0.3, 2.0, 3.0), False)
+        east = _box("aisle_east", "object", "Partition", "storage", (0.55, 2.0, 1.5), (0.3, 2.0, 3.0), False)
+        room = _with(graph, west, east)
+        outlet = _outlet(room, "north")
+        result = evaluate_approach(
+            room, outlet, _start(room),
+            measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
+        )
+        assert result.status == "blocked"
+        assert any("no turning space on the arrival" in reason for reason in result.reasons)
+        assert result.turning_space_inches is not None
+        assert result.turning_space_inches < MANUAL_WHEELCHAIR.turning_diameter_inches
+
+    def test_a_stop_beside_the_target_is_within_the_body_envelope(self):
+        graph = _room("beside_room")
+        outlet = _outlet(graph, "west")
+        result = evaluate_approach(
+            graph, outlet, _start(graph),
+            measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
+        )
+        assert result.status == "clear"
+        record = result.reaches[0]
+        assert record.horizontal_status == "at_target"
+        assert record.horizontal_distance_inches <= record.body_envelope_radius_inches
 
 
 class TestSuggestedStops:
