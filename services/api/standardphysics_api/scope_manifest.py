@@ -1,10 +1,24 @@
-"""The minimal scope-manifest producer for the pilot contract (K freeze, item 7b).
+"""The scope-manifest producer: one visible outcome per requested pair.
 
-A lane hardens applicability and per-item logic behind G06/G13; this producer
-only guarantees that every requested requirement leaves a visible row, that
-unevaluated checks appear as unobserved, and that unknowns stay unknowns.
-Outcomes are mapped from the findings the rule engine already produced:
-passes -> satisfied, problem -> violation, question -> needs_verification.
+K froze the contract (item 7b) and this minimal producer; Lane A hardens the
+semantics behind G06/G13. The invariants the manifest now holds:
+
+- every requirement a check answered leaves a row, linked to the measured item
+  it was read against when the finding names one;
+- every enabled requirement that produced no finding leaves an unobserved row
+  with the next capture action, never a disappeared obligation;
+- every unevaluated rule (waiting on a reader or on a check implementation)
+  leaves a needs_verification row with the waiting reason;
+- every requested target class leaves a coverage row, so a class with no
+  detections stays visible as unobserved rather than "none in the room";
+- outcomes come from the rule engine's findings, while applicability and
+  legal review travel separately: no row becomes not_applicable on its own,
+  and a reviewed row can only say so because a review was supplied;
+- a measurement on a row records its bounds explicitly; when a producer has
+  no bounds the row says so instead of pretending the estimate is exact.
+
+Rows are ordered deterministically (pack order first) so the manifest hash
+means the same thing twice.
 """
 
 from __future__ import annotations
@@ -13,11 +27,13 @@ import hashlib
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Mapping
 
 from standardphysics_contracts import (
     Assessment,
     Check,
     Finding,
+    LegalReviewStatus,
     Scenario,
     SceneGraph,
     ScopeItem,
@@ -39,12 +55,21 @@ APPLICABILITY_QUESTIONS = [
     "Site jurisdiction and applicable code edition",
     "Which areas are customer-facing versus staff-only",
     "Whether a public restroom exists and its availability to customers",
+    "Service counter: which side is the customer side, and what accessible section exists",
+    "Service counter: which approach applies (parallel or forward side approach)",
+    "Doorway and route: which door and route serve customers",
 ]
 
 UNRESOLVED_DEFAULTS = [
     "No independent human inventory of target classes exists for this scan; absence of detections is not absence of objects.",
     "Surveyed and unobserved areas are not declared; area-level coverage questions stay open.",
+    "Restroom fixture, door, maneuvering, surface and operation checks are not implemented yet; until they are, every restroom question stays a question.",
 ]
+
+_ITEM_KINDS_FOR_NODES = {
+    "door": "route",
+    "opening": "route",
+}
 
 
 def build_scope_manifest(
@@ -54,31 +79,50 @@ def build_scope_manifest(
     checks: list[Check],
     waiting: dict[str, str],
     created_at: datetime | None = None,
+    *,
+    reviews: Mapping[str, LegalReviewStatus] | None = None,
 ) -> ScopeManifest:
+    supplied_reviews: dict[str, LegalReviewStatus] = {}
+    for requirement_id, status in (reviews or {}).items():
+        if status not in ("unreviewed_preview", "needs_review", "reviewer_supplied"):
+            raise ValueError(f"unknown legal review status for {requirement_id}: {status}")
+        supplied_reviews[requirement_id] = status
+
     by_check: dict[str, list[Finding]] = {}
     for finding in assessment.findings:
         by_check.setdefault(finding.check_id, []).append(finding)
 
     rows: list[ScopeRow] = []
+    known = {check.id for check in checks}
     for check in checks:
         findings = by_check.get(check.id, [])
         if not findings:
             rows.append(_unobserved_row(check, waiting.get(check.id)))
         else:
-            for index, finding in enumerate(findings, start=1):
-                rows.append(_finding_row(check, finding, index, len(findings)))
-    known = {check.id for check in checks}
-    for check_id, findings in by_check.items():
-        if check_id in known:
-            continue
-        for index, finding in enumerate(findings, start=1):
-            rows.append(_finding_row(_stand_in_check(check_id, finding), finding, index, len(findings)))
+            rows.extend(_finding_rows(check, findings, graph))
+    for check_id in sorted(set(by_check) - known):
+        for finding in by_check[check_id]:
+            rows.extend(
+                _finding_rows(_stand_in_check(check_id, finding), [finding], graph)
+            )
+    rowed = {row.requirement_id for row in rows}
+    for rule_id in sorted(set(waiting) - rowed):
+        rows.append(_waiting_row(rule_id, waiting[rule_id]))
 
-    requested_requirements = sorted({check.id for check in checks} | set(by_check))
+    class_rows = _class_rows(graph)
+    rows.extend(class_rows)
+    requested_requirements = sorted(
+        {check.id for check in checks}
+        | set(by_check)
+        | set(waiting)
+        | {f"coverage:{name}" for name in PILOT_TARGET_CLASSES}
+    )
     unresolved = [
         *UNRESOLVED_DEFAULTS,
         *(f"{rule_id}: {reason}" for rule_id, reason in sorted(waiting.items())),
     ]
+
+    _apply_reviews(rows, supplied_reviews)
 
     manifest_hash = _hash(
         graph_revision=assessment.graph_revision,
@@ -97,6 +141,7 @@ def build_scope_manifest(
                 row.reason,
                 row.applicability,
                 row.requested,
+                row.legal_review_status,
             ]
             for row in rows
         ],
@@ -125,16 +170,39 @@ def build_scope_manifest(
     )
 
 
-def _finding_row(check: Check, finding: Finding, index: int, total: int) -> ScopeRow:
-    slug = f"site:{check.id}" if total == 1 else f"site:{check.id}:{index}"
+def _apply_reviews(
+    rows: list[ScopeRow], reviews: Mapping[str, LegalReviewStatus]
+) -> None:
+    """Legal review state travels separately from the calculation outcome.
+
+    A row whose calculation says needs_verification still reads needs_review
+    while the requirement's legal logic is unreviewed; only an explicitly
+    supplied review can say reviewer_supplied. Nothing here invents a reviewer.
+    """
+    for row in rows:
+        supplied = reviews.get(row.requirement_id)
+        if supplied is not None:
+            row.legal_review_status = supplied
+        elif row.outcome == "needs_verification":
+            row.legal_review_status = "needs_review"
+        else:
+            row.legal_review_status = "unreviewed_preview"
+
+
+def _finding_rows(check: Check, findings: list[Finding], graph: SceneGraph) -> list[ScopeRow]:
+    rows = []
+    for index, finding in enumerate(findings, start=1):
+        rows.append(_finding_row(check, finding, index, len(findings), graph))
+    return rows
+
+
+def _finding_row(
+    check: Check, finding: Finding, index: int, total: int, graph: SceneGraph
+) -> ScopeRow:
+    item = _item_for(check, finding, index, total, graph)
+    outcome = _FINDING_OUTCOME.get(finding.outcome, "needs_verification")
     return ScopeRow(
-        item=ScopeItem(
-            item_slug=slug,
-            item_kind="site",
-            label=finding.title or check.title,
-            observed=True,
-            source="measured",
-        ),
+        item=item,
         requirement_id=check.id,
         requested=True,
         applicability="unknown",
@@ -142,11 +210,76 @@ def _finding_row(check: Check, finding: Finding, index: int, total: int) -> Scop
             "applicability has not been established with evidence; the outcome below "
             "is a calculation only and never a verified legal conclusion"
         ),
-        outcome=_FINDING_OUTCOME.get(finding.outcome, "needs_verification"),
+        outcome=outcome,
         reason=finding.detail or finding.title,
-        evidence_refs=[finding.citation.section] if finding.citation else [],
+        evidence_refs=_evidence_refs(check, finding),
+        measurement=_measurement_ref(finding),
         source_version=check.citation.edition if check.citation else None,
+        legal_review_status=(
+            "needs_review" if outcome == "needs_verification" else "unreviewed_preview"
+        ),
     )
+
+
+def _item_for(
+    check: Check, finding: Finding, index: int, total: int, graph: SceneGraph
+) -> ScopeItem:
+    """The measured item a finding is about, or the site when it names none.
+
+    A finding's locus carries the nodes the measurement rested on. The first
+    node that exists in the graph becomes the item, with its id bound into the
+    slug so the obligation stays stable across revisions. A site-level finding
+    (no locus) keeps the site slug it always had.
+    """
+    nodes = _locus_nodes(finding, graph)
+    if nodes:
+        node = nodes[0]
+        kind = _ITEM_KINDS_FOR_NODES.get(node.kind, "object")
+        return ScopeItem(
+            item_id=node.id,
+            item_slug=f"{check.id}:{node.id}",
+            item_kind=kind,
+            label=node.label,
+            observed=True,
+            source="measured",
+        )
+    slug = f"site:{check.id}" if total == 1 else f"site:{check.id}:{index}"
+    return ScopeItem(
+        item_slug=slug,
+        item_kind="site",
+        label=finding.title or check.title,
+        observed=True,
+        source="measured",
+    )
+
+
+def _locus_nodes(finding: Finding, graph: SceneGraph) -> list:
+    if finding.locus is None:
+        return []
+    return [node for node in graph.nodes if node.id in finding.locus.node_ids]
+
+
+def _evidence_refs(check: Check, finding: Finding) -> list[str]:
+    refs: list[str] = []
+    section = (finding.citation or check.citation).section if (finding.citation or check.citation) else None
+    if section:
+        refs.append(section)
+    url = (finding.citation or check.citation).url if (finding.citation or check.citation) else None
+    if url:
+        refs.append(url)
+    return refs
+
+
+def _measurement_ref(finding: Finding) -> dict | None:
+    if finding.measured_inches is None:
+        return None
+    return {
+        "estimate_inches": finding.measured_inches,
+        "required_inches": finding.required_inches,
+        "units": "in",
+        "bounds": "unknown",
+        "method": "scan-derived (no stated accuracy)",
+    }
 
 
 def _unobserved_row(check: Check, waiting_reason: str | None) -> ScopeRow:
@@ -161,8 +294,113 @@ def _unobserved_row(check: Check, waiting_reason: str | None) -> ScopeRow:
         requirement_id=check.id,
         requested=True,
         applicability="unknown",
+        applicability_reason=(
+            "applicability has not been established with evidence; the outcome below "
+            "is a calculation only and never a verified legal conclusion"
+        ),
         outcome="unobserved",
         reason=waiting_reason or "the check produced no finding in this pass; the requirement stays unobserved until it is evaluated",
+        evidence_refs=[],
+        source_version=check.citation.edition if check.citation else None,
+        legal_review_status="unreviewed_preview",
+    )
+
+
+def _class_rows(graph: SceneGraph) -> list[ScopeRow]:
+    """One row per requested target class, so nothing disappears for want of a
+    detection. These are coverage obligations, not legal requirements: a row
+    with an observed item says the coverage question has an answer; a row
+    without one stays unobserved, and neither says anything about compliance.
+    """
+    rows: list[ScopeRow] = []
+    present: dict[str, list] = {name: [] for name in PILOT_TARGET_CLASSES}
+    for node in graph.nodes:
+        for name in PILOT_TARGET_CLASSES:
+            if _class_matches(node, name):
+                present[name].append(node)
+    for name in PILOT_TARGET_CLASSES:
+        nodes = present[name]
+        observed = bool(nodes)
+        rows.append(
+            ScopeRow(
+                item=ScopeItem(
+                    item_slug=f"class:{name}",
+                    item_kind="class",
+                    label=f"{name} (target class coverage)",
+                    observed=observed,
+                    source="measured" if observed else "requested_not_observed",
+                ),
+                requirement_id=f"coverage:{name}",
+                requested=True,
+                applicability="unknown",
+                applicability_reason=(
+                    "which items serve customers is an owner question; coverage records "
+                    "what the scan can see, and never that the class is absent"
+                ),
+                outcome="satisfied" if observed else "unobserved",
+                reason=(
+                    f"at least one {name} item was found"
+                    if observed
+                    else (
+                        f"no {name} item was detected in this scan; absence is not "
+                        "established without an independent human inventory over the declared area"
+                    )
+                ),
+                evidence_refs=[],
+                legal_review_status="unreviewed_preview",
+            )
+        )
+    return rows
+
+
+def _class_matches(node, class_name: str) -> bool:
+    label = node.label.casefold()
+    tokens = {
+        "outlet": (
+            node.kind in {"outlet", "candidate_outlet"}
+            or node.raw_category in {"outlet", "electrical"}
+            or "outlet" in label
+        ),
+        "television": (
+            node.kind in {"television", "tv"}
+            or node.raw_category in {"television", "tv"}
+            or "television" in label
+        ),
+        "service_counter": (
+            node.kind in {"service_counter", "counter"}
+            or node.raw_category in {"service_counter", "counter"}
+            or "counter" in label
+        ),
+        "restroom_entrance": (
+            node.kind in {"restroom_entrance", "restroom"}
+            or node.raw_category in {"restroom_entrance", "restroom"}
+            or "restroom" in label
+        ),
+    }
+    return tokens[class_name]
+
+
+def _waiting_row(rule_id: str, waiting_reason: str) -> ScopeRow:
+    """A rule the pass could not evaluate: a visible question, never a gone row."""
+    return ScopeRow(
+        item=ScopeItem(
+            item_slug=f"site:{rule_id}",
+            item_kind="site",
+            label=rule_id.replace("_", " ").capitalize(),
+            observed=False,
+            source="requested_not_observed",
+        ),
+        requirement_id=rule_id,
+        requested=True,
+        applicability="unknown",
+        applicability_reason=(
+            "the rule could not be evaluated in this pass; unevaluated and "
+            "unsupported checks surface as needs_verification"
+        ),
+        outcome="needs_verification",
+        reason=waiting_reason,
+        evidence_refs=[],
+        legal_review_status="needs_review",
     )
 
 
