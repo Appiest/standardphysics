@@ -5,7 +5,10 @@ boundary. These are number semantics, not a scan: no fixture becomes a
 physical accuracy claim.
 """
 
+import math
+
 import pytest
+from pydantic import ValidationError
 from standardphysics_pipeline.primitives.uncertainty import (
     MeasurementBounds,
     combine,
@@ -124,6 +127,66 @@ class TestCombiningAndWidening:
         total = combine(bounds(1.0, 1.5, method="wall_fit"), control)
         assert total.method == "wall_fit + taperule"
         assert total.controls == 3
+
+
+class TestFiniteArithmetic:
+    """Supervisor defect 2026-09-22T01:24Z: NaN/Inf never produces a verdict."""
+
+    def test_nan_low_bound_is_refused_not_satisfied(self):
+        with pytest.raises(ValidationError):
+            MeasurementBounds(estimate=1.0, low=float("nan"), high=1.0, unit="m", method="x")
+
+    def test_nan_high_bound_is_refused_not_satisfied(self):
+        with pytest.raises(ValidationError):
+            MeasurementBounds(estimate=1.0, low=1.0, high=float("nan"), unit="m", method="x")
+
+    def test_infinite_bounds_are_refused_not_satisfied(self):
+        with pytest.raises(ValidationError):
+            MeasurementBounds(estimate=1.0, low=float("inf"), high=float("inf"), unit="m", method="x")
+
+    def test_nan_estimate_is_refused(self):
+        with pytest.raises(ValidationError):
+            MeasurementBounds(estimate=float("nan"), low=0.9, high=1.0, unit="m", method="x")
+
+    def test_nan_limit_or_tolerance_is_refused(self):
+        fine = bounds(0.9, 1.0)
+        with pytest.raises(ValueError):
+            compare(fine, float("nan"), "min")
+        with pytest.raises(ValueError):
+            compare(fine, 1.0, "min", eps=float("inf"))
+        with pytest.raises(ValueError):
+            compare(fine, float("inf"), "max")
+
+    def test_widened_refuses_nonfinite_margins(self):
+        fine = bounds(0.9, 1.0)
+        with pytest.raises(ValueError):
+            fine.widened(float("nan"), 0.0)
+        with pytest.raises(ValueError):
+            fine.widened(0.0, float("nan"))
+        with pytest.raises(ValueError):
+            fine.widened(0.0, float("inf"))
+        with pytest.raises(ValueError):
+            fine.widened(float("-inf"), 0.0)
+
+    def test_widened_output_is_revalidated(self):
+        """Supervisor 2026-09-22T01:37Z reproduction: widened must never emit
+        a NaN bound that compare() then turns into satisfied."""
+        fine = bounds(0.9, 1.0)
+        grown = fine.widened(0.1, 0.2)
+        assert math.isfinite(grown.low) and math.isfinite(grown.high)
+        assert compare(grown, 1.1, "max", inclusive=True) in ("needs_verification", "violation", "satisfied")
+
+    def test_compare_never_satisfies_mutated_nonfinite_bounds(self):
+        """compare() is the last line of defence, even for attribute-mutated
+        models that skipped validation."""
+        fine = bounds(0.9, 1.0)
+        fine.low = float("nan")
+        assert compare(fine, 1.1, "max", inclusive=True) == "needs_verification"
+        fine.low = 0.9
+        fine.high = float("nan")
+        assert compare(fine, 0.8, "min") == "needs_verification"
+        fine.high = float("inf")
+        assert compare(fine, 0.8, "min") == "needs_verification"
 
 
 class TestScenarioShapes:

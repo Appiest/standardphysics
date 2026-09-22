@@ -178,12 +178,41 @@ def test_duplicate_upload_of_same_semantic_bytes_adds_no_bundle(make_client):
         assert client.get(f"/api/scans/{scan_id}/evidence").json()["bundle_version"] == 1
 
 
+import hashlib
+
+
+def _frame_bytes() -> bytes:
+    return b"frame-bytes"
+
+
+def _poses_bytes() -> bytes:
+    records = [{
+        "metadata_version": 2,
+        "frame_id": "frame-0000",
+        "image": "frame-0000.jpg",
+        "timestamp": 10.0,
+        "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1.0, 0, 1],
+        "intrinsics": [1000, 0, 0, 0, 1000, 0, 960, 720, 1],
+        "orientation": "sensor",
+        "image_width": 1920,
+        "image_height": 1440,
+        "calibration_width": 1920,
+        "calibration_height": 1440,
+        "image_orientation": "sensor",
+    }]
+    return json.dumps(records).encode()
+
+
 def _valid_manifest_bytes() -> bytes:
-    import json as _json
-    return _json.dumps({
+    frame = _frame_bytes()
+    return json.dumps({
         "manifest_version": 1,
-        "poses_sha256": "a" * 64,
-        "frames": [{"frame_id": "frame-0000", "sha256": "b" * 64, "bytes": 11}],
+        "poses_sha256": hashlib.sha256(_poses_bytes()).hexdigest(),
+        "frames": [{
+            "frame_id": "frame-0000",
+            "sha256": hashlib.sha256(frame).hexdigest(),
+            "bytes": len(frame),
+        }],
     }).encode()
 
 
@@ -223,8 +252,11 @@ def test_closing_manifest_settles_the_evidence_immediately(make_client):
         client.post(f"/api/scans/{scan_id}/complete")
         drain(client)
 
-        _complete_semantics(client, scan_id)
-        put_artifact(client, scan_id, "photo-manifest", _valid_manifest_bytes(), "photo_manifest")
+        put_artifact(client, scan_id, "frame-0000", _frame_bytes(), "frames")
+        put_artifact(client, scan_id, "poses", _poses_bytes(), "poses")
+        put_artifact(client, scan_id, "lidar-mesh", _mesh_bytes(), "lidar_mesh")
+        stored = put_artifact(client, scan_id, "photo-manifest", _valid_manifest_bytes(), "photo_manifest")
+        assert stored.status_code == 201, stored.text
         status = client.get(f"/api/scans/{scan_id}/evidence").json()
         assert status["semantic_state"] == "queued"
         assert status["semantic_job_pending"] is True

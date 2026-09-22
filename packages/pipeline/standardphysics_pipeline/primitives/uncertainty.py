@@ -21,6 +21,7 @@ the inputs are vague.
 
 from __future__ import annotations
 
+import math
 from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
@@ -37,7 +38,7 @@ class MeasurementBounds(BaseModel):
     zero, and no caller may turn the estimate itself into a bound.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     kind: Literal["bounds"] = "bounds"
     estimate: float
@@ -68,12 +69,19 @@ class MeasurementBounds(BaseModel):
         Margins are absolute and non-negative. They push bounds outward but can
         never create a bound where there was none.
         """
+        if not math.isfinite(lower) or not math.isfinite(upper):
+            raise ValueError("margins must be finite numbers")
         if lower < 0 or upper < 0:
             raise ValueError("margins are magnitudes and cannot be negative")
-        return self.model_copy(update={
-            "low": None if self.low is None else self.low - lower,
-            "high": None if self.high is None else self.high + upper,
-        })
+        return MeasurementBounds(
+            estimate=self.estimate,
+            low=None if self.low is None else self.low - lower,
+            high=None if self.high is None else self.high + upper,
+            unit=self.unit,
+            method=self.method,
+            source_revision=self.source_revision,
+            controls=self.controls,
+        )
 
 
 def unknown_bounds(
@@ -135,6 +143,38 @@ def combine(*bounds: MeasurementBounds) -> MeasurementBounds:
     )
 
 
+def _clean_verdict(
+    low: float,
+    high: float,
+    limit: float,
+    eps: float,
+    head: Limits,
+    inclusive: bool,
+) -> Verdict:
+    """The eight-way table with finite bounds, limit and tolerance supplied."""
+    if head == "min":
+        if inclusive:
+            satisfied = low >= limit - eps
+            violation = high < limit - eps
+        else:
+            satisfied = low > limit + eps
+            violation = high <= limit - eps
+    else:
+        if inclusive:
+            satisfied = high <= limit + eps
+            violation = low > limit + eps
+        else:
+            satisfied = high < limit - eps
+            violation = low >= limit - eps
+    if satisfied and violation:
+        return "needs_verification"
+    if satisfied:
+        return "satisfied"
+    if violation:
+        return "violation"
+    return "needs_verification"
+
+
 def compare(
     bounds: MeasurementBounds,
     limit: float,
@@ -152,6 +192,8 @@ def compare(
     """
     if eps < 0:
         raise ValueError("the numerical tolerance cannot be negative")
+    if not math.isfinite(limit) or not math.isfinite(eps):
+        raise ValueError("limit and tolerance must be finite numbers")
 
     if bounds.unknown or not bounds.bounded:
         return "needs_verification"
@@ -160,26 +202,7 @@ def compare(
     assert low is not None and high is not None
     if low > high:
         return "needs_verification"
-
-    if head == "min":
-        if inclusive:
-            satisfied = low >= limit - eps
-            violation = high < limit - eps
-        else:
-            satisfied = low > limit + eps
-            violation = high <= limit - eps
-    else:
-        if inclusive:
-            satisfied = high <= limit + eps
-            violation = low > limit + eps
-        else:
-            satisfied = high < limit - eps
-            violation = low >= limit - eps
-
-    if satisfied and violation:
+    if not math.isfinite(low) or not math.isfinite(high):
         return "needs_verification"
-    if satisfied:
-        return "satisfied"
-    if violation:
-        return "violation"
-    return "needs_verification"
+
+    return _clean_verdict(low, high, limit, eps, head, inclusive)

@@ -9,15 +9,15 @@ import uuid
 from datetime import UTC, datetime
 
 from standardphysics_contracts import (
+    GEOMETRY_REQUIRED_ARTIFACT_KINDS,
+    SEMANTIC_REQUIRED_ARTIFACT_KINDS,
     Artifact,
     Assessment,
     CreateScanRequest,
     EvidenceBundle,
-    GEOMETRY_REQUIRED_ARTIFACT_KINDS,
     Scan,
     Scenario,
     SceneGraph,
-    SEMANTIC_REQUIRED_ARTIFACT_KINDS,
     SurfaceCoverage,
     graph_hash,
 )
@@ -176,9 +176,7 @@ def build_evidence_bundle(scan: Scan, version: int, created_at: str | None = Non
     if missing:
         reasons.append(f"missing artifacts: {', '.join(missing)}")
     manifest_lines = sorted(
-        f"{kind}:{','.join(sorted(shas))}"
-        for kind, shas in by_kind.items()
-        if kind in SEMANTIC_INPUT_KINDS
+        f"{kind}:{','.join(sorted(shas))}" for kind, shas in by_kind.items() if kind in SEMANTIC_INPUT_KINDS
     )
     manifest_hash = hashlib.sha256("\n".join(manifest_lines).encode("utf-8")).hexdigest()
     latest_shas = {kind: shas[-1] for kind, shas in by_kind.items()}
@@ -246,8 +244,7 @@ def has_pending_process_job(connection: sqlite3.Connection, scan_id: uuid.UUID) 
     """True while a semantic job is queued or running. Kind string matches worker.PROCESS."""
     return (
         connection.execute(
-            "SELECT 1 FROM jobs WHERE scan_id = ? AND kind = 'process'"
-            " AND state IN ('queued', 'running') LIMIT 1",
+            "SELECT 1 FROM jobs WHERE scan_id = ? AND kind = 'process' AND state IN ('queued', 'running') LIMIT 1",
             (str(scan_id),),
         ).fetchone()
         is not None
@@ -264,6 +261,33 @@ def latest_semantic_arrival(connection: sqlite3.Connection, scan_id: uuid.UUID) 
     return row["latest"] if row else None
 
 
+def latest_process_job(connection: sqlite3.Connection, scan_id: uuid.UUID) -> sqlite3.Row | None:
+    """The newest process job row, or None when the scan has never queued one."""
+    return connection.execute(
+        "SELECT * FROM jobs WHERE scan_id = ? AND kind = 'process' ORDER BY id DESC LIMIT 1",
+        (str(scan_id),),
+    ).fetchone()
+
+
+def set_job_binding(
+    connection: sqlite3.Connection,
+    job_id: int,
+    input_hash: str | None,
+    note: str | None,
+) -> None:
+    """Record which input manifest this job run consumed, and its visible outcome.
+
+    The input hash persists even when the process crashes mid-run, so a restart
+    can tell what the interrupted job was working on. The note carries the
+    discovery outcome: frames read, found objects, per-frame provider failure
+    categories. Neither ever holds a secret.
+    """
+    connection.execute(
+        "UPDATE jobs SET input_hash = ?, note = ? WHERE id = ?",
+        (input_hash, note, job_id),
+    )
+
+
 def process_job_states(connection: sqlite3.Connection, scan_id: uuid.UUID) -> tuple[str, ...]:
     """Every state a process job has been in for this scan, newest first."""
     rows = connection.execute(
@@ -273,9 +297,7 @@ def process_job_states(connection: sqlite3.Connection, scan_id: uuid.UUID) -> tu
     return tuple(row["state"] for row in rows)
 
 
-def mark_finalized(
-    connection: sqlite3.Connection, scan: Scan, coverage: list[SurfaceCoverage]
-) -> None:
+def mark_finalized(connection: sqlite3.Connection, scan: Scan, coverage: list[SurfaceCoverage]) -> None:
     connection.execute(
         "UPDATE scans SET state = 'measuring', content_hash = ?, coverage_json = ? WHERE id = ?",
         (content_hash(scan), json.dumps([c.model_dump(mode="json") for c in coverage]), str(scan.id)),
@@ -342,8 +364,8 @@ def requeue_interrupted_jobs(connection: sqlite3.Connection) -> None:
 _REVISION_WRITE = {"owner": "INSERT INTO", "ingest": "INSERT INTO", "other": "INSERT OR IGNORE INTO"}
 _REVISION_CONFLICT = {
     "ingest": " ON CONFLICT (scan_id, revision) DO UPDATE SET"
-              " graph_hash = excluded.graph_hash, graph_json = excluded.graph_json,"
-              " created_at = excluded.created_at",
+    " graph_hash = excluded.graph_hash, graph_json = excluded.graph_json,"
+    " created_at = excluded.created_at",
 }
 """An ingest revision is derived entirely from the uploaded artifacts, so running
 ingest again replaces it. Everything an owner did stands on its own revision and
@@ -362,14 +384,20 @@ def save_revision(
         " (scan_id, revision, graph_hash, graph_json, source, base_revision, glb_path, created_at)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         f"{_REVISION_CONFLICT.get(source, '')}",
-        (str(graph.scan_id), graph.revision, graph_hash(graph), graph.model_dump_json(),
-         source, base_revision, glb_path, now()),
+        (
+            str(graph.scan_id),
+            graph.revision,
+            graph_hash(graph),
+            graph.model_dump_json(),
+            source,
+            base_revision,
+            glb_path,
+            now(),
+        ),
     )
 
 
-def get_revision(
-    connection: sqlite3.Connection, scan_id: uuid.UUID, revision: int | None = None
-) -> sqlite3.Row | None:
+def get_revision(connection: sqlite3.Connection, scan_id: uuid.UUID, revision: int | None = None) -> sqlite3.Row | None:
     if revision is None:
         return connection.execute(
             "SELECT * FROM revisions WHERE scan_id = ? ORDER BY revision DESC LIMIT 1", (str(scan_id),)
@@ -397,10 +425,14 @@ def display_geometry(
 
 
 def display_pending(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
-    return connection.execute(
-        "SELECT 1 FROM jobs WHERE scan_id = ? AND kind IN ('process', 'assess', 'display')"
-        " AND state IN ('queued', 'running') LIMIT 1", (str(scan_id),),
-    ).fetchone() is not None
+    return (
+        connection.execute(
+            "SELECT 1 FROM jobs WHERE scan_id = ? AND kind IN ('process', 'assess', 'display')"
+            " AND state IN ('queued', 'running') LIMIT 1",
+            (str(scan_id),),
+        ).fetchone()
+        is not None
+    )
 
 
 def base_glb_path(connection: sqlite3.Connection, scan_id: uuid.UUID) -> str | None:
@@ -415,9 +447,12 @@ def set_glb_path(connection: sqlite3.Connection, scan_id: uuid.UUID, revision: i
 
 
 def save_scenario(connection: sqlite3.Connection, scan_id: uuid.UUID, scenario: Scenario) -> None:
+    """Replace the scenario and advance its version, so derived results saved
+    against the old route are visibly stale until they are recomputed."""
     connection.execute(
-        "INSERT INTO scenarios (scan_id, scenario_json) VALUES (?, ?)"
-        " ON CONFLICT (scan_id) DO UPDATE SET scenario_json = excluded.scenario_json",
+        "INSERT INTO scenarios (scan_id, scenario_json, version) VALUES (?, ?, 1)"
+        " ON CONFLICT (scan_id) DO UPDATE SET"
+        " scenario_json = excluded.scenario_json, version = scenarios.version + 1",
         (str(scan_id), scenario.model_dump_json()),
     )
 
@@ -427,31 +462,63 @@ def get_scenario(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Scenario
     return Scenario.model_validate_json(row["scenario_json"]) if row else None
 
 
+def scenario_version(connection: sqlite3.Connection, scan_id: uuid.UUID) -> int | None:
+    row = connection.execute("SELECT version FROM scenarios WHERE scan_id = ?", (str(scan_id),)).fetchone()
+    return row["version"] if row else None
+
+
 def save_assessment(connection: sqlite3.Connection, assessment: Assessment) -> None:
     connection.execute(
-        "INSERT INTO assessments (id, scan_id, graph_revision, assessment_json, created_at)"
-        " VALUES (?, ?, ?, ?, ?)"
-        " ON CONFLICT (id) DO UPDATE SET assessment_json = excluded.assessment_json",
-        (str(assessment.id), str(assessment.scan_id), assessment.graph_revision,
-         assessment.model_dump_json(), now()),
+        "INSERT INTO assessments (id, scan_id, graph_revision, assessment_json,"
+        " created_at, scenario_version)"
+        " VALUES (?, ?, ?, ?, ?, (SELECT version FROM scenarios WHERE scan_id = ?))"
+        " ON CONFLICT (id) DO UPDATE SET assessment_json = excluded.assessment_json,"
+        " scenario_version = excluded.scenario_version",
+        (
+            str(assessment.id),
+            str(assessment.scan_id),
+            assessment.graph_revision,
+            assessment.model_dump_json(),
+            now(),
+            str(assessment.scan_id),
+        ),
     )
 
 
-def latest_assessment(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Assessment | None:
+def latest_revision_number(connection: sqlite3.Connection, scan_id: uuid.UUID) -> int | None:
     row = connection.execute(
-        "SELECT assessment_json FROM assessments WHERE scan_id = ?"
-        " ORDER BY graph_revision DESC, created_at DESC LIMIT 1",
+        "SELECT revision FROM revisions WHERE scan_id = ? ORDER BY revision DESC LIMIT 1",
         (str(scan_id),),
     ).fetchone()
-    return Assessment.model_validate_json(row["assessment_json"]) if row else None
+    return row["revision"] if row else None
 
 
-def assessment_for_revision(
-    connection: sqlite3.Connection, scan_id: uuid.UUID, revision: int
-) -> Assessment | None:
+def latest_assessment(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Assessment | None:
+    """The assessment of the scan's current graph revision, or nothing.
+
+    An assessment computed from an older graph must never be read as the
+    current one: a role change or re-measure leaves it behind and the next
+    assessment job supersedes it. Callers that want a historic snapshot pin the
+    revision with `assessment_for_revision`.
+    """
+    revision = latest_revision_number(connection, scan_id)
+    if revision is None:
+        return None
+    return assessment_for_revision(connection, scan_id, revision)
+
+
+def assessment_for_revision(connection: sqlite3.Connection, scan_id: uuid.UUID, revision: int) -> Assessment | None:
+    """The newest assessment for this graph revision, if it still matches the
+    current scenario. A route confirm replaces the scenario, so every result
+    measured against the old one is history until the next assess job runs."""
     row = connection.execute(
-        "SELECT assessment_json FROM assessments WHERE scan_id = ? AND graph_revision = ?"
-        " ORDER BY created_at DESC LIMIT 1",
+        "SELECT assessment_json, scenario_version FROM assessments WHERE scan_id = ?"
+        " AND graph_revision = ? ORDER BY created_at DESC LIMIT 1",
         (str(scan_id), revision),
     ).fetchone()
-    return Assessment.model_validate_json(row["assessment_json"]) if row else None
+    if row is None:
+        return None
+    current = scenario_version(connection, scan_id)
+    if row["scenario_version"] is not None and current is not None and row["scenario_version"] != current:
+        return None
+    return Assessment.model_validate_json(row["assessment_json"])

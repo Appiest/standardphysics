@@ -13,15 +13,40 @@ import uuid
 from datetime import UTC, datetime
 
 from standardphysics_contracts import (
+    GEOMETRY_REQUIRED_ARTIFACT_KINDS,
+    SEMANTIC_REQUIRED_ARTIFACT_KINDS,
     EvidenceBundle,
     EvidenceStatus,
-    GEOMETRY_REQUIRED_ARTIFACT_KINDS,
     Scan,
-    SEMANTIC_REQUIRED_ARTIFACT_KINDS,
 )
 
 from . import repository as repo
 from .db import Database
+from .store import ArtifactStore
+
+
+def association_state(database: Database, store: ArtifactStore, scan_id: uuid.UUID) -> tuple[str, str | None, bool]:
+    """Whether the uploaded frames, poses, manifest and mesh agree with each other.
+
+    Reuses the exact frame/pose/manifest/mesh pairing checks the texture build
+    depends on, so one receipt rule covers every consumer. Returns the state,
+    the mismatch and whether the phone declared pairings with a photo manifest:
+
+        not_started        every named pair is stored and consistent
+        failed             a schema or association check did not hold
+        waiting_for_photos the manifest names photos that are still uploading
+        needs_photos       no projectable poses exist, so nothing more to pair
+
+    Only a declared manifest makes `failed` or `waiting_for_photos` binding:
+    a legacy capture cannot be cross-checked, so its discovery pass reports
+    its own failures instead of the receipt refusing it.
+    """
+    from .textures import _inputs
+
+    with database.connect() as connection:
+        manifest = repo.artifact_of_kind(connection, scan_id, "photo_manifest")
+        state, _, failure = _inputs(connection, store, scan_id)
+    return state, failure, manifest is not None
 
 
 def record_closure(connection: sqlite3.Connection, scan: Scan) -> EvidenceBundle:
@@ -85,24 +110,20 @@ def _settled(
     return (datetime.now(UTC) - arrival).total_seconds() >= settle_seconds
 
 
-def mark_processed_if_complete(connection: sqlite3.Connection, scan_id: uuid.UUID) -> None:
-    """Record that the worker's semantic pass consumed the current bundle."""
-    bundle = repo.latest_bundle(connection, scan_id)
-    if bundle is not None and bundle.complete:
-        repo.bundle_processed(connection, scan_id, bundle.version, bundle.manifest_hash)
-
-
 def evidence_status_for(database: Database, scan: Scan) -> EvidenceStatus:
     with database.connect() as connection:
         bundle = repo.latest_bundle(connection, scan.id)
         pending = repo.has_pending_process_job(connection, scan.id)
         states = repo.process_job_states(connection, scan.id)
+        job = repo.latest_process_job(connection, scan.id)
 
     present = sorted({artifact.kind for artifact in scan.artifacts})
     missing_geometry = sorted(set(GEOMETRY_REQUIRED_ARTIFACT_KINDS) - set(present))
     missing_semantic = sorted(set(SEMANTIC_REQUIRED_ARTIFACT_KINDS) - set(present))
 
-    geometry_state = "failed" if scan.state == "failed" else "ready" if not missing_geometry and bool(present) else "awaiting"
+    geometry_state = (
+        "failed" if scan.state == "failed" else "ready" if not missing_geometry and bool(present) else "awaiting"
+    )
     semantic_present = [kind for kind in present if kind in repo.SEMANTIC_INPUT_KINDS]
     if not missing_semantic and semantic_present:
         evidence_state = "complete"
@@ -113,8 +134,9 @@ def evidence_status_for(database: Database, scan: Scan) -> EvidenceStatus:
 
     reasons = list(bundle.reasons) if bundle is not None else []
     reasons.extend(_semantic_notes(scan, bundle, missing_semantic))
+    reasons.extend(_job_notes(job))
 
-    semantic_state = _semantic_state(scan, bundle, pending, states)
+    semantic_state = _semantic_state(scan, bundle, pending, states, job)
     return EvidenceStatus(
         scan_id=scan.id,
         geometry_state=geometry_state,
@@ -132,7 +154,24 @@ def evidence_status_for(database: Database, scan: Scan) -> EvidenceStatus:
     )
 
 
-def _semantic_state(scan: Scan, bundle: EvidenceBundle | None, pending: bool, states: tuple[str, ...]) -> str:
+def _job_notes(job: sqlite3.Row | None) -> list[str]:
+    if job is None:
+        return []
+    notes: list[str] = []
+    if job["state"] == "failed" and job["error"]:
+        notes.append(f"last processing job failed: {job['error']}")
+    if job["note"]:
+        notes.append(job["note"])
+    return notes
+
+
+def _semantic_state(
+    scan: Scan,
+    bundle: EvidenceBundle | None,
+    pending: bool,
+    states: tuple[str, ...],
+    job: sqlite3.Row | None,
+) -> str:
     if bundle is None:
         return "not_started"
     if "failed" in states and scan.state == "failed":
@@ -141,6 +180,8 @@ def _semantic_state(scan: Scan, bundle: EvidenceBundle | None, pending: bool, st
         return "complete"
     if pending:
         return "running" if "running" in states else "queued"
+    if job is not None and job["state"] == "failed":
+        return "failed"
     if bundle.complete:
         return "settling"
     return "blocked_incomplete_evidence"
@@ -149,10 +190,7 @@ def _semantic_state(scan: Scan, bundle: EvidenceBundle | None, pending: bool, st
 def _semantic_notes(scan: Scan, bundle: EvidenceBundle | None, missing_semantic: list[str]) -> list[str]:
     notes: list[str] = []
     if missing_semantic:
-        notes.append(
-            "photo recognition is blocked until these artifact kinds arrive: "
-            + ", ".join(missing_semantic)
-        )
+        notes.append("photo recognition is blocked until these artifact kinds arrive: " + ", ".join(missing_semantic))
     if scan.state == "ready" and bundle is not None and not bundle.complete:
         notes.append("geometry is usable but the scan is not evidence-complete for semantic detection")
     if bundle is not None and bundle.complete and bundle.semantic_processed_hash != bundle.manifest_hash:

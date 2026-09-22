@@ -13,22 +13,36 @@ import pathlib
 import threading
 import traceback
 import uuid
+from dataclasses import dataclass
 
 from standardphysics_contracts import SimulationRequest
 
+from . import evidence
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
-from .evidence import mark_processed_if_complete
 from .settings import Settings
 from .simulations import SIMULATE, queue_simulation, run_simulation
-from .stages import Stages
+from .stages import DiscoveryOutcome, Stages
 from .store import ArtifactStore
 from .textures import TEXTURE, maybe_queue_texture, run_texture
 
 log = logging.getLogger(__name__)
 
 PROCESS, ASSESS, DISPLAY = "process", "assess", "display"
+
+
+@dataclass
+class _JobOutcome:
+    error: str | None = None
+    follow_up: bool = False
+    """Queue the next derived job after this one settles; its row is still running now."""
+
+
+class _UnusableEvidence(Exception):
+    """The evidence artifacts exist but do not agree with each other, so no
+    semantic pass may consume them. Visible on the job and the evidence status;
+    a new upload that repairs the pairing queues the next attempt."""
 
 
 class Worker:
@@ -50,7 +64,8 @@ class Worker:
         with self.database.transaction() as connection:
             connection.execute(
                 "UPDATE jobs SET state='failed', error='Simulation interrupted; start a new run to continue'"
-                " WHERE kind=? AND state='running'", (SIMULATE,),
+                " WHERE kind=? AND state='running'",
+                (SIMULATE,),
             )
             repo.requeue_interrupted_jobs(connection)
         self._thread = threading.Thread(target=self._loop, name="standardphysics-worker", daemon=True)
@@ -94,10 +109,26 @@ class Worker:
             job = repo.claim_job(connection, texture_only)
         if job is None:
             return False
-        error = self._run(job)
+        outcome = self._run(job)
         with self.database.transaction() as connection:
-            repo.finish_job(connection, job["id"], error)
+            repo.finish_job(connection, job["id"], outcome.error)
+        if outcome.follow_up and outcome.error is None:
+            self._queue_follow_up_if_due(uuid.UUID(job["scan_id"]))
         return True
+
+    def _queue_follow_up_if_due(self, scan_id: uuid.UUID) -> None:
+        """After a process job, queue the next semantic run exactly once if the
+        evidence manifest advanced while this job was running."""
+        with self.database.transaction() as connection:
+            latest = repo.latest_bundle(connection, scan_id)
+            if latest is None or not latest.complete:
+                return
+            if latest.semantic_processed_hash == latest.manifest_hash:
+                return
+            if repo.has_pending_process_job(connection, scan_id):
+                return
+            repo.queue_job_again(connection, scan_id, PROCESS, 0)
+            self.wake()
 
     def _loop(self, texture_only: bool = False) -> None:
         while not self._stop.is_set():
@@ -105,7 +136,7 @@ class Worker:
                 self._wake.wait(timeout=2.0)
                 self._wake.clear()
 
-    def _run(self, job) -> str | None:
+    def _run(self, job) -> _JobOutcome:
         scan_id, revision = uuid.UUID(job["scan_id"]), job["revision"]
         handler = {
             PROCESS: self._process,
@@ -115,40 +146,85 @@ class Worker:
             TEXTURE: self._texture,
         }[job["kind"]]
         try:
-            handler(scan_id, revision)
-            return None
+            if job["kind"] == TEXTURE:
+                follow_up = handler(scan_id=scan_id, build_id=revision, job=job)
+            else:
+                follow_up = handler(scan_id=scan_id, revision=revision, job=job)
+            return _JobOutcome(follow_up=follow_up)
         except Exception as exc:
             log.error("job %s %s failed:\n%s", job["kind"], scan_id, traceback.format_exc())
             if job["kind"] not in (DISPLAY, SIMULATE, TEXTURE):
                 with self.database.transaction() as connection:
                     repo.set_state(connection, scan_id, "failed")
             if job["kind"] == SIMULATE:
-                return "Simulation failed; check the server log and retry"
-            return f"{type(exc).__name__}: {exc}"
+                return _JobOutcome(error="Simulation failed; check the server log and retry")
+            return _JobOutcome(error=f"{type(exc).__name__}: {exc}")
 
-    def _texture(self, scan_id, build_id):
+    def _texture(self, scan_id, build_id, job=None) -> bool:
         run_texture(self.database, self.store, self.stages, scan_id, build_id)
+        return False
 
-    def _simulate(self, scan_id: uuid.UUID, revision: int) -> None:
+    def _simulate(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
         run_simulation(self.database, self.store, self.stages, scan_id, revision)
+        return False
 
-    def _process(self, scan_id: uuid.UUID, revision: int) -> None:
+    def _process(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
+        with self.database.connect() as connection:
+            bundle = repo.latest_bundle(connection, scan_id)
+            consumed = (bundle.version, bundle.manifest_hash) if bundle else None
+        association_state, association_failure, declared = evidence.association_state(
+            self.database, self.store, scan_id
+        )
+        if declared and association_state == "failed":
+            raise _UnusableEvidence(association_failure or "uploaded evidence does not parse")
         with self.database.connect() as connection:
             room_json = repo.artifact_of_kind(connection, scan_id, "room_json")
         frame_paths, poses_path, lidar_mesh_path = self.label_inputs(scan_id)
-        graph = self.stages.ingest(
+        run_discovery = not declared or association_state != "waiting_for_photos"
+        graph, outcome = self.stages.ingest_with_report(
             self.store.artifact_path(scan_id, room_json.id),
             scan_id,
             frame_paths=frame_paths,
             poses_path=poses_path,
             lidar_mesh_path=lidar_mesh_path,
+            run_discovery=run_discovery,
         )
+        if not run_discovery:
+            outcome = DiscoveryOutcome(deferred_reason=association_failure or association_state)
         with self.database.transaction() as connection:
             repo.save_revision(connection, graph, source="ingest")
-            mark_processed_if_complete(connection, scan_id)
-        self._assess(scan_id, graph.revision)
+            self._mark_consumed_if_due(connection, scan_id, consumed)
+            repo.set_job_binding(connection, job["id"], consumed[1] if consumed else None, outcome.note())
+        self._assess(scan_id=scan_id, revision=graph.revision)
+        return self._newer_bundle_is_due(scan_id, consumed)
 
-    def _assess(self, scan_id: uuid.UUID, revision: int) -> None:
+    def _mark_consumed_if_due(self, connection, scan_id, consumed) -> None:
+        """Mark the bundle this job consumed, and only that bundle, as processed.
+
+        A bundle that advanced while the job ran is left untouched; its own job
+        marks it. This is what keeps a late upload from being reported complete
+        by an older job's exit.
+        """
+        if consumed is None:
+            return
+        version, manifest_hash = consumed
+        with_connection = connection.execute(
+            "SELECT complete, manifest_hash FROM evidence_bundles WHERE scan_id = ? AND version = ?",
+            (str(scan_id), version),
+        ).fetchone()
+        if with_connection is None or not with_connection["complete"]:
+            return
+        repo.bundle_processed(connection, scan_id, version, manifest_hash)
+
+    def _newer_bundle_is_due(self, scan_id, consumed) -> bool:
+        """True when evidence closed over newer inputs while this job ran."""
+        if consumed is None:
+            return False
+        with self.database.connect() as connection:
+            latest = repo.latest_bundle(connection, scan_id)
+        return latest is not None and (latest.version, latest.manifest_hash) != consumed
+
+    def _assess(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
         with self.database.transaction() as connection:
             repo.set_state(connection, scan_id, "checking")
             graph = repo.graph_of(repo.get_revision(connection, scan_id, revision))
@@ -165,10 +241,9 @@ class Worker:
         maybe_queue_texture(self.database, self.store, self, scan_id, revision)
         self._maybe_queue_deep_simulation(scan_id, revision, scenario is not None)
         self.wake()
+        return False
 
-    def _maybe_queue_deep_simulation(
-        self, scan_id: uuid.UUID, revision: int, has_scenario: bool
-    ) -> None:
+    def _maybe_queue_deep_simulation(self, scan_id: uuid.UUID, revision: int, has_scenario: bool) -> None:
         if not self.settings.auto_deep_simulation or not has_scenario:
             return
         with self.database.connect() as connection:
@@ -188,9 +263,7 @@ class Worker:
                 astra_rounds=self.settings.auto_deep_astra_rounds,
                 exhaustive_evaluations=self.settings.auto_deep_exhaustive_evaluations,
             )
-            queue_simulation(
-                self.database, self.stages, self, scan_id, request
-            )
+            queue_simulation(self.database, self.stages, self, scan_id, request)
         except ApiProblem as error:
             log.warning(
                 "automatic deep simulation skipped for %s revision %s: %s",
@@ -205,7 +278,7 @@ class Worker:
                 revision,
             )
 
-    def _display(self, scan_id: uuid.UUID, revision: int) -> None:
+    def _display(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
         with self.database.connect() as connection:
             graph = repo.graph_of(repo.get_revision(connection, scan_id, revision))
             has_glb = repo.get_revision(connection, scan_id, revision)["glb_path"] is not None
@@ -217,11 +290,14 @@ class Worker:
             self._store_geometry(scan_id, graph, revision_dir, usdz, mapping)
         if assessment is not None:
             rendered = self.stages.renders(
-                graph, assessment, revision_dir / "renders",
+                graph,
+                assessment,
+                revision_dir / "renders",
                 lambda finding_id: f"/api/scans/{scan_id}/renders/{finding_id}.png",
             )
             with self.database.transaction() as connection:
                 repo.save_assessment(connection, rendered)
+        return False
 
     def _store_geometry(self, scan_id, graph, revision_dir, usdz, mapping) -> None:
         inputs = revision_dir / "inputs"
