@@ -4,6 +4,17 @@
 #
 #   ./start.sh          development server, reloads on save
 #   ./start.sh --prod   production build, for the demo
+#
+# A phone on this LAN can also reach the API: run
+#   SP_API_ORIGIN=http://<this-mac-lan-ip>:8787 ./start.sh --prod
+# shorthand: SP_API_ORIGIN=http://$(ipconfig getifaddr en0 2>/dev/null):8787
+# Because Next bakes the origin into the production build, --prod must be
+# rebuilt whenever the origin or the LAN address changes.
+#
+# Restart: Ctrl-C, run the same command again. Scans live in .env/SP_DATA_DIR
+# (default services/api/var), not in this script, so a restart keeps them.
+# Rollback of these scripts is a plain `git checkout <previous> -- start.sh`.
+# One API process per data dir: do not run two servers against one database.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

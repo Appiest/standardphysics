@@ -12,6 +12,9 @@ WORKDIR /app/apps/web
 COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci --no-audit --no-fund --loglevel=error
 COPY apps/web ./
+# The deck imports fixture JSON through the @fixtures monorepo alias in
+# tsconfig; the build needs those files where the alias points.
+COPY packages/fixtures/standardphysics_fixtures/data /app/packages/fixtures/standardphysics_fixtures/data
 # Next bakes rewrites() into the build, so the web's API origin is chosen here.
 # The default serves the one-container "all" role; compose running the web
 # alone must pass --build-arg SP_API_ORIGIN=http://api:8787 to its build.
