@@ -29,8 +29,8 @@
     "python": "3.11",
     "node": "shared node_modules (read-only)"
   },
-  "started_at": "2026-09-21T20:42:24.476658-07:00",
-  "finished_at": "2026-09-21T20:42:24.476658-07:00",
+  "started_at": "2026-09-21T22:35:06.729911-07:00",
+  "finished_at": "2026-09-21T22:35:06.729911-07:00",
   "exit_code": 1,
   "assertions": [
     {

@@ -1,0 +1,87 @@
+.......................................xxx...FF......................... [ 24%]
+........................................................................ [ 49%]
+...........................................F.F.......................... [ 73%]
+........................................................................ [ 98%]
+....                                                                     [100%]
+=================================== FAILURES ===================================
+_____________ test_a49_a_real_scan_that_is_ready_has_been_checked ______________
+
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-396/test_a49_a_real_scan_that_is_r0')
+
+    def test_a49_a_real_scan_that_is_ready_has_been_checked(tmp_path):
+        with _api_client(tmp_path) as client:
+            body = {"name": "Corner cafe", "device_model": "iPhone17,1", "duration_seconds": 60.0}
+            scan_id = client.post("/api/scans", json=body).json()["id"]
+            room = (REAL_EXPORTS / "apple_bedroom3.room.json").read_bytes()
+            _upload(client, scan_id, "room-json", room, "room_json")
+            _upload(client, scan_id, "room-usdz", b"usdz", "room_usdz")
+>           assert _finalize_and_process(client, scan_id) == "ready"
+E           AssertionError: assert 'uploading' == 'ready'
+E             
+E             - ready
+E             + uploading
+
+tests/test_audit_open_findings.py:205: AssertionError
+____ test_a29_a_failed_scan_is_processed_again_once_a_readable_room_arrives ____
+
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-396/test_a29_a_failed_scan_is_proc0')
+
+    def test_a29_a_failed_scan_is_processed_again_once_a_readable_room_arrives(tmp_path):
+        with _api_client(tmp_path) as client:
+            body = {"name": "Corner cafe", "device_model": "iPhone17,1", "duration_seconds": 60.0}
+            scan_id = client.post("/api/scans", json=body).json()["id"]
+            _upload(client, scan_id, "room-json", b"{not json", "room_json")
+            _upload(client, scan_id, "room-usdz", b"usdz", "room_usdz")
+>           assert _finalize_and_process(client, scan_id) == "failed"
+E           AssertionError: assert 'uploading' == 'failed'
+E             
+E             - failed
+E             + uploading
+
+tests/test_audit_open_findings.py:216: AssertionError
+____________ test_nothing_new_branches_on_what_kind_of_thing_it_is _____________
+
+    def test_nothing_new_branches_on_what_kind_of_thing_it_is():
+        total, worst = _count(BRANCHES_ON_KIND, per_file=True)
+        print(f"\nbranches on kind: {total} (baseline {BRANCHES_BASELINE}, target 0)")
+        for found, path in worst[:5]:
+            print(f"    {found:3}  {path}")
+>       assert total <= BRANCHES_BASELINE, (
+            f"{total} places ask what kind of thing something is, up from {BRANCHES_BASELINE}. "
+            "Re-run the predicate that justifies the relation instead of trusting the name."
+        )
+E       AssertionError: 37 places ask what kind of thing something is, up from 34. Re-run the predicate that justifies the relation instead of trusting the name.
+E       assert 37 <= 34
+
+tests/test_ontology_is_not_fixed.py:77: AssertionError
+----------------------------- Captured stdout call -----------------------------
+
+branches on kind: 37 (baseline 34, target 0)
+      9  services/api/standardphysics_api/architecture_export.py
+      4  services/api/standardphysics_api/scope_manifest.py
+      4  packages/pipeline/standardphysics_pipeline/astra.py
+      2  services/api/standardphysics_api/textures.py
+      2  services/api/standardphysics_api/labels.py
+________________________ test_the_baselines_are_honest _________________________
+
+    def test_the_baselines_are_honest():
+        """If a baseline is above the real count, lower it in the same change."""
+        branches, _ = _count(BRANCHES_ON_KIND, per_file=True)
+        literals = _count(ONTOLOGY_LITERAL)
+>       assert branches == BRANCHES_BASELINE, f"branches fell to {branches}; set BRANCHES_BASELINE to that"
+E       AssertionError: branches fell to 37; set BRANCHES_BASELINE to that
+E       assert 37 == 34
+
+tests/test_ontology_is_not_fixed.py:96: AssertionError
+=============================== warnings summary ===============================
+../../../Users/yanzihao/Documents/standardphysics/.venv/lib/python3.11/site-packages/starlette/testclient.py:53
+  /Users/yanzihao/Documents/standardphysics/.venv/lib/python3.11/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_audit_open_findings.py::test_a49_a_real_scan_that_is_ready_has_been_checked
+FAILED tests/test_audit_open_findings.py::test_a29_a_failed_scan_is_processed_again_once_a_readable_room_arrives
+FAILED tests/test_ontology_is_not_fixed.py::test_nothing_new_branches_on_what_kind_of_thing_it_is
+FAILED tests/test_ontology_is_not_fixed.py::test_the_baselines_are_honest - A...
+4 failed, 285 passed, 3 xfailed, 1 warning in 26.01s

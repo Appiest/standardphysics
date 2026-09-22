@@ -104,6 +104,45 @@ REVIEWED_LANES = [
             "web_build_command": "npm run build (next build) exit 0 with routes listed",
         },
     },
+
+    {
+        "lane": "FINAL2",
+        "source_head": "8b48f9e0344a03e10ba2f79852956c88abc7dbde",
+        "gate": "G01",
+        "folder": "final2",
+        "entries": [
+            {"id": "FINAL2-API", "log": "api.log", "claims": ["233 passed"], "exit_code": 0},
+            {"id": "FINAL2-PIPELINE", "log": "pipeline.log", "claims": ["331 passed, 32 skipped"], "exit_code": 0},
+            {"id": "FINAL2-AGENTS", "log": "agents.log", "claims": ["838 passed"], "exit_code": 0},
+            {
+                "id": "FINAL2-TOPLEVEL", "log": "toplevel.log",
+                "claims": [
+                    "4 failed, 285 passed",
+                    "test_audit_open_findings.py::test_a49_a_real_scan_that_is_ready_has_been_checked",
+                    "test_ontology_is_not_fixed.py::test_nothing_new_branches_on_what_kind_of_thing_it_is",
+                ],
+                "exit_code": 1,
+            },
+            {"id": "FINAL2-G07", "log": "g07.log", "claims": ["135 passed"], "exit_code": 0},
+            {"id": "FINAL2-WEB-TC", "log": "web-tc.log", "claims": ["Types generated successfully"], "exit_code": 0},
+            {"id": "FINAL2-WEB-TEST", "log": "web-test.log", "claims": ["176 passed (176)"], "exit_code": 0},
+            {
+                "id": "FINAL2-WEB-BUILD-FIX", "log": "web-build-symlink-removed.log",
+                "claims": ["Compiled successfully"], "exit_code": 0,
+            },
+            {
+                "id": "FINAL2-WEB-BUILD-PANIC", "log": "web-build-with-committed-symlink.log",
+                "claims": ["leaves the filesystem root"], "exit_code": 1,
+            },
+        ],
+        "findings": {
+            "head_label": "final integration head 8b48f9e",
+            "suite_green": "API 233, pipeline+contracts 331/32, agents 838, G07-targeted 135, web tc + 176 tests all green",
+            "top_tests_failures": "4 visible failures: 2 pre-existing ontology + 2 audit_open_findings red caused by B's correct usdz staging validation rejecting the fake-usdz fixture bytes (upload 400 invalid usdz archive); fixtures must use a real usdz, not the product",
+            "web_build": "production build FAILS with a Turbopack panic while the committed absolute symlink apps/web/.node_modules-link is present (path joins leave the filesystem root); with the symlink removed the build compiles successfully. Repo hygiene fix for K/U; dev/typecheck/tests unaffected",
+            "astmast": "astra top-level tests now PASS (B's wall fix)",
+        },
+    },
 ]
 
 
@@ -186,7 +225,8 @@ def main() -> int:
         folder = ASSETS / lane["folder"]
         folder.mkdir(parents=True, exist_ok=True)
     for receipt in receipts:
-        folder = ASSETS / next(l["folder"] for l in REVIEWED_LANES if receipt["receipt_id"].startswith(f"REVIEW-{l['lane']}"))
+        matches = [l for l in REVIEWED_LANES if receipt["receipt_id"].startswith(f"REVIEW-{l['lane']}")]
+        folder = ASSETS / max(matches, key=lambda lane: len(lane["lane"]))["folder"]
         target = folder / f"{receipt['receipt_id']}.json"
         target.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
         verdict = verify_receipt(

@@ -1,10 +1,10 @@
 {
-  "receipt_id": "REVIEW-FINAL-WEB-TEST",
+  "receipt_id": "REVIEW-FINAL2-WEB-TEST",
   "gate_id": "G01",
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "aa8fd81c51bf85cbaa2b948ed2dfe1a0668eb819",
+  "source_commit": "8b48f9e0344a03e10ba2f79852956c88abc7dbde",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "eb8c31f1addb1f7c0e58d01c4b62f222237fc31444bababd7d80e5aa9c01836f",
@@ -13,8 +13,8 @@
   "output_artifacts": [
     {
       "path": "web-test.log",
-      "sha256": "c20eb817dbcf6b7c4cf2a8f3af13a25e3db6ede5e8f7aa50f99dda82735fb8c3",
-      "size_bytes": 758,
+      "sha256": "4551cb6c360cca5546809ecf80854adc9ca62e0074b4a4c67d3cb8243429bafa",
+      "size_bytes": 959,
       "content_type": "text/plain"
     }
   ],
@@ -23,8 +23,8 @@
   "scenario_hash": null,
   "scope_manifest_hash": null,
   "evidence_manifest_hash": null,
-  "command_or_recorded_ui_steps": "suite transcription on disposable worktree at lane FINAL HEAD aa8fd81",
-  "working_directory": "/tmp/q-review-final",
+  "command_or_recorded_ui_steps": "suite transcription on disposable worktree at lane FINAL2 HEAD 8b48f9e",
+  "working_directory": "/tmp/q-review-final2",
   "environment_versions": {
     "python": "3.11",
     "node": "shared node_modules (read-only)"
@@ -39,7 +39,7 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "169 passed (169)",
+        "substring": "176 passed (176)",
         "artifact": "web-test.log"
       },
       "evidence_paths": [
@@ -49,8 +49,8 @@
     {
       "id": "log-hash",
       "measurement_method": "file_sha256",
-      "expected": "c20eb817dbcf6b7c4cf2a8f3af13a25e3db6ede5e8f7aa50f99dda82735fb8c3",
-      "observed": "c20eb817dbcf6b7c4cf2a8f3af13a25e3db6ede5e8f7aa50f99dda82735fb8c3",
+      "expected": "4551cb6c360cca5546809ecf80854adc9ca62e0074b4a4c67d3cb8243429bafa",
+      "observed": "4551cb6c360cca5546809ecf80854adc9ca62e0074b4a4c67d3cb8243429bafa",
       "params": {
         "artifact": "web-test.log"
       },
@@ -65,9 +65,10 @@
     "attestation": "independent recompute on a disposable worktree"
   },
   "findings": {
-    "head_label": "K integration HEAD aa8fd81",
-    "suite_green": "API 211, pipeline+contracts 315/32, agents 776, web tc+169 tests+build all green at aa8fd81",
-    "top_tests_failures": "exactly the 4 pre-existing astra(2)/ontology(2) failures, identical to baseline inventory; none new, assigned B/R",
-    "web_build_command": "npm run build (next build) exit 0 with routes listed"
+    "head_label": "final integration head 8b48f9e",
+    "suite_green": "API 233, pipeline+contracts 331/32, agents 838, G07-targeted 135, web tc + 176 tests all green",
+    "top_tests_failures": "4 visible failures: 2 pre-existing ontology + 2 audit_open_findings red caused by B's correct usdz staging validation rejecting the fake-usdz fixture bytes (upload 400 invalid usdz archive); fixtures must use a real usdz, not the product",
+    "web_build": "production build FAILS with a Turbopack panic while the committed absolute symlink apps/web/.node_modules-link is present (path joins leave the filesystem root); with the symlink removed the build compiles successfully. Repo hygiene fix for K/U; dev/typecheck/tests unaffected",
+    "astmast": "astra top-level tests now PASS (B's wall fix)"
   }
 }

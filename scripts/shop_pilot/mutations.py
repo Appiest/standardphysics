@@ -26,11 +26,11 @@ ASSETS = pathlib.Path("scripts/shop_pilot/assets/mutations")
 MUTATIONS: list[dict[str, Any]] = [
     {
         "id": "M03",
-        "source_head": "q-worktree-early-freeze (local)",
+        "source_head": "8b48f9e (final K HEAD)",
         "outcome": "killed",
         "fault": "repository.py: evidence bundle declared complete despite missing required kinds (early finalize)",
         "fault_file": "services/api/standardphysics_api/repository.py",
-        "restored_sha256": "b3bd33871fdc02ce1f9b438da844aa7f719297dffe729519839ae7f251a019a3",
+        "restored_sha256": "ec82157b9fdff3bdd37e2794e15c0bf35f2d92094153859326c965f8ee1d6851",
         "killed_by": "services/api/tests/test_evidence_closure.py::test_legacy_geometry_complete_stays_browsable_with_semantics_blocked",
         "behavioral_assertion": "assert 'complete' == 'blocked_incomplete_evidence'",
         "mutated_log": "M03-mutated.log",
@@ -83,7 +83,7 @@ MUTATIONS: list[dict[str, Any]] = [
     },
     {
         "id": "M04",
-        "source_head": "aa8fd81 (K integration HEAD)",
+        "source_head": "8b48f9e (final K HEAD)",
         "outcome": "killed",
         "fault": "evidence.py: attempted-input gating removed from maybe_queue_semantic (failed-bundle retry storm)",
         "fault_file": "services/api/standardphysics_api/evidence.py",
@@ -96,11 +96,11 @@ MUTATIONS: list[dict[str, Any]] = [
     },
     {
         "id": "M08",
-        "source_head": "aa8fd81 (K integration HEAD)",
+        "source_head": "8b48f9e (final K HEAD)",
         "outcome": "killed",
         "fault": "worker.py: ingest saves at the latest owner revision, clobbering the reviewed graph (stale async overwrites review)",
         "fault_file": "services/api/standardphysics_api/worker.py",
-        "restored_sha256": "687821227217a07160065eec4d23442f3c92bc3675856aa99a3b943d4811ac89",
+        "restored_sha256": "be0dcd38cf27ae47c3ac5d6115d59e8a2df742098c5d72cd4f0c45858a1d454b",
         "killed_by": "services/api/tests/test_review_safety.py::test_late_process_job_replaces_ingest_revision_but_never_owner_decisions",
         "behavioral_assertion": "assert latest[\"revision\"] == 1",
         "mutated_log": "M08-mutated.log",

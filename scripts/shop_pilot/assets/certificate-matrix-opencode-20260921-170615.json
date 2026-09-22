@@ -1,35 +1,47 @@
 {
   "kind": "certificate_matrix_independently_computed",
+  "version": 2,
   "run_id": "opencode-20260921-170615",
   "evaluator": "lane Q independent (fireworks-ai deepseek-pro-latest)",
-  "computed_at": "2026-09-21T20:45:00-07:00",
+  "computed_at": "2026-09-21T23:00:00-07:00",
   "deadline": "2026-09-22T00:00:00-07:00",
-  "integration_head_evaluated": "aa8fd81c51bf85cbaa2b948ed2dfe1a0668eb819 (K branch codex/opencode-20260921-170615-k)",
-  "policy": "frozen hashes unchanged vs Q freeze (04-hard-gates 8db915a8..., 01/02/05/06 all match)",
-  "ground_rules": "only gates with Q-recomputed evidence pass; no process-exit-zero passes; synthetic evidence can never carry physical gates",
+  "integration_head_evaluated": "8b48f9e0344a03e10ba2f79852956c88abc7dbde",
+  "policy": "frozen hashes unchanged vs Q freeze artifact (04-hard-gates 8db915a8..., 01/02/05/06 match)",
+  "q_recomputed_receipts": ["REVIEW-FINAL2-API", "REVIEW-FINAL2-PIPELINE", "REVIEW-FINAL2-AGENTS", "REVIEW-FINAL2-TOPLEVEL", "REVIEW-FINAL2-G07", "REVIEW-FINAL2-WEB-TC", "REVIEW-FINAL2-WEB-TEST", "REVIEW-FINAL2-WEB-BUILD-FIX", "REVIEW-FINAL2-WEB-BUILD-PANIC", "MUT-M03", "MUT-M04", "MUT-M08", "WB-AUDIT", "SLICE-I1/I2/I3"],
+  "suite_results_q_actual": {
+    "services_api": "233 passed (combine-floor regression repaired)",
+    "pipeline_contracts": "331 passed, 32 skipped",
+    "agents": "838 passed",
+    "top_tests": "285 passed, 4 failed, 3 xfailed",
+    "web": "typecheck green, 176 tests, build PASSES only after removing committed absolute symlink (see findings)",
+    "g07_targeted": "135 fix/proposal/collision/redesign/reach tests green"
+  },
+  "findings_new_at_this_head": [
+    "tests/test_audit_open_findings.py::test_a49 + test_a29 now FAIL because B's correct usdz staging validation (bc1c8c6) rejects their fake b'usdz' fixture bytes with 400 'invalid usdz archive'; fixtures must upload a real usdz. Product behavior is correct; the tests are stale.",
+    "apps/web/.node_modules-link (committed absolute symlink into another checkout) makes 'next build' panic with 'leaves the filesystem root' in every worktree layout Q tried; removing the symlink lets the production build compile successfully. Repo hygiene fix for K/U; dev server/typecheck/tests unaffected."
+  ],
   "gates": [
-    {"id": "G00", "status": "failed", "blocker": "7 of 18 required behavioral mutation kills (M04/M08 killed at aa8fd81; M03 at local freeze head; M05/M07/M15/M16 at earlier heads; M06 survived_gap pinned for S). Policy freeze + validator regression evidenced (legacy G9 receipts invalid).", "evidence": ["MUT-M04", "MUT-M08", "freeze-opencode-20260921-170615.json", "legacy-g9-audit.json"]},
-    {"id": "G01", "status": "failed", "blocker": "every commanded suite green except tests/: 4 pre-existing failures kept - astra(2) test_local_rebuild_keeps_roomplan_provenance_and_measured_identity + test_partial_or_malformed_model_response_falls_back_without_partial_mutation, ontology(2) test_nothing_new_branches_on_what_kind_of_thing_it_is + test_the_baselines_are_honest. None new at aa8fd81; combine-floor and all 7 agents regressions ARE repaired.", "evidence": ["REVIEW-FINAL-API", "REVIEW-FINAL-PIPELINE", "REVIEW-FINAL-AGENTS", "REVIEW-FINAL-TOPLEVEL", "REVIEW-FINAL-WEB-TC", "REVIEW-FINAL-WEB-TEST", "REVIEW-FINAL-WEB-BUILD"]},
-    {"id": "G02", "status": "passed", "blocker": null, "note": "software-level evidence: closure suite + 22 lifecycle tests at aa8fd81 - settle gate, explicit re-complete, manifest-gated discovery, durable due-settling sweep, attempted-input gating, single-job idempotency, crash recovery", "evidence": ["REVIEW-FINAL-LIFECYCLE", "SLICE-I1-PROBE"]},
-    {"id": "G03", "status": "passed", "blocker": null, "note": "S taxonomy/crops integrated and green in pipeline suite; residual risk recorded: encode_frame orientation rotation still has no pinning test (M06 gap assigned to S)", "evidence": ["REVIEW-S-PIPELINE", "REVIEW-FINAL-PIPELINE"]},
-    {"id": "G04", "status": "passed", "blocker": null, "note": "review-safety 16 tests green at aa8fd81; M08 mutation killed behaviorally", "evidence": ["FINAL lifecycle logs", "MUT-M08", "SLICE-I2-PROBE"]},
-    {"id": "G05", "status": "passed", "blocker": null, "note": "rule-interval/comparator tests green (62) incl. nonfinite bounds guard verified by supervisor f1bf57d and re-included suites; actual Blender marker evidence remains G lane's responsibility", "evidence": ["REVIEW-FINAL-INTERVALS", "supervisor-bounds-fix-verification.json (independent re-run embedded in agents suite)"]},
-    {"id": "G06", "status": "passed", "blocker": null, "note": "scope rows: requested rows, five outcomes, unevaluated=unobserved, no autonomous not_applicable - 11 tests green; real-denominator coverage on the whiteboard capture is G13 work", "evidence": ["REVIEW-FINAL-SCOPE", "REVIEW-FINAL-AGENTS"]},
-    {"id": "G07", "status": "pending", "blocker": "R lane still running; Q has no R receipts at this integration head. Proposals return honest no-arrangement on ravida fixture (I3).", "evidence": ["SLICE-I3-PROBE"]},
-    {"id": "G08", "status": "pending", "blocker": "U review flow integrated (web 169 tests green, typecheck+build green) but U's own receipts for mobile viewports/focus states not yet handed to Q; ZIP/report parity observed in I3 at earlier head.", "evidence": ["REVIEW-FINAL-WEB-TEST", "SLICE-I3-PROBE"]},
-    {"id": "G09", "status": "pending", "blocker": "E runtime packaging (docker data stage, start.sh docs) is at the head but E has not handed receipts; Q probes show anonymous ZIP/report denial (401) and no server paths leaked.", "evidence": ["SLICE-I3-PROBE"]},
-    {"id": "G10", "status": "externally_blocked", "blocker": "real Moffett/whiteboard replay with actual detector invocation requires K's single paid-run lease and B's provider wiring; uploaded bundles are byte-verified; retry-storm fix landed (M04 kill) so the paid diagnostic is unblocked hardware-wise", "evidence": ["WB-AUDIT"]},
-    {"id": "G11", "status": "externally_blocked", "blocker": "capture+upload legs real and user-confirmed; missing: installed-build identity recording, phone review journey, interruption/resume exercise - C lane physical actions", "evidence": ["WB-AUDIT", "supervisor-whiteboard-upload-complete.json"]},
-    {"id": "G12", "status": "pending", "blocker": "insufficient evidence: human-reviewed held-out inventories required (min 3 non-tuning sites; 30 outlet/10 other positives; 30 negatives per class). Evaluator ready in scripts/shop_pilot/benchmark.py.",
-     "evidence": []},
-    {"id": "G13", "status": "pending", "blocker": "A must produce the whiteboard/Moffett dossier pinned to the candidate revision with control-gap lists", "evidence": []},
-    {"id": "G14", "status": "pending", "blocker": "qualified human legal review; verifier blocks agent-authored review (hardened corroboration rules)", "evidence": []},
-    {"id": "G15", "status": "pending", "blocker": "V photo-mesh candidate not integrated; renders not produced tonight", "evidence": []},
-    {"id": "G16", "status": "externally_blocked", "blocker": "cannot exist before the actual boba-shop visit; synthetic substitution forbidden", "evidence": []},
-    {"id": "G17", "status": "externally_blocked", "blocker": "needs independent field control measurements (instrument/method/actor/time), min 10 controls + 5 held out per site; none exist", "evidence": []}
+    {"id": "G00", "status": "failed", "blocker": "7 of 18 required behavioral mutation kills. M03/M04/M08 re-killed and re-bound at 8b48f9e with restored hashes + clean reruns; M05/M07 at S head 422d16e; M15/M16 at base. M06 survived_gap pinned for S (encode_frame orientation untested)."},
+    {"id": "G01", "status": "failed", "blocker": "4 visible failures in tests/: 2 pre-existing ontology + 2 audit_open_findings fixture failures vs the new usdz staging validation. All other suites Q-verified green; production build green only after the symlink fix."},
+    {"id": "G02", "status": "passed", "blocker": null, "note": "closure suite (6) + 19 lifecycle/review tests at 8b48f9e; settle gate, durable sweep, attempted-input gating, manifest-gated discovery, explicit re-complete; M04 kill at this head."},
+    {"id": "G03", "status": "passed", "blocker": null, "note": "pipeline+agents suites green at final head; S taxonomy/crops integrated; residual: M06 gap."},
+    {"id": "G04", "status": "passed", "blocker": null, "note": "review-safety suite green; M08 kill at this head; I2 probe evidence."},
+    {"id": "G05", "status": "passed", "blocker": null, "note": "interval/comparator suites green incl NaN/Inf rejection; combine-floor regression repaired; actual Blender marker evidence remains G lane responsibility."},
+    {"id": "G06", "status": "passed", "blocker": null, "note": "scope rows green: five outcomes, unevaluated=unobserved with next_action, unreviewed_preview separation, no autonomous not_applicable."},
+    {"id": "G07", "status": "passed", "blocker": null, "note": "135 targeted fix/proposal/collision/redesign/reach tests green at 8b48f9e (R integrated)."},
+    {"id": "G08", "status": "pending", "blocker": "U receipts for mobile-viewport/focus/keyboard/SR checks not handed to Q; Q verified web suite (176) and build (with symlink caveat)."},
+    {"id": "G09", "status": "pending", "blocker": "E receipts not handed to Q; auth denials verified in Q probes; docker/restart packaging not independently exercised by Q."},
+    {"id": "G10", "status": "externally_blocked", "blocker": "K's single paid-run lease for a real detector invocation; upload integers byte-verified."},
+    {"id": "G11", "status": "externally_blocked", "blocker": "C journey outstanding: installed-build identity, phone review read-back, interruption/resume exercise; capture+upload legs real."},
+    {"id": "G12", "status": "pending", "blocker": "human-reviewed held-out inventories (>=3 non-tuning sites, 30 outlets, 10 each other class, 30 negative regions per class)."},
+    {"id": "G13", "status": "pending", "blocker": "A dossier not handed to Q."},
+    {"id": "G14", "status": "externally_blocked", "blocker": "qualified human legal review; verifier blocks agent-authored review."},
+    {"id": "G15", "status": "pending", "blocker": "V mesh candidate not verified by Q (no render receipts)."},
+    {"id": "G16", "status": "externally_blocked", "blocker": "cannot exist before the actual boba-shop visit."},
+    {"id": "G17", "status": "externally_blocked", "blocker": "independent field control measurements missing."}
   ],
   "certificates": {
-    "software_verified": {"status": "not_awarded", "blocked_by": ["G00", "G01", "G07", "G08", "G09"]},
+    "software_verified": {"status": "not_awarded", "blocked_by": ["G00", "G01", "G08", "G09"]},
     "saved_capture_verified": {"status": "not_awarded", "blocked_by": ["G10"]},
     "phone_pilot_ready": {"status": "not_awarded", "blocked_by": ["G11"]},
     "shop_field_validated": {"status": "not_awarded", "blocked_by": ["G16", "G17"]},
@@ -38,13 +50,5 @@
     "scoped_requirements_satisfied": {"status": "not_awarded", "blocked_by": ["G14", "G17"]},
     "photo_mesh_500_verified": {"status": "not_awarded", "blocked_by": ["G15"]},
     "whole_site_ADA_compliance": {"automated_certificate_allowed": false}
-  },
-  "assisted_pilot_usable": {
-    "capture_upload": "real, user-confirmed, byte-verified whiteboard capture traverses upload flow",
-    "evidence_closure": "verified settle/manifest/explicit semantics at the head",
-    "review_flow": "authenticated review with owner-conflict protection verified",
-    "assessment": "scoped rows with visible outcomes verified at suite level",
-    "what_remains_honest": "recognition accuracy unproven, no legal review, no field controls, no new-shop visit yet"
-  },
-  "not_counted_as_passes": ["process exit 0", "synthetic receipts for physical gates", "self-authored status flags", "simulator or fixture as fresh-phone/new-shop evidence", "agent identity as human review"]
+  }
 }
