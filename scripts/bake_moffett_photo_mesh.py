@@ -152,9 +152,10 @@ def write_glb(output: Path, room: str, args, cameras, frames, display_vertices,
 
 def selection_string(args) -> str:
     if args.partial:
+        smooth = (", source_smoothing=0.85/votes>=2" if args.smooth else "")
         return (f"choose_views_partial (>=5/7 samples + spread, min_facing={args.min_facing}, "
                 f"centre={'required' if not args.no_centre else 'not required'}, "
-                f"depth_reference={'display' if args.display_depth else 'full geometry'})")
+                f"depth_reference={'display' if args.display_depth else 'full geometry'}{smooth})")
     return "choose_views (all corners and centre, full geometry depth)"
 
 
@@ -191,6 +192,9 @@ def main():
     parser.add_argument("--subdivide-region", action="store_true",
                         help="split region display faces into four midpoint subfaces before "
                              "snapping, so oblique photographed faces warp less per face")
+    parser.add_argument("--smooth", action="store_true",
+                        help="source-consistency smoothing: relabel a face to its second-best "
+                             "accepting camera when neighbours vote for it (visibility-preserving)")
     args = parser.parse_args()
     directory = args.captures/CAPTURES[args.room]
     output = args.output/args.room
@@ -229,7 +233,9 @@ def main():
     if args.partial:
         assignment, areas = choose_views_partial(
             display_vertices, display_triangles, small, depth_vertices, depth_triangles, progress,
-            min_facing=args.min_facing, centre_required=not args.no_centre)
+            min_facing=args.min_facing, centre_required=not args.no_centre,
+            smooth_factor=0.85 if args.smooth else None,
+            smooth_min_votes=2 if args.smooth else 0)
     else:
         assignment, areas = choose_views(
             display_vertices, display_triangles, small, depth_vertices, depth_triangles, progress)
