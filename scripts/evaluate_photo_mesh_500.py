@@ -193,7 +193,11 @@ def hole_surface_decomposition(face_buffer: np.ndarray, hole_mask: np.ndarray,
     hole_faces = face_buffer[hole_mask]
     hole_faces = hole_faces[(hole_faces >= 0) & (hole_faces < len(scene_faces))]
     if not len(hole_faces):
-        return {"hole_pixels_with_face": 0, "by_normal_axis": {}}
+        return {"hole_pixels_with_face": 0,
+                "down_facing_undersides_face_pixels": 0,
+                "up_facing_tops_floor_face_pixels": 0,
+                "lateral_walls_face_pixels": 0,
+                "note": "no candidate face under hole pixels"}
     faces = scene_faces[hole_faces]
     corners = scene_vertices[faces]
     cross = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
