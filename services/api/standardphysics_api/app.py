@@ -20,11 +20,14 @@ from standardphysics_contracts import (
     AskAnswer,
     AskRequest,
     Assessment,
+    CompleteRequest,
     CreateScanRequest,
+    EvidenceStatus,
     LayoutCheckRequest,
     LayoutCheckResult,
     LoopRequest,
     LoopResult,
+    ManualMarkRequest,
     ProposalRequest,
     ProposalResult,
     RebuildRequest,
@@ -48,7 +51,8 @@ from .combine import SaveCombineRequest, save_combine
 from .coverage import parse_coverage
 from .db import Database
 from .errors import ApiProblem
-from .labels import mark_counter, review_outlet, unmark_counter
+from .evidence import evidence_status_for, maybe_queue_semantic, record_closure
+from .labels import mark_counter, mark_observation, review_outlet, unmark_counter
 from .layout import check_layout, save_layout
 from .lidar_mesh import InvalidLidarMesh, validate_lidar_mesh
 from .loop_run import run as run_loop_on
@@ -248,6 +252,7 @@ def _finalize(database: Database, store: ArtifactStore, scan_id: uuid.UUID) -> t
             if coverage_artifact else []
         )
         repo.mark_finalized(connection, scan, coverage)
+        record_closure(connection, scan)
         repo.enqueue_job(connection, scan_id, PROCESS, 0)
         return repo.get_scan(connection, scan_id), True
 
@@ -292,16 +297,31 @@ def _install_upload_routes(app: FastAPI, database: Database, store: ArtifactStor
         status, artifact = _accept_staged(
             database, store, scan_id, artifact_id, x_artifact_kind, x_checksum_sha256, staged
         )
+        queued_semantic = False
         if x_artifact_kind in ("photo_manifest", "frames", "poses", "lidar_mesh"):
             maybe_queue_texture(database, store, worker, scan_id)
+        if x_artifact_kind in repo.SEMANTIC_INPUT_KINDS:
+            with database.transaction() as connection:
+                scan = _scan_or_404(connection, scan_id)
+                if scan.state != "uploading":
+                    record_closure(connection, scan)
+                    queued_semantic = maybe_queue_semantic(connection, scan, PROCESS) == "queued"
+        if queued_semantic:
+            worker.wake()
         return JSONResponse(artifact.model_dump(mode="json"), status_code=status)
 
     @app.post("/api/scans/{scan_id}/complete", response_model=Scan)
-    def complete(scan_id: uuid.UUID) -> Scan:
+    def complete(scan_id: uuid.UUID, body: CompleteRequest | None = None) -> Scan:
         scan, queued = _finalize(database, store, scan_id)
         if queued:
             worker.wake()
         return scan
+
+    @app.get("/api/scans/{scan_id}/evidence", response_model=EvidenceStatus)
+    def evidence(scan_id: uuid.UUID) -> EvidenceStatus:
+        with database.connect() as connection:
+            scan = _scan_or_404(connection, scan_id)
+        return evidence_status_for(database, scan)
 
 
 def _file_or_404(path: str | pathlib.Path | None, media_type: str) -> FileResponse:
@@ -413,6 +433,24 @@ def _install_label_routes(app: FastAPI, database: Database, worker: Worker) -> N
         body: ReviewOutletRequest,
     ) -> SceneGraph:
         return review_outlet(database, worker, scan_id, base_revision, node_id, body.status)
+
+    @app.put("/api/scans/{scan_id}/revisions/{base_revision}/observations",
+             response_model=SceneGraph, status_code=201)
+    def add_observation(
+        scan_id: uuid.UUID,
+        base_revision: int,
+        body: ManualMarkRequest,
+        request: Request,
+    ) -> SceneGraph:
+        """A person marks photo evidence for a target the pipeline did not find.
+
+        The middleware settled ownership; the actor is the signed-in owner.
+        A mark with a node attaches to that node's evidence; without one it is
+        stored unlocalized on the graph, never given an invented position.
+        """
+        return mark_observation(
+            database, worker, scan_id, base_revision, body, owner_of(request).email
+        )
 
 
 def _install_route_routes(app: FastAPI, database: Database, worker: Worker) -> None:

@@ -12,14 +12,25 @@ from standardphysics_contracts import (
     Artifact,
     Assessment,
     CreateScanRequest,
+    EvidenceBundle,
+    GEOMETRY_REQUIRED_ARTIFACT_KINDS,
     Scan,
     Scenario,
     SceneGraph,
+    SEMANTIC_REQUIRED_ARTIFACT_KINDS,
     SurfaceCoverage,
     graph_hash,
 )
 
 REQUIRED_ARTIFACT_KINDS = ("room_json", "room_usdz")
+
+SEMANTIC_INPUT_KINDS = frozenset((*SEMANTIC_REQUIRED_ARTIFACT_KINDS, "photo_manifest", "coverage"))
+"""Artifact kinds whose arrival changes the evidence manifest semantic jobs run on.
+
+Frozen by K (contract 2): a bundle's manifest hashes only these kinds, so a
+walkthrough video cannot trigger a recognition rerun while a new frame set can.
+B owns the persisted lifecycle built on top.
+"""
 
 
 def now() -> str:
@@ -146,6 +157,110 @@ def missing_required(scan: Scan) -> list[str]:
 def content_hash(scan: Scan) -> str:
     lines = sorted(f"{artifact.id}:{artifact.sha256}" for artifact in scan.artifacts)
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
+def build_evidence_bundle(scan: Scan, version: int, created_at: str | None = None) -> EvidenceBundle:
+    """Close the scan's current artifacts into one versioned bundle.
+
+    The manifest hashes only the semantic-input kinds (frozen set above), so a
+    bundle changes exactly when recognition inputs change. `complete` means both
+    the geometry and the semantics required kinds are present.
+    """
+    by_kind: dict[str, list[str]] = {}
+    for artifact in scan.artifacts:
+        by_kind.setdefault(artifact.kind, []).append(artifact.sha256)
+    present = set(by_kind)
+    required = set(GEOMETRY_REQUIRED_ARTIFACT_KINDS) | set(SEMANTIC_REQUIRED_ARTIFACT_KINDS)
+    missing = sorted(required - present)
+    reasons: list[str] = []
+    if missing:
+        reasons.append(f"missing artifacts: {', '.join(missing)}")
+    manifest_lines = sorted(
+        f"{kind}:{','.join(sorted(shas))}"
+        for kind, shas in by_kind.items()
+        if kind in SEMANTIC_INPUT_KINDS
+    )
+    manifest_hash = hashlib.sha256("\n".join(manifest_lines).encode("utf-8")).hexdigest()
+    latest_shas = {kind: shas[-1] for kind, shas in by_kind.items()}
+    return EvidenceBundle(
+        version=version,
+        manifest_hash=manifest_hash,
+        artifact_ids=[artifact.id for artifact in scan.artifacts],
+        artifact_hashes=latest_shas,
+        complete=not missing,
+        missing_required_kinds=missing,
+        reasons=reasons,
+        created_at=datetime.fromisoformat(created_at) if created_at else None,
+    )
+
+
+def insert_bundle(connection: sqlite3.Connection, scan_id: uuid.UUID, bundle: EvidenceBundle) -> None:
+    connection.execute(
+        "INSERT INTO evidence_bundles (scan_id, version, manifest_hash, artifact_ids_json,"
+        " artifact_hashes_json, complete, missing_required_kinds_json, reasons_json,"
+        " created_at, semantic_processed_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            str(scan_id),
+            bundle.version,
+            bundle.manifest_hash,
+            json.dumps(bundle.artifact_ids),
+            json.dumps(bundle.artifact_hashes),
+            int(bundle.complete),
+            json.dumps(bundle.missing_required_kinds),
+            json.dumps(bundle.reasons),
+            bundle.created_at.isoformat() if bundle.created_at else now(),
+            bundle.semantic_processed_hash,
+        ),
+    )
+
+
+def latest_bundle(connection: sqlite3.Connection, scan_id: uuid.UUID) -> EvidenceBundle | None:
+    row = connection.execute(
+        "SELECT * FROM evidence_bundles WHERE scan_id = ? ORDER BY version DESC LIMIT 1",
+        (str(scan_id),),
+    ).fetchone()
+    if row is None:
+        return None
+    return EvidenceBundle(
+        version=row["version"],
+        manifest_hash=row["manifest_hash"],
+        artifact_ids=json.loads(row["artifact_ids_json"]),
+        artifact_hashes=json.loads(row["artifact_hashes_json"]),
+        complete=bool(row["complete"]),
+        missing_required_kinds=json.loads(row["missing_required_kinds_json"]),
+        reasons=json.loads(row["reasons_json"]),
+        created_at=datetime.fromisoformat(row["created_at"]),
+        semantic_processed_hash=row["semantic_processed_hash"],
+    )
+
+
+def bundle_processed(connection: sqlite3.Connection, scan_id: uuid.UUID, version: int, manifest_hash: str) -> None:
+    """Record that a semantic job consumed this exact bundle's manifest."""
+    connection.execute(
+        "UPDATE evidence_bundles SET semantic_processed_hash = ? WHERE scan_id = ? AND version = ?",
+        (manifest_hash, str(scan_id), version),
+    )
+
+
+def has_pending_process_job(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
+    """True while a semantic job is queued or running. Kind string matches worker.PROCESS."""
+    return (
+        connection.execute(
+            "SELECT 1 FROM jobs WHERE scan_id = ? AND kind = 'process'"
+            " AND state IN ('queued', 'running') LIMIT 1",
+            (str(scan_id),),
+        ).fetchone()
+        is not None
+    )
+
+
+def process_job_states(connection: sqlite3.Connection, scan_id: uuid.UUID) -> tuple[str, ...]:
+    """Every state a process job has been in for this scan, newest first."""
+    rows = connection.execute(
+        "SELECT state FROM jobs WHERE scan_id = ? AND kind = 'process' ORDER BY id DESC",
+        (str(scan_id),),
+    ).fetchall()
+    return tuple(row["state"] for row in rows)
 
 
 def mark_finalized(

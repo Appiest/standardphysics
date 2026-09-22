@@ -19,6 +19,7 @@ from standardphysics_contracts import SimulationRequest
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
+from .evidence import mark_processed_if_complete
 from .settings import Settings
 from .simulations import SIMULATE, queue_simulation, run_simulation
 from .stages import Stages
@@ -144,6 +145,7 @@ class Worker:
         )
         with self.database.transaction() as connection:
             repo.save_revision(connection, graph, source="ingest")
+            mark_processed_if_complete(connection, scan_id)
         self._assess(scan_id, graph.revision)
 
     def _assess(self, scan_id: uuid.UUID, revision: int) -> None:
