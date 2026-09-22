@@ -8,7 +8,7 @@ const node = (overrides: Partial<SceneNode> = {}): SceneNode => ({
   label: "Wall",
   raw_category: "wall",
   dimensions: { x: 1, y: 1, z: 1 },
-  transform: { m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.5, 1.5, 1, 1] },
+  transform: { m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
   quality: "measured",
   movable: false,
   labeled_by: "roomplan",
@@ -46,8 +46,25 @@ const graph = (nodes: SceneNode[], unlocalized: SceneGraph["unlocalized_observat
 });
 
 describe("review target matching", () => {
-  it("reads the approximate position from the stored transform only when finite", () => {
-    expect(nodePosition(node())).toEqual({ x: 0.5, y: 1.5, z: 1 });
+  it("reads the approximate position from the row-major translation indices 3, 7, 11", () => {
+    // Row-major nonidentity transform: 90-degree rotation about z plus a
+    // translation of (2, -1.5, 0.75). The translation must come out exactly,
+    // untouched by the rotation component.
+    const rotated: SceneNode["transform"] = {
+      m: [
+        0, -1, 0, 2,
+        1, 0, 0, -1.5,
+        0, 0, 1, 0.75,
+        0, 0, 0, 1,
+      ],
+    };
+    expect(nodePosition({ ...node(), transform: rotated })).toEqual({ x: 2, y: -1.5, z: 0.75 });
+    // The zero translation sits at 0,0,0 even under rotation.
+    const rotatedOnly: SceneNode["transform"] = { m: [0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] };
+    expect(nodePosition({ ...node(), transform: rotatedOnly })).toEqual({ x: 0, y: 0, z: 0 });
+  });
+
+  it("rejects too-short transforms instead of reading garbage", () => {
     expect(nodePosition({ ...node(), transform: { m: [1, 2, 3] as unknown as SceneNode["transform"]["m"] } })).toBeNull();
   });
 

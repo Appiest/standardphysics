@@ -15,11 +15,16 @@ export const TARGET_CLASS_LABEL: Record<TargetClass, string> = {
 
 export type TargetClassFilter = TargetClass | "all";
 
-/** The approximate spot a measured node stands at, from its stored transform. */
+/** The approximate spot a measured node stands at, from its stored transform.
+ *
+ * `Mat4.m` is row-major, so the translation lives at indices 3, 7 and 11 —
+ * the same entries ShopModel and the camera bounds read. Reading 12..14
+ * picked up the bottom row instead and reported every object near the origin.
+ */
 export function nodePosition(node: SceneNode): Vec3 | null {
   const m = node.transform?.m;
   if (!m || m.length < 16 || !m.every((value) => Number.isFinite(value))) return null;
-  return { x: m[12], y: m[13], z: m[14] };
+  return { x: m[3], y: m[7], z: m[11] };
 }
 
 const WALL_KINDS = new Set(["wall", "floor", "ceiling", "opening", "door", "window", "room"]);
