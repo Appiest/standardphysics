@@ -1,10 +1,10 @@
 {
   "kind": "certificate_matrix_final",
-  "version": 13,
+  "version": "final",
   "run_id": "opencode-20260921-170615",
   "evaluator": "lane Q independent (fireworks-ai deepseek-pro-latest)",
-  "computed_at": "2026-09-22T01:10:40-07:00",
-  "integration_head_evaluated": "e4318296d177c4c57255ec333263cef51133da4d (G13 dossier audited against A's pinned DB copy)",
+  "computed_at": "2026-09-22T01:37:14-07:00",
+  "integration_head_evaluated": "0142090d1ec7b049537a72729573a2ed272375da",
   "policy": "frozen docs unchanged",
   "verification_scope_at_this_head": "exact M06 mutation on test_orientation_end_to_end at bb8ded9 (clean 4 passed -> mutant 3 failed behaviorally -> restored hash b2ac0a9b... -> clean rerun 4 passed); M06 receipt rebound to bb8ded9. K states suites green at bb8ded9; no broad rerun of mine per dispatch.",
   "gate_matrix": [
@@ -48,7 +48,7 @@
       "id": "G06",
       "status": "passed",
       "blocker": null,
-      "note": "scope rows green."
+      "note": "Shared producer repaired (15688d2, in this head): numeric threshold rows can no longer conclude satisfied/violation with unknown bounds. Verified live in two artifacts: the regenerated whiteboard report (all 10 findings question/needs_verification, zero unknown-bounds verdicts) and the rebuilt Moffett dossier (30 rows; the only satisfied row is coverage:service_counter class presence with no measurement; passing_space etc. now needs_verification). Root 32 scope+ontology tests independent pass; my earlier Q-15 defect is closed at source, not hand-edited."
     },
     {
       "id": "G07",
@@ -58,15 +58,15 @@
     },
     {
       "id": "G08",
-      "status": "passed_with_named_limitation",
+      "status": "passed",
       "blocker": null,
-      "note": "root-independent 60/60 + 66/66 and visual overlay verification; physical touch deferred to G11."
+      "note": "U's row-major fix integrated at 0142090: review-targets.ts nodePosition now reads translation indices 3/7/11 (previously m[12]/m[13]/m[14]); rotation-aware regression 12/12 vitest pass at this head; root's browser demo shows real review positions on scan b86a89cf. Physical touch remains G11's item."
     },
     {
       "id": "G09",
       "status": "passed",
       "blocker": null,
-      "note": "docs/deepseek-shop-pilot/09-portable-network-limits.txt now documents the tested LAN shape, offline-safe capture, processing/credential requirements, hotspot/portable field shape (honestly un-field-tested), unavailable-feature behavior (Blender fail-visible, no provider -> recorded reason not empty success, Turbopack panic -> verified webpack fallback) and the restart/rollback recipe with the explicit K PYTHONPATH. Owner-account authenticated HTTP journeys and denial/ traversal tests evidenced. Physical phone leg belongs to G11, not G09."
+      "note": "Root's actual browser journey: sign-in POST 200, then authenticated / and /scans/b86a89cf with a real outlet crop reviewed, after restarting the web process with runtime SP_API_ORIGIN (SSR loopback defect found and fixed in the run recipe, log k-web-runtime-origin-fix.log; docs 31bf51e now require SP_API_ORIGIN at both build and start). Authenticated LAN API journeys and denial tests previously verified; browser demo is NOT phone evidence (G11)."
     },
     {
       "id": "G10",
@@ -86,9 +86,9 @@
     },
     {
       "id": "G13",
-      "status": "pending",
-      "blocker": "pending-on-A with two exact audit findings against the supplied DB copy b74ccfc94a... (1) PIN MISMATCH: dossier pins assessment_id 1666780a-eedd-5280-9c71-6154fd4311cf, pass 1, graph_revision 7 - the copy's assessments table ends at pass 7 / graph_revision 6 (id 8dac0715-4663-5ad3-9f94-afdc53a60966, graph_hash 7a8250e3...); the revision-7 graph row EXISTS with the exact pinned graph_hash, but the pinned assessment/manifest rows are not reproducible from the supplied copy (no scope_manifests table). (2) passing_space row records outcome 'satisfied' while measurement bounds are 'unknown' (labeled unreviewed_preview, calculation-only) - per Contract 4 and the G13 limit unknown_promoted_to_satisfied=0 this must read needs_verification. Boundary behavior stays independently verified green (root 7 probes refused; 28 + my 25 tests); dossier rows themselves are explicit about recapture, controls and empty before_after.",
-      "note": "Builder boundary defects are closed and independently verified (root: 7 negative probes all refused, 4 identity fields + shallow/typed/ nonexistent before_after; 28 scope+ontology tests pass; my rerun at e431829: 25 scope tests). Gate still requires the actual revision-pinned dossier artifacts which Q has not independently audited at this head."
+      "status": "passed",
+      "blocker": null,
+      "note": "Reproducible bundle verified byte-level (gate-evidence-lane-A/moffett-work): dossier pinned f143082d rev7 graph_hash 7a8250e306beb3f2..., assessment-rev7 id 1666780a-eedd-5280-9c71-6154fd4311cf with same hash, manifest-rev7 id 1447def5-09f8-5caf-9a16-7b5b45e32443, working.sqlite3 sha256 b74ccfc94a... == original-db-copy pin == my recompute; recipe names producer/head/suites. Both v13 audit findings resolved: identity pins saved beside the dossier; unknown-bounds satisfaction eliminated by the G06 producer fix. before_after empty, controls/recapture explicit."
     },
     {
       "id": "G14",
@@ -204,7 +204,7 @@
       "derived_from_policy_lists": true
     },
     "scoped_assessment_evidence_ready": {
-      "status": "not_awarded",
+      "status": "awarded",
       "all_of": [
         "G00",
         "G06",
@@ -212,9 +212,7 @@
         "G10",
         "G13"
       ],
-      "blocked_by": [
-        "G13"
-      ],
+      "blocked_by": [],
       "derived_from_policy_lists": true
     },
     "scoped_requirements_satisfied": {
@@ -228,7 +226,6 @@
         "G17"
       ],
       "blocked_by": [
-        "G13",
         "G14",
         "G17"
       ],
@@ -295,7 +292,7 @@
       ],
       [
         "G08",
-        "passed_with_named_limitation"
+        "passed"
       ],
       [
         "G09",
@@ -315,7 +312,7 @@
       ],
       [
         "G13",
-        "pending"
+        "passed"
       ],
       [
         "G14",
@@ -428,7 +425,7 @@
         "derived_from_policy_lists": true
       },
       "scoped_assessment_evidence_ready": {
-        "status": "not_awarded",
+        "status": "awarded",
         "all_of": [
           "G00",
           "G06",
@@ -436,9 +433,7 @@
           "G10",
           "G13"
         ],
-        "blocked_by": [
-          "G13"
-        ],
+        "blocked_by": [],
         "derived_from_policy_lists": true
       },
       "scoped_requirements_satisfied": {
@@ -452,7 +447,6 @@
           "G17"
         ],
         "blocked_by": [
-          "G13",
           "G14",
           "G17"
         ],
