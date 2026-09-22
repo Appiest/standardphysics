@@ -228,7 +228,10 @@ def apply_patches(
 
 
 def local_patches(graph: SceneGraph) -> list[LabelPatch]:
-    walls = [node for node in graph.nodes if stands_upright(node)]
+    # A's SHEET_THICKNESS calibration (0.05m) means a real scan's walls read as
+    # sheets but a labelled wall measured 0.15m thick does not; the scanner's
+    # kind label is the fallback, mirroring agents/checks/walls. upright_walls.
+    walls = [node for node in graph.nodes if stands_upright(node) or node.kind == "wall"]
     objects = graph.contents()
     return [_local_patch(node, walls, objects, graph) for node in graph.nodes]
 
