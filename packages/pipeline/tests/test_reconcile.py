@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import math
 import uuid
+
 import numpy as np
 import pytest
 from standardphysics_contracts import Mat4, ObservationCrop, SceneNode, SocketTarget, SurfaceAttachment, Vec3
@@ -70,17 +70,23 @@ def outlet_node(
 
 
 class TestReconciliation:
-    def test_same_outlet_in_two_views_merges(self):
+    def test_same_photo_double_detection_merges_but_cross_frame_distance_never_does(self):
         wall_id = uuid.uuid4()
-        # Same outlet at (1.0, 2.0, 0.4) observed in frame-01 and frame-02 (slight noise 1cm)
+        # One photo may box the same faceplate twice; that visual agreement merges.
         n1 = outlet_node((1.0, 2.0, 0.4), (0.0, -1.0, 0.0), wall_id, "frame-01")
-        n2 = outlet_node((1.01, 2.0, 0.41), (0.0, -1.0, 0.0), wall_id, "frame-02")
+        n2 = outlet_node((1.01, 2.0, 0.41), (0.0, -1.0, 0.0), wall_id, "frame-01")
         assert are_compatible_observations(n1, n2) is True
         merged = reconcile_outlets([n1, n2])
         assert len(merged) == 1
-        assert len(merged[0].attachment.observations) == 2
-        # Position averaged
+        assert len(merged[0].attachment.observations) == 1
         assert merged[0].transform.m[3] == pytest.approx(1.005, abs=1e-3)
+
+        # The same geometry seen in different photos carries no visual agreement,
+        # so proximity must not merge it: uncertain counts stay unknown.
+        n3 = outlet_node((1.0, 2.0, 0.4), (0.0, -1.0, 0.0), wall_id, "frame-02")
+        n4 = outlet_node((1.01, 2.0, 0.41), (0.0, -1.0, 0.0), wall_id, "frame-03")
+        assert are_compatible_observations(n3, n4) is False
+        assert len(reconcile_outlets([n3, n4])) == 2
 
     def test_two_adjacent_outlets_do_not_merge(self):
         wall_id = uuid.uuid4()
@@ -116,7 +122,9 @@ class TestReconciliation:
         n3 = outlet_node((2.0, 2.0, 0.4), (0.0, -1.0, 0.0), wall_id, "frame-03")
         once = reconcile_outlets([n1, n2, n3])
         twice = reconcile_outlets(once)
-        assert len(once) == len(twice) == 2
+        # Without cameras or shared-photo agreement, none of these merge: three
+        # distinct identities survive, and a second pass changes nothing.
+        assert len(once) == len(twice) == 3
         once_xs = sorted(n.transform.m[3] for n in once)
         twice_xs = sorted(n.transform.m[3] for n in twice)
         assert once_xs == pytest.approx(twice_xs)
