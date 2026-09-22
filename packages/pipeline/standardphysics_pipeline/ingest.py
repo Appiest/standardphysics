@@ -198,8 +198,16 @@ def _stand_on_the_floor(nodes: list[SceneNode]) -> float:
 
     Shifting once here means nothing downstream has to know where the phone was
     standing. Heights are heights above the floor everywhere after this.
+
+    The export's floors array is what stands on; a scan declares its floor
+    outright, and a thicker slab is still the floor. The sheet heuristic checks
+    how thin something lies down, which walls and screens need, not which one
+    surface is the ground; it stays as a fallback for payloads that carry no
+    floors array at all.
     """
-    floor = next((node for node in nodes if lies_flat(node)), None)
+    floor = next((node for node in nodes if node.kind == "floor"), None)
+    if floor is None:
+        floor = next((node for node in nodes if lies_flat(node)), None)
     if floor is None:
         return 0.0
 
