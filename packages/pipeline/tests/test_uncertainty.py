@@ -6,6 +6,7 @@ physical accuracy claim.
 """
 
 import pytest
+from pydantic import ValidationError
 from standardphysics_pipeline.primitives.uncertainty import (
     MeasurementBounds,
     combine,
@@ -124,6 +125,35 @@ class TestCombiningAndWidening:
         total = combine(bounds(1.0, 1.5, method="wall_fit"), control)
         assert total.method == "wall_fit + taperule"
         assert total.controls == 3
+
+
+class TestFiniteArithmetic:
+    """Supervisor defect 2026-09-22T01:24Z: NaN/Inf never produces a verdict."""
+
+    def test_nan_low_bound_is_refused_not_satisfied(self):
+        with pytest.raises(ValidationError):
+            MeasurementBounds(estimate=1.0, low=float("nan"), high=1.0, unit="m", method="x")
+
+    def test_nan_high_bound_is_refused_not_satisfied(self):
+        with pytest.raises(ValidationError):
+            MeasurementBounds(estimate=1.0, low=1.0, high=float("nan"), unit="m", method="x")
+
+    def test_infinite_bounds_are_refused_not_satisfied(self):
+        with pytest.raises(ValidationError):
+            MeasurementBounds(estimate=1.0, low=float("inf"), high=float("inf"), unit="m", method="x")
+
+    def test_nan_estimate_is_refused(self):
+        with pytest.raises(ValidationError):
+            MeasurementBounds(estimate=float("nan"), low=0.9, high=1.0, unit="m", method="x")
+
+    def test_nan_limit_or_tolerance_is_refused(self):
+        fine = bounds(0.9, 1.0)
+        with pytest.raises(ValueError):
+            compare(fine, float("nan"), "min")
+        with pytest.raises(ValueError):
+            compare(fine, 1.0, "min", eps=float("inf"))
+        with pytest.raises(ValueError):
+            compare(fine, float("inf"), "max")
 
 
 class TestScenarioShapes:

@@ -21,6 +21,7 @@ the inputs are vague.
 
 from __future__ import annotations
 
+import math
 from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
@@ -37,7 +38,7 @@ class MeasurementBounds(BaseModel):
     zero, and no caller may turn the estimate itself into a bound.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     kind: Literal["bounds"] = "bounds"
     estimate: float
@@ -135,6 +136,38 @@ def combine(*bounds: MeasurementBounds) -> MeasurementBounds:
     )
 
 
+def _clean_verdict(
+    low: float,
+    high: float,
+    limit: float,
+    eps: float,
+    head: Limits,
+    inclusive: bool,
+) -> Verdict:
+    """The eight-way table with finite bounds, limit and tolerance supplied."""
+    if head == "min":
+        if inclusive:
+            satisfied = low >= limit - eps
+            violation = high < limit - eps
+        else:
+            satisfied = low > limit + eps
+            violation = high <= limit - eps
+    else:
+        if inclusive:
+            satisfied = high <= limit + eps
+            violation = low > limit + eps
+        else:
+            satisfied = high < limit - eps
+            violation = low >= limit - eps
+    if satisfied and violation:
+        return "needs_verification"
+    if satisfied:
+        return "satisfied"
+    if violation:
+        return "violation"
+    return "needs_verification"
+
+
 def compare(
     bounds: MeasurementBounds,
     limit: float,
@@ -152,6 +185,8 @@ def compare(
     """
     if eps < 0:
         raise ValueError("the numerical tolerance cannot be negative")
+    if not math.isfinite(limit) or not math.isfinite(eps):
+        raise ValueError("limit and tolerance must be finite numbers")
 
     if bounds.unknown or not bounds.bounded:
         return "needs_verification"
@@ -161,25 +196,4 @@ def compare(
     if low > high:
         return "needs_verification"
 
-    if head == "min":
-        if inclusive:
-            satisfied = low >= limit - eps
-            violation = high < limit - eps
-        else:
-            satisfied = low > limit + eps
-            violation = high <= limit - eps
-    else:
-        if inclusive:
-            satisfied = high <= limit + eps
-            violation = low > limit + eps
-        else:
-            satisfied = high < limit - eps
-            violation = low >= limit - eps
-
-    if satisfied and violation:
-        return "needs_verification"
-    if satisfied:
-        return "satisfied"
-    if violation:
-        return "violation"
-    return "needs_verification"
+    return _clean_verdict(low, high, limit, eps, head, inclusive)
