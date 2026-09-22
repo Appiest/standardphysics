@@ -126,6 +126,83 @@ final class ScanExportTests: XCTestCase {
         XCTAssertEqual(scan.artifacts.filter { $0.kind == .frames }.map(\.id), ["frame-0000"])
     }
 
+    func testTrackingLossSetsATruthfulCaptureNotice() throws {
+        let directory = try makeCaptureDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let room = try loadFixtureRoom()
+        let (posesURL, frameURLs) = try writeKeyframes([0], in: directory)
+
+        let recording = RecordingResult(
+            videoURL: nil, frameURLs: frameURLs, posesURL: posesURL, duration: 0.5,
+            captureNotice: nil, trackingInterruptions: 2
+        )
+        let scan = try ScanExporter.export(room: room, recording: recording, coverage: CoverageSnapshot(), directory: directory)
+
+        XCTAssertEqual(
+            scan.captureNotice,
+            "Tracking was lost during this scan. Record another pass to fill in what it missed."
+        )
+    }
+
+    func testCaptureNoticePrecedence() {
+        let recording = RecordingResult(
+            videoURL: nil, frameURLs: [], posesURL: URL(fileURLWithPath: "/t/poses.json"), duration: 1
+        )
+        XCTAssertEqual(
+            ScanExporter.captureNotice(for: recording),
+            "Your room is saved. Scan again to add a walkthrough."
+        )
+
+        var withTracking = recording
+        withTracking.trackingInterruptions = 3
+        XCTAssertEqual(
+            ScanExporter.captureNotice(for: withTracking),
+            "Tracking was lost during this scan. Record another pass to fill in what it missed."
+        )
+
+        var withNotice = withTracking
+        withNotice.captureNotice = "Your room is saved. Record another pass to add the missing images."
+        XCTAssertEqual(
+            ScanExporter.captureNotice(for: withNotice),
+            "Your room is saved. Record another pass to add the missing images."
+        )
+    }
+
+    func testOrphanFrameFilesUploadWithoutInventedPoses() throws {
+        let directory = try makeCaptureDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let room = try loadFixtureRoom()
+        let (posesURL, frameURLs) = try writeKeyframes([0, 2], in: directory)
+
+        // A JPEG with no pose record: it is on disk but no synchronized
+        // camera metadata ever claimed it. The file still uploads under its
+        // own identity, but the manifest must not invent a manifest row or a
+        // pose for it.
+        let orphanURL = directory.appendingPathComponent("frames", isDirectory: true)
+            .appendingPathComponent("frame_0005.jpg")
+        try Data("jpeg-5".utf8).write(to: orphanURL)
+
+        let recording = RecordingResult(
+            videoURL: nil, frameURLs: frameURLs + [orphanURL], posesURL: posesURL, duration: 1.5
+        )
+        let scan = try ScanExporter.export(room: room, recording: recording, coverage: CoverageSnapshot(), directory: directory)
+
+        let frameArtifacts = scan.artifacts.filter { $0.kind == .frames }
+        XCTAssertEqual(Set(frameArtifacts.map(\.id)), ["frame-0000", "frame-0002", "frame-0005"])
+        XCTAssertTrue(frameArtifacts.contains { $0.id == "frame-0005" && $0.fileURL == orphanURL })
+
+        let manifestArtifact = try XCTUnwrap(scan.artifacts.first { $0.kind == .photoManifest })
+        let manifest = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: manifestArtifact.fileURL)) as? [String: Any]
+        )
+        let frames = try XCTUnwrap(manifest["frames"] as? [[String: Any]])
+        XCTAssertEqual(Set(frames.compactMap { $0["frame_id"] as? String }), ["frame-0000", "frame-0002"])
+
+        let poses = try JSONDecoder().decode([PoseRecord].self, from: Data(contentsOf: posesURL))
+        XCTAssertFalse(poses.contains { $0.frameArtifactID == "frame-0005" })
+        XCTAssertFalse(poses.contains { $0.image.hasSuffix("frame_0005.jpg") })
+    }
+
     private func loadFixtureRoom() throws -> CapturedRoom {
         let source = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "apple_bedroom3.room", withExtension: "json"))
         return try JSONDecoder().decode(CapturedRoom.self, from: Data(contentsOf: source))

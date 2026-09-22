@@ -47,3 +47,27 @@ final class KeyframeBookTests: XCTestCase {
         XCTAssertEqual(numbers, Array(0..<10))
     }
 }
+
+final class TrackingLedgerTests: XCTestCase {
+    func testSettlingAtTheStartIsNotATrackingLoss() {
+        var ledger = TrackingLedger()
+        ledger.recordUnusableTracking()
+        ledger.recordUnusableTracking()
+        XCTAssertEqual(ledger.interruptionCount, 0)
+        XCTAssertFalse(ledger.didLoseTracking)
+    }
+
+    func testLossAfterUsableTrackingCountsAsOneEpisodeAndRecoveryAllowsAnother() {
+        var ledger = TrackingLedger()
+        ledger.recordUsableTracking()
+        ledger.recordUnusableTracking()
+        ledger.recordUnusableTracking() // same episode
+        XCTAssertEqual(ledger.interruptionCount, 1)
+
+        ledger.recordUsableTracking()
+        ledger.recordUsableTracking()
+        ledger.recordUnusableTracking()
+        XCTAssertEqual(ledger.interruptionCount, 2)
+        XCTAssertTrue(ledger.didLoseTracking)
+    }
+}

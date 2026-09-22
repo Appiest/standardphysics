@@ -10,6 +10,9 @@ struct RecordingResult: Sendable {
     let posesURL: URL
     let duration: TimeInterval
     var captureNotice: String? = nil
+    /// How many separate episodes of unusable tracking interrupted this
+    /// capture. Zero means tracking stayed usable for every sampled frame.
+    var trackingInterruptions: Int = 0
 
     static func recovered(from directory: URL?) -> RecordingResult? {
         guard let directory else { return nil }
@@ -37,6 +40,7 @@ final class FrameRecorder: NSObject {
     private let imageContext = CIContext(options: [.cacheIntermediates: false])
     private let imageQueue = DispatchQueue(label: "com.standardphysics.keyframes", qos: .utility)
     private let recordingFailures = RecordingFailureState()
+    private var trackingLedger = TrackingLedger()
     private var displayLink: CADisplayLink?
     private var keyframeBook = KeyframeBook()
     private var frameURLs: [URL] = []
@@ -78,6 +82,7 @@ final class FrameRecorder: NSObject {
         let completedFrameURLs = frameURLs
         let outputDirectory = directory
         let failures = recordingFailures
+        let interruptions = trackingLedger.interruptionCount
         completionGroup.enter()
         videoRecorder.finish { result in
             stopResults.setVideoResult(result)
@@ -107,7 +112,8 @@ final class FrameRecorder: NSObject {
             let result = stopResults.makeResult(
                 frameURLs: completedFrameURLs,
                 directory: outputDirectory,
-                duration: duration
+                duration: duration,
+                trackingInterruptions: interruptions
             )
             MainActor.assumeIsolated {
                 completion(result)
@@ -151,7 +157,12 @@ final class FrameRecorder: NSObject {
             onTimeLimit?()
             return
         }
-        guard let frame = session.currentFrame, frame.camera.trackingState.isUsable else { return }
+        guard let frame = session.currentFrame else { return }
+        guard frame.camera.trackingState.isUsable else {
+            trackingLedger.recordUnusableTracking()
+            return
+        }
+        trackingLedger.recordUsableTracking()
         let startedAt = startTimestamp ?? frame.timestamp
         startTimestamp = startedAt
 
@@ -237,7 +248,8 @@ private final class RecordingStopResults: @unchecked Sendable {
     func makeResult(
         frameURLs: [URL],
         directory: URL,
-        duration: TimeInterval
+        duration: TimeInterval,
+        trackingInterruptions: Int = 0
     ) -> Result<RecordingResult, Error> {
         lock.withLock {
             if let recordingError { return .failure(recordingError) }
@@ -248,7 +260,8 @@ private final class RecordingStopResults: @unchecked Sendable {
                         .sorted { $0.lastPathComponent < $1.lastPathComponent },
                     posesURL: directory.appendingPathComponent("poses.json"),
                     duration: duration,
-                    captureNotice: captureNotice
+                    captureNotice: captureNotice,
+                    trackingInterruptions: trackingInterruptions
                 )
             }
         }
@@ -260,6 +273,30 @@ private enum FrameRecorderError: Error {
 
     static let degradedCaptureNotice =
         "Your room is saved. Record another pass to add the missing images."
+}
+
+/// Pure, ARKit-free bookkeeping for tracking interruptions during a capture.
+///
+/// FrameRecorder feeds it one call per sampled frame. An interruption only
+/// counts as an episode after tracking has been usable at least once, so the
+/// normal settling period at the start of every session never flags a scan.
+struct TrackingLedger {
+    private(set) var interruptionCount = 0
+    private var hasSeenUsableFrame = false
+    private var isCurrentlyInterrupted = false
+
+    mutating func recordUsableTracking() {
+        hasSeenUsableFrame = true
+        isCurrentlyInterrupted = false
+    }
+
+    mutating func recordUnusableTracking() {
+        guard hasSeenUsableFrame, !isCurrentlyInterrupted else { return }
+        isCurrentlyInterrupted = true
+        interruptionCount += 1
+    }
+
+    var didLoseTracking: Bool { interruptionCount > 0 }
 }
 
 private extension ARCamera.TrackingState {

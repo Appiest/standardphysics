@@ -142,14 +142,25 @@ enum ScanExporter {
             duration: recording.duration,
             artifacts: artifacts,
             name: nil,
-            captureNotice: recording.captureNotice
-                ?? (recording.videoURL == nil ? "Your room is saved. Scan again to add a walkthrough." : nil)
+            captureNotice: captureNotice(for: recording)
         )
         try JSONEncoder.standardPhysics.encode(scan).write(
             to: directory.appendingPathComponent("capture.json"),
             options: .atomic
         )
         return scan
+    }
+
+    /// The strongest truthful note about what this capture lacks. A recorder
+    /// that already knows its JPEGs or video failed wins; a tracking
+    /// interruption is the next-strongest reason for a new pass, and a missing
+    /// walkthrough comes last.
+    static func captureNotice(for recording: RecordingResult) -> String? {
+        if let notice = recording.captureNotice { return notice }
+        if recording.trackingInterruptions > 0 {
+            return "Tracking was lost during this scan. Record another pass to fill in what it missed."
+        }
+        return recording.videoURL == nil ? "Your room is saved. Scan again to add a walkthrough." : nil
     }
 
     enum ExportError: Error { case invalidCaptureDirectory }
