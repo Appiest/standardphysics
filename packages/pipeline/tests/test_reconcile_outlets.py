@@ -11,13 +11,11 @@ Validates:
 from __future__ import annotations
 
 import uuid
-import numpy as np
-import pytest
 
+import numpy as np
 from standardphysics_contracts import Mat4, ObservationCrop, SceneNode, SurfaceAttachment, Vec3
 from standardphysics_pipeline.discovery.reconcile import (
     are_compatible_observations,
-    merge_cluster,
     merge_two_nodes,
     reconcile_outlets,
 )
@@ -192,7 +190,12 @@ def test_merge_04_owner_rejection_and_uncertainty_survive_merge():
 
 
 def test_merge_05_reconciliation_permutation_invariance():
-    """MERGE-05: Replaying observations in different orders yields identical IDs and evidence."""
+    """MERGE-05: Replaying observations in different orders yields identical IDs and evidence.
+
+    These three are near-identical positions seen in different frames with no
+    camera evidence, so proximity must NOT merge them: each device's identity
+    stays its own, and that decision is stable under every ordering.
+    """
     support_id = uuid.uuid4()
     n1 = make_outlet_node((0.0, 2.0, 1.0), support_id=support_id, frame_id="frame-0001", node_id=uuid.UUID("11111111-1111-1111-1111-111111111111"))
     n2 = make_outlet_node((0.02, 2.0, 1.0), support_id=support_id, frame_id="frame-0002", node_id=uuid.UUID("22222222-2222-2222-2222-222222222222"))
@@ -202,21 +205,72 @@ def test_merge_05_reconciliation_permutation_invariance():
     order2 = [n3, n1, n2]
     order3 = [n2, n3, n1]
 
-    res1 = reconcile_outlets(order1)
-    res2 = reconcile_outlets(order2)
-    res3 = reconcile_outlets(order3)
+    results = {
+        "order1": reconcile_outlets(order1),
+        "order2": reconcile_outlets(order2),
+        "order3": reconcile_outlets(order3),
+    }
 
-    assert len(res1) == 1
-    assert len(res2) == 1
-    assert len(res3) == 1
+    for name, reconciled in results.items():
+        assert len(reconciled) == 3, f"{name} collapsed distinct devices"
+        for node in reconciled:
+            assert len(node.attachment.observations) == 1
+            assert node.attachment.observations[0].frame_id in ("frame-0001", "frame-0002", "frame-0003")
 
-    # Invariant deterministic ID
-    assert res1[0].id == res2[0].id == res3[0].id
-    # Positions match
-    assert res1[0].transform.m == pytest.approx(res2[0].transform.m, abs=1e-6)
-    assert res1[0].transform.m == pytest.approx(res3[0].transform.m, abs=1e-6)
-    # Evidence frames match
-    frames1 = [obs.frame_id for obs in res1[0].attachment.observations]
-    frames2 = [obs.frame_id for obs in res2[0].attachment.observations]
-    frames3 = [obs.frame_id for obs in res3[0].attachment.observations]
-    assert sorted(frames1) == sorted(frames2) == sorted(frames3)
+    id_sets = {tuple(sorted(str(n.id) for n in reconciled)) for reconciled in results.values()}
+    assert len(id_sets) == 1
+    for node_id in {n.id for n in results["order1"]}:
+        positions = {
+            tuple(next(n for n in reconciled if n.id == node_id).transform.m)
+            for reconciled in results.values()
+        }
+        assert len(positions) == 1
+
+
+def test_merge_06_adjacent_outlets_never_merge_on_distance_alone():
+    """MERGE-06: The real whiteboard run's pair: same support and normal, 4.77 cm apart,
+    seen in different photos. Without camera verification they must stay two devices."""
+    support_id = uuid.uuid4()
+    plate_a = make_outlet_node(
+        (-5.013, -0.426, 0.462), support_id=support_id,
+        frame_id="frame-0309", sensor_box=[860.0, 700.0, 1100.0, 920.0],
+    )
+    plate_b = make_outlet_node(
+        (-5.026, -0.430, 0.508), support_id=support_id,
+        frame_id="frame-0407", sensor_box=[860.0, 700.0, 1100.0, 920.0],
+    )
+
+    assert not are_compatible_observations(plate_a, plate_b)
+    first = reconcile_outlets([plate_a, plate_b])
+    second = reconcile_outlets([plate_b, plate_a])
+    assert len(first) == 2
+    assert len(second) == 2
+    assert {n.id for n in first} == {n.id for n in second}
+    positions = sorted(
+        (round(n.transform.m[3], 3), round(n.transform.m[7], 3), round(n.transform.m[11], 3))
+        for n in first
+    )
+    assert positions == [(-5.026, -0.430, 0.508), (-5.013, -0.426, 0.462)]
+
+
+def test_merge_07_same_photo_overlapping_boxes_of_one_faceplate_merge():
+    """MERGE-07: Two detections in one photo covering the same faceplate agree visually
+    and become one identity, with a single kept observation for that frame."""
+    support_id = uuid.uuid4()
+    node_a = make_outlet_node((0.0, 2.0, 1.0), support_id=support_id, frame_id="frame-0001", sensor_box=[288.0, 216.0, 352.0, 264.0])
+    node_b = make_outlet_node((0.01, 2.0, 1.0), support_id=support_id, frame_id="frame-0001", sensor_box=[290.0, 218.0, 354.0, 266.0])
+
+    assert are_compatible_observations(node_a, node_b)
+    merged = merge_two_nodes(node_a, node_b)
+    assert len(merged.attachment.observations) == 1
+    assert merged.attachment.observations[0].frame_id == "frame-0001"
+
+
+def test_merge_08_same_photo_disjoint_boxes_in_different_places_stay_separate():
+    """MERGE-08: Nearby devices whose photo boxes barely overlap carry no visual
+    agreement and stay separate even inside the faceplate distance tolerance."""
+    support_id = uuid.uuid4()
+    node_a = make_outlet_node((0.0, 2.0, 1.0), support_id=support_id, frame_id="frame-0001", sensor_box=[200.0, 200.0, 260.0, 260.0])
+    node_b = make_outlet_node((0.04, 2.0, 1.0), support_id=support_id, frame_id="frame-0001", sensor_box=[400.0, 200.0, 460.0, 260.0])
+
+    assert not are_compatible_observations(node_a, node_b)
