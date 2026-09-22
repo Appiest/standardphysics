@@ -1,10 +1,10 @@
 {
-  "receipt_id": "REVIEW-S-PIPELINE",
-  "gate_id": "G03",
+  "receipt_id": "REVIEW-FINAL-PIPELINE",
+  "gate_id": "G01",
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "422d16eab4934a1021720b4d54f15be876071644",
+  "source_commit": "aa8fd81c51bf85cbaa2b948ed2dfe1a0668eb819",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "eb8c31f1addb1f7c0e58d01c4b62f222237fc31444bababd7d80e5aa9c01836f",
@@ -12,8 +12,8 @@
   "input_artifacts": [],
   "output_artifacts": [
     {
-      "path": "s-pipeline.log",
-      "sha256": "71135b12ec1670f2447bf67b60606f29221d2930af4dc2da4b2c3facba675383",
+      "path": "pipeline.log",
+      "sha256": "def80b7abee16279b6242f5fed283371c540985be4ebd06fe2eb7497b74abe03",
       "size_bytes": 433,
       "content_type": "text/plain"
     }
@@ -23,8 +23,8 @@
   "scenario_hash": null,
   "scope_manifest_hash": null,
   "evidence_manifest_hash": null,
-  "command_or_recorded_ui_steps": "suite transcription on disposable worktree at lane S HEAD 422d16e",
-  "working_directory": "/tmp/q-review-s",
+  "command_or_recorded_ui_steps": "suite transcription on disposable worktree at lane FINAL HEAD aa8fd81",
+  "working_directory": "/tmp/q-review-final",
   "environment_versions": {
     "python": "3.11",
     "node": "shared node_modules (read-only)"
@@ -39,35 +39,35 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "263 passed, 32 skipped",
-        "artifact": "s-pipeline.log"
+        "substring": "315 passed, 32 skipped",
+        "artifact": "pipeline.log"
       },
       "evidence_paths": [
-        "s-pipeline.log"
+        "pipeline.log"
       ]
     },
     {
       "id": "log-hash",
       "measurement_method": "file_sha256",
-      "expected": "71135b12ec1670f2447bf67b60606f29221d2930af4dc2da4b2c3facba675383",
-      "observed": "71135b12ec1670f2447bf67b60606f29221d2930af4dc2da4b2c3facba675383",
+      "expected": "def80b7abee16279b6242f5fed283371c540985be4ebd06fe2eb7497b74abe03",
+      "observed": "def80b7abee16279b6242f5fed283371c540985be4ebd06fe2eb7497b74abe03",
       "params": {
-        "artifact": "s-pipeline.log"
+        "artifact": "pipeline.log"
       },
       "evidence_paths": [
-        "s-pipeline.log"
+        "pipeline.log"
       ]
     }
   ],
-  "raw_log_path": "s-pipeline.log",
+  "raw_log_path": "pipeline.log",
   "evaluator_identity": {
     "actor": "lane-Q",
     "attestation": "independent recompute on a disposable worktree"
   },
   "findings": {
-    "claim_263_passed_32_skipped": "CONFIRMED",
-    "claim_api_17_passed": "CONFIRMED",
-    "claim_agents_failures_pre_existing": "CONFIRMED (identical 7 at base 54e09e4 and 8f2962f)",
-    "claim_ruff_zero_new": "CONFIRMED zero new; base discovery dir has 9 violations, S HEAD has 8 (S reduced by one)"
+    "head_label": "K integration HEAD aa8fd81",
+    "suite_green": "API 211, pipeline+contracts 315/32, agents 776, web tc+169 tests+build all green at aa8fd81",
+    "top_tests_failures": "exactly the 4 pre-existing astra(2)/ontology(2) failures, identical to baseline inventory; none new, assigned B/R",
+    "web_build_command": "npm run build (next build) exit 0 with routes listed"
   }
 }

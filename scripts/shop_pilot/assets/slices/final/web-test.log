@@ -1,0 +1,19 @@
+
+> web@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.0 /private/tmp/q-final/apps/web
+
+(node:80130) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:80147) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  35 passed (35)
+      Tests  169 passed (169)
+   Start at  20:34:22
+   Duration  1.15s (transform 44%, import 33%, tests 20%, worker 3%)
+

@@ -71,6 +71,39 @@ REVIEWED_LANES = [
             "contract_freeze_consumed": "2857f10 cherry-picked into lane Q worktree; freeze tests 17 passed",
         },
     },
+
+    {
+        "lane": "FINAL",
+        "source_head": "aa8fd81c51bf85cbaa2b948ed2dfe1a0668eb819",
+        "gate": "G01",
+        "folder": "final",
+        "entries": [
+            {"id": "FINAL-API", "log": "api.log", "claims": ["211 passed"], "exit_code": 0},
+            {"id": "FINAL-PIPELINE", "log": "pipeline.log", "claims": ["315 passed, 32 skipped"], "exit_code": 0},
+            {"id": "FINAL-AGENTS", "log": "agents.log", "claims": ["776 passed"], "exit_code": 0},
+            {
+                "id": "FINAL-TOPLEVEL", "log": "toplevel.log",
+                "claims": [
+                    "4 failed, 285 passed",
+                    "test_astra.py::test_local_rebuild_keeps_roomplan_provenance_and_measured_identity",
+                    "test_ontology_is_not_fixed.py::test_the_baselines_are_honest",
+                ],
+                "exit_code": 1,
+            },
+            {"id": "FINAL-LIFECYCLE", "log": "lifecycle.log", "claims": ["22 passed"], "exit_code": 0},
+            {"id": "FINAL-SCOPE", "log": "scope.log", "claims": ["11 passed"], "exit_code": 0},
+            {"id": "FINAL-INTERVALS", "log": "intervals.log", "claims": ["62 passed"], "exit_code": 0},
+            {"id": "FINAL-WEB-TC", "log": "web-tc.log", "claims": ["Types generated successfully"], "exit_code": 0},
+            {"id": "FINAL-WEB-TEST", "log": "web-test.log", "claims": ["169 passed (169)"], "exit_code": 0},
+            {"id": "FINAL-WEB-BUILD", "log": "web-build.log", "claims": ["/scans/[scanId]"], "exit_code": 0},
+        ],
+        "findings": {
+            "head_label": "K integration HEAD aa8fd81",
+            "suite_green": "API 211, pipeline+contracts 315/32, agents 776, web tc+169 tests+build all green at aa8fd81",
+            "top_tests_failures": "exactly the 4 pre-existing astra(2)/ontology(2) failures, identical to baseline inventory; none new, assigned B/R",
+            "web_build_command": "npm run build (next build) exit 0 with routes listed",
+        },
+    },
 ]
 
 

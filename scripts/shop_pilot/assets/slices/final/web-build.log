@@ -1,0 +1,33 @@
+
+> web@0.1.0 build
+> next build
+
+▲ Next.js 16.3.5 (Turbopack)
+✓ Running next.config.ts took 621ms
+- Experiments (use with caution):
+  · proxyTimeout: 180000
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 1567ms
+  Running TypeScript ...
+  Finished TypeScript in 2.7s ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/3) ...
+✓ Generating static pages using 11 workers (3/3) in 183ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ƒ /brush
+├ ○ /icon.svg
+├ ƒ /present
+├ ƒ /scans/[scanId]
+├ ƒ /scans/[scanId]/replay
+├ ƒ /scans/[scanId]/report
+└ ƒ /sign-in
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
