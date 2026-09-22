@@ -2,12 +2,12 @@
   "receipt_id": "MUT-M06",
   "gate_id": "G00",
   "mutation_id": "M06",
-  "outcome": "survived_gap",
+  "outcome": "killed",
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "b17a40eb8823a44d0ecd52f6d5537f10887c7706",
-  "eval_source_head": "534b7e0 (final K HEAD)",
+  "source_commit": "59f7fdaff63083870c6f38dd710f88b37b064fd7",
+  "eval_source_head": "6e01067 (final K HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
@@ -23,14 +23,14 @@
   "output_artifacts": [
     {
       "path": "M06-mutated.log",
-      "sha256": "e238da73433ee387b565aef1c1a525e4fb17b4fb3252c5ecead948568c298d8b",
-      "size_bytes": 99,
+      "sha256": "5f92acf7ed5a6a1401c79bf37bbff9e52b99892143694ef56f56bca6701c49ee",
+      "size_bytes": 8927,
       "content_type": "text/plain"
     },
     {
       "path": "M06-clean-after.log",
-      "sha256": "27ddcae8e8563cc14cee85fea35bbff573fc602f43158ff6bf4ded2fdce61f00",
-      "size_bytes": 99,
+      "sha256": "285a0fcb19d88aef8d3a8bf03456688755f33b03ab786144fe993e1bc0fc4738",
+      "size_bytes": 98,
       "content_type": "text/plain"
     }
   ],
@@ -44,17 +44,17 @@
   "environment_versions": {
     "python": "3.11"
   },
-  "started_at": "2026-09-21T23:15:22.988488-07:00",
-  "finished_at": "2026-09-21T23:15:22.988488-07:00",
-  "exit_code": 0,
+  "started_at": "2026-09-21T23:35:26.889452-07:00",
+  "finished_at": "2026-09-21T23:35:26.889452-07:00",
+  "exit_code": 1,
   "assertions": [
     {
-      "id": "mutation-was-not-killed",
+      "id": "mutated-run-failed-behaviorally",
       "measurement_method": "text_contains",
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "36 passed",
+        "substring": "landscape_left: patch seen at (639.5, 514.5), expected (160.0, 85.0) upright",
         "artifact": "M06-mutated.log"
       },
       "evidence_paths": [
@@ -62,12 +62,12 @@
       ]
     },
     {
-      "id": "no-failure-recorded",
-      "measurement_method": "not_text_contains",
+      "id": "mutated-run-recorded-kill-test",
+      "measurement_method": "text_contains",
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "FAILED",
+        "substring": "packages/pipeline/tests/test_orientation_end_to_end.py::TestEncodeFrameOrientationEndToEnd",
         "artifact": "M06-mutated.log"
       },
       "evidence_paths": [
@@ -128,15 +128,16 @@
   },
   "fault": {
     "id": "M06",
-    "source_head": "534b7e0 (final K HEAD)",
-    "outcome": "survived_gap",
-    "fault": "detect.py: encode_frame orientation rotation zeroed (turns=0) on S HEAD",
+    "source_head": "6e01067 (final K HEAD)",
+    "outcome": "killed",
+    "fault": "detect.py: encode_frame orientation rotation zeroed (turns=0)",
     "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/detect.py",
     "restored_sha256": "b2ac0a9b2e05812d30dcd20ed1a816c0e9a308618782fbbb98c1277e8ae55432",
-    "log_marker": "36 passed",
+    "killed_by": "packages/pipeline/tests/test_orientation_end_to_end.py::TestEncodeFrameOrientationEndToEnd",
+    "behavioral_assertion": "landscape_left: patch seen at (639.5, 514.5), expected (160.0, 85.0) upright",
     "mutated_log": "M06-mutated.log",
     "clean_log": "M06-clean-after.log",
     "original_copy": "detect-s-head.py.original",
-    "gap_finding": "No test pins encode_frame orientation: DET-01 covers map_crop_box_to_sensor math, not that frames are actually rotated before leaving for the model or that detections return to sensor pixels with the frame's real orientation. S should add a test that encode_frame('portrait') yields a rotated JPEG and that a detection box round-trips through that frame."
+    "note": "S closed the M06 gap with test_orientation_end_to_end.py at 6e01067; the mutation now dies behaviorally"
   }
 }

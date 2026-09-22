@@ -1,2 +1,152 @@
-....................................                                     [100%]
-36 passed in 0.33s
+F.FF                                                                     [100%]
+=================================== FAILURES ===================================
+_ TestEncodeFrameOrientationEndToEnd.test_patch_round_trips_upright_and_back_to_sensor_pixels[landscape_left] _
+
+self = <test_orientation_end_to_end.TestEncodeFrameOrientationEndToEnd object at 0x104ccaed0>
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-466/test_patch_round_trips_upright0')
+orientation = 'landscape_left'
+
+    @pytest.mark.parametrize("orientation", sorted(CASES))
+    def test_patch_round_trips_upright_and_back_to_sensor_pixels(self, tmp_path: pathlib.Path, orientation: str):
+        case = CASES[orientation]
+        turns, upright_size, rect = case["turns"], case["upright"], case["rect"]
+        stored_path = _stored_fixture(tmp_path, turns, upright_size, rect)
+        expected_sensor = _stored_rect(upright_size, rect, turns)
+    
+        seen: dict = {}
+    
+        def detector_eyes(url, body, headers):
+            """The model, reading exactly the bytes encode_frame produced."""
+            image_url = body["messages"][1]["content"][1]["image_url"]["url"]
+            received = Image.open(io.BytesIO(base64.b64decode(image_url.split(",", 1)[1]))).convert("RGB")
+            seen["size"] = received.size
+            mask = _patch_mask(received)
+            rows, cols = np.nonzero(mask)
+            seen["box_received"] = (float(cols.min()), float(rows.min()), float(cols.max()), float(rows.max()))
+            width, height = received.size
+            box_2d = [
+                round(float(rows.min()) / height * 1000),
+                round(float(cols.min()) / width * 1000),
+                round(float(rows.max()) / height * 1000),
+                round(float(cols.max()) / width * 1000),
+            ]
+            return {"choices": [{"message": {"content": json.dumps({"objects": [
+                {"name": "object", "box_2d": box_2d, "movable": True, "confidence": 0.9},
+            ]})}}]}
+    
+        detections = detect_objects(stored_path, "frame-0001", orientation=orientation, transport=detector_eyes)
+    
+        # The frame the model saw really was stood upright, patch where it belongs.
+        assert seen["size"] == upright_size, f"{orientation}: model saw {seen['size']}, not upright {upright_size}"
+        seen_left, seen_top, seen_right, seen_bottom = seen["box_received"]
+        seen_centre = ((seen_left + seen_right) / 2, (seen_top + seen_bottom) / 2)
+        upright_centre = ((rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2)
+>       assert seen_centre == pytest.approx(upright_centre, abs=4), (
+            f"{orientation}: patch seen at {seen_centre}, expected {upright_centre} upright"
+        )
+E       AssertionError: landscape_left: patch seen at (639.5, 514.5), expected (160.0, 85.0) upright
+E       assert (639.5, 514.5) == approx((160.0 ± 4, 85.0 ± 4))
+E         
+E         comparison failed. Mismatched elements: 2 / 2:
+E         Max absolute difference: 479.5
+E         Max relative difference: 0.8347910592808552
+E         Index | Obtained | Expected 
+E         0     | 639.5    | 160.0 ± 4
+E         1     | 514.5    | 85.0 ± 4
+
+packages/pipeline/tests/test_orientation_end_to_end.py:123: AssertionError
+_ TestEncodeFrameOrientationEndToEnd.test_patch_round_trips_upright_and_back_to_sensor_pixels[portrait] _
+
+self = <test_orientation_end_to_end.TestEncodeFrameOrientationEndToEnd object at 0x10621c190>
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-466/test_patch_round_trips_upright2')
+orientation = 'portrait'
+
+    @pytest.mark.parametrize("orientation", sorted(CASES))
+    def test_patch_round_trips_upright_and_back_to_sensor_pixels(self, tmp_path: pathlib.Path, orientation: str):
+        case = CASES[orientation]
+        turns, upright_size, rect = case["turns"], case["upright"], case["rect"]
+        stored_path = _stored_fixture(tmp_path, turns, upright_size, rect)
+        expected_sensor = _stored_rect(upright_size, rect, turns)
+    
+        seen: dict = {}
+    
+        def detector_eyes(url, body, headers):
+            """The model, reading exactly the bytes encode_frame produced."""
+            image_url = body["messages"][1]["content"][1]["image_url"]["url"]
+            received = Image.open(io.BytesIO(base64.b64decode(image_url.split(",", 1)[1]))).convert("RGB")
+            seen["size"] = received.size
+            mask = _patch_mask(received)
+            rows, cols = np.nonzero(mask)
+            seen["box_received"] = (float(cols.min()), float(rows.min()), float(cols.max()), float(rows.max()))
+            width, height = received.size
+            box_2d = [
+                round(float(rows.min()) / height * 1000),
+                round(float(cols.min()) / width * 1000),
+                round(float(rows.max()) / height * 1000),
+                round(float(cols.max()) / width * 1000),
+            ]
+            return {"choices": [{"message": {"content": json.dumps({"objects": [
+                {"name": "object", "box_2d": box_2d, "movable": True, "confidence": 0.9},
+            ]})}}]}
+    
+        detections = detect_objects(stored_path, "frame-0001", orientation=orientation, transport=detector_eyes)
+    
+        # The frame the model saw really was stood upright, patch where it belongs.
+>       assert seen["size"] == upright_size, f"{orientation}: model saw {seen['size']}, not upright {upright_size}"
+E       AssertionError: portrait: model saw (800, 600), not upright (600, 800)
+E       assert (800, 600) == (600, 800)
+E         
+E         At index 0 diff: 800 != 600
+E         Use -v to get more diff
+
+packages/pipeline/tests/test_orientation_end_to_end.py:119: AssertionError
+_ TestEncodeFrameOrientationEndToEnd.test_patch_round_trips_upright_and_back_to_sensor_pixels[portrait_upside_down] _
+
+self = <test_orientation_end_to_end.TestEncodeFrameOrientationEndToEnd object at 0x10621c3d0>
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-466/test_patch_round_trips_upright3')
+orientation = 'portrait_upside_down'
+
+    @pytest.mark.parametrize("orientation", sorted(CASES))
+    def test_patch_round_trips_upright_and_back_to_sensor_pixels(self, tmp_path: pathlib.Path, orientation: str):
+        case = CASES[orientation]
+        turns, upright_size, rect = case["turns"], case["upright"], case["rect"]
+        stored_path = _stored_fixture(tmp_path, turns, upright_size, rect)
+        expected_sensor = _stored_rect(upright_size, rect, turns)
+    
+        seen: dict = {}
+    
+        def detector_eyes(url, body, headers):
+            """The model, reading exactly the bytes encode_frame produced."""
+            image_url = body["messages"][1]["content"][1]["image_url"]["url"]
+            received = Image.open(io.BytesIO(base64.b64decode(image_url.split(",", 1)[1]))).convert("RGB")
+            seen["size"] = received.size
+            mask = _patch_mask(received)
+            rows, cols = np.nonzero(mask)
+            seen["box_received"] = (float(cols.min()), float(rows.min()), float(cols.max()), float(rows.max()))
+            width, height = received.size
+            box_2d = [
+                round(float(rows.min()) / height * 1000),
+                round(float(cols.min()) / width * 1000),
+                round(float(rows.max()) / height * 1000),
+                round(float(cols.max()) / width * 1000),
+            ]
+            return {"choices": [{"message": {"content": json.dumps({"objects": [
+                {"name": "object", "box_2d": box_2d, "movable": True, "confidence": 0.9},
+            ]})}}]}
+    
+        detections = detect_objects(stored_path, "frame-0001", orientation=orientation, transport=detector_eyes)
+    
+        # The frame the model saw really was stood upright, patch where it belongs.
+>       assert seen["size"] == upright_size, f"{orientation}: model saw {seen['size']}, not upright {upright_size}"
+E       AssertionError: portrait_upside_down: model saw (800, 600), not upright (600, 800)
+E       assert (800, 600) == (600, 800)
+E         
+E         At index 0 diff: 800 != 600
+E         Use -v to get more diff
+
+packages/pipeline/tests/test_orientation_end_to_end.py:119: AssertionError
+=========================== short test summary info ============================
+FAILED packages/pipeline/tests/test_orientation_end_to_end.py::TestEncodeFrameOrientationEndToEnd::test_patch_round_trips_upright_and_back_to_sensor_pixels[landscape_left]
+FAILED packages/pipeline/tests/test_orientation_end_to_end.py::TestEncodeFrameOrientationEndToEnd::test_patch_round_trips_upright_and_back_to_sensor_pixels[portrait]
+FAILED packages/pipeline/tests/test_orientation_end_to_end.py::TestEncodeFrameOrientationEndToEnd::test_patch_round_trips_upright_and_back_to_sensor_pixels[portrait_upside_down]
+3 failed, 1 passed in 0.23s

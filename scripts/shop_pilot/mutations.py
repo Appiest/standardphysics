@@ -52,21 +52,17 @@ MUTATIONS: list[dict[str, Any]] = [
     },
     {
         "id": "M06",
-        "source_head": "534b7e0 (final K HEAD)",
-        "outcome": "survived_gap",
-        "fault": "detect.py: encode_frame orientation rotation zeroed (turns=0) on S HEAD",
+        "source_head": "6e01067 (final K HEAD)",
+        "outcome": "killed",
+        "fault": "detect.py: encode_frame orientation rotation zeroed (turns=0)",
         "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/detect.py",
         "restored_sha256": "b2ac0a9b2e05812d30dcd20ed1a816c0e9a308618782fbbb98c1277e8ae55432",
-        "log_marker": "36 passed",
+        "killed_by": "packages/pipeline/tests/test_orientation_end_to_end.py::TestEncodeFrameOrientationEndToEnd",
+        "behavioral_assertion": "landscape_left: patch seen at (639.5, 514.5), expected (160.0, 85.0) upright",
         "mutated_log": "M06-mutated.log",
         "clean_log": "M06-clean-after.log",
         "original_copy": "detect-s-head.py.original",
-        "gap_finding": (
-            "No test pins encode_frame orientation: DET-01 covers map_crop_box_to_sensor math, not that "
-            "frames are actually rotated before leaving for the model or that detections return to sensor "
-            "pixels with the frame's real orientation. S should add a test that encode_frame('portrait') "
-            "yields a rotated JPEG and that a detection box round-trips through that frame."
-        ),
+        "note": "S closed the M06 gap with test_orientation_end_to_end.py at 6e01067; the mutation now dies behaviorally",
     },
     {
         "id": "M07",
