@@ -1,0 +1,119 @@
+{
+  "kind": "fresh_phone_upload_audit_read_only",
+  "scan_id": "14b50ba6-3921-4206-aa45-1fec03f649a0",
+  "scan_name": "8th floor blackwell whiteboard",
+  "artifact_bytes_hashed": 473,
+  "supervisor_claimed_artifact_count": 473,
+  "count_matches": true,
+  "jpeg_count": 465,
+  "jpeg_dimensions": {
+    "1920x1440": 465
+  },
+  "unreadable_jpegs": [],
+  "frame_count": 465,
+  "supervisor_manifest_frame_count": 465,
+  "manifest_file": "photo-manifest",
+  "manifest_frame_ids_sample": [
+    "frame-0000",
+    "frame-0464"
+  ],
+  "frame_pos_counts_pairing": {
+    "frame_files": 465,
+    "pose_entries_in_manifest": 465,
+    "frame_pose_ids_match": true
+  },
+  "db_read_only_snapshot": {
+    "tables": [
+      "artifacts",
+      "assessments",
+      "jobs",
+      "owners",
+      "revisions",
+      "scans",
+      "scenarios",
+      "sessions",
+      "simulations",
+      "sqlite_sequence",
+      "texture_builds"
+    ],
+    "scan_row": {
+      "id": "14b50ba6-3921-4206-aa45-1fec03f649a0",
+      "name": "8th floor blackwell whiteboard",
+      "created_at": "2026-09-22T00:49:30.678242+00:00",
+      "device_model": "iPhone18,1",
+      "duration_seconds": 238.38678141700802,
+      "state": "ready",
+      "content_hash": "bc86be76c0e3e4d7aafcbed6b2d14e88a036961097949d7333e36badb8c7f403",
+      "coverage_json": "[{\"node_id\": \"0cf3034d-6f24-4056-8a3c-938bfd41187d\", \"observed_fraction\": 0.43892401456832886, \"viewpoint_count\": 4}, {\"node_id\": \"1e96107e-de72-41fa-ab4a-6e6fba412978\", \"observed_fraction\": 0.3000001013278961, \"viewpoint_count\": 3}, {\"node_id\": \"2207564c-2c51-4b82-9d65-189bae0c11e7\", \"observed_fraction\": 0.6699994206428528, \"viewpoint_count\": 5}, {\"node_id\": \"221e2202-0342-4343-b0f8-c03746222e81\", \"observed_fraction\": 0.5255672931671143, \"viewpoint_count\": 5}, {\"node_id\": \"30f5a6ec-0b84-45e0-99df-8bbb6ea8b86c\", \"observed_fraction\": 0.4003746509552002, \"viewpoint_count\": 3}, {\"node_id\": \"3a4be40c-cd59-4249-9b9e-8b64593c35b8\", \"observed_fraction\": 0.5108858942985535, \"viewpoint_count\": 5}, {\"node_id\": \"4a81212b-f981-4c13-9030-e913e45b0072\", \"observed_fraction\": 0.40575242042541504, \"viewpoint_count\": 1}, {\"node_id\": \"54f8a1dc-21bd-4fce-b1dd-f7601969667e\", \"observed_fraction\": 0.6170499324798584, \"viewpoint_count\": 4}, {\"node_id\": \"76ed4f1b-9bac-4c42-b76e-df4b685723fc\", \"observed_fraction\": 0.7000001668930054, \"viewpoint_count\": 11}, {\"node_id\": \"777c5c58-2076-4001-b03a-ba1b4e43c9f2\", \"observed_fraction\": 0.0, \"viewpoint_count\": 0}, {\"node_id\": \"8c58c7e6-a685-4372-b105-eda1393cd531\", \"observed_fraction\": 0.5056219100952148, \"viewpoint_count\": 3}, {\"node_id\": \"94d4a4d8-cb59-4c93-8233-e54cce5d2276\", \"observed_fraction\": 0.299999862909317, \"viewpoint_count\": 2}, {\"node_id\": \"a3b013d3-b795-465e-b98a-8d2bbbf71c38\", \"observed_fraction\": 0.23996508121490479, \"viewpoint_count\": 1}, {\"node_id\": \"a9902275-edee-4fa5-a1c7-423b3f106a43\", \"observed_fraction\": 1.0, \"viewpoint_count\": 2}, {\"node_id\": \"abb70191-92bb-43c0-badc-4189bcf8e908\", \"observed_fraction\": 0.5140547156333923, \"viewpoint_count\": 6}, {\"node_id\": \"af4d5872-0b11-4d15-b8c7-b5f3e35514dd\", \"observed_fraction\": 0.6077337265014648, \"viewpoint_count\": 5}, {\"node_id\": \"b0ca96ac-24ff-4eec-a3b8-79a863af0a8e\", \"observed_fraction\": 0.30778369307518005, \"viewpoint_count\": 2}, {\"node_id\": \"b4175fd0-a1dd-436e-8957-10a90b8b14cb\", \"observed_fraction\": 1.0, \"viewpoint_count\": 16}, {\"node_id\": \"c4574e40-8160-4bdd-9fc1-88f798c2e7a4\", \"observed_fraction\": 0.7100000381469727, \"viewpoint_count\": 5}, {\"node_id\": \"d0f06ddd-9779-44c9-9d57-23232288056c\", \"observed_fraction\": 0.4398382902145386, \"viewpoint_count\": 4}, {\"node_id\": \"ebd0b7d8-4acf-4835-aee7-00f43cba46f4\", \"observed_fraction\": 0.3986859619617462, \"viewpoint_count\": 3}, {\"node_id\": \"f28e0cd3-dcbd-44f8-b758-e2c3ff54528d\", \"observed_fraction\": 0.38000035285949707, \"viewpoint_count\": 5}, {\"node_id\": \"ff31b9eb-a503-487a-895a-fbf1295527bb\", \"observed_fraction\": 0.9800000190734863, \"viewpoint_count\": 7}]",
+      "owner_id": "4ab9eb2d-4f98-415f-b232-2087e3a984cb"
+    },
+    "artifact_kinds": [
+      {
+        "kind": "coverage",
+        "count": 1
+      },
+      {
+        "kind": "frames",
+        "count": 465
+      },
+      {
+        "kind": "lidar_mesh",
+        "count": 1
+      },
+      {
+        "kind": "photo_manifest",
+        "count": 1
+      },
+      {
+        "kind": "poses",
+        "count": 1
+      },
+      {
+        "kind": "room_json",
+        "count": 1
+      },
+      {
+        "kind": "room_metadata",
+        "count": 1
+      },
+      {
+        "kind": "room_usdz",
+        "count": 1
+      },
+      {
+        "kind": "walkthrough_mp4",
+        "count": 1
+      }
+    ],
+    "evidence_bundles": [],
+    "jobs": [
+      {
+        "id": 6,
+        "kind": "process",
+        "revision": 0,
+        "state": "done",
+        "error": null
+      },
+      {
+        "id": 7,
+        "kind": "display",
+        "revision": 0,
+        "state": "done",
+        "error": null
+      },
+      {
+        "id": 8,
+        "kind": "texture",
+        "revision": 2,
+        "state": "done",
+        "error": null
+      }
+    ]
+  },
+  "unique_sha256_count": 473,
+  "claim_verdict": {
+    "supervisor_counts_confirmed": true,
+    "all_frames_readable": true
+  },
+  "started_at": "2026-09-21T18:13:23.505920-07:00"
+}
