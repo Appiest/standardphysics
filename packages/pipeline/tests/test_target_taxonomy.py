@@ -34,6 +34,7 @@ from standardphysics_pipeline.discovery.cache import DetectionCache
 from standardphysics_pipeline.discovery.crops import crop_box_of, crop_id_for, save_crop
 from standardphysics_pipeline.discovery.detect import (
     Detection,
+    DetectionSchemaError,
     EncodedFrame,
     _detections_from,
 )
@@ -138,6 +139,87 @@ class TestDetectionClassProperties:
         assert switch.is_confuser
         assert not switch.is_outlet
         assert not switch.is_attachable_target
+
+
+class TestTelevisionProxyGeometry:
+    """The real whiteboard run stored TVs at 0.12x0.03x0.12 m with quality measured.
+    Proxy display geometry must never look like a measured device size."""
+
+    def test_television_never_uses_outlet_faceplate_dimensions(self):
+        wall = wall_node()
+        graph = SceneGraph(scan_id=uuid.uuid4(), nodes=[wall], capture_to_room=capture_to_room(0.0))
+        cam = camera_at((0.0, 0.0, 1.0), (0.0, 2.0, 1.0))
+        detection = Detection("frame-0001", "television", (280.0, 200.0, 360.0, 280.0), False, 0.92)
+        _, node = attach_detection_to_surface(
+            detection, cam, graph, depth_buffer=np.full((480, 640), 1.95)
+        )
+        assert node.dimensions.as_tuple() != (0.12, 0.03, 0.12)
+        assert node.quality != "measured"
+        assert node.dimensions.x > 0.03
+        assert node.dimensions.z > 0.03
+        assert any("display proxy geometry" in reason for reason in node.attachment.uncertainty_reasons)
+        assert node.attachment.localization_quality == "verified_support"
+
+    def test_television_size_reason_appears_even_without_lidar_verification(self):
+        wall = wall_node()
+        graph = SceneGraph(scan_id=uuid.uuid4(), nodes=[wall], capture_to_room=capture_to_room(0.0))
+        cam = camera_at((0.0, 0.0, 1.0), (0.0, 2.0, 1.0))
+        detection = Detection("frame-0001", "tv", (280.0, 200.0, 360.0, 280.0), False, 0.92)
+        _, node = attach_detection_to_surface(detection, cam, graph)
+        assert node.quality != "measured"
+        assert any("display proxy geometry" in reason for reason in node.attachment.uncertainty_reasons)
+
+    def test_unanchored_television_candidate_has_zero_display_extent(self):
+        graph = SceneGraph(scan_id=uuid.uuid4(), nodes=[], capture_to_room=capture_to_room(0.0))
+        cam = camera_at((0.0, 0.0, 1.0), (0.0, 2.0, 1.0))
+        detection = Detection("frame-0001", "television", (280.0, 200.0, 360.0, 280.0), False, 0.92)
+        _, node = attach_detection_to_surface(detection, cam, graph)
+        assert node.kind == "candidate_television"
+        assert node.dimensions.as_tuple() == (0.0, 0.0, 0.0)
+        assert any("no measured size" in reason for reason in node.attachment.uncertainty_reasons)
+
+    def test_outlet_faceplate_behavior_unchanged(self):
+        wall = wall_node()
+        graph = SceneGraph(scan_id=uuid.uuid4(), nodes=[wall], capture_to_room=capture_to_room(0.0))
+        cam = camera_at((0.0, 0.0, 1.0), (0.0, 2.0, 1.0))
+        detection = Detection("frame-0001", "outlet", (300.0, 220.0, 340.0, 260.0), False, 0.95)
+        _, node = attach_detection_to_surface(
+            detection, cam, graph, depth_buffer=np.full((480, 640), 1.95)
+        )
+        assert node.dimensions.as_tuple() == (0.12, 0.03, 0.12)
+
+
+class TestSemanticAbstention:
+    """Mirrors the real whiteboard run's unreadable frames 0023/0026 (Q M06 trace):
+    a frame the model cannot read is a recorded failure, never silent geometry."""
+
+    def test_failed_frame_is_recorded_and_creates_no_geometry(self, tmp_path: pathlib.Path):
+        builder = TestDiscoveryWiresSecondaryCorrections()
+        payload = [{"name": "outlet", "box_2d": [450, 450, 550, 550], "movable": False, "confidence": 0.95}]
+        inputs, _, _, _ = builder.discovery_fixture(tmp_path, [], payload)
+
+        def broken_transport(url, body, headers):
+            raise DetectionSchemaError("the vision model returned unreadable objects")
+
+        result = discover_objects(inputs, transport=broken_transport)
+
+        assert len(result.failures) == 1
+        assert "frame-0001" in result.failures[0]
+        assert result.model_requests == []
+        assert result.nodes == []
+        assert list((tmp_path / "crops").glob("*.jpg")) == []
+
+    def test_abstention_is_never_cached_as_empty_success(self, tmp_path: pathlib.Path):
+        frame = EncodedFrame(jpeg=b"", width=640, height=480, turns=0)
+        payload = {
+            "choices": [{"message": {"content": "not parseable"}}]
+        }
+        with pytest.raises(DetectionSchemaError):
+            _detections_from(payload, frame, "frame-0001")
+        empty = {
+            "choices": [{"message": {"content": json.dumps({"objects": []})}}]
+        }
+        assert _detections_from(empty, frame, "frame-0002") == []
 
 
 class TestModelRequestRecording:
