@@ -1,0 +1,12 @@
+
+> web@0.1.0 typecheck
+> next typegen && tsc --noEmit
+
+Generating route types...
+✓ Types generated successfully
+src/components/workspace/Viewer.tsx(16,10): error TS2305: Module '"@/lib/viewer-source"' has no exported member 'showsSplats'.
+src/components/workspace/Workspace.tsx(36,10): error TS2305: Module '"@/lib/viewer-source"' has no exported member 'showsSplats'.
+src/components/workspace/Workspace.tsx(548,5): error TS2322: Type 'MaterialMode | "splat"' is not assignable to type 'ViewerMaterialMode'.
+  Type '"splat"' is not assignable to type 'ViewerMaterialMode'.
+src/components/workspace/Workspace.tsx(661,104): error TS2322: Type 'MaterialMode | "splat"' is not assignable to type 'MaterialMode'.
+  Type '"splat"' is not assignable to type 'MaterialMode'.

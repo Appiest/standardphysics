@@ -1,0 +1,19 @@
+
+> web@0.1.0 test
+> vitest run
+
+
+ RUN  v5.0.0 /Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/apps/web
+
+(node:22875) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:22870) [THREE_CJS_DEPRECATED] DeprecationWarning: `require("three")` is deprecated and will be removed.
+Replace `const THREE = require("three")` with `import * as THREE from "three"`.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  29 passed (29)
+      Tests  131 passed (131)
+   Start at  17:40:26
+   Duration  973ms (import 44%, transform 38%, tests 17%, worker 2%)
+

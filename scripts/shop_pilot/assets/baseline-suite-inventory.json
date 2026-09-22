@@ -3,7 +3,7 @@
   "run_id": "opencode-20260921-170615",
   "evaluator": "lane-Q independent",
   "head": "54e09e4de879702dc18595273507bb4d62ae92cd",
-  "note": "Failures re-verified at 8f2962f (plan's cited baseline) in a disposable worktree; they predate tonight's lanes.",
+  "note": "Failures re-verified at 8f2962f (plan's cited baseline) in a disposable worktree; they predate tonight's lanes. Web baseline: vitest 131/131 passed; typecheck FAILS at baseline (Workspace.tsx: MaterialMode | 'splat' vs ViewerMaterialMode/MaterialMode); build not run (typecheck-blocked).",
   "suites": [
     {
       "command": ".venv/bin/python -m pytest services/api/tests -q",
@@ -63,6 +63,23 @@
       "exit": 0,
       "summary": "32 passed (Q acceptance area incl. full legacy-verifier suite)",
       "log": "n/a (no captured log; rerun command for raw log)",
+      "failures": []
+    },
+    {
+      "command": "npm --prefix apps/web run typecheck",
+      "exit": 2,
+      "summary": "2 TS errors: 'splat' material mode mismatch in Workspace.tsx",
+      "log": "scripts/shop_pilot/assets/logs/baseline-web-typecheck-20260921.log",
+      "failures": [
+        "apps/web/src/components/workspace/Workspace.tsx (ViewerMaterialMode / MaterialMode vs 'splat')"
+      ],
+      "owner": "U web (pre-existing at baseline 54e09e4)"
+    },
+    {
+      "command": "npm --prefix apps/web run test",
+      "exit": 0,
+      "summary": "29 files, 131 tests passed",
+      "log": "scripts/shop_pilot/assets/logs/baseline-web-test-20260921.log",
       "failures": []
     }
   ]
