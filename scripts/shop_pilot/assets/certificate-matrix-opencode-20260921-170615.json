@@ -1,10 +1,10 @@
 {
   "kind": "certificate_matrix_final",
-  "version": 10,
+  "version": 11,
   "run_id": "opencode-20260921-170615",
   "evaluator": "lane Q independent (fireworks-ai deepseek-pro-latest)",
-  "computed_at": "2026-09-22T00:31:21-07:00",
-  "integration_head_evaluated": "8c5d40b (A chain integrated: dossier refuses all nonempty before/after until measured evidence)",
+  "computed_at": "2026-09-22T00:48:40-07:00",
+  "integration_head_evaluated": "e4318296d177c4c57255ec333263cef51133da4d (G10 provenance correction + explicit PYTHONPATH docs)",
   "policy": "frozen docs unchanged",
   "verification_scope_at_this_head": "exact M06 mutation on test_orientation_end_to_end at bb8ded9 (clean 4 passed -> mutant 3 failed behaviorally -> restored hash b2ac0a9b... -> clean rerun 4 passed); M06 receipt rebound to bb8ded9. K states suites green at bb8ded9; no broad rerun of mine per dispatch.",
   "gate_matrix": [
@@ -12,7 +12,7 @@
       "id": "G00",
       "status": "passed",
       "blocker": null,
-      "note": "All 18 required controls with behavioral assertions, clean counterparts, restored hashes, raw logs. M17 re-executed against the SHIPPED G15 evaluator (scripts/evaluate_photo_mesh_500.py covered_fraction): deterministic 96/100 fixture, injected photographed:=ones(fixed_mask) once, killed by assert 0.0 == 0.04, restored 121a0d7e..., clean rerun. The earlier render_efficiency/metrics.py result is informative only and is NOT counted toward M17. M09/M11 re-killed and rebound at 8c5d40b (scope_manifest chain changed); M17 shipped-evaluator proof durable at 8c5d40b (clean 1 passed / mutant assert 0.0==0.04 / restore 121a0d7e / clean rerun)."
+      "note": "All 18 required controls with behavioral assertions, clean counterparts, restored hashes, raw logs. M17 re-executed against the SHIPPED G15 evaluator (scripts/evaluate_photo_mesh_500.py covered_fraction): deterministic 96/100 fixture, injected photographed:=ones(fixed_mask) once, killed by assert 0.0 == 0.04, restored 121a0d7e..., clean rerun. The earlier render_efficiency/metrics.py result is informative only and is NOT counted toward M17. All 18 controls remain receipt-valid; acceptance suite rerun at e431829: 46 passed (isolated K packages, no skips)."
     },
     {
       "id": "G01",
@@ -64,13 +64,15 @@
     },
     {
       "id": "G09",
-      "status": "pending",
-      "blocker": "literal policy gap, not a physical-phone requirement (G11 owns physical): authenticated LAN journey verified (owner-repaired account, scene/frames 200) and auth denials tested, but start.sh does not yet document the portable-network and unavailable-feature behavior blocks the policy asks for (E owns; only docs missing)."
+      "status": "passed",
+      "blocker": null,
+      "note": "docs/deepseek-shop-pilot/09-portable-network-limits.txt now documents the tested LAN shape, offline-safe capture, processing/credential requirements, hotspot/portable field shape (honestly un-field-tested), unavailable-feature behavior (Blender fail-visible, no provider -> recorded reason not empty success, Turbopack panic -> verified webpack fallback) and the restart/rollback recipe with the explicit K PYTHONPATH. Owner-account authenticated HTTP journeys and denial/ traversal tests evidenced. Physical phone leg belongs to G11, not G09."
     },
     {
       "id": "G10",
-      "status": "pending",
-      "blocker": "real paid run + LAN-verified cached replay exist; policy has NO texture-completion requirement (removed that invented blocker). Still missing, literally from 04-hard-gates G10.requires: a real review and a scoped report saved under a NEW revision on the corrected replay; detector invocation, crops, truthful counts are already evidenced."
+      "status": "passed",
+      "blocker": null,
+      "note": "Verified byte-level at e431829: g10-corrected-report.json scene revision 3 on scan b86a89cf; node 126c3739 back to candidate; observation on frame-0309 (root-reviewed real faceplate crop, two receptacle openings, 84d5d5f8... ZIP recomputed) with the embedded note 'AI-assisted QA review (automated, not the account owner or any human)...' - honest provenance, quality needs_another_look preserved; no texture, human-confirmation or accuracy claims are required or made; manual node is NOT counted as detected."
     },
     {
       "id": "G11",
@@ -84,9 +86,9 @@
     },
     {
       "id": "G13",
-      "status": "passed",
+      "status": "pending",
       "blocker": null,
-      "note": "boundary tests green at 8c5d40b (25): foreign scan_id/revision/graph_hash/rulepack refused; before_after stays empty until supported; measured before_after justified; A refused-all-nonempty stance implemented. Transitively blocked by G10 via depends_on."
+      "note": "Builder boundary defects are closed and independently verified (root: 7 negative probes all refused, 4 identity fields + shallow/typed/ nonexistent before_after; 28 scope+ontology tests pass; my rerun at e431829: 25 scope tests). Gate still requires the actual revision-pinned dossier artifacts which Q has not independently audited at this head."
     },
     {
       "id": "G14",
@@ -111,7 +113,7 @@
   ],
   "certificates": {
     "software_verified": {
-      "status": "not_awarded",
+      "status": "awarded",
       "all_of": [
         "G00",
         "G01",
@@ -124,13 +126,11 @@
         "G08",
         "G09"
       ],
-      "blocked_by": [
-        "G09"
-      ],
+      "blocked_by": [],
       "derived_from_policy_lists": true
     },
     "saved_capture_verified": {
-      "status": "not_awarded",
+      "status": "awarded",
       "all_of": [
         "G00",
         "G01",
@@ -144,10 +144,7 @@
         "G09",
         "G10"
       ],
-      "blocked_by": [
-        "G09",
-        "G10"
-      ],
+      "blocked_by": [],
       "derived_from_policy_lists": true
     },
     "phone_pilot_ready": {
@@ -166,7 +163,6 @@
         "G11"
       ],
       "blocked_by": [
-        "G09",
         "G11"
       ],
       "derived_from_policy_lists": true
@@ -188,7 +184,6 @@
         "G16"
       ],
       "blocked_by": [
-        "G09",
         "G11",
         "G16"
       ],
@@ -204,7 +199,6 @@
         "G12"
       ],
       "blocked_by": [
-        "G10",
         "G12"
       ],
       "derived_from_policy_lists": true
@@ -219,7 +213,6 @@
         "G13"
       ],
       "blocked_by": [
-        "G10",
         "G13"
       ],
       "derived_from_policy_lists": true
@@ -250,7 +243,6 @@
         "G15"
       ],
       "blocked_by": [
-        "G09",
         "G15"
       ],
       "derived_from_policy_lists": true
@@ -307,11 +299,11 @@
       ],
       [
         "G09",
-        "pending"
+        "passed"
       ],
       [
         "G10",
-        "pending"
+        "passed"
       ],
       [
         "G11",
@@ -323,7 +315,7 @@
       ],
       [
         "G13",
-        "passed"
+        "pending"
       ],
       [
         "G14",
@@ -345,7 +337,7 @@
     "dependency_closure_respected": true,
     "certificates": {
       "software_verified": {
-        "status": "not_awarded",
+        "status": "awarded",
         "all_of": [
           "G00",
           "G01",
@@ -358,13 +350,11 @@
           "G08",
           "G09"
         ],
-        "blocked_by": [
-          "G09"
-        ],
+        "blocked_by": [],
         "derived_from_policy_lists": true
       },
       "saved_capture_verified": {
-        "status": "not_awarded",
+        "status": "awarded",
         "all_of": [
           "G00",
           "G01",
@@ -378,10 +368,7 @@
           "G09",
           "G10"
         ],
-        "blocked_by": [
-          "G09",
-          "G10"
-        ],
+        "blocked_by": [],
         "derived_from_policy_lists": true
       },
       "phone_pilot_ready": {
@@ -400,7 +387,6 @@
           "G11"
         ],
         "blocked_by": [
-          "G09",
           "G11"
         ],
         "derived_from_policy_lists": true
@@ -422,7 +408,6 @@
           "G16"
         ],
         "blocked_by": [
-          "G09",
           "G11",
           "G16"
         ],
@@ -438,7 +423,6 @@
           "G12"
         ],
         "blocked_by": [
-          "G10",
           "G12"
         ],
         "derived_from_policy_lists": true
@@ -453,7 +437,6 @@
           "G13"
         ],
         "blocked_by": [
-          "G10",
           "G13"
         ],
         "derived_from_policy_lists": true
@@ -484,7 +467,6 @@
           "G15"
         ],
         "blocked_by": [
-          "G09",
           "G15"
         ],
         "derived_from_policy_lists": true
