@@ -1,36 +1,36 @@
 {
-  "receipt_id": "MUT-M10",
+  "receipt_id": "MUT-M17",
   "gate_id": "G00",
-  "mutation_id": "M10",
+  "mutation_id": "M17",
   "outcome": "killed",
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
   "source_commit": "d369dc0d6315263efb883b1fb4b4409c8cfa9740",
-  "eval_source_head": "bb8ded9 (final K HEAD)",
+  "eval_source_head": "1dcfd8f (final K HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
   "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
   "input_artifacts": [
     {
-      "path": "uncertainty.py.original",
-      "sha256": "fb76fbb4c7c91ed71c9b08d944e8c3e19c97b10fe0ca68e4dc2315316b480a10",
-      "size_bytes": 7485,
+      "path": "metrics.py.original",
+      "sha256": "85c2e8743b77a9fffa7295e3223553ca571935c41cb981839f02b329525760fa",
+      "size_bytes": 5664,
       "content_type": "text/plain"
     }
   ],
   "output_artifacts": [
     {
-      "path": "M10-mutated.log",
-      "sha256": "f1e193c632372f13494bb32b615b573aa253dba74e7a51ea2cd45d166253e780",
-      "size_bytes": 1527,
+      "path": "M17-mutated.log",
+      "sha256": "3d4a998615246e85806bafbfe187a55f472e344f6ce98aa1aa5cd9c957c82f1e",
+      "size_bytes": 849,
       "content_type": "text/plain"
     },
     {
-      "path": "M10-clean-after.log",
-      "sha256": "835bd8236238804faad1c9b1658de8c49bca8b9758bb85bdbe5e18843ef93ef9",
-      "size_bytes": 99,
+      "path": "M17-clean-after.log",
+      "sha256": "4de64934605dc63b561f8b2a59ff4a7fa10d1068e8dfcae0f632ddefa3a3b684",
+      "size_bytes": 98,
       "content_type": "text/plain"
     }
   ],
@@ -39,7 +39,7 @@
   "scenario_hash": null,
   "scope_manifest_hash": null,
   "evidence_manifest_hash": null,
-  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate packages/pipeline/standardphysics_pipeline/primitives/uncertainty.py; pytest <owning suite> -q (record outcome); restore source",
+  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate packages/pipeline/standardphysics_pipeline/render_efficiency/metrics.py; pytest <owning suite> -q (record outcome); restore source",
   "working_directory": "/tmp/q-mutations or /tmp/q-review-s (disposable worktrees)",
   "environment_versions": {
     "python": "3.11"
@@ -54,11 +54,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "assert 'satisfied' == 'needs_verification'",
-        "artifact": "M10-mutated.log"
+        "substring": "Obtained: 0.0",
+        "artifact": "M17-mutated.log"
       },
       "evidence_paths": [
-        "M10-mutated.log"
+        "M17-mutated.log"
       ]
     },
     {
@@ -67,11 +67,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "packages/agents/tests/test_rule_intervals.py::TestThresholdStraddling::test_a_maximum_straddled_asks_for_verification",
-        "artifact": "M10-mutated.log"
+        "substring": "packages/pipeline/tests/test_render_efficiency.py::test_coverage_threshold",
+        "artifact": "M17-mutated.log"
       },
       "evidence_paths": [
-        "M10-mutated.log"
+        "M17-mutated.log"
       ]
     },
     {
@@ -81,21 +81,21 @@
       "observed": true,
       "params": {
         "substring": "passed",
-        "artifact": "M10-clean-after.log"
+        "artifact": "M17-clean-after.log"
       },
       "evidence_paths": [
-        "M10-clean-after.log"
+        "M17-clean-after.log"
       ]
     },
     {
       "id": "restored-source-hash",
       "measurement_method": "file_sha256",
-      "expected": "fb76fbb4c7c91ed71c9b08d944e8c3e19c97b10fe0ca68e4dc2315316b480a10",
+      "expected": "85c2e8743b77a9fffa7295e3223553ca571935c41cb981839f02b329525760fa",
       "params": {
-        "artifact": "uncertainty.py.original"
+        "artifact": "metrics.py.original"
       },
       "evidence_paths": [
-        "uncertainty.py.original"
+        "metrics.py.original"
       ]
     },
     {
@@ -103,10 +103,10 @@
       "measurement_method": "text_clean",
       "expected": true,
       "params": {
-        "artifact": "M10-mutated.log"
+        "artifact": "M17-mutated.log"
       },
       "evidence_paths": [
-        "M10-mutated.log"
+        "M17-mutated.log"
       ]
     },
     {
@@ -121,22 +121,22 @@
       "evidence_paths": []
     }
   ],
-  "raw_log_path": "M10-mutated.log",
+  "raw_log_path": "M17-mutated.log",
   "evaluator_identity": {
     "actor": "lane-Q",
     "attestation": "independent fault injection in a disposable worktree, reverted and hash-verified"
   },
   "fault": {
-    "id": "M10",
-    "source_head": "bb8ded9 (final K HEAD)",
+    "id": "M17",
+    "source_head": "1dcfd8f (final K HEAD)",
     "outcome": "killed",
-    "fault": "primitives/uncertainty.py: straddling interval replaced by its midpoint (favorable midpoint)",
-    "fault_file": "packages/pipeline/standardphysics_pipeline/primitives/uncertainty.py",
-    "restored_sha256": "fb76fbb4c7c91ed71c9b08d944e8c3e19c97b10fe0ca68e4dc2315316b480a10",
-    "killed_by": "packages/agents/tests/test_rule_intervals.py::TestThresholdStraddling::test_a_maximum_straddled_asks_for_verification",
-    "behavioral_assertion": "assert 'satisfied' == 'needs_verification'",
-    "mutated_log": "M10-mutated.log",
-    "clean_log": "M10-clean-after.log",
-    "original_copy": "uncertainty.py.original"
+    "fault": "render_efficiency/metrics.py: uncovered_fraction counts transparent/inpainted pixels as photographed",
+    "fault_file": "packages/pipeline/standardphysics_pipeline/render_efficiency/metrics.py",
+    "restored_sha256": "85c2e8743b77a9fffa7295e3223553ca571935c41cb981839f02b329525760fa",
+    "killed_by": "packages/pipeline/tests/test_render_efficiency.py::test_coverage_threshold",
+    "behavioral_assertion": "Obtained: 0.0",
+    "mutated_log": "M17-mutated.log",
+    "clean_log": "M17-clean-after.log",
+    "original_copy": "metrics.py.original"
   }
 }

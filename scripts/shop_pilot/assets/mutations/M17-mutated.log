@@ -1,0 +1,18 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+___________________________ test_coverage_threshold ____________________________
+
+    def test_coverage_threshold():
+        alpha = np.array([[0.9, 0.4], [0.8, 0.1]])
+        supported = np.array([[True, True], [True, True]])
+>       assert uncovered_fraction(alpha, supported) == pytest.approx(0.5)
+E       assert 0.0 == 0.5 ± 5.0e-07
+E         
+E         comparison failed
+E         Obtained: 0.0
+E         Expected: 0.5 ± 5.0e-07
+
+packages/pipeline/tests/test_render_efficiency.py:151: AssertionError
+=========================== short test summary info ============================
+FAILED packages/pipeline/tests/test_render_efficiency.py::test_coverage_threshold
+1 failed in 0.18s

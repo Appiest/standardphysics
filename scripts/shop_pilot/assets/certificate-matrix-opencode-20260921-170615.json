@@ -1,17 +1,18 @@
 {
   "kind": "certificate_matrix_final",
-  "version": 7,
+  "version": 8,
   "run_id": "opencode-20260921-170615",
   "evaluator": "lane Q independent (fireworks-ai deepseek-pro-latest)",
-  "computed_at": "2026-09-21T23:52:39-07:00",
-  "integration_head_evaluated": "bb8ded966cff7f2eebe94706af096cc209ccd77f",
+  "computed_at": "2026-09-22T00:04:59-07:00",
+  "integration_head_evaluated": "1dcfd8f (K: provider request metadata at response time; exact head read from k-remote)",
   "policy": "frozen docs unchanged",
   "verification_scope_at_this_head": "exact M06 mutation on test_orientation_end_to_end at bb8ded9 (clean 4 passed -> mutant 3 failed behaviorally -> restored hash b2ac0a9b... -> clean rerun 4 passed); M06 receipt rebound to bb8ded9. K states suites green at bb8ded9; no broad rerun of mine per dispatch.",
   "gate_matrix": [
     {
       "id": "G00",
-      "status": "failed",
-      "blocker": "14 of 18 mutation kills at source-bound heads; M09-M14 freshly killed at bb8ded9 (scope row drop, favorable midpoint, invented N/A, preview-as-verified, reach shortcut, false redesign). M01/M02/M18 executed as validator-side negative controls (24-test verifier suite log assets/mutations/M01M02M18/v-negcontrols.log). M17 (cherry-picked render) NOT yet executed: site = packages/pipeline standardphysics_pipeline/textures render evaluator; prereq = render artifacts + K lease. All 18 cases retained in the registry."
+      "status": "passed",
+      "blocker": null,
+      "note": "All 18 required controls executed with behavioral assertions, clean counterparts, restored hashes and raw logs: 15 product fault injections (M03-M17 incl. M17 render-denominator killed at 1dcfd8f) + M01/M02/M18 defined by the spec as receipt/certificate validation failures, executed against the independent verifier suite (24 tests, verbose log, 24 PASSED). Mutation receipts self-verified valid; no numbers reused across candidates."
     },
     {
       "id": "G01",
@@ -69,7 +70,7 @@
     {
       "id": "G10",
       "status": "passed_process_residuals",
-      "blocker": "real paid run audited (398 requests, truthful counts, detector not stubbed). Corrected replay at b86a89cf: cached-only (398 cache files matched, 104 objects, 2 unread, 0 provider calls), ownership repaired b86a89cf owner -> af071129 (was pilot-u synthetic 1b0be788); original receipt preserved (sha256 d6ae37af...). Supplementary caveats: frames_read dict, objects_found null, abstentions example-only. Not a detector-accuracy pass (G12)."
+      "blocker": "real paid run audited (398 requests, truthful counts, detector not stubbed). Corrected cached-only replay now LAN-verified after ownership repair (af071129; scene 200, 465 frames served; supervisor-corrected-replay-verification.json). Residuals carried elsewhere: counts are not unique accuracy (G12); texture completion state remains to be confirmed (G15 domain); abstentions example-only caveat (B receipt)."
     },
     {
       "id": "G11",
@@ -83,8 +84,8 @@
     },
     {
       "id": "G13",
-      "status": "pending",
-      "blocker": "A dossier not handed to Q."
+      "status": "failed_waiting_A_repair",
+      "blocker": "ROOT independent reproduction (supervisor-g13-builder-boundary-repro.json, A6068082 gap): builder accepts mismatched assessment identity (random scan_id, revision 999, unrelated graph_hash/rulepack) and arbitrary before_after strings marked justified=True. A's dossier repairs not yet integrated; re-evaluate on integration."
     },
     {
       "id": "G14",
@@ -94,7 +95,7 @@
     {
       "id": "G15",
       "status": "failed",
-      "blocker": "root c11 visual verdict FAILED (fragmented triangles/holes persist across quad images 0086/0001 and c9/c11 source maps). V code integration at bb8ded9 is source integration, not a quality pass. G15 remains failed."
+      "blocker": "root c11 visual verdict FAILED (fragmented triangles/holes persist across quad images 0086/0001 and source maps). V code at bb8ded9/1dcfd8f is integration, not a quality pass; M17 confirmed the evaluator itself rejects denominator games."
     },
     {
       "id": "G16",
@@ -111,16 +112,16 @@
     "software_verified": {
       "status": "not_awarded",
       "blocked_by": [
-        "G00",
-        "G09"
+        "G09 portable-network/phone test",
+        "G13 A dossier builder boundary"
       ]
     },
     "saved_capture_verified": {
       "status": "not_awarded",
       "blocked_by": [
-        "G00",
         "G09",
-        "G10 corrected-replay missing"
+        "G13",
+        "G10 texture confirmation residual"
       ]
     },
     "phone_pilot_ready": {
@@ -175,5 +176,5 @@
     "G15: c11 visual verdict FAILED - source churn reduction is not a quality pass"
   ],
   "software_line": "K suites green at bb8ded9 per K; Q evidence: all prior recomputes + M06 mutation binding + targeted orientation cycle at this head. G09 portable-network test and G11 user review remain the physical blockers for certificates.",
-  "notes_ten_controls": "M01/M02/M18 are defined by 05-adversarial-tests.txt as receipt/certificate validation failures, executed against my independent verifier with real raw logs; M09-M14 are product fault injections with clean counterparts, observed assertions, restored hashes and clean reruns at bb8ded9; M17 outstanding with exact site recorded."
+  "notes_ten_controls": "Ten-controls slice complete: M09-M14 + M17 product mutations killed at source-bound heads (bb8ded9/1dcfd8f) with raw logs; M01/M02/M18 validator-side negative controls executed with the 24-test verifier suite verbose log; all 18 registry entries self-verify. G00 passes on the frozen evaluator count (18/18)."
 }
