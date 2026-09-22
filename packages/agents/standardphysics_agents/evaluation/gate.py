@@ -31,6 +31,15 @@ one, so it is scored as ten feet short: larger than any real shortfall a shop
 can produce, which keeps "blocked" from looking like an improvement on "tight".
 """
 
+MIN_MEANINGFUL_SHORTFALL_INCHES = 1.0
+"""The smallest shortfall change that outruns the measurement's own noise.
+
+The occupancy grid quantises at 25 mm, which is about an inch, and a move that
+"wins" less than a grid cell has not improved anything measurable: it is the
+same room with a different rounding. Accepting such a win lets the loop report
+progress forever on numerical drift, so it must be refused.
+"""
+
 
 @dataclass(frozen=True)
 class GateResult:
@@ -95,12 +104,32 @@ def _improvement(before: Pass, after: Pass) -> list[str]:
         return []
     if len(after.problems) > len(before.problems):
         return ["more problems than before"]
-    if total_shortfall(after) < total_shortfall(before):
+    after_short, before_short = total_shortfall(after), total_shortfall(before)
+    if after_short <= before_short - MIN_MEANINGFUL_SHORTFALL_INCHES:
         return []
+    if after_short < before_short:
+        return ["improvement within measurement noise"]
     return ["nothing measurable changed"]
 
 
-SAFETY = (_completeness, _coverage, _new_failures)
+def _answered_unknowns(before: Pass, after: Pass) -> list[str]:
+    """A question that turned into an answer without new evidence.
+
+    Sliding furniture cannot produce a measurement the scan never took, so a
+    finding that was a question (needs verification) may stay a question
+    between one layout and the next, but never quietly become a pass or a
+    problem. Letting it do so is the cheapest way for a candidate to look
+    compliant, and the gate is where that has to be caught.
+    """
+    asked = {finding.id: finding for finding in before.questions}
+    return [
+        f"{finding.check_id} turned from a question into an answer"
+        for finding in after.findings
+        if finding.outcome != "question" and finding.id in asked
+    ]
+
+
+SAFETY = (_completeness, _coverage, _new_failures, _answered_unknowns)
 """Conditions about not making things worse. Always checked."""
 
 
