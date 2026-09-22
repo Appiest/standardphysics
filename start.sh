@@ -99,6 +99,11 @@ if ! command -v blender >/dev/null && [ -z "${BLENDER:-}" ] && [ ! -d /Applicati
 fi
 [ -f .env ] || echo "No .env yet. Scans are checked without one; copy .env.example to .env for model calls."
 
+# The web process rewrites /api to this origin. The default matches the API on
+# :8787 below. To let a phone on this LAN reach the API too, run
+#   SP_API_ORIGIN=http://<this-mac-lan-ip>:8787 ./start.sh
+export SP_API_ORIGIN="${SP_API_ORIGIN:-http://127.0.0.1:8787}"
+
 .venv/bin/python -m standardphysics_api &
 API_PID=$!
 trap 'kill "$API_PID" 2>/dev/null || true' EXIT INT TERM
