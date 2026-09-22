@@ -36,13 +36,16 @@ from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
 from ..lidar import LidarMeshError, room_cloud
 from ..textures.camera import CameraMetadataError, PhotoCamera, load_cameras
 from ..textures.project import depth_buffer
+from . import taxonomy
 from .boxes import claimed_by_any, contained_fraction, resting_parent
 from .cache import DetectionCache
 from .carve import FrameView, carve
+from .crops import save_crop
 from .detect import DEFAULT_MODEL, MODEL_ENV, Detection, DetectionError, Transport, detect_objects
 from .merge import Candidate, DiscoveredObject, merge_candidates
 from .people import without_people
 from .reconcile import reconcile_outlets
+from .semantic_corrections import apply_secondary_semantic_corrections
 from .surface_attach import attach_detection_to_surface
 
 log = logging.getLogger(__name__)
@@ -99,6 +102,13 @@ class DiscoveryInputs:
     lidar_mesh_path: pathlib.Path
     cache_dir: pathlib.Path | None = None
     """Where answers about these photos are kept, so a rebuild asks nothing again."""
+    crop_dir: pathlib.Path | None = None
+    """Where source-resolution evidence crops of surface targets are written.
+
+    Populated through the scan's own crops directory so the existing crop
+    route can serve them. When None, no crops are written and observations
+    carry no resolvable crop reference.
+    """
 
 
 @dataclass
@@ -141,23 +151,33 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
     objects = [object_ for object_, _ in kept]
     carved_nodes = [_node_for(object_, graph, viewpoints) for object_, viewpoints in kept]
 
-    # Surface-attached objects (outlets)
-    outlet_nodes: list[SceneNode] = []
+    # Surface-attached targets (outlets, televisions)
+    attached_nodes: list[SceneNode] = []
     cam_by_id = {camera.frame_id: camera for camera in cameras}
     for camera in cameras:
         for det in detections.get(camera.frame_id, []):
-            if det.is_outlet:
-                buf = buffers.get(camera.frame_id)
-                _, node = attach_detection_to_surface(
-                    det, camera, graph, depth_buffer=buf
+            if not det.is_attachable_target:
+                continue
+            image_url = None
+            if inputs.crop_dir is not None:
+                image_url = save_crop(
+                    inputs.frame_paths[camera.frame_id], det.frame_id, det.box, inputs.crop_dir
                 )
-                outlet_nodes.append(node)
+            _, node = attach_detection_to_surface(
+                det, camera, graph, depth_buffer=buffers.get(camera.frame_id),
+                image_url=image_url,
+            )
+            attached_nodes.append(node)
 
-    existing_outlets = [n for n in graph.nodes if n.attachment is not None]
-    reconciled_outlets = reconcile_outlets(existing_outlets + outlet_nodes, cam_by_id)
+    existing_attachments = [n for n in graph.nodes if n.attachment is not None]
+    reconciled_nodes = reconcile_outlets(existing_attachments + attached_nodes, cam_by_id)
+
+    discovery_nodes = {node.id: node for node in [*carved_nodes, *reconciled_nodes]}
+    for node in _semantic_corrections(graph, carved_nodes, detections, cameras):
+        discovery_nodes[node.id] = node
 
     return DiscoveryResult(
-        nodes=carved_nodes + reconciled_outlets,
+        nodes=list(discovery_nodes.values()),
         objects=objects,
         frames_read=len(cameras) - len(failures),
         people_points_removed=removal.removed,
@@ -273,7 +293,7 @@ def _carve_all(
 ) -> list[Candidate]:
     candidates = []
     for camera in cameras:
-        wanted = [one for one in detections.get(camera.frame_id, []) if not one.is_person and not one.is_outlet]
+        wanted = [one for one in detections.get(camera.frame_id, []) if not one.is_person and not one.is_attachable_target]
         if not wanted:
             continue
         view = FrameView.of(points, camera, buffers[camera.frame_id])
@@ -308,6 +328,34 @@ def _worth_keeping(object_: DiscoveredObject, graph: SceneGraph, viewpoints: int
         for node in graph.nodes
         if not bounds_the_room(node)
     )
+
+
+def _semantic_corrections(
+    graph: SceneGraph,
+    carved_nodes: list[SceneNode],
+    detections: dict[str, list[Detection]],
+    cameras: list[PhotoCamera],
+) -> list[SceneNode]:
+    """Existing and carved nodes relabelled by photographic evidence, and new whiteboards.
+
+    The correction pass runs over the RoomPlan graph plus what discovery just
+    carved, and only what changed is returned, so the caller replaces graph
+    nodes by id without ever mutating an untouched one. Surface-attached
+    targets are excluded: nothing relabels an outlet or a television.
+    """
+    populated = graph.model_copy(update={"nodes": [*graph.nodes, *carved_nodes]})
+    corrected = apply_secondary_semantic_corrections(populated, _relevant_detections(detections), cameras)
+    by_id = {node.id: node for node in populated.nodes}
+    return [node for node in corrected.nodes if node.id not in by_id or by_id[node.id] != node]
+
+
+def _relevant_detections(detections: dict[str, list[Detection]]) -> dict[str, list[Detection]]:
+    """Only the findings the correction pass can act on, so it never scans the rest."""
+    wanted = {taxonomy.SOFA, taxonomy.TABLE, taxonomy.WHITEBOARD}
+    return {
+        frame_id: [one for one in found if one.class_key in wanted]
+        for frame_id, found in detections.items()
+    }
 
 
 def _node_for(object_: DiscoveredObject, graph: SceneGraph, viewpoints: int) -> SceneNode:

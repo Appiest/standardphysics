@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import pathlib
 from dataclasses import asdict
 
@@ -48,7 +49,11 @@ class DetectionCache:
             stored = json.loads(entry.read_text())
         except (OSError, ValueError):
             return None
-        return [_detection(item, frame_id) for item in stored]
+        if not isinstance(stored, list):
+            return None
+        """A partially readable entry is a miss, not a smaller answer: the model is asked again."""
+        valid = [detection for item in stored if (detection := _detection(item, frame_id)) is not None]
+        return valid if len(valid) == len(stored) else None
 
     def put(self, image_path: pathlib.Path, detections: list[Detection], orientation: str = "") -> None:
         entry = self._entry(image_path, orientation)
@@ -61,16 +66,71 @@ class DetectionCache:
             pass
 
 
-def _detection(item: dict, frame_id: str) -> Detection:
+def _detection(item: dict, frame_id: str) -> Detection | None:
+    """One stored answer, or nothing when it is malformed, NaN or infinite.
+
+    A cache entry that cannot be read exactly is not repaired and is not
+    silently shrunk: the caller treats the whole entry as a miss.
+    """
+    if not isinstance(item, dict):
+        return None
+    name, box = item.get("name"), item.get("box")
+    if not isinstance(name, str):
+        return None
+    box_values = _finite_numbers(box, 4)
+    if box_values is None:
+        return None
+    confidence_values = _finite_numbers([item.get("confidence")], 1)
+    if confidence_values is None:
+        return None
+    crop_box = _finite_box(item.get("crop_box"))
+    sockets = _finite_sockets(item.get("sockets"))
+    if sockets is None:
+        return None
+    left, top, right, bottom = box_values
     return Detection(
         frame_id=frame_id,
-        name=item["name"],
-        box=tuple(item["box"]),
-        movable=bool(item["movable"]),
-        confidence=float(item["confidence"]),
+        name=name,
+        box=(left, top, right, bottom),
+        movable=bool(item.get("movable", True)),
+        confidence=min(1.0, max(0.0, confidence_values[0])),
         category=item.get("category", "object"),
-        crop_box=tuple(item["crop_box"]) if item.get("crop_box") else None,
-        sockets=tuple(tuple(s) for s in item.get("sockets", ())),
+        crop_box=crop_box,
+        sockets=sockets,
         review_status=item.get("review_status", "detected"),
-        uncertainty_reasons=tuple(item.get("uncertainty_reasons", ())),
+        uncertainty_reasons=tuple(item.get("uncertainty_reasons", ()) or ()),
     )
+
+
+def _finite_numbers(value: object, length: int) -> tuple[float, ...] | None:
+    """A sequence of `length` finite numbers, or nothing."""
+    if not isinstance(value, (list, tuple)) or len(value) != length:
+        return None
+    try:
+        numbers = tuple(float(one) for one in value)
+    except (TypeError, ValueError):
+        return None
+    return numbers if all(math.isfinite(one) for one in numbers) else None
+
+
+def _finite_box(value: object) -> tuple[float, float, float, float] | None:
+    """A stored crop box with four finite coordinates, or nothing."""
+    if not value:
+        return None
+    numbers = _finite_numbers(value, 4)
+    return None if numbers is None else (numbers[0], numbers[1], numbers[2], numbers[3])
+
+
+def _finite_sockets(value: object) -> tuple[tuple[float, float], ...] | None:
+    """Every stored socket point with two finite coordinates, or nothing."""
+    if not value:
+        return ()
+    if not isinstance(value, (list, tuple)):
+        return None
+    sockets = []
+    for socket in value:
+        numbers = _finite_numbers(socket, 2)
+        if numbers is None:
+            return None
+        sockets.append((numbers[0], numbers[1]))
+    return tuple(sockets)

@@ -26,6 +26,7 @@ from standardphysics_contracts import (
 )
 
 from ..textures.camera import PhotoCamera
+from . import taxonomy
 from .boxes import _frame, to_local
 from .detect import Detection
 
@@ -33,6 +34,33 @@ GRAZING_ANGLE_COS_THRESHOLD = 0.2588  # ~75 degrees from normal (cos 75 deg ≈ 
 MIN_SUPPORT_RAYS = 3
 TOTAL_SAMPLE_RAYS = 9
 FACEPLATE_DEFAULT_SIZE = (0.12, 0.03, 0.12)  # Width 12cm, thickness 3cm, height 12cm
+
+
+def _review_status(detection: Detection) -> str:
+    """A counter or restroom entrance stays a candidate until the owner confirms its role and public use."""
+    return "candidate" if detection.needs_owner_confirmation else detection.review_status
+
+
+def _node_kind(detection: Detection) -> str:
+    if detection.is_outlet:
+        return "outlet"
+    if detection.is_confuser:
+        return "confuser"
+    return detection.class_key
+
+
+def _node_label(detection: Detection) -> str:
+    if detection.is_outlet:
+        return f"Outlet ({detection.name})"
+    if detection.is_confuser or detection.class_key == taxonomy.OBJECT:
+        return detection.name
+    return f"{taxonomy.semantic_class(detection.class_key).label} ({detection.name})"
+
+
+def _candidate_kind(detection: Detection) -> str:
+    if detection.is_outlet:
+        return "candidate_outlet"
+    return f"candidate_{detection.class_key}"
 
 
 @dataclass(frozen=True)
@@ -268,7 +296,7 @@ def attach_detection_to_surface(
             observations=[obs_crop],
             identity_confidence=detection.confidence,
             localization_quality=localization_quality,
-            review_status=detection.review_status,
+            review_status=_review_status(detection),
             uncertainty_reasons=uncertainty_reasons,
         )
 
@@ -287,8 +315,8 @@ def attach_detection_to_surface(
 
         node = SceneNode(
             id=node_id,
-            kind="outlet" if detection.is_outlet else ("confuser" if detection.is_confuser else "object"),
-            label=f"Outlet ({detection.name})" if detection.is_outlet else detection.name,
+            kind=_node_kind(detection),
+            label=_node_label(detection),
             raw_category=detection.name,
             dimensions=Vec3(x=FACEPLATE_DEFAULT_SIZE[0], y=FACEPLATE_DEFAULT_SIZE[1], z=FACEPLATE_DEFAULT_SIZE[2]),
             transform=Mat4(m=[
@@ -325,8 +353,8 @@ def attach_detection_to_surface(
     node_id = uuid.uuid5(uuid.NAMESPACE_OID, stable_seed)
     node = SceneNode(
         id=node_id,
-        kind="candidate_outlet",
-        label=f"Candidate outlet ({detection.name})",
+        kind=_candidate_kind(detection),
+        label=f"Candidate {taxonomy.semantic_class(detection.class_key).label.lower()} ({detection.name})",
         raw_category=detection.name,
         dimensions=Vec3(x=FACEPLATE_DEFAULT_SIZE[0], y=FACEPLATE_DEFAULT_SIZE[1], z=FACEPLATE_DEFAULT_SIZE[2]),
         transform=Mat4(m=[

@@ -253,6 +253,26 @@ def detect_and_attach_whiteboard(
     )
 
 
+def _best_whiteboard(
+    wall_node: SceneNode,
+    detections_by_frame: dict[str, list[Detection]],
+    cameras_by_id: dict[str, PhotoCamera],
+) -> SceneNode | None:
+    """The highest-confidence whiteboard detection on one wall, or nothing."""
+    best_board: SceneNode | None = None
+    best_confidence = -1.0
+    for frame_id, detections in detections_by_frame.items():
+        camera = cameras_by_id.get(frame_id)
+        if camera is None:
+            continue
+        for det in detections:
+            board = detect_and_attach_whiteboard(wall_node, det, camera)
+            if board is not None and det.confidence > best_confidence:
+                best_board = board
+                best_confidence = det.confidence
+    return best_board
+
+
 def apply_secondary_semantic_corrections(
     graph: SceneGraph,
     detections_by_frame: dict[str, list[Detection]],
@@ -285,17 +305,15 @@ def apply_secondary_semantic_corrections(
                 break
         updated_nodes.append(current_node)
 
-    # 2. Check walls for whiteboard attachments
-    walls = [n for n in updated_nodes if n.kind == "wall"]
-    for wall in walls:
-        for frame_id, detections in detections_by_frame.items():
-            camera = cameras_by_id.get(frame_id)
-            if camera is None:
-                continue
-            for det in detections:
-                wb = detect_and_attach_whiteboard(wall, det, camera)
-                if wb is not None and not any(existing.id == wb.id for existing in whiteboards):
-                    whiteboards.append(wb)
+    # 2. Check walls for whiteboard attachments: one board per wall,
+    # the best-evidenced view, so many frames of one board are not many boards.
+    whiteboards = [
+        board
+        for wall in updated_nodes
+        if wall.kind == "wall"
+        for board in [_best_whiteboard(wall, detections_by_frame, cameras_by_id)]
+        if board is not None
+    ]
 
     all_nodes = [*updated_nodes, *whiteboards]
     return graph.model_copy(update={
