@@ -78,6 +78,40 @@ Door force, hardware operation, floor properties, electrical function, signage
 and other non-geometric conditions require their own suitable observations/tests
 and source-defined procedures; they do not appear magically from a LiDAR mesh.
 
+FIELD MEASUREMENT PROTOCOL (lane G owns this section)
+Two disjoint control roles, never the same reading:
+  calibration controls  read first, tune or reject the scan-to-real conversion
+                        per method/scene region; recorded with which model
+                        parameters (if any) they adjusted.
+  withheld check controls read from the same instruments but never used in any
+                        tuning; used only to compute per-region error bounds.
+Controls per claimed method and scene region must exist before that
+claim is supported: door/route clear widths, counter top heights and section
+extents, outlet mounting heights, room-scale spans, any extrapolated floor or
+surface area. A good wall fit nearby does not certify an unseen counter edge,
+and an area not walked by the scanner is inferred, not measured; mark such
+values modeled-with-question, never measured, until backed by controls.
+Numbering thresholds per site: at least ten calibration-eligible distinct
+controls and at least five withheld checks; near-limit cases (values within a
+few percent of the requirement) receive repeat readings and the raw
+discrepancy spread is recorded, never rounded toward a pass. Every control
+states: photo with both endpoints, value and unit, instrument and its
+resolution, method (tape/laser/stick), operator, local time, and which scanned
+surfaces/edges the endpoints correspond to. Where the assistant and the
+wheelchair user read the same dimension independently, record both and the
+spread. No estimate enters assessment as a definite number; on screen it shows
+"approximate" or a conservative interval when bounds exist, and a wider
+uncertain interval must not pass a threshold. Missing controls keep the
+metric-accuracy evidence pending (G17) - they never silently downgrade a
+measurement's precision claim.
+Sources of error that may require extra controls: registration drift over the
+scan path, extrapolated geometry beyond the scan, fisheye/perspective reading
+of wide targets, endpoint ambiguity on rounded or beveled edges, and
+near-threshold placement of the tape itself.
+If a control disagrees with the scan beyond a planned margin, record it as a
+failure with the exact dimension, do not discard it, and put that place on
+the targeted recapture list.
+
 ASSISTED REVIEW ON PHONE
 User reviews each displayed target and its crop: correct category? correct marker?
 counter/customer side? public restroom role? Any visible missed object? Add manual
