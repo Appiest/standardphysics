@@ -73,6 +73,7 @@ function DrawFrame({ frame, alt, surfaceRef, onDown, onMove, onUp }: {
       src={frame.image_url}
       alt={alt}
       draggable={false}
+      style={{ aspectRatio: `${frame.width} / ${frame.height}` }}
       className="max-h-[42vh] w-full touch-none select-none object-contain lg:max-h-[50vh]"
       onError={() => setFailed(true)}
       onPointerDown={onDown}
@@ -259,7 +260,8 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
         return;
       }
       setFrames(listing.frames);
-      setUnreadable(listing.unreadable);
+      // Older server builds predate the `unreadable` key in the frozen shape.
+      setUnreadable(listing.unreadable ?? []);
       setListState("ready");
       requestAnimationFrame(() => listRef.current?.querySelector<HTMLButtonElement>("button")?.focus());
     } catch (error) {
