@@ -6,7 +6,6 @@ import {
   wheelchairMotionGeometry,
   wheelchairProfile,
   type MotionPoint,
-  type ReachProfile,
 } from "@/lib/wheelchair-motion";
 import { reviewOutlet } from "@/lib/layout-client";
 import type { SceneGraph, SceneNode } from "@/types/contracts";
@@ -25,7 +24,7 @@ const makeNode = (overrides: Partial<SceneNode> = {}): SceneNode => ({
   ...overrides,
 });
 
-const makeOutlet = (id: string, x: number, y: number, z: number, floorTop = 0.10): SceneNode =>
+const makeOutlet = (id: string, x: number, y: number, z: number): SceneNode =>
   makeNode({
     id,
     kind: "outlet",
@@ -196,13 +195,14 @@ describe("Outlet UI acceptance cases (UI-01 through UI-04)", () => {
         makeOutlet(outletId, 0, 1.9, 0.50),
       ],
     };
-    (mockResponse.nodes[0].attachment as any).review_status = "confirmed_by_user";
+    const baseAttachment = mockResponse.nodes[0].attachment;
+    if (baseAttachment) baseAttachment.review_status = "confirmed_by_user";
 
     // Mock global fetch
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
       ok: true,
       json: async () => mockResponse,
-    } as any);
+    } as unknown as Response);
 
     const updatedScene = await reviewOutlet(scanId, baseRevision, outletId, "confirmed_by_user");
 

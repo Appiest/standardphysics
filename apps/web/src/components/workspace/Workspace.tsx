@@ -1,18 +1,20 @@
 "use client";
 
-import { ArrowLeft, ArrowsLeftRight, FileText, HandGrabbing, Lightning, ListChecks, MapPin } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowsLeftRight, Camera, FileText, HandGrabbing, ListChecks, MapPin } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { overviewPose, poseFromLocus, topDownPose, type ViewerPose } from "@/lib/camera";
+import { overviewPose, poseAtPoint, poseFromLocus, topDownPose, type ViewerPose } from "@/lib/camera";
+import { nodePosition } from "@/lib/review-targets";
 import { interpolateLayout } from "@/lib/compare";
 import { findingForNode, type Focus, focusOnLocus, groupFindings } from "@/lib/findings";
 import { AskBox } from "./AskBox";
 import { type CheckScope, scanStatus } from "@/lib/scan-status";
 import { METERS_PER_INCH } from "@/lib/moves";
 import { capturedMeshUrl } from "@/lib/lidar-mesh";
-import type { Assessment, Finding, Locus, NodeMove, Scan, Scenario, SceneGraph, SceneNode } from "@/types/contracts";
+import type { Assessment, EvidenceStatus, Finding, Locus, NodeMove, Scan, Scenario, SceneGraph, SceneNode } from "@/types/contracts";
 import { RoutePanel } from "./RoutePanel";
 import type { RouteHandles } from "./StopMarkers";
 import { type RouteState, useRoute } from "./useRoute";
@@ -38,9 +40,11 @@ import { showsSplats, viewerSourcePlan } from "@/lib/viewer-source";
 import type { TextureStatus } from "@/types/contracts";
 
 import type { CapturedSplats } from "@/lib/captured-splats";
-import { reviewOutlet } from "@/lib/layout-client";
 import { DEFAULT_WHEELCHAIR_PROFILE, wheelchairProfile, type MotionPoint, type WheelchairProfile } from "@/lib/wheelchair-motion";
-import { OutletPanel } from "./OutletPanel";
+import { ReviewPanel } from "./ReviewPanel";
+import { EvidencePanel } from "./EvidencePanel";
+import { OutcomeMatrix } from "./OutcomeMatrix";
+import type { LaneView } from "@/lib/evidence";
 
 
 
@@ -65,15 +69,17 @@ type WorkspaceProps = {
   textureStatus: TextureStatus | null;
   rooms: RoomGroup[];
   capturedSplats?: CapturedSplats | null;
+  evidence?: EvidenceStatus | null;
 };
 
 function isWorking(scan: Scan): boolean {
   return scan.state === "uploading" || scan.state === "measuring" || scan.state === "checking";
 }
-type Task = "findings" | "arrange" | "combine" | "compare" | "route" | "outlets";
+type Task = "findings" | "arrange" | "combine" | "compare" | "route" | "review";
 
-function poseFor(scene: SceneGraph, selected: Focus | null, mode: ViewMode): ViewerPose {
+function poseFor(scene: SceneGraph, selected: Focus | null, mode: ViewMode, focusPoint?: { x: number; y: number; z: number } | null): ViewerPose {
   if (selected?.locus) return poseFromLocus(selected.locus.camera);
+  if (focusPoint) return poseAtPoint(focusPoint, scene);
   return mode === "top" ? topDownPose(scene) : overviewPose(scene);
 }
 
@@ -217,9 +223,9 @@ function WorkspaceHeader({ scan, revision, task, canCompare, canCombine, onTask 
           <MapPin size={16} weight="bold" className="hidden sm:block" aria-hidden />
           Customer route
         </Button>
-        <Button variant="chip" aria-pressed={task === "outlets"} onClick={() => onTask("outlets")}>
-          <Lightning size={16} weight="bold" className="hidden sm:block" aria-hidden />
-          Outlets
+        <Button variant="chip" aria-pressed={task === "review"} onClick={() => onTask("review")}>
+          <Camera size={16} weight="bold" className="hidden sm:block" aria-hidden />
+          Review
         </Button>
         {canCompare && (
           <Button variant="chip" aria-pressed={task === "compare"} onClick={() => onTask("compare")}>
@@ -252,59 +258,11 @@ type SidePanelProps = {
   onLook: (locus: Locus | null) => void;
   selectedNodeId?: string | null;
   onSelectNode?: (nodeId: string | null) => void;
-  wheelchairPos?: { x: number; z: number } | null;
-  wheelchairProfile?: WheelchairProfile;
-  onProfileChange?: (profile: WheelchairProfile) => void;
-  onPreviewApproach?: (point: { x: number; z: number }) => void;
-  onUpdateReviewStatus?: (nodeId: string, status: "confirmed_by_user" | "rejected_by_user") => void;
+  onReviewPersisted?: (scene: SceneGraph) => void;
 };
 
-function SidePanel({
-  task,
-  scene,
-  onTryLayout,
-  onPreviewLayout,
-  assessment,
-  scan,
-  findings,
-  selected,
-  arrangement,
-  combine,
-  comparison,
-  amount,
-  onAmount,
-  onToggle,
-  route,
-  onRoute,
-  onLook,
-  selectedNodeId,
-  onSelectNode,
-  wheelchairPos,
-  wheelchairProfile,
-  onProfileChange,
-  onPreviewApproach,
-  onUpdateReviewStatus,
-}: SidePanelProps) {
-  const scope: CheckScope = { rulesChecked: assessment?.rules_checked ?? null, routeConfirmed: route.confirmed };
-  if (task === "outlets") {
-    return (
-      <OutletPanel
-        scene={scene}
-        selectedId={selectedNodeId ?? null}
-        onSelectNode={onSelectNode ?? (() => {})}
-        wheelchairPos={wheelchairPos ?? null}
-        wheelchairProfile={wheelchairProfile ?? DEFAULT_WHEELCHAIR_PROFILE}
-        onProfileChange={onProfileChange}
-        onPreviewApproach={onPreviewApproach}
-        onUpdateReviewStatus={onUpdateReviewStatus}
-      />
-    );
-  }
-
-  if (task === "compare" && comparison) return <ComparePanel comparison={comparison} amount={amount} onAmount={onAmount} scope={scope} />;
-  if (task === "arrange") return <ArrangePanel arrangement={arrangement} fallbackFindings={findings} scope={scope} />;
-  if (task === "combine") return <CombinePanel combine={combine} />;
-  if (task === "route") return <RoutePanel route={route} />;
+function findingsTaskPanel(props: SidePanelProps): ReactNode {
+  const { scene, scan, findings, selected, onTryLayout, onPreviewLayout, onToggle, onLook, route, onRoute, assessment } = props;
   return (
     <>
       <AskBox scanId={scan.id} revision={scene.revision} onLook={onLook} onTry={onTryLayout} />
@@ -312,6 +270,52 @@ function SidePanel({
       <FindingsPanel scan={scan} scene={scene} assessment={assessment} findings={findings} selected={selected} onToggle={onToggle} onTryLayout={onTryLayout} route={route} onRoute={onRoute} />
     </>
   );
+}
+
+function reviewTaskPanel(props: SidePanelProps): ReactNode {
+  const { scan, scene, selectedNodeId, onSelectNode, onReviewPersisted } = props;
+  return (
+    <ReviewPanel
+      scanId={scan.id}
+      scene={scene}
+      selectedId={selectedNodeId ?? null}
+      onSelectNode={onSelectNode ?? (() => {})}
+      onPersisted={onReviewPersisted}
+    />
+  );
+}
+
+function compareTaskPanel(props: SidePanelProps): ReactNode {
+  const { comparison, amount, onAmount, assessment, route } = props;
+  const scope: CheckScope = { rulesChecked: assessment?.rules_checked ?? null, routeConfirmed: route.confirmed };
+  return comparison ? <ComparePanel comparison={comparison} amount={amount} onAmount={onAmount} scope={scope} /> : null;
+}
+
+function arrangeTaskPanel(props: SidePanelProps): ReactNode {
+  const { findings, arrangement, assessment, route } = props;
+  const scope: CheckScope = { rulesChecked: assessment?.rules_checked ?? null, routeConfirmed: route.confirmed };
+  return <ArrangePanel arrangement={arrangement} fallbackFindings={findings} scope={scope} />;
+}
+
+function combineTaskPanel(props: SidePanelProps): ReactNode {
+  return <CombinePanel combine={props.combine} />;
+}
+
+function routeTaskPanel(props: SidePanelProps): ReactNode {
+  return <RoutePanel route={props.route} />;
+}
+
+const TASK_PANELS: Record<Task, (props: SidePanelProps) => ReactNode> = {
+  review: reviewTaskPanel,
+  compare: compareTaskPanel,
+  arrange: arrangeTaskPanel,
+  combine: combineTaskPanel,
+  route: routeTaskPanel,
+  findings: findingsTaskPanel,
+};
+
+function SidePanel(props: SidePanelProps) {
+  return TASK_PANELS[props.task](props);
 }
 
 type FindingsPanelProps = Pick<SidePanelProps, "scan" | "scene" | "assessment" | "findings" | "selected" | "onToggle" | "onTryLayout" | "route" | "onRoute">;
@@ -341,6 +345,7 @@ function FindingsPanel({ scan, scene, assessment, findings, selected, onToggle, 
   return (
     <div className="flex flex-col gap-5">
       <NextStep scan={scan} scene={scene} route={route} onRoute={onRoute} onTryLayout={onTryLayout} />
+      {assessment?.scope && <OutcomeMatrix scope={assessment.scope} findings={findings} />}
       {findings.length === 0 ? (
         <p className="px-3 text-ink-muted">{scanStatus(scan, assessment, route.confirmed)}</p>
       ) : (
@@ -384,17 +389,17 @@ function useFocus() {
   return { selected, setSelected, setAsked, focus };
 }
 
-function useWorkspaceVisuals(props: WorkspaceProps, findings: Finding[], task: Task, amount: number, focus: Focus | null, mode: ViewMode, setDragging: (on: boolean) => void) {
+function useWorkspaceVisuals(props: WorkspaceProps, findings: Finding[], task: Task, amount: number, focus: Focus | null, focusPoint: { x: number; y: number; z: number } | null, mode: ViewMode, setFocusPoint: (point: { x: number; y: number; z: number } | null) => void, setDragging: (on: boolean) => void) {
   const arrangement = useArrangement(props.scan.id, props.scene);
   const combine = useCombine(props.scan.id, props.scene, props.rooms);
   const comparison = comparisonFor(arrangement, props.scene, findings, props.previous);
   const shown = task === "combine" ? combine.shown : (task === "compare" && comparison ? interpolateLayout(comparison.before, comparison.after, amount) : arrangement.shown);
-  const pose = useMemo(() => poseFor(props.scene, focus, mode), [props.scene, focus, mode]);
+  const pose = useMemo(() => poseFor(props.scene, focus, mode, focusPoint), [props.scene, focus, mode, focusPoint]);
   const arrangeHandlers = useArrangeHandlers(task === "arrange", arrangement, setDragging);
   const combineHandlers = useCombineHandlers(task === "combine", combine, setDragging);
   const handlers = task === "combine" ? combineHandlers : arrangeHandlers;
   const route = useRoute(props.scan.id, props.scenario, props.suggestedScenario);
-  return { arrangement, combine, comparison, shown, pose, handlers, dragAllNodes: task === "combine", route, routeHandles: useRouteHandles(task, route, setDragging) };
+  return { arrangement, combine, comparison, shown, pose, handlers, dragAllNodes: task === "combine", route, routeHandles: useRouteHandles(task, route, setDragging), setFocusPoint };
 }
 
 function useWorkspaceActions(findings: Finding[], scene: SceneGraph, arrangement: Arrangement, setSelected: (finding: Finding | null | ((current: Finding | null) => Finding | null)) => void, setAsked: (focus: Focus | null) => void, setPicked: (picked: Picked | null) => void, setTask: (task: Task) => void, setMode: (mode: ViewMode) => void, setAmount: (amount: number) => void) {
@@ -490,7 +495,8 @@ type WorkspaceBodyProps = WorkspaceProps & {
 
 // The workspace deliberately coordinates several independent panels around one model.
 // eslint-disable-next-line complexity
-function WorkspaceBody({ scan, scene, exported, assessment, glbUrl, lidarUrl, textureStatus, capturedSplats, findings, task, selected, focus, mode, picked, dragging, amount, setAmount, showScanEvidence, setShowScanEvidence, visuals, actions }: WorkspaceBodyProps) {
+function WorkspaceBody({ scan, scene, exported, assessment, glbUrl, lidarUrl, textureStatus, capturedSplats, evidence, findings, task, selected, focus, mode, picked, dragging, amount, setAmount, showScanEvidence, setShowScanEvidence, visuals, actions }: WorkspaceBodyProps) {
+  const router = useRouter();
   const [cutWalls, setCutWalls] = useState(true);
   const [chosenMaterialMode, setChosenMaterialMode] = useState<MaterialMode | null>(null);
   const [wheelchairMode, setWheelchairMode] = useState(false);
@@ -535,7 +541,7 @@ function WorkspaceBody({ scan, scene, exported, assessment, glbUrl, lidarUrl, te
   const activeMode = selected ? null : mode;
   const photoBuild = textures.status?.build ?? null;
   const scanGlbUrl = photoBuild?.scan_glb_url ?? null;
-  const captureAllowed = task === "findings" || task === "route" || task === "outlets";
+  const captureAllowed = task === "findings" || task === "route" || task === "review";
   const splatAssets = captureAllowed && capturedSplats?.revision === scene.revision ? capturedSplats.assets : undefined;
   const hasSplats = Boolean(splatAssets?.length);
   const reconstructionCount = scene.nodes.filter((node) => node.reconstruction !== null && node.reconstruction !== undefined).length;
@@ -553,46 +559,22 @@ function WorkspaceBody({ scan, scene, exported, assessment, glbUrl, lidarUrl, te
   const sourceGlbUrl = sourcePlan.usePhotoBuild ? photoBuild?.glb_url ?? null : cleanGlbUrl;
   const sourceGraph = sourcePlan.usePhotoBuild ? photoBuild?.bake_graph ?? exported : exported;
 
-  const [reviews, setReviews] = useState<Record<string, "confirmed_by_user" | "rejected_by_user">>({});
   const [persistedScene, setPersistedScene] = useState<SceneGraph | null>(null);
 
-  const handleUpdateReviewStatus = useCallback(async (nodeId: string, status: "confirmed_by_user" | "rejected_by_user") => {
-    setReviews((prev) => ({ ...prev, [nodeId]: status }));
-    try {
-      const currentRev = (persistedScene ?? scene).revision;
-      const updated = await reviewOutlet(scan.id, currentRev, nodeId, status);
-      setPersistedScene(updated);
-    } catch (err) {
-      console.error("Failed to persist outlet review", err);
-    }
-  }, [scan.id, scene, persistedScene]);
+  const handleReviewPersisted = useCallback((updated: SceneGraph) => {
+    setPersistedScene(updated);
+  }, []);
 
-  const activeScene = useMemo(() => {
-    const base = persistedScene ?? scene;
-    if (Object.keys(reviews).length === 0) return base;
-    return {
-      ...base,
-      nodes: base.nodes.map((node) => {
-        const review = reviews[node.id];
-        if (!review || !node.attachment) return node;
-        return {
-          ...node,
-          attachment: {
-            ...node.attachment,
-            review_status: review,
-          },
-        };
-      }),
-    };
-  }, [scene, persistedScene, reviews]);
+  const activeScene = useMemo(() => persistedScene ?? scene, [scene, persistedScene]);
 
-  const handlePreviewOutletApproach = useCallback((point: MotionPoint) => {
-    if (picked.node) {
-      setDockTarget(picked.node);
-      setDockDestination(point);
-      setWheelchairMode(true);
+  const handleEvidenceAction = useCallback((lane: LaneView) => {
+    if (lane.id === "recognition" && lane.tone === "failed") {
+      void fetch(`/api/scans/${scan.id}/complete`, { method: "POST" }).then((response) => {
+        if (response.ok) router.refresh();
+      });
     }
-  }, [picked.node]);
+    if (lane.id === "visual") void textures.request();
+  }, [scan.id, textures, router]);
 
   return <>
     <RefreshWhile pending={assessment === null && isWorking(scan)} />
@@ -663,6 +645,16 @@ function WorkspaceBody({ scan, scene, exported, assessment, glbUrl, lidarUrl, te
         />
       </section>
       <aside hidden={wheelchairMode} className="min-h-0 overflow-y-auto px-3 pb-10 pt-4 lg:pt-0">
+        <div className="mb-3 flex flex-col gap-3">
+          {!wheelchairMode && (
+            <EvidencePanel
+              status={evidence ?? null}
+              textures={textures.status}
+              measured={scene !== null}
+              onAction={handleEvidenceAction}
+            />
+          )}
+        </div>
         <SidePanel
           task={task}
           scene={activeScene}
@@ -683,14 +675,16 @@ function WorkspaceBody({ scan, scene, exported, assessment, glbUrl, lidarUrl, te
           onLook={actions.look}
           selectedNodeId={picked.node?.id ?? null}
           onSelectNode={(id) => {
-            if (id) actions.selectNode(id);
-            else actions.clear();
+            if (id) {
+              const node = activeScene.nodes.find((candidate) => candidate.id === id);
+              actions.selectNode(id);
+              if (task === "review" && node) visuals.setFocusPoint(nodePosition(node));
+              return;
+            }
+            actions.clear();
+            visuals.setFocusPoint(null);
           }}
-          wheelchairPos={wheelchairState ? { x: wheelchairState.x, z: wheelchairState.z } : null}
-          wheelchairProfile={profile}
-          onProfileChange={handleWheelchairProfile}
-          onPreviewApproach={handlePreviewOutletApproach}
-          onUpdateReviewStatus={handleUpdateReviewStatus}
+          onReviewPersisted={handleReviewPersisted}
         />
 
       </aside>
@@ -702,12 +696,13 @@ export function Workspace(props: WorkspaceProps) {
   const findings = useMemo(() => props.assessment?.findings ?? [], [props.assessment]);
   const { selected, setSelected, setAsked, focus } = useFocus();
   const [mode, setMode] = useState<ViewMode>("overview");
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number; z: number } | null>(null);
   const picked = usePicked(props.scene);
   const [task, setTask] = useState<Task>("findings");
   const [dragging, setDragging] = useState(false);
   const [amount, setAmount] = useState(1);
   const [showScanEvidence, setShowScanEvidence] = useState(false);
-  const visuals = useWorkspaceVisuals(props, findings, task, amount, focus, mode, setDragging);
+  const visuals = useWorkspaceVisuals(props, findings, task, amount, focus, focusPoint, mode, setFocusPoint, setDragging);
   const actions = useWorkspaceActions(findings, props.scene, visuals.arrangement, setSelected, setAsked, picked.setPicked, setTask, setMode, setAmount);
   return <WorkspaceBody {...props} findings={findings} task={task} selected={selected} focus={focus} mode={mode} picked={picked} dragging={dragging} amount={amount} setAmount={setAmount} showScanEvidence={showScanEvidence} setShowScanEvidence={setShowScanEvidence} visuals={visuals} actions={actions} />;
 }

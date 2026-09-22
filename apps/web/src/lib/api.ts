@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import type { Assessment, Report, Scan, ScanList, Scenario, SceneGraph, SimulationReplay, TextureStatus } from "@/types/contracts";
+import type { Assessment, EvidenceStatus, Report, Scan, ScanList, Scenario, SceneGraph, SimulationReplay, TextureStatus } from "@/types/contracts";
 import type { RoomGroup } from "./room-groups";
 import type { CapturedSplats } from "./captured-splats";
 import { API_ORIGIN } from "./api-origin";
@@ -64,3 +64,6 @@ export const getRooms = (scanId: string) =>
 
 export const getCapturedSplats = (scanId: string, revision: number) =>
   getOptional<CapturedSplats>(`/api/scans/${scanId}/splats?revision=${revision}`);
+
+export const getEvidence = (scanId: string) =>
+  getOptional<EvidenceStatus>(`/api/scans/${scanId}/evidence`);
