@@ -4,7 +4,7 @@ import { Camera, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { getFrames, manualMarkRefusal, markObservation, type FrameEntry } from "@/lib/review-client";
-import { isUsablePointerBox, pointerBoxLabel, sensorBoxFromPointer, type PointerBox, type RectLike } from "@/lib/sensor-box";
+import { isUsablePointerBox, overlayGeometryFor, pointerBoxLabel, sensorBoxFromPointer, type PointerBox, type RectLike } from "@/lib/sensor-box";
 import { TARGET_CLASS_LABEL, type TargetClass } from "@/lib/review-targets";
 import type { SceneGraph } from "@/types/contracts";
 
@@ -106,12 +106,45 @@ function ListStatus({ listState, listingError, onRetry }: { listState: ListState
   return null;
 }
 
-function FramePicker({ frames, unreadableCount, targetLabel, selected, box, listRef, surfaceRef, onChoose, onDown, onMove, onUp }: {
+/** The user's draft region, painted over the exact photo pixels it designates. */
+function MarkOverlay({ box, boxAnchor }: { box: PointerBox | null; boxAnchor: { rect: RectLike; width: number; height: number } | null }) {
+  if (boxAnchor === null) return null;
+  const overlay = overlayGeometryFor(boxAnchor.rect, { width: boxAnchor.width, height: boxAnchor.height }, box);
+  if (overlay === null) return null;
+  return (
+    <div
+      aria-hidden
+      data-mark-overlay
+      className="pointer-events-none absolute"
+      style={{
+        left: `${overlay.content.left}%`,
+        top: `${overlay.content.top}%`,
+        width: `${overlay.content.width}%`,
+        height: `${overlay.content.height}%`,
+      }}
+    >
+      {overlay.box !== null && (
+        <div
+          className="absolute rounded-sm border-2 border-amber-500/90 bg-amber-400/10"
+          style={{
+            left: `${overlay.box.left}%`,
+            top: `${overlay.box.top}%`,
+            width: `${overlay.box.width}%`,
+            height: `${overlay.box.height}%`,
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function FramePicker({ frames, unreadableCount, targetLabel, selected, box, boxAnchor, listRef, surfaceRef, onChoose, onDown, onMove, onUp }: {
   frames: FrameEntry[];
   unreadableCount: number;
   targetLabel: string;
   selected: FrameEntry | null;
   box: PointerBox | null;
+  boxAnchor: { rect: RectLike; width: number; height: number } | null;
   listRef: React.RefObject<HTMLDivElement | null>;
   surfaceRef: React.RefObject<HTMLImageElement | null>;
   onChoose: (frame: FrameEntry) => void;
@@ -148,15 +181,18 @@ function FramePicker({ frames, unreadableCount, targetLabel, selected, box, list
         <p className="text-xs text-ink-muted">Choose a photo above to start marking.</p>
       ) : (
         <div className="overflow-hidden rounded-xl bg-rule/40">
-          <DrawFrame
-            key={selected.frame_id}
-            frame={selected}
-            alt={`Photo ${selected.frame_id}. Drag a box around the ${targetLabel} with your finger`}
-            surfaceRef={surfaceRef}
-            onDown={onDown}
-            onMove={onMove}
-            onUp={onUp}
-          />
+          <div className="relative">
+            <DrawFrame
+              key={selected.frame_id}
+              frame={selected}
+              alt={`Photo ${selected.frame_id}. Drag a box around the ${targetLabel} with your finger`}
+              surfaceRef={surfaceRef}
+              onDown={onDown}
+              onMove={onMove}
+              onUp={onUp}
+            />
+            <MarkOverlay box={box} boxAnchor={boxAnchor} />
+          </div>
           {/* Reserved status slot: always present, same height whether the box
               label is showing or not, so the bottom-aligned dialog cannot grow
               (and shift the photo) the moment a usable box appears. */}
@@ -235,6 +271,7 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
   const [listingError, setListingError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [box, setBox] = useState<PointerBox | null>(null);
+  const [boxAnchor, setBoxAnchor] = useState<{ rect: RectLike; width: number; height: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [attachNode, setAttachNode] = useState(suggestedNodeId !== null);
@@ -291,6 +328,7 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
   const choose = useCallback((frame: FrameEntry) => {
     setSelectedId(frame.frame_id);
     setBox(null);
+    setBoxAnchor(null);
     pressAnchor.current = null;
   }, []);
 
@@ -300,13 +338,15 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
     const surface = surfaceRef.current;
     if (surface && selected) {
       const rect = surface.getBoundingClientRect();
-      pressAnchor.current = {
+      const anchor = {
         rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
         // The frame's stored sensor size is authoritative (see FrameEntry):
         // the natural size lags the bytes but must never change the mapping.
         width: selected.width,
         height: selected.height,
       };
+      pressAnchor.current = anchor;
+      setBoxAnchor(anchor);
     }
     event.currentTarget.setPointerCapture(event.pointerId);
   }, [selected]);
@@ -372,6 +412,7 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
               targetLabel={targetLabel}
               selected={selected}
               box={box}
+              boxAnchor={boxAnchor}
               listRef={listRef}
               surfaceRef={surfaceRef}
               onChoose={choose}

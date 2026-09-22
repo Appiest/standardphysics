@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containedContentRect, isUsablePointerBox, pointerBoxLabel, sensorBoxFromPointer } from "@/lib/sensor-box";
+import { containedContentRect, isUsablePointerBox, overlayGeometryFor, pointerBoxLabel, sensorBoxFromPointer } from "@/lib/sensor-box";
 
 describe("sensor box pointer math", () => {
   const rect = { left: 100, top: 50, width: 400, height: 300 };
@@ -47,5 +47,56 @@ describe("sensor box pointer math", () => {
     expect(pointerBoxLabel({ left: 300, top: 225, right: 600, bottom: 450 })).toBe(
       "Frame pixels 300–600 across, 225–450 down"
     );
+  });
+});
+
+describe("mark overlay geometry", () => {
+  const frame = { width: 1920, height: 1440 };
+
+  it("paints the draft box over the same content the pointer math uses, case aspect-fit", () => {
+    const rect = { left: 480, top: 300, width: 480, height: 360 };
+    const box = sensorBoxFromPointer({ x: 528, y: 345 }, { x: 720, y: 495 }, rect, frame);
+    const overlay = overlayGeometryFor(rect, frame, box);
+    expect(overlay).not.toBeNull();
+    expect(overlay!.content).toEqual({ left: 0, top: 0, width: 100, height: 100 });
+    expect(overlay!.box).not.toBeNull();
+    const boxView = overlay!.box!;
+    expect(boxView.left).toBeCloseTo(10, 6);
+    expect(boxView.top).toBeCloseTo(12.5, 6);
+    expect(boxView.width).toBeCloseTo(40, 6);
+    expect(boxView.height).toBeCloseTo((150 / 360) * 100, 6);
+  });
+
+  it("letterboxes the overlay exactly where the photo sits inside a mismatched surface", () => {
+    const rect = { left: 0, top: 0, width: 400, height: 200 };
+    const overlay = overlayGeometryFor(rect, frame, { left: 960, top: 0, right: 1920, bottom: 1440 });
+    expect(overlay).not.toBeNull();
+    const content = overlay!.content;
+    expect(content.left).toBeCloseTo(16.667, 3);
+    expect(content.top).toBeCloseTo(0, 3);
+    expect(content.width).toBeCloseTo(66.667, 3);
+    const boxView = overlay!.box!;
+    expect(boxView.left).toBeCloseTo(50, 3);
+    expect(boxView.width).toBeCloseTo(50, 3);
+  });
+
+  it("a reversed drag still shows a positive rectangle", () => {
+    const rect = { left: 0, top: 0, width: 480, height: 360 };
+    const box = sensorBoxFromPointer({ x: 400, y: 300 }, { x: 80, y: 60 }, rect, frame);
+    expect(box.left).toBeLessThan(box.right);
+    expect(box.top).toBeLessThan(box.bottom);
+    const overlay = overlayGeometryFor(rect, frame, box);
+    expect(overlay).not.toBeNull();
+    expect(overlay!.box!.width).toBeGreaterThan(0);
+    expect(overlay!.box!.height).toBeGreaterThan(0);
+  });
+
+  it("frame switch (null box) renders no phantom region and a degenerate surface renders nothing", () => {
+    const rect = { left: 0, top: 0, width: 480, height: 360 };
+    const fresh = overlayGeometryFor(rect, frame, null);
+    expect(fresh).not.toBeNull();
+    expect(fresh!.box).toBeNull();
+    expect(overlayGeometryFor(rect, frame, { left: 5, top: 5, right: 5, bottom: 30 })!.box).toBeNull();
+    expect(overlayGeometryFor({ left: 0, top: 0, width: 0, height: 0 }, frame, { left: 0, top: 0, right: 10, bottom: 10 })).toBeNull();
   });
 });

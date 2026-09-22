@@ -62,3 +62,47 @@ export function isUsablePointerBox(box: PointerBox): boolean {
 export function pointerBoxLabel(box: PointerBox): string {
   return `Frame pixels ${box.left}–${box.right} across, ${box.top}–${box.bottom} down`;
 }
+
+export type OverlayGeometry = {
+  /** The visible photo inside the surface box, in percent of that box. */
+  content: { left: number; top: number; width: number; height: number };
+  /** The drawn region inside the visible photo, in percent of the content. */
+  box: { left: number; top: number; width: number; height: number } | null;
+};
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+/**
+ * Where to paint the user's draft box so it sits exactly on the photographed
+ * pixels it designates, through the same object-contain content math the
+ * pointer mapping uses. A null box (frame switched, drag not yet usable)
+ * leaves `box` null so callers render nothing rather than a phantom region.
+ */
+export function overlayGeometryFor(
+  rect: RectLike,
+  frame: { width: number; height: number },
+  box: PointerBox | null
+): OverlayGeometry | null {
+  if (rect.width <= 0 || rect.height <= 0 || frame.width <= 0 || frame.height <= 0) return null;
+  const content = containedContentRect(rect, frame);
+  const geometry: OverlayGeometry = {
+    content: {
+      left: clampPercent(((content.left - rect.left) / rect.width) * 100),
+      top: clampPercent(((content.top - rect.top) / rect.height) * 100),
+      width: clampPercent((content.width / rect.width) * 100),
+      height: clampPercent((content.height / rect.height) * 100),
+    },
+    box: null,
+  };
+  if (box !== null && isUsablePointerBox(box)) {
+    geometry.box = {
+      left: clampPercent((box.left / frame.width) * 100),
+      top: clampPercent((box.top / frame.height) * 100),
+      width: clampPercent(((box.right - box.left) / frame.width) * 100),
+      height: clampPercent(((box.bottom - box.top) / frame.height) * 100),
+    };
+  }
+  return geometry;
+}
