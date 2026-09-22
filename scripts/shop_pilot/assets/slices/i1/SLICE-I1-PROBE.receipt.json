@@ -4,7 +4,7 @@
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_production_path",
-  "source_commit": "5bd28b2a303a4c237448ef602147d18c08794bf2",
+  "source_commit": "301c35549ffd1c4e26feb9479f0966d214667d62",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "65a72e69c31c625ed189c2d2921257d41d8d2c13044cd960c3be590f01129148",
@@ -13,8 +13,8 @@
   "output_artifacts": [
     {
       "path": "i1-probe.json",
-      "sha256": "9ac139007f557253a1848a08570e8a5a1f3a7efd7c39b3088f001ad35fc3c2f4",
-      "size_bytes": 2804,
+      "sha256": "022e6cce4875faefef6e742bfb6476d33752701a06bcf1961aebf7f06e6a9ce0",
+      "size_bytes": 4093,
       "content_type": "application/json"
     }
   ],
@@ -30,15 +30,15 @@
     "provider": "none (no external detection calls)",
     "blender": "not launched; fixture stage stubbed like the API test suite"
   },
-  "started_at": "2026-09-21T17:43:34.409574-07:00",
-  "finished_at": "2026-09-21T17:43:35.489786-07:00",
+  "started_at": "2026-09-21T18:02:34.160561-07:00",
+  "finished_at": "2026-09-21T18:02:35.592947-07:00",
   "exit_code": 0,
   "assertions": [
     {
       "id": "log-hash",
       "measurement_method": "file_sha256",
-      "expected": "9ac139007f557253a1848a08570e8a5a1f3a7efd7c39b3088f001ad35fc3c2f4",
-      "observed": "9ac139007f557253a1848a08570e8a5a1f3a7efd7c39b3088f001ad35fc3c2f4",
+      "expected": "022e6cce4875faefef6e742bfb6476d33752701a06bcf1961aebf7f06e6a9ce0",
+      "observed": "022e6cce4875faefef6e742bfb6476d33752701a06bcf1961aebf7f06e6a9ce0",
       "params": {
         "artifact": "i1-probe.json"
       },
@@ -60,13 +60,65 @@
       ]
     },
     {
-      "id": "complete-reached-measuring",
+      "id": "legacy-geometry-readiness-and-semantic-block",
       "measurement_method": "text_contains",
       "expected": true,
       "observed": true,
       "params": {
         "artifact": "i1-probe.json",
-        "substring": "\"state\""
+        "substring": "\"geometry_state\": \"ready\""
+      },
+      "evidence_paths": [
+        "i1-probe.json"
+      ]
+    },
+    {
+      "id": "semantic-blocked-until-evidence",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i1-probe.json",
+        "substring": "\"semantic_state\": \"blocked_incomplete_evidence\""
+      },
+      "evidence_paths": [
+        "i1-probe.json"
+      ]
+    },
+    {
+      "id": "completing-artifact-queued-exactly-one-reprocessing",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i1-probe.json",
+        "substring": "\"process_job_queued_before_drain\": true"
+      },
+      "evidence_paths": [
+        "i1-probe.json"
+      ]
+    },
+    {
+      "id": "closure-reaches-complete",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i1-probe.json",
+        "substring": "\"semantic_state\": \"complete\""
+      },
+      "evidence_paths": [
+        "i1-probe.json"
+      ]
+    },
+    {
+      "id": "duplicate-poses-schedule-nothing",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i1-probe.json",
+        "substring": "\"duplicate_poses_status\": 200"
       },
       "evidence_paths": [
         "i1-probe.json"
@@ -90,8 +142,6 @@
     "actor": "lane-Q",
     "attestation": "independent observation of the real app on fixture bytes"
   },
-  "deficits_observed": [
-    "late evidence uploaded after completion is accepted (201) but queues zero reprocessing jobs; current contract cannot close a new evidence bundle",
-    "exactly one processing job is queued per finalize, but late evidence changes do not schedule dependent work"
-  ]
+  "deficits_observed": [],
+  "note": "frozen contract 7a evidenced: legacy geometry completion kept, versioned evidence closure on late semantic artifacts, exactly one reprocessing job on the completing upload, duplicate uploads schedule nothing"
 }

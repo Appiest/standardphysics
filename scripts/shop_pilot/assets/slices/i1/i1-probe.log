@@ -1,3 +1,4 @@
+no object discovery for 19c5f976-1c67-49d4-b74b-a8516dcae855: the photos carry no usable camera metadata: unreadable poses: Expecting value: line 1 column 1 (char 0)
 {
   "ok": true,
   "observations": [
@@ -8,7 +9,7 @@
     {
       "step": "create-scan",
       "status": 201,
-      "body": "{\"id\":\"fd687ef0-9cbf-4b32-9a92-907a8dab423c\",\"name\":\"I1 probe scan\",\"created_at\":\"2026-09-22T00:43:34.461210Z\",\"device_model\":\"iPhone 17 Pro\",\"duration_seconds\":12.5,\"state\":\"uploading\",\"artifacts\":[],\"coverage\":[],\"content_hash\":null}"
+      "body": "{\"id\":\"19c5f976-1c67-49d4-b74b-a8516dcae855\",\"name\":\"I1 probe scan\",\"created_at\":\"2026-09-22T01:02:34.215719Z\",\"device_model\":\"iPhone 17 Pro\",\"duration_seconds\":12.5,\"state\":\"uploading\",\"artifacts\":[],\"coverage\":[],\"content_hash\":null}"
     },
     {
       "step": "upload-room-json",
@@ -21,12 +22,12 @@
     {
       "step": "complete",
       "status": 200,
-      "body": "{\"id\":\"fd687ef0-9cbf-4b32-9a92-907a8dab423c\",\"name\":\"I1 probe scan\",\"created_at\":\"2026-09-22T00:43:34.461210Z\",\"device_model\":\"iPhone 17 Pro\",\"duration_seconds\":12.5,\"state\":\"measuring\",\"artifacts\":[{\"id\":\"room-json\",\"kind\":\"room_json\",\"sha256\":\"80d6ac84d85872b92637527c21cb147dca0e4b286a2d6355e4068c97bec83784\",\"bytes\":230881,\"stored_path\":null},{\"id\":\"room-usdz\",\"kind\":\"room_usdz\",\"sha256\":\"eb615f"
+      "body": "{\"id\":\"19c5f976-1c67-49d4-b74b-a8516dcae855\",\"name\":\"I1 probe scan\",\"created_at\":\"2026-09-22T01:02:34.215719Z\",\"device_model\":\"iPhone 17 Pro\",\"duration_seconds\":12.5,\"state\":\"measuring\",\"artifacts\":[{\"id\":\"room-json\",\"kind\":\"room_json\",\"sha256\":\"80d6ac84d85872b92637527c21cb147dca0e4b286a2d6355e4068c97bec83784\",\"bytes\":230881,\"stored_path\":null},{\"id\":\"room-usdz\",\"kind\":\"room_usdz\",\"sha256\":\"eb615f"
     },
     {
       "step": "repeat-complete",
       "status": 200,
-      "body": "{\"id\":\"fd687ef0-9cbf-4b32-9a92-907a8dab423c\",\"name\":\"I1 probe scan\",\"created_at\":\"2026-09-22T00:43:34.461210Z\",\"device_model\":\"iPhone 17 Pro\",\"duration_seconds\":12.5,\"state\":\"measuring\",\"artifacts\":[{\"id\":\"room-json\",\"kind\":\"room_json\",\"sha256\":\"80d6ac84d85872b92637527c21cb147dca0e4b286a2d6355e4068c97bec83784\",\"bytes\":230881,\"stored_path\":null},{\"id\":\"room-usdz\",\"kind\":\"room_usdz\",\"sha256\":\"eb615f"
+      "body": "{\"id\":\"19c5f976-1c67-49d4-b74b-a8516dcae855\",\"name\":\"I1 probe scan\",\"created_at\":\"2026-09-22T01:02:34.215719Z\",\"device_model\":\"iPhone 17 Pro\",\"duration_seconds\":12.5,\"state\":\"measuring\",\"artifacts\":[{\"id\":\"room-json\",\"kind\":\"room_json\",\"sha256\":\"80d6ac84d85872b92637527c21cb147dca0e4b286a2d6355e4068c97bec83784\",\"bytes\":230881,\"stored_path\":null},{\"id\":\"room-usdz\",\"kind\":\"room_usdz\",\"sha256\":\"eb615f"
     },
     {
       "step": "jobs-after-drain",
@@ -42,19 +43,64 @@
       ]
     },
     {
+      "step": "evidence-after-complete",
+      "status": 200,
+      "geometry_state": "ready",
+      "evidence_state": "awaiting",
+      "semantic_state": "blocked_incomplete_evidence",
+      "bundle_version": 1,
+      "semantic_processed_hash": false
+    },
+    {
       "step": "scan-after-worker",
       "status": 200,
-      "body": "{\"id\":\"fd687ef0-9cbf-4b32-9a92-907a8dab423c\",\"name\":\"I1 probe scan\",\"created_at\":\"2026-09-22T00:43:34.461210Z\",\"device_model\":\"iPhone 17 Pro\",\"duration_seconds\":12.5,\"state\":\"ready\",\"artifacts\":[{\"id\":\"room-json\",\"kind\":\"room_json\",\"sha256\":\"80d6ac84d85872b92637527c21cb147dca0e4b286a2d6355e4068c97bec83784\",\"bytes\":230881,\"stored_path\":null},{\"id\":\"room-usdz\",\"kind\":\"room_usdz\",\"sha256\":\"eb615f06d961fe6741b55c4024de7a91a1cecfdaa3c802a0fc587b31593ac077\",\"bytes\":33,\"stored_path\":null}],\"coverage\":[],\"content_hash\":\"0222892f3a071cafd897e85ca859756c01af6b3952f1862d84e5d02a1005a5f9\"}"
+      "body": "{\"id\":\"19c5f976-1c67-49d4-b74b-a8516dcae855\",\"name\":\"I1 probe scan\",\"created_at\":\"2026-09-22T01:02:34.215719Z\",\"device_model\":\"iPhone 17 Pro\",\"duration_seconds\":12.5,\"state\":\"ready\",\"artifacts\":[{\"id\":\"room-json\",\"kind\":\"room_json\",\"sha256\":\"80d6ac84d85872b92637527c21cb147dca0e4b286a2d6355e4068c97bec83784\",\"bytes\":230881,\"stored_path\":null},{\"id\":\"room-usdz\",\"kind\":\"room_usdz\",\"sha256\":\"eb615f06d961fe6741b55c4024de7a91a1cecfdaa3c802a0fc587b31593ac077\",\"bytes\":33,\"stored_path\":null}],\"coverage\":[],\"content_hash\":\"0222892f3a071cafd897e85ca859756c01af6b3952f1862d84e5d02a1005a5f9\"}"
     },
     {
       "step": "late-walkthrough-after-complete",
       "status": 201
     },
     {
-      "step": "job-count-after-late-evidence",
-      "count": 2
+      "step": "after-late-evidence",
+      "job_count": 2,
+      "evidence_state": "awaiting",
+      "semantic_state": "blocked_incomplete_evidence"
+    },
+    {
+      "step": "late-upload-poses",
+      "status": 201,
+      "process_job_queued_before_drain": false,
+      "process_job_states_queued_before_drain": [
+        "done"
+      ]
+    },
+    {
+      "step": "late-upload-lidar_mesh",
+      "status": 201,
+      "process_job_queued_before_drain": true,
+      "process_job_states_queued_before_drain": [
+        "queued"
+      ]
+    },
+    {
+      "step": "late-semantic-evidence-closure",
+      "frames_upload_status": 201,
+      "job_count_after_frames": 2,
+      "duplicate_frames_status": 200,
+      "job_count_after_duplicate_frames": 2,
+      "job_count_after_complete_bundle": 2,
+      "process_job_states": [
+        "done",
+        "done"
+      ],
+      "evidence_state": "complete",
+      "semantic_state": "complete",
+      "bundle_version": 4,
+      "semantic_processed_hash": false,
+      "duplicate_poses_status": 200,
+      "job_count_after_duplicate_of_complete": 2
     }
   ],
   "state": "probed",
-  "started_at": "2026-09-21T17:43:34.409574-07:00"
+  "started_at": "2026-09-21T18:02:34.160561-07:00"
 }

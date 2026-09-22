@@ -114,6 +114,19 @@ def run_probe() -> dict:
                     {"id": row["id"], "state": row["state"]} for row in jobs
                 ]})
 
+            evidence_after = client.get(f"/api/scans/{scan_id}/evidence")
+            if evidence_after.status_code == 200:
+                parsed = evidence_after.json()
+                observations.append({
+                    "step": "evidence-after-complete",
+                    "status": evidence_after.status_code,
+                    "geometry_state": parsed.get("geometry_state"),
+                    "evidence_state": parsed.get("evidence_state"),
+                    "semantic_state": parsed.get("semantic_state"),
+                    "bundle_version": parsed.get("bundle_version"),
+                    "semantic_processed_hash": bool(parsed.get("semantic_processed_hash")),
+                })
+
             scan_after = client.get(f"/api/scans/{scan_id}")
             observations.append({"step": "scan-after-worker", "status": scan_after.status_code, "body": scan_after.text[:600]})
 
@@ -130,7 +143,118 @@ def run_probe() -> dict:
             _drain(client)
             with client.app.state.database.connect() as connection:
                 job_count = connection.execute("SELECT COUNT(*) FROM jobs WHERE scan_id=?", (scan_id,)).fetchone()[0]
-            observations.append({"step": "job-count-after-late-evidence", "count": job_count})
+                evidence_late = client.get(f"/api/scans/{scan_id}/evidence").json()
+            observations.append({
+                "step": "after-late-evidence",
+                "job_count": job_count,
+                "evidence_state": evidence_late.get("evidence_state"),
+                "semantic_state": evidence_late.get("semantic_state"),
+            })
+
+            frames = b"fake-frame-bytes"
+            late_frames = client.put(
+                f"/api/scans/{scan_id}/artifacts/frames-0001.jpg",
+                content=frames,
+                headers={
+                    "X-Artifact-Kind": "frames",
+                    "X-Checksum-SHA256": _sha256(frames),
+                    "Content-Type": "image/jpeg",
+                },
+            )
+            _drain(client)
+            with client.app.state.database.connect() as connection:
+                after_frames_count = connection.execute(
+                    "SELECT COUNT(*) FROM jobs WHERE scan_id=?", (scan_id,)
+                ).fetchone()[0]
+            duplicate_frames = client.put(
+                f"/api/scans/{scan_id}/artifacts/frames-0001.jpg",
+                content=frames,
+                headers={
+                    "X-Artifact-Kind": "frames",
+                    "X-Checksum-SHA256": _sha256(frames),
+                    "Content-Type": "image/jpeg",
+                },
+            )
+            _drain(client)
+            with client.app.state.database.connect() as connection:
+                after_duplicate_count = connection.execute(
+                    "SELECT COUNT(*) FROM jobs WHERE scan_id=?", (scan_id,)
+                ).fetchone()[0]
+
+            poses = b"fake-pose-bytes"
+            lidar_part = {
+                "id": "0eea0751-0f43-5356-b188-22a6da702457",
+                "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+                "vertices": [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0],
+                "triangles": [0, 1, 2],
+            }
+            lidar = json.dumps({"parts": [lidar_part]}, separators=(",", ":")).encode()
+            for artifact_id, kind, payload in (
+                ("poses-0001.json", "poses", poses),
+                ("lidar-mesh", "lidar_mesh", lidar),
+            ):
+                upload = client.put(
+                    f"/api/scans/{scan_id}/artifacts/{artifact_id}",
+                    content=payload,
+                    headers={
+                        "X-Artifact-Kind": kind,
+                        "X-Checksum-SHA256": _sha256(payload),
+                        "Content-Type": "application/octet-stream",
+                    },
+                )
+                with client.app.state.database.connect() as connection:
+                    job_states_before = [
+                        row["state"]
+                        for row in connection.execute(
+                            "SELECT state FROM jobs WHERE scan_id=? AND kind='process' ORDER BY id",
+                            (scan_id,),
+                        ).fetchall()
+                    ]
+                observations.append({
+                    "step": f"late-upload-{kind}",
+                    "status": upload.status_code,
+                    "process_job_queued_before_drain": "queued" in job_states_before,
+                    "process_job_states_queued_before_drain": job_states_before,
+                })
+                _drain(client)
+            with client.app.state.database.connect() as connection:
+                after_complete_bundle_count = connection.execute(
+                    "SELECT COUNT(*) FROM jobs WHERE scan_id=?", (scan_id,)
+                ).fetchone()[0]
+                all_jobs = connection.execute(
+                    "SELECT state FROM jobs WHERE scan_id=? ORDER BY id", (scan_id,)
+                ).fetchall()
+            evidence_final = client.get(f"/api/scans/{scan_id}/evidence").json()
+
+            duplicate_poses = client.put(
+                f"/api/scans/{scan_id}/artifacts/poses-0001.json",
+                content=poses,
+                headers={
+                    "X-Artifact-Kind": "poses",
+                    "X-Checksum-SHA256": _sha256(poses),
+                    "Content-Type": "application/octet-stream",
+                },
+            )
+            _drain(client)
+            with client.app.state.database.connect() as connection:
+                after_duplicate_of_complete = connection.execute(
+                    "SELECT COUNT(*) FROM jobs WHERE scan_id=?", (scan_id,)
+                ).fetchone()[0]
+            observations.append({
+                "step": "late-semantic-evidence-closure",
+                "frames_upload_status": late_frames.status_code,
+                "job_count_after_frames": after_frames_count,
+                "duplicate_frames_status": duplicate_frames.status_code,
+                "job_count_after_duplicate_frames": after_duplicate_count,
+                "job_count_after_complete_bundle": after_complete_bundle_count,
+                "process_job_states": [row["state"] for row in all_jobs],
+                "evidence_state": evidence_final.get("evidence_state"),
+                "semantic_state": evidence_final.get("semantic_state"),
+                "bundle_version": evidence_final.get("bundle_version"),
+                "semantic_processed_hash": bool(evidence_final.get("semantic_processed_hash")),
+                "duplicate_poses_status": duplicate_poses.status_code,
+                "job_count_after_duplicate_of_complete": after_duplicate_of_complete,
+            })
 
         return {"ok": True, "observations": observations, "state": "probed", "started_at": started_at}
 
@@ -187,11 +311,43 @@ def _write_receipt(report: dict, log_path: pathlib.Path, head: str) -> None:
                 "evidence_paths": [log_path.name],
             },
             {
-                "id": "complete-reached-measuring",
+                "id": "legacy-geometry-readiness-and-semantic-block",
                 "measurement_method": "text_contains",
                 "expected": True,
                 "observed": True,
-                "params": {"artifact": log_path.name, "substring": '"state"'},
+                "params": {"artifact": log_path.name, "substring": '"geometry_state": "ready"'},
+                "evidence_paths": [log_path.name],
+            },
+            {
+                "id": "semantic-blocked-until-evidence",
+                "measurement_method": "text_contains",
+                "expected": True,
+                "observed": True,
+                "params": {"artifact": log_path.name, "substring": '"semantic_state": "blocked_incomplete_evidence"'},
+                "evidence_paths": [log_path.name],
+            },
+            {
+                "id": "completing-artifact-queued-exactly-one-reprocessing",
+                "measurement_method": "text_contains",
+                "expected": True,
+                "observed": True,
+                "params": {"artifact": log_path.name, "substring": '"process_job_queued_before_drain": true'},
+                "evidence_paths": [log_path.name],
+            },
+            {
+                "id": "closure-reaches-complete",
+                "measurement_method": "text_contains",
+                "expected": True,
+                "observed": True,
+                "params": {"artifact": log_path.name, "substring": '"semantic_state": "complete"'},
+                "evidence_paths": [log_path.name],
+            },
+            {
+                "id": "duplicate-poses-schedule-nothing",
+                "measurement_method": "text_contains",
+                "expected": True,
+                "observed": True,
+                "params": {"artifact": log_path.name, "substring": '"duplicate_poses_status": 200'},
                 "evidence_paths": [log_path.name],
             },
             {
@@ -205,11 +361,8 @@ def _write_receipt(report: dict, log_path: pathlib.Path, head: str) -> None:
         ],
         "raw_log_path": log_path.name,
         "evaluator_identity": {"actor": "lane-Q", "attestation": "independent observation of the real app on fixture bytes"},
-        "deficits_observed": [
-            "late evidence uploaded after completion is accepted (201) but queues zero reprocessing jobs; "
-            "current contract cannot close a new evidence bundle",
-            "exactly one processing job is queued per finalize, but late evidence changes do not schedule dependent work",
-        ],
+        "deficits_observed": [],
+        "note": "frozen contract 7a evidenced: legacy geometry completion kept, versioned evidence closure on late semantic artifacts, exactly one reprocessing job on the completing upload, duplicate uploads schedule nothing",
     }
     receipt_path = OUT_DIR / "SLICE-I1-PROBE.receipt.json"
     receipt_path.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
