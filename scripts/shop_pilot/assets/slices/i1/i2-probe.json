@@ -1,0 +1,57 @@
+{
+  "ok": true,
+  "observations": [
+    {
+      "step": "complete",
+      "status": 200
+    },
+    {
+      "step": "scene-loaded",
+      "status": 200,
+      "revision": 0,
+      "object_node_count": 15,
+      "target_node_id": "e336bafb-3529-466d-a297-8f2762141223"
+    },
+    {
+      "step": "mark-counter",
+      "status": 201,
+      "revision": 1,
+      "labels": [
+        "service counter"
+      ]
+    },
+    {
+      "step": "assessment-after-counter-mark",
+      "service_counter_height_present": true
+    },
+    {
+      "step": "manual-unlocalized-mark",
+      "status": 201,
+      "revision": 2,
+      "manual_provenance_present": true,
+      "provenance_values": [
+        "manual"
+      ]
+    },
+    {
+      "step": "reload-preserves-review",
+      "revision": 2,
+      "counter_labeled_owner": true,
+      "provenance_values": [
+        "manual"
+      ]
+    },
+    {
+      "step": "stale-write-on-old-revision",
+      "status": 409,
+      "stale_conflict": true,
+      "body": "a newer layout was saved since this one started"
+    },
+    {
+      "step": "reload-again-stable",
+      "revision": 2
+    }
+  ],
+  "state": "probed",
+  "started_at": "2026-09-21T18:05:15.810222-07:00"
+}

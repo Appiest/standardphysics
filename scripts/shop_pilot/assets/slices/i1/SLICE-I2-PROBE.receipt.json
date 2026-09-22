@@ -1,0 +1,119 @@
+{
+  "receipt_id": "SLICE-I2-PROBE",
+  "gate_id": "G04",
+  "run_id": "opencode-20260921-170615",
+  "lane_id": "Q",
+  "evidence_kind": "synthetic_production_path",
+  "source_commit": "fda5fa4224c31225f6dcceb913e166e82b66a77c",
+  "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+  "dirty_source_files": {},
+  "contract_hash": "65a72e69c31c625ed189c2d2921257d41d8d2c13044cd960c3be590f01129148",
+  "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
+  "input_artifacts": [],
+  "output_artifacts": [
+    {
+      "path": "i2-probe.json",
+      "sha256": "9a7bca2ccc0d1dbc39c36a6fc1d13eaa7f345251e3154e192146ff5fe7855acc",
+      "size_bytes": 1193,
+      "content_type": "application/json"
+    }
+  ],
+  "scan_id": null,
+  "revision_id": null,
+  "scenario_hash": null,
+  "scope_manifest_hash": null,
+  "evidence_manifest_hash": null,
+  "command_or_recorded_ui_steps": "PYTHONPATH=... .venv/bin/python -m scripts.shop_pilot.slice_probe --phase i2",
+  "working_directory": ".",
+  "environment_versions": {
+    "python": "3.11",
+    "provider": "none (destination recognition unavailable); real fixture phone capture ravida"
+  },
+  "started_at": "2026-09-21T18:05:15.810222-07:00",
+  "finished_at": "2026-09-21T18:05:18.694493-07:00",
+  "exit_code": 0,
+  "assertions": [
+    {
+      "id": "log-hash",
+      "measurement_method": "file_sha256",
+      "expected": "9a7bca2ccc0d1dbc39c36a6fc1d13eaa7f345251e3154e192146ff5fe7855acc",
+      "observed": "9a7bca2ccc0d1dbc39c36a6fc1d13eaa7f345251e3154e192146ff5fe7855acc",
+      "params": {
+        "artifact": "i2-probe.json"
+      },
+      "evidence_paths": [
+        "i2-probe.json"
+      ]
+    },
+    {
+      "id": "counter-mark-persists",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i2-probe.json",
+        "substring": "\"counter_labeled_owner\": true"
+      },
+      "evidence_paths": [
+        "i2-probe.json"
+      ]
+    },
+    {
+      "id": "manual-unlocalized-provenance",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i2-probe.json",
+        "substring": "\"manual_provenance_present\": true"
+      },
+      "evidence_paths": [
+        "i2-probe.json"
+      ]
+    },
+    {
+      "id": "stale-write-conflicts",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i2-probe.json",
+        "substring": "\"stale_conflict\": true"
+      },
+      "evidence_paths": [
+        "i2-probe.json"
+      ]
+    },
+    {
+      "id": "assessment-sees-counter",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i2-probe.json",
+        "substring": "\"service_counter_height_present\": true"
+      },
+      "evidence_paths": [
+        "i2-probe.json"
+      ]
+    },
+    {
+      "id": "log-secret-free",
+      "measurement_method": "text_clean",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i2-probe.json"
+      },
+      "evidence_paths": [
+        "i2-probe.json"
+      ]
+    }
+  ],
+  "raw_log_path": "i2-probe.json",
+  "evaluator_identity": {
+    "actor": "lane-Q",
+    "attestation": "independent observation of review persistence on a real fixture capture"
+  },
+  "deficits_observed": []
+}
