@@ -1,4 +1,4 @@
-import type { EvidenceStatus, ManualMarkRequest, SceneGraph } from "@/types/contracts";
+import type { EvidenceStatus, FrameListing, ManualMarkRequest, SceneGraph } from "@/types/contracts";
 
 export class ApiRefusal extends Error {
   constructor(readonly status: number, readonly error: string) {
@@ -31,15 +31,7 @@ export async function getEvidence(scanId: string): Promise<EvidenceStatus | null
 }
 
 /** One original stored photograph the owner may look at and mark. */
-export type FrameEntry = {
-  frame_id: string;
-  width: number;
-  height: number;
-  image_url: string;
-};
-
-/** The frame listing agreed with K: GET /api/scans/{scan_id}/frames. */
-export type FrameListing = { frames: FrameEntry[] };
+export type { FrameEntry, FrameListing } from "@/types/contracts";
 
 /** The owner's original photographs for this scan. Null means the server build has no frame route. */
 export async function getFrames(scanId: string): Promise<FrameListing | null> {

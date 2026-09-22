@@ -105,8 +105,9 @@ function ListStatus({ listState, listingError, onRetry }: { listState: ListState
   return null;
 }
 
-function FramePicker({ frames, targetLabel, selected, box, listRef, surfaceRef, onChoose, onDown, onMove, onUp }: {
+function FramePicker({ frames, unreadableCount, targetLabel, selected, box, listRef, surfaceRef, onChoose, onDown, onMove, onUp }: {
   frames: FrameEntry[];
+  unreadableCount: number;
   targetLabel: string;
   selected: FrameEntry | null;
   box: PointerBox | null;
@@ -120,7 +121,7 @@ function FramePicker({ frames, targetLabel, selected, box, listRef, surfaceRef, 
   if (frames.length === 0) {
     return (
       <p role="status" className="rounded-lg bg-rule/30 p-3 text-xs text-ink-muted">
-        This scan has no stored photographs to mark in. Take more photos in the app, upload them, then try again.
+        This scan has no readable photographs to mark in. Take more photos in the app, upload them, then try again.
       </p>
     );
   }
@@ -129,6 +130,11 @@ function FramePicker({ frames, targetLabel, selected, box, listRef, surfaceRef, 
       <p className="text-xs text-ink-muted">
         Pick the photo that shows the {targetLabel}, then drag a box around it.
       </p>
+      {unreadableCount > 0 && (
+        <p className="text-[11px] text-amber-800 dark:text-amber-300">
+          {unreadableCount} stored photo{unreadableCount === 1 ? "" : "s"} could not be read on the server and are not shown.
+        </p>
+      )}
       <div ref={listRef} role="group" aria-label="Your scan photos" className="grid max-h-40 grid-cols-4 gap-2 overflow-y-auto pr-1 sm:grid-cols-6">
         {frames.map((frame, index) => (
           <div key={frame.frame_id} className="shrink-0">
@@ -223,6 +229,7 @@ function MarkForm({ suggestedNodeId, attachNode, setAttachNode, note, setNote, s
 export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, onClose, onSaved }: MarkInPhotoProps) {
   const [listState, setListState] = useState<ListState>("loading");
   const [frames, setFrames] = useState<FrameEntry[]>([]);
+  const [unreadable, setUnreadable] = useState<string[]>([]);
   const [listingError, setListingError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [box, setBox] = useState<PointerBox | null>(null);
@@ -247,14 +254,17 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
       const listing = await getFrames(scanId);
       if (listing === null) {
         setFrames([]);
+        setUnreadable([]);
         setListState("unavailable");
         return;
       }
       setFrames(listing.frames);
+      setUnreadable(listing.unreadable);
       setListState("ready");
       requestAnimationFrame(() => listRef.current?.querySelector<HTMLButtonElement>("button")?.focus());
     } catch (error) {
       setFrames([]);
+      setUnreadable([]);
       setListingError((error as { error?: string }).error ?? "The photo list could not be read. Try again.");
       setListState("failed");
     }
@@ -343,6 +353,7 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
           <>
             <FramePicker
               frames={frames}
+              unreadableCount={unreadable.length}
               targetLabel={targetLabel}
               selected={selected}
               box={box}

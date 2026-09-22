@@ -80,6 +80,7 @@ describe("review target matching", () => {
         sensor_box: [5, 5, 55, 55],
         provenance: "manual",
         review_status: "candidate",
+        image_url: null,
         marked_by: "owner@example.com",
         marked_at: "2026-09-21T00:00:00Z",
         note: null,

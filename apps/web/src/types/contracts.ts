@@ -494,6 +494,30 @@ export interface EvidenceStatus {
     "not_started" | "blocked_incomplete_evidence" | "settling" | "queued" | "running" | "complete" | "failed";
 }
 /**
+ * One stored source-resolution frame a photo review can open.
+ *
+ * `width` and `height` are the stored sensor pixels this frame was captured
+ * at, read from the bytes the server holds - never EXIF display orientation.
+ * `image_url` is the route serving that exact frame's original bytes.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "FrameEntry".
+ */
+export interface FrameEntry {
+  frame_id: string;
+  height: number;
+  image_url: string;
+  width: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "FrameListing".
+ */
+export interface FrameListing {
+  frames: FrameEntry[];
+  unreadable: string[];
+}
+/**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "HeightResult".
  */
@@ -1101,6 +1125,7 @@ export interface SurfaceText {
 export interface UnlocalizedObservation {
   frame_id: string;
   id: string;
+  image_url: string | null;
   marked_at: string | null;
   marked_by: string | null;
   note: string | null;

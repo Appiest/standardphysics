@@ -155,6 +155,15 @@ function UnlocalizedCard({ scanId, scene, entry, onPersisted }: {
         </div>
         {statusChip(observation.review_status)}
       </div>
+      {observation.image_url && (
+        <div className="mt-2">
+          <EvidenceCrop
+            scanId={scanId}
+            cropId={observation.image_url}
+            alt={`The marked spot in the room, from your photo`}
+          />
+        </div>
+      )}
       <p className="mt-2 text-[11px] text-ink-muted">
         Frame {observation.frame_id}
         {observation.provenance === "manual" ? " • Marked by you" : ""}

@@ -8,6 +8,7 @@ const listing: FrameListing = {
     { frame_id: "frame-0000", width: 1920, height: 1440, image_url: "/api/scans/scan-1/frames/frame-0000" },
     { frame_id: "frame-0001", width: 1920, height: 1440, image_url: "/api/scans/scan-1/frames/frame-0001" },
   ],
+  unreadable: ["frame-0002"],
 };
 
 describe("review-client", () => {
