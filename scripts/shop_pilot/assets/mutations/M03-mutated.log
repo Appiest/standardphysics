@@ -1,0 +1,34 @@
+F.......                                                                 [100%]
+=================================== FAILURES ===================================
+_____ test_legacy_geometry_complete_stays_browsable_with_semantics_blocked _____
+
+make_client = <function make_client.<locals>.build at 0x1088f2160>
+
+    def test_legacy_geometry_complete_stays_browsable_with_semantics_blocked(make_client):
+        stages, calls = _closing_stages()
+        with make_client(stages=stages) as client:
+            scan_id = create_scan(client)
+            _complete_geometry(client, scan_id)
+            completed = client.post(f"/api/scans/{scan_id}/complete")
+            assert completed.status_code == 200
+            drain(client)
+    
+            status = client.get(f"/api/scans/{scan_id}/evidence").json()
+            assert status["geometry_state"] == "ready"
+            assert status["evidence_state"] == "awaiting"
+>           assert status["semantic_state"] == "blocked_incomplete_evidence"
+E           AssertionError: assert 'complete' == 'blocked_incomplete_evidence'
+E             
+E             - blocked_incomplete_evidence
+E             + complete
+
+services/api/tests/test_evidence_closure.py:110: AssertionError
+=============================== warnings summary ===============================
+../../../Users/yanzihao/Documents/standardphysics/.venv/lib/python3.11/site-packages/starlette/testclient.py:53
+  /Users/yanzihao/Documents/standardphysics/.venv/lib/python3.11/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED services/api/tests/test_evidence_closure.py::test_legacy_geometry_complete_stays_browsable_with_semantics_blocked
+1 failed, 7 passed, 1 warning in 0.68s

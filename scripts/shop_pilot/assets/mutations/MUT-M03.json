@@ -1,7 +1,7 @@
 {
-  "receipt_id": "MUT-M07",
+  "receipt_id": "MUT-M03",
   "gate_id": "G00",
-  "mutation_id": "M07",
+  "mutation_id": "M03",
   "outcome": "killed",
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
@@ -13,23 +13,23 @@
   "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
   "input_artifacts": [
     {
-      "path": "reconcile.py.original",
-      "sha256": "728a1afaefef13fc9d5cc450851d34b5d48db17899c52ecbd302c48844d3e440",
-      "size_bytes": 9696,
+      "path": "repository.py.original",
+      "sha256": "b3bd33871fdc02ce1f9b438da844aa7f719297dffe729519839ae7f251a019a3",
+      "size_bytes": 18234,
       "content_type": "text/plain"
     }
   ],
   "output_artifacts": [
     {
-      "path": "M07-mutated.log",
-      "sha256": "95e736f9239598401d31176d856634f05b6c9ab412f7210196e9701a173bef64",
-      "size_bytes": 1635,
+      "path": "M03-mutated.log",
+      "sha256": "49636f27f063989056ef86de11edf3300bad3f04ef0021611c357de00a82f569",
+      "size_bytes": 2043,
       "content_type": "text/plain"
     },
     {
-      "path": "M07-clean-after.log",
-      "sha256": "71808535af46fe626b2fea83bedf237f0912b36bb6b3a50d553c8d93e57f99a8",
-      "size_bytes": 98,
+      "path": "M03-clean-after.log",
+      "sha256": "77698177124d1f50fe500acf0cd0cf561cca829c25c55a2f8f1438975549d2b8",
+      "size_bytes": 686,
       "content_type": "text/plain"
     }
   ],
@@ -38,7 +38,7 @@
   "scenario_hash": null,
   "scope_manifest_hash": null,
   "evidence_manifest_hash": null,
-  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate packages/pipeline/standardphysics_pipeline/discovery/reconcile.py; pytest <owning suite> -q (record outcome); restore source",
+  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate services/api/standardphysics_api/repository.py; pytest <owning suite> -q (record outcome); restore source",
   "working_directory": "/tmp/q-mutations or /tmp/q-review-s (disposable worktrees)",
   "environment_versions": {
     "python": "3.11"
@@ -53,11 +53,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "assert not True",
-        "artifact": "M07-mutated.log"
+        "substring": "assert 'complete' == 'blocked_incomplete_evidence'",
+        "artifact": "M03-mutated.log"
       },
       "evidence_paths": [
-        "M07-mutated.log"
+        "M03-mutated.log"
       ]
     },
     {
@@ -66,11 +66,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "packages/pipeline/tests/test_reconcile_outlets.py::test_merge_02_separate_plates_and_opposite_walls_do_not_collapse",
-        "artifact": "M07-mutated.log"
+        "substring": "services/api/tests/test_evidence_closure.py::test_legacy_geometry_complete_stays_browsable_with_semantics_blocked",
+        "artifact": "M03-mutated.log"
       },
       "evidence_paths": [
-        "M07-mutated.log"
+        "M03-mutated.log"
       ]
     },
     {
@@ -80,21 +80,21 @@
       "observed": true,
       "params": {
         "substring": "passed",
-        "artifact": "M07-clean-after.log"
+        "artifact": "M03-clean-after.log"
       },
       "evidence_paths": [
-        "M07-clean-after.log"
+        "M03-clean-after.log"
       ]
     },
     {
       "id": "restored-source-hash",
       "measurement_method": "file_sha256",
-      "expected": "728a1afaefef13fc9d5cc450851d34b5d48db17899c52ecbd302c48844d3e440",
+      "expected": "b3bd33871fdc02ce1f9b438da844aa7f719297dffe729519839ae7f251a019a3",
       "params": {
-        "artifact": "reconcile.py.original"
+        "artifact": "repository.py.original"
       },
       "evidence_paths": [
-        "reconcile.py.original"
+        "repository.py.original"
       ]
     },
     {
@@ -102,10 +102,10 @@
       "measurement_method": "text_clean",
       "expected": true,
       "params": {
-        "artifact": "M07-mutated.log"
+        "artifact": "M03-mutated.log"
       },
       "evidence_paths": [
-        "M07-mutated.log"
+        "M03-mutated.log"
       ]
     },
     {
@@ -120,21 +120,21 @@
       "evidence_paths": []
     }
   ],
-  "raw_log_path": "M07-mutated.log",
+  "raw_log_path": "M03-mutated.log",
   "evaluator_identity": {
     "actor": "lane-Q",
     "attestation": "independent fault injection in a disposable worktree, reverted and hash-verified"
   },
   "fault": {
-    "id": "M07",
+    "id": "M03",
     "outcome": "killed",
-    "fault": "reconcile.py: MAX_SAME_OUTLET_SURFACE_DISTANCE_M 0.06 -> 6.0 (adjacent outlets merge)",
-    "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/reconcile.py",
-    "restored_sha256": "728a1afaefef13fc9d5cc450851d34b5d48db17899c52ecbd302c48844d3e440",
-    "killed_by": "packages/pipeline/tests/test_reconcile_outlets.py::test_merge_02_separate_plates_and_opposite_walls_do_not_collapse",
-    "behavioral_assertion": "assert not True",
-    "mutated_log": "M07-mutated.log",
-    "clean_log": "M07-clean-after.log",
-    "original_copy": "reconcile.py.original"
+    "fault": "repository.py: evidence bundle declared complete despite missing required kinds (early finalize)",
+    "fault_file": "services/api/standardphysics_api/repository.py",
+    "restored_sha256": "b3bd33871fdc02ce1f9b438da844aa7f719297dffe729519839ae7f251a019a3",
+    "killed_by": "services/api/tests/test_evidence_closure.py::test_legacy_geometry_complete_stays_browsable_with_semantics_blocked",
+    "behavioral_assertion": "assert 'complete' == 'blocked_incomplete_evidence'",
+    "mutated_log": "M03-mutated.log",
+    "clean_log": "M03-clean-after.log",
+    "original_copy": "repository.py.original"
   }
 }

@@ -6,7 +6,7 @@
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "295110f7332d7fb57d7e133f500e0151a159155b",
+  "source_commit": "d49cff665a4b1f8c8bb8025e22f75e063a6184bd",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
@@ -43,8 +43,8 @@
   "environment_versions": {
     "python": "3.11"
   },
-  "started_at": "2026-09-21T17:50:24.445641-07:00",
-  "finished_at": "2026-09-21T17:50:24.445641-07:00",
+  "started_at": "2026-09-21T18:06:37.908969-07:00",
+  "finished_at": "2026-09-21T18:06:37.908969-07:00",
   "exit_code": 1,
   "assertions": [
     {

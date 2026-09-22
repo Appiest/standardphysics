@@ -25,6 +25,18 @@ ASSETS = pathlib.Path("scripts/shop_pilot/assets/mutations")
 
 MUTATIONS: list[dict[str, Any]] = [
     {
+        "id": "M03",
+        "outcome": "killed",
+        "fault": "repository.py: evidence bundle declared complete despite missing required kinds (early finalize)",
+        "fault_file": "services/api/standardphysics_api/repository.py",
+        "restored_sha256": "b3bd33871fdc02ce1f9b438da844aa7f719297dffe729519839ae7f251a019a3",
+        "killed_by": "services/api/tests/test_evidence_closure.py::test_legacy_geometry_complete_stays_browsable_with_semantics_blocked",
+        "behavioral_assertion": "assert 'complete' == 'blocked_incomplete_evidence'",
+        "mutated_log": "M03-mutated.log",
+        "clean_log": "M03-clean-after.log",
+        "original_copy": "repository.py.original",
+    },
+    {
         "id": "M05",
         "outcome": "killed",
         "fault": "discover.py: production surface attachment loop removed (geometry bypass)",
