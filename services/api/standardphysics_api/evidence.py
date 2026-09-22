@@ -225,9 +225,9 @@ def _semantic_state(
         return "running" if "running" in states else "queued"
     if job is not None and job["state"] == "failed":
         return "failed"
-    if not bundle.complete:
-        return "blocked_incomplete_evidence"
-    return "not_started"
+    if bundle.complete:
+        return "settling"
+    return "blocked_incomplete_evidence"
 
 
 def _semantic_notes(scan: Scan, bundle: EvidenceBundle | None, missing_semantic: list[str]) -> list[str]:

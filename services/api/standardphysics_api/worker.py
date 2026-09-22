@@ -220,7 +220,9 @@ class Worker:
         with self.database.connect() as connection:
             room_json = repo.artifact_of_kind(connection, scan_id, "room_json")
         frame_paths, poses_path, lidar_mesh_path = self.label_inputs(scan_id)
-        run_discovery = not declared or association_state != "waiting_for_photos"
+        # With a declared manifest every state except not_started means the
+        # pairing is unfilled or broken; such a run never counts as semantic.
+        run_discovery = not declared or association_state == "not_started"
         graph, outcome = self.stages.ingest_with_report(
             self.store.artifact_path(scan_id, room_json.id),
             scan_id,
@@ -233,7 +235,8 @@ class Worker:
             outcome = DiscoveryOutcome(deferred_reason=association_failure or association_state)
         with self.database.transaction() as connection:
             repo.save_revision(connection, graph, source="ingest")
-            self._mark_consumed_if_due(connection, scan_id, consumed)
+            if run_discovery:
+                self._mark_consumed_if_due(connection, scan_id, consumed)
             repo.set_job_binding(connection, job["id"], consumed[1] if consumed else None, outcome.note())
             if outcome.model_requests:
                 repo.set_job_requests(
