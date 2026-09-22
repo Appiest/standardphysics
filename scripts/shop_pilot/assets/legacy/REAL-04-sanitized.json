@@ -1,0 +1,19 @@
+{
+  "test_id": "REAL-04",
+  "gate_id": "G9",
+  "evidence_kind": "real_capture",
+  "source_hash": "2fce2b73a71ead820f333d18a2ccfb5e7d8f505d0b7667f39db702fda4b38b94",
+  "input_hashes": [
+    "70c3593e6e75ff4a22de3d871ab4e86532b536e1cd48f83305d8b69136038ad9"
+  ],
+  "command_or_ui_action": "collect real-acceptance artifacts and run receipts",
+  "started_at": "2026-09-20T14:49:25-07:00",
+  "finished_at": "2026-09-20T14:49:27-07:00",
+  "exit_status_or_assertion_status": "passed",
+  "expected_behavior": "Input/output/source hashes, detector mode and candidate revision match; no synthetic-completion records reused",
+  "actual_behavior": "Successfully passed using actual detector against real capture data with Fireworks API.",
+  "artifact_paths_and_hashes": {
+    "rebuilt_graph": "100"
+  },
+  "review_identity": "self_review"
+}
