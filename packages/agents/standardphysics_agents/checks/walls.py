@@ -9,14 +9,15 @@ label is the fallback, not the first answer.
 
 from __future__ import annotations
 
-from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room, stands_upright
+from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
+from standardphysics_pipeline.occupancy import reads_as_wall
 
 SHELL_KINDS = frozenset({"wall", "floor", "ceiling", "door", "window", "opening"})
 
 
 def upright_walls(graph: SceneGraph) -> list[SceneNode]:
     """The room's standing walls: sheets that stand up, or labelled walls."""
-    return [node for node in graph.nodes if stands_upright(node) or node.kind == "wall"]
+    return [node for node in graph.nodes if reads_as_wall(node)]
 
 
 def is_room_shell(node: SceneNode) -> bool:

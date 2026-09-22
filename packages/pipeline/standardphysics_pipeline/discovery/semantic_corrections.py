@@ -28,6 +28,7 @@ from standardphysics_contracts import (
     bounds_the_room,
 )
 
+from ..occupancy import reads_as_wall
 from ..textures.camera import PhotoCamera
 from .detect import Detection
 from .surface_attach import intersect_node_surface, ray_for_pixel
@@ -172,7 +173,7 @@ def detect_and_attach_whiteboard(
     Does not fabricate missing whiteboards: requires confident photographic evidence.
     Does not alter wall collision: surface attachment metadata excludes it from solid obstacles.
     """
-    if wall_node.kind != "wall":
+    if not reads_as_wall(wall_node):
         return None
 
     if detection.confidence < MIN_WHITEBOARD_CONFIDENCE:
@@ -314,7 +315,7 @@ def apply_secondary_semantic_corrections(
     whiteboards = [
         board
         for wall in updated_nodes
-        if wall.kind == "wall"
+        if reads_as_wall(wall)
         for board in [_best_whiteboard(wall, detections_by_frame, cameras_by_id)]
         if board is not None
     ]
