@@ -67,7 +67,6 @@ def run_probe() -> dict:
                 json={"email": "probe@example.com", "password": "a-long-enough-password", "shop_name": "Probe shop"},
             )
             observations.append({"step": "sign-up", "status": signup.status_code})
-            payload = json.loads(signup.text) if signup.status_code == 201 else {}
             scan = client.post("/api/scans", json={
                 "name": "I1 probe scan",
                 "device_model": "iPhone 17 Pro",
