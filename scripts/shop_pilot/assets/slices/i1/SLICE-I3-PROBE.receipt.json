@@ -1,0 +1,132 @@
+{
+  "receipt_id": "SLICE-I3-PROBE",
+  "gate_id": "G06",
+  "run_id": "opencode-20260921-170615",
+  "lane_id": "Q",
+  "evidence_kind": "synthetic_production_path",
+  "source_commit": "c2c87a6d350da3ba76fbfd8eeffe9957f7e19c9c",
+  "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+  "dirty_source_files": {},
+  "contract_hash": "65a72e69c31c625ed189c2d2921257d41d8d2c13044cd960c3be590f01129148",
+  "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
+  "input_artifacts": [],
+  "output_artifacts": [
+    {
+      "path": "i3-probe.json",
+      "sha256": "8b136a827d929c7a6cc4afe1dbfd5ff303a0c9bed9960a999892501f4b13c1f9",
+      "size_bytes": 1113,
+      "content_type": "application/json"
+    }
+  ],
+  "scan_id": null,
+  "revision_id": null,
+  "scenario_hash": null,
+  "scope_manifest_hash": null,
+  "evidence_manifest_hash": null,
+  "command_or_recorded_ui_steps": "PYTHONPATH=... .venv/bin/python -m scripts.shop_pilot.slice_probe --phase i3",
+  "working_directory": ".",
+  "environment_versions": {
+    "python": "3.11",
+    "provider": "none; real fixture capture ravida"
+  },
+  "started_at": "2026-09-21T18:08:55.194728-07:00",
+  "finished_at": "2026-09-21T18:09:06.059548-07:00",
+  "exit_code": 0,
+  "assertions": [
+    {
+      "id": "log-hash",
+      "measurement_method": "file_sha256",
+      "expected": "8b136a827d929c7a6cc4afe1dbfd5ff303a0c9bed9960a999892501f4b13c1f9",
+      "observed": "8b136a827d929c7a6cc4afe1dbfd5ff303a0c9bed9960a999892501f4b13c1f9",
+      "params": {
+        "artifact": "i3-probe.json"
+      },
+      "evidence_paths": [
+        "i3-probe.json"
+      ]
+    },
+    {
+      "id": "assessment-visible",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i3-probe.json",
+        "substring": "\"problem_question_count\": 7"
+      },
+      "evidence_paths": [
+        "i3-probe.json"
+      ]
+    },
+    {
+      "id": "scenario-confirmed",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i3-probe.json",
+        "substring": "\"confirm_status\": 200"
+      },
+      "evidence_paths": [
+        "i3-probe.json"
+      ]
+    },
+    {
+      "id": "honest-no-arrangement",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i3-probe.json",
+        "substring": "We couldn't find an arrangement that works."
+      },
+      "evidence_paths": [
+        "i3-probe.json"
+      ]
+    },
+    {
+      "id": "zip-export-has-evidence",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i3-probe.json",
+        "substring": "\"json_entry_count\": 1"
+      },
+      "evidence_paths": [
+        "i3-probe.json"
+      ]
+    },
+    {
+      "id": "anonymous-denied",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i3-probe.json",
+        "substring": "\"zip_report_both_denied\": true"
+      },
+      "evidence_paths": [
+        "i3-probe.json"
+      ]
+    },
+    {
+      "id": "log-secret-free",
+      "measurement_method": "text_clean",
+      "expected": true,
+      "observed": true,
+      "params": {
+        "artifact": "i3-probe.json"
+      },
+      "evidence_paths": [
+        "i3-probe.json"
+      ]
+    }
+  ],
+  "raw_log_path": "i3-probe.json",
+  "evaluator_identity": {
+    "actor": "lane-Q",
+    "attestation": "independent observation of assessment/proposal/export on a real fixture capture"
+  },
+  "deficits_observed": []
+}

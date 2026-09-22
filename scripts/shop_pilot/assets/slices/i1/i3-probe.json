@@ -1,0 +1,51 @@
+{
+  "ok": true,
+  "observations": [
+    {
+      "step": "assessment",
+      "status": 200,
+      "graph_revision": 1,
+      "finding_count": 7,
+      "problem_question_count": 7,
+      "outcome_kinds_limited": [
+        "question"
+      ]
+    },
+    {
+      "step": "scenario-confirm",
+      "suggestion_status": 200,
+      "confirm_status": 200
+    },
+    {
+      "step": "proposal",
+      "status": 200,
+      "message": "We couldn't find an arrangement that works.",
+      "original_revision": null,
+      "has_proposal_or_honest_none": true
+    },
+    {
+      "step": "report",
+      "status": 200,
+      "nested_finding_count": 13,
+      "preview_flag": true
+    },
+    {
+      "step": "architecture-zip",
+      "status": 200,
+      "entry_count": 1,
+      "entry_names_head": [
+        "architecture-plan.svg",
+        "evidence-ledger.json"
+      ],
+      "json_entry_count": 1
+    },
+    {
+      "step": "export-anonymous-denied",
+      "zip_status": 401,
+      "report_status": 401,
+      "zip_report_both_denied": true
+    }
+  ],
+  "state": "probed",
+  "started_at": "2026-09-21T18:08:55.194728-07:00"
+}
