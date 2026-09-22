@@ -1,0 +1,132 @@
+{
+  "receipt_id": "MUT-M05",
+  "gate_id": "G00",
+  "run_id": "opencode-20260921-170615",
+  "lane_id": "Q",
+  "evidence_kind": "synthetic_component",
+  "source_commit": "96c8dba649b24ca07213b94f17db4682fffd145f",
+  "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+  "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
+  "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
+  "input_artifacts": [
+    {
+      "path": "discover.py.original",
+      "sha256": "2fce2b73a71ead820f333d18a2ccfb5e7d8f505d0b7667f39db702fda4b38b94",
+      "size_bytes": 13599,
+      "content_type": "text/plain"
+    }
+  ],
+  "output_artifacts": [
+    {
+      "path": "M05-mutated.log",
+      "sha256": "5a83d01c57bd999e9ba91aafc3bd4abb16cb8923908609bb425fb2ef305ef8b4",
+      "size_bytes": 4226,
+      "content_type": "text/plain"
+    },
+    {
+      "path": "M05-clean-after.log",
+      "sha256": "615346574e154b3beff92a0c3300cc216b1d715cbac6441c7dbf923797c8c68f",
+      "size_bytes": 98,
+      "content_type": "text/plain"
+    }
+  ],
+  "scan_id": null,
+  "revision_id": null,
+  "scenario_hash": null,
+  "scope_manifest_hash": null,
+  "evidence_manifest_hash": null,
+  "command_or_recorded_ui_steps": "pytest packages/pipeline/tests/test_discover_outlets.py -q (clean); mutate packages/pipeline/standardphysics_pipeline/discovery/discover.py; pytest packages/pipeline/tests/test_discover_outlets.py -q (expect behavioral failure); restore source",
+  "working_directory": "/tmp/q-mutations",
+  "environment_versions": {
+    "python": "3.11"
+  },
+  "started_at": "2026-09-21T17:30:00-07:00",
+  "finished_at": "2026-09-21T17:40:00-07:00",
+  "exit_code": 1,
+  "assertions": [
+    {
+      "id": "mutated-run-failed-behaviorally",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "params": {
+        "substring": "Expected 1 outlet node, got 0",
+        "artifact": "M05-mutated.log"
+      },
+      "evidence_paths": [
+        "M05-mutated.log"
+      ]
+    },
+    {
+      "id": "mutated-run-recorded-kill-test",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "params": {
+        "substring": "packages/pipeline/tests/test_discover_outlets.py::test_pipe_01_surface_outlet_persisted_not_discarded_by_solid_carving",
+        "artifact": "M05-mutated.log"
+      },
+      "evidence_paths": [
+        "M05-mutated.log"
+      ]
+    },
+    {
+      "id": "clean-rerun-passed",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "params": {
+        "substring": "passed",
+        "artifact": "M05-clean-after.log"
+      },
+      "evidence_paths": [
+        "M05-clean-after.log"
+      ]
+    },
+    {
+      "id": "restored-source-hash",
+      "measurement_method": "file_sha256",
+      "expected": "2fce2b73a71ead820f333d18a2ccfb5e7d8f505d0b7667f39db702fda4b38b94",
+      "params": {
+        "artifact": "discover.py.original"
+      },
+      "evidence_paths": [
+        "discover.py.original"
+      ]
+    },
+    {
+      "id": "logs-are-secret-free",
+      "measurement_method": "text_clean",
+      "expected": true,
+      "params": {
+        "artifact": "M05-mutated.log"
+      },
+      "evidence_paths": [
+        "M05-mutated.log"
+      ]
+    },
+    {
+      "id": "cmd-was-pytest",
+      "measurement_method": "command_matches",
+      "expected": true,
+      "params": {
+        "required_substrings": [
+          "pytest"
+        ]
+      },
+      "evidence_paths": []
+    }
+  ],
+  "raw_log_path": "M05-mutated.log",
+  "evaluator_identity": {
+    "actor": "lane-Q",
+    "attestation": "independent fault injection in a disposable worktree, reverted and verified"
+  },
+  "fault": {
+    "fault": "discover.py: production surface attachment loop removed (geometry bypass)",
+    "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/discover.py",
+    "restored_sha256": "2fce2b73a71ead820f333d18a2ccfb5e7d8f505d0b7667f39db702fda4b38b94",
+    "killed_by": "packages/pipeline/tests/test_discover_outlets.py::test_pipe_01_surface_outlet_persisted_not_discarded_by_solid_carving",
+    "behavioral_assertion": "Expected 1 outlet node, got 0",
+    "mutated_log": "M05-mutated.log",
+    "clean_log": "M05-clean-after.log",
+    "original_copy": "discover.py.original"
+  }
+}

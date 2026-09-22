@@ -1,0 +1,231 @@
+
+==================================== ERRORS ====================================
+_______ ERROR collecting services/api/tests/test_architecture_export.py ________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_architecture_export.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_architecture_export.py:17: in <module>
+    from conftest import drain
+E   ImportError: cannot import name 'drain' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+_______________ ERROR collecting services/api/tests/test_ask.py ________________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_ask.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_ask.py:6: in <module>
+    from conftest import REPO, create_scan, drain, put_artifact
+E   ImportError: cannot import name 'REPO' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+_______________ ERROR collecting services/api/tests/test_auth.py _______________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_auth.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_auth.py:13: in <module>
+    from conftest import OWNER_EMAIL, OWNER_PASSWORD, create_scan, sign_in, sign_out, sign_up
+E   ImportError: cannot import name 'OWNER_EMAIL' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+______ ERROR collecting services/api/tests/test_checks_before_a_route.py _______
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_checks_before_a_route.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_checks_before_a_route.py:6: in <module>
+    from conftest import REPO, create_scan, drain, no_blender_stages, put_artifact
+E   ImportError: cannot import name 'REPO' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+__________ ERROR collecting services/api/tests/test_counter_labels.py __________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_counter_labels.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_counter_labels.py:3: in <module>
+    from conftest import REPO, create_scan, drain, put_artifact
+E   ImportError: cannot import name 'REPO' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+___________ ERROR collecting services/api/tests/test_crop_routes.py ____________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_crop_routes.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_crop_routes.py:16: in <module>
+    from conftest import create_scan, sign_out, sign_up
+E   ImportError: cannot import name 'create_scan' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+___________ ERROR collecting services/api/tests/test_delete_scan.py ____________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_delete_scan.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_delete_scan.py:5: in <module>
+    from conftest import create_scan
+E   ImportError: cannot import name 'create_scan' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+______________ ERROR collecting services/api/tests/test_layout.py ______________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_layout.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_layout.py:6: in <module>
+    from conftest import drain
+E   ImportError: cannot import name 'drain' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+____________ ERROR collecting services/api/tests/test_lidar_mesh.py ____________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_lidar_mesh.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_lidar_mesh.py:4: in <module>
+    from conftest import create_scan, put_artifact, unknown_scan
+E   ImportError: cannot import name 'create_scan' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+_______________ ERROR collecting services/api/tests/test_loop.py _______________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_loop.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_loop.py:8: in <module>
+    from conftest import drain, no_blender_stages
+E   ImportError: cannot import name 'drain' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+_____ ERROR collecting services/api/tests/test_outlet_review_and_export.py _____
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_outlet_review_and_export.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_outlet_review_and_export.py:21: in <module>
+    from conftest import drain
+E   ImportError: cannot import name 'drain' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+__________ ERROR collecting services/api/tests/test_photo_labeling.py __________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_photo_labeling.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_photo_labeling.py:8: in <module>
+    from conftest import create_scan, drain, put_artifact
+E   ImportError: cannot import name 'create_scan' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+_____________ ERROR collecting services/api/tests/test_pipeline.py _____________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_pipeline.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_pipeline.py:8: in <module>
+    from conftest import FIXTURE_DATA, create_scan, drain, put_artifact
+E   ImportError: cannot import name 'FIXTURE_DATA' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+____________ ERROR collecting services/api/tests/test_proposals.py _____________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_proposals.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_proposals.py:3: in <module>
+    from conftest import drain
+E   ImportError: cannot import name 'drain' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+______________ ERROR collecting services/api/tests/test_report.py ______________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_report.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_report.py:3: in <module>
+    from conftest import drain, no_blender_stages
+E   ImportError: cannot import name 'drain' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+______________ ERROR collecting services/api/tests/test_route.py _______________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_route.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_route.py:5: in <module>
+    from conftest import FIXTURE_DATA, REPO, create_scan, drain, put_artifact
+E   ImportError: cannot import name 'FIXTURE_DATA' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+___________ ERROR collecting services/api/tests/test_simulations.py ____________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_simulations.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_simulations.py:15: in <module>
+    from conftest import drain, no_blender_stages
+E   ImportError: cannot import name 'drain' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+_____________ ERROR collecting services/api/tests/test_textures.py _____________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_textures.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_textures.py:9: in <module>
+    from conftest import FIXTURE_DATA, create_scan, drain, no_blender_stages, put_artifact
+E   ImportError: cannot import name 'FIXTURE_DATA' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+_____________ ERROR collecting services/api/tests/test_tracing.py ______________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_tracing.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_tracing.py:13: in <module>
+    from conftest import no_blender_stages, sign_up
+E   ImportError: cannot import name 'no_blender_stages' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+_________ ERROR collecting services/api/tests/test_upload_contract.py __________
+ImportError while importing test module '/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/services/api/tests/test_upload_contract.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services/api/tests/test_upload_contract.py:7: in <module>
+    from conftest import REPO, create_scan, drain, put_artifact, unknown_scan
+E   ImportError: cannot import name 'REPO' from 'conftest' (/Users/yanzihao/Documents/standardphysics-opencode-20260921-170615/Q/packages/agents/tests/conftest.py)
+=============================== warnings summary ===============================
+../../standardphysics/.venv/lib/python3.11/site-packages/starlette/testclient.py:53
+  /Users/yanzihao/Documents/standardphysics/.venv/lib/python3.11/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+ERROR services/api/tests/test_architecture_export.py
+ERROR services/api/tests/test_ask.py
+ERROR services/api/tests/test_auth.py
+ERROR services/api/tests/test_checks_before_a_route.py
+ERROR services/api/tests/test_counter_labels.py
+ERROR services/api/tests/test_crop_routes.py
+ERROR services/api/tests/test_delete_scan.py
+ERROR services/api/tests/test_layout.py
+ERROR services/api/tests/test_lidar_mesh.py
+ERROR services/api/tests/test_loop.py
+ERROR services/api/tests/test_outlet_review_and_export.py
+ERROR services/api/tests/test_photo_labeling.py
+ERROR services/api/tests/test_pipeline.py
+ERROR services/api/tests/test_proposals.py
+ERROR services/api/tests/test_report.py
+ERROR services/api/tests/test_route.py
+ERROR services/api/tests/test_simulations.py
+ERROR services/api/tests/test_textures.py
+ERROR services/api/tests/test_tracing.py
+ERROR services/api/tests/test_upload_contract.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 20 errors during collection !!!!!!!!!!!!!!!!!!!
+1 skipped, 1 warning, 20 errors in 2.38s

@@ -1,0 +1,28 @@
+..F.                                                                     [100%]
+=================================== FAILURES ===================================
+_____________ test_det_03_error_distinction_and_no_retry_for_auth ______________
+
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-64/test_det_03_error_distinction_0')
+
+    def test_det_03_error_distinction_and_no_retry_for_auth(tmp_path: pathlib.Path):
+        """DET-03: Provider timeout/auth error versus valid empty result."""
+        img = Image.new("RGB", (100, 100), color=(0, 0, 0))
+        img_path = tmp_path / "frame.jpg"
+        img.save(img_path)
+    
+        attempts = 0
+    
+        # 1. Auth error (401) -> must raise DetectionAuthError and NOT retry
+        def auth_failure_transport(url, body, headers):
+            nonlocal attempts
+            attempts += 1
+            import urllib.error
+            raise urllib.error.HTTPError(url, 401, "Unauthorized", {}, io.BytesIO(b"Unauthorized"))
+    
+>       with pytest.raises(DetectionAuthError):
+E       Failed: DID NOT RAISE DetectionAuthError
+
+packages/pipeline/tests/test_outlet_detection.py:163: Failed
+=========================== short test summary info ============================
+FAILED packages/pipeline/tests/test_outlet_detection.py::test_det_03_error_distinction_and_no_retry_for_auth
+1 failed, 3 passed in 0.22s

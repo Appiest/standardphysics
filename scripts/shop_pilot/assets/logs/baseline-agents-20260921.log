@@ -1,0 +1,177 @@
+.....................................................................F.. [  9%]
+...........FF........................................................... [ 19%]
+........................................................................ [ 29%]
+............................................F.F......................... [ 39%]
+.........................................s.............................. [ 49%]
+........................................................................ [ 59%]
+........................................................................ [ 69%]
+........................................................................ [ 79%]
+........................................................................ [ 89%]
+.....F.................................................................. [ 98%]
+.......F                                                                 [100%]
+=================================== FAILURES ===================================
+_____________________ TestWhere.test_where_is_the_counter ______________________
+
+self = <test_ask.TestWhere object at 0x129006b50>
+answer = <function answer.<locals>.run at 0x1299b5760>
+
+    def test_where_is_the_counter(self, answer):
+        result = answer("where is the counter?")
+        assert result.kind == "WHERE"
+>       assert "against the back wall" in result.text
+E       AssertionError: assert 'against the back wall' in 'The ordering counter is out on the floor, at the back and in the middle. The nearest thing to it is the wall, 0 inches away.'
+E        +  where 'The ordering counter is out on the floor, at the back and in the middle. The nearest thing to it is the wall, 0 inches away.' = Answer(text='The ordering counter is out on the floor, at the back and in the middle. The nearest thing to it is the w... '79c5f1b1-d9c4-5fef-b6cb-8855be5ac5a5', 'nearest_inches': 0.0}, rejected=None, proposal=None, graph=None, findings=()).text
+
+packages/agents/tests/test_ask.py:368: AssertionError
+_________________ TestSpace.test_something_small_finds_a_place _________________
+
+self = <test_ask.TestSpace object at 0x129012a90>
+graph = SceneGraph(scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), revision=0, base_hash=None, nodes=[SceneNode(id=UUID(...parent_id=None, relation=None, texts=[], appearance=None, reconstruction=None, attachment=None)], capture_to_room=None)
+scenario = Scenario(name='Order a drink', stops=[Stop(name='Entrance', position=Vec3(x=0.0, y=-3.7, z=0.0), anchor_node_id=UUID('..., Stop(name='Exit', position=Vec3(x=0.0, y=-3.7, z=0.0), anchor_node_id=UUID('b47526c6-ec45-5e7c-b3f4-c7ee4a53227e'))])
+pipeline = <standardphysics_pipeline.measure.PipelineMeasurements object at 0x1299ba410>
+pack = AgentRulePack(version='1.0.0', rules=[RuleSpec(id='route_clear_width', title='The path is too narrow', citation=Citati... of seats, not every seat. The share and the height are two separate checks and this entry only carries the height.')])
+ledger = VerificationLedger(entries=[Verification(rule_id='route_clear_width', section='403.5.1', threshold=36.0, unit='in', ve...2026, 9, 22, 0, 25, 41, 705901, tzinfo=datetime.timezone.utc), second_check_by=None, second_check_at=None, note=None)])
+
+    def test_something_small_finds_a_place(
+        self, graph, scenario, pipeline, pack, ledger
+    ):
+        result = ask(
+            "do I have room for a 36 by 18 by 18 inch bench?",
+            graph, scenario, pipeline,
+            rules=pack, ledger=ledger, with_resolver=KeywordResolver(),
+        )
+>       assert result.data["fits"]
+E       assert False
+
+packages/agents/tests/test_ask.py:462: AssertionError
+____________ TestSpace.test_the_placement_it_offers_breaks_nothing _____________
+
+self = <test_ask.TestSpace object at 0x129012dd0>
+graph = SceneGraph(scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), revision=0, base_hash=None, nodes=[SceneNode(id=UUID(...parent_id=None, relation=None, texts=[], appearance=None, reconstruction=None, attachment=None)], capture_to_room=None)
+scenario = Scenario(name='Order a drink', stops=[Stop(name='Entrance', position=Vec3(x=0.0, y=-3.7, z=0.0), anchor_node_id=UUID('..., Stop(name='Exit', position=Vec3(x=0.0, y=-3.7, z=0.0), anchor_node_id=UUID('b47526c6-ec45-5e7c-b3f4-c7ee4a53227e'))])
+pipeline = <standardphysics_pipeline.measure.PipelineMeasurements object at 0x1299ba410>
+pack = AgentRulePack(version='1.0.0', rules=[RuleSpec(id='route_clear_width', title='The path is too narrow', citation=Citati... of seats, not every seat. The share and the height are two separate checks and this entry only carries the height.')])
+ledger = VerificationLedger(entries=[Verification(rule_id='route_clear_width', section='403.5.1', threshold=36.0, unit='in', ve...2026, 9, 22, 0, 25, 41, 705901, tzinfo=datetime.timezone.utc), second_check_by=None, second_check_at=None, note=None)])
+
+    def test_the_placement_it_offers_breaks_nothing(
+        self, graph, scenario, pipeline, pack, ledger
+    ):
+        result = ask(
+            "do I have room for a 36 by 18 by 18 inch bench?",
+            graph, scenario, pipeline,
+            rules=pack, ledger=ledger, with_resolver=KeywordResolver(),
+        )
+>       added = {n.id for n in result.graph.nodes} - {n.id for n in graph.nodes}
+                               ^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'NoneType' object has no attribute 'nodes'
+
+packages/agents/tests/test_ask.py:473: AttributeError
+______________ TestTheRun.test_every_expected_problem_is_reported ______________
+
+self = <test_evaluation.TestTheRun object at 0x1295d79d0>
+evaluation = EvaluationResult(rulepack_version='1.0.0', ran_at=datetime.datetime(2026, 9, 22, 0, 26, 2, 247611, tzinfo=datetime.tim...e, 'label_accuracy': 1.0, 'router_action_match': 1.0, 'fix_resolves_finding': None}}, weave_url=None, dataset_url=None)
+
+    def test_every_expected_problem_is_reported(self, evaluation):
+        for outcome in evaluation.outcomes:
+            missing = outcome.case.expected_problems - outcome.reported_problems
+>           assert not missing, f"{outcome.case.id} missed {sorted(missing)}"
+E           AssertionError: protrusion_sticks_out missed ['protruding_objects']
+E           assert not frozenset({'protruding_objects'})
+
+packages/agents/tests/test_evaluation.py:178: AssertionError
+_________ TestTheRun.test_measurements_land_within_a_tenth_of_an_inch __________
+
+self = <test_evaluation.TestTheRun object at 0x1295d7f10>
+evaluation = EvaluationResult(rulepack_version='1.0.0', ran_at=datetime.datetime(2026, 9, 22, 0, 26, 2, 247611, tzinfo=datetime.tim...e, 'label_accuracy': 1.0, 'router_action_match': 1.0, 'fix_resolves_finding': None}}, weave_url=None, dataset_url=None)
+
+    def test_measurements_land_within_a_tenth_of_an_inch(self, evaluation):
+>       assert evaluation.score("measurement_error_in") < 0.1
+E       AssertionError: assert 0.8428622047244108 < 0.1
+E        +  where 0.8428622047244108 = score('measurement_error_in')
+E        +    where score = EvaluationResult(rulepack_version='1.0.0', ran_at=datetime.datetime(2026, 9, 22, 0, 26, 2, 247611, tzinfo=datetime.tim...e, 'label_accuracy': 1.0, 'router_action_match': 1.0, 'fix_resolves_finding': None}}, weave_url=None, dataset_url=None).score
+
+packages/agents/tests/test_evaluation.py:186: AssertionError
+_____ TestProtrudingObjects.test_a_deep_shelf_at_head_height_is_a_problem ______
+
+self = <test_tiers.TestProtrudingObjects object at 0x1297f8290>
+graph = SceneGraph(scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), revision=0, base_hash=None, nodes=[SceneNode(id=UUID(...parent_id=None, relation=None, texts=[], appearance=None, reconstruction=None, attachment=None)], capture_to_room=None)
+scenario = Scenario(name='Order a drink', stops=[Stop(name='Entrance', position=Vec3(x=0.0, y=-3.7, z=0.0), anchor_node_id=UUID('..., Stop(name='Exit', position=Vec3(x=0.0, y=-3.7, z=0.0), anchor_node_id=UUID('b47526c6-ec45-5e7c-b3f4-c7ee4a53227e'))])
+pipeline = <standardphysics_pipeline.measure.PipelineMeasurements object at 0x1299ba410>
+pack = AgentRulePack(version='1.0.0', rules=[RuleSpec(id='route_clear_width', title='The path is too narrow', citation=Citati... of seats, not every seat. The share and the height are two separate checks and this entry only carries the height.')])
+ledger = VerificationLedger(entries=[Verification(rule_id='route_clear_width', section='403.5.1', threshold=36.0, unit='in', ve...2026, 9, 22, 0, 25, 41, 705901, tzinfo=datetime.timezone.utc), second_check_by=None, second_check_at=None, note=None)])
+
+    def test_a_deep_shelf_at_head_height_is_a_problem(
+        self, graph, scenario, pipeline, pack, ledger
+    ):
+        hazard = v.add(graph, _shelf("wall_shelf", (-2.8, 1.5, 1.1), (0.3, 1.2, 0.3)))
+        found = _findings(
+            hazard, scenario, pipeline, pack, ledger, "protruding_objects"
+        )
+        assert len(found) == 1
+>       assert found[0].outcome == "problem"
+E       AssertionError: assert 'passes' == 'problem'
+E         
+E         - problem
+E         + passes
+
+packages/agents/tests/test_tiers.py:188: AssertionError
+__________ test_every_inferred_entrance_gets_a_route_to_every_object ___________
+
+graph = SceneGraph(scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), revision=0, base_hash=None, nodes=[SceneNode(id=UUID(...parent_id=None, relation=None, texts=[], appearance=None, reconstruction=None, attachment=None)], capture_to_room=None)
+scenario = Scenario(name='Order a drink', stops=[Stop(name='Entrance', position=Vec3(x=0.0, y=-3.7, z=0.0), anchor_node_id=UUID('..., Stop(name='Exit', position=Vec3(x=0.0, y=-3.7, z=0.0), anchor_node_id=UUID('b47526c6-ec45-5e7c-b3f4-c7ee4a53227e'))])
+
+    def test_every_inferred_entrance_gets_a_route_to_every_object(
+        graph, scenario
+    ):
+        front_door = graph.by_id(node_id("door_front"))
+        side_opening = front_door.model_copy(
+            update={
+                "id": uuid4(),
+                "kind": "opening",
+                "label": "Side opening",
+                "transform": Mat4.translation(4.0, 0.0, 1.05),
+            }
+        )
+        graph = graph.model_copy(update={"nodes": [*graph.nodes, side_opening]})
+        entrance = scenario.stops[0].model_copy(
+            update={"name": "Main entrance", "anchor_node_id": front_door.id}
+        )
+        duplicate_exit = entrance.model_copy(update={"name": "Exit"})
+        inferred = scenario.model_copy(update={"stops": [entrance, duplicate_exit]})
+    
+        workflows = build_entrance_object_workflows(graph, inferred)
+    
+        object_ids = {node.id for node in graph.nodes if node.kind == "object"}
+        entrance_ids = {front_door.id, side_opening.id}
+>       assert {
+            (
+                workflow.scenario.stops[0].anchor_node_id,
+                workflow.scenario.stops[-1].anchor_node_id,
+            )
+            for workflow in workflows
+        } == {
+            (entrance_id, object_id)
+            for entrance_id in entrance_ids
+            for object_id in object_ids
+        }
+E       AssertionError: assert {(UUID('0eea0...ac5a5')), ...} == {(UUID('0eea0...82837')), ...}
+E         
+E         Extra items in the left set:
+E         (UUID('0eea0751-0f43-5356-b188-22a6da702457'), UUID('e0d53389-a619-512d-8991-215cb344cb37'))
+E         (UUID('2f8f4da9-75fa-49f3-a533-45e4e080c815'), UUID('2f8f4da9-75fa-49f3-a533-45e4e080c815'))
+E         (UUID('2f8f4da9-75fa-49f3-a533-45e4e080c815'), UUID('0eea0751-0f43-5356-b188-22a6da702457'))
+E         (UUID('0eea0751-0f43-5356-b188-22a6da702457'), UUID('b47526c6-ec45-5e7c-b3f4-c7ee4a53227e'))
+E         (UUID('0eea0751-0f43-5356-b188-22a6da702457'), UUID('2f8f4da9-75fa-49f3-a533-45e4e080c815'))...
+E         
+E         ...Full output truncated (8 lines hidden), use '-vv' to show
+
+packages/agents/tests/test_workflows.py:476: AssertionError
+=========================== short test summary info ============================
+FAILED packages/agents/tests/test_ask.py::TestWhere::test_where_is_the_counter
+FAILED packages/agents/tests/test_ask.py::TestSpace::test_something_small_finds_a_place
+FAILED packages/agents/tests/test_ask.py::TestSpace::test_the_placement_it_offers_breaks_nothing
+FAILED packages/agents/tests/test_evaluation.py::TestTheRun::test_every_expected_problem_is_reported
+FAILED packages/agents/tests/test_evaluation.py::TestTheRun::test_measurements_land_within_a_tenth_of_an_inch
+FAILED packages/agents/tests/test_tiers.py::TestProtrudingObjects::test_a_deep_shelf_at_head_height_is_a_problem
+FAILED packages/agents/tests/test_workflows.py::test_every_inferred_entrance_gets_a_route_to_every_object
+7 failed, 720 passed, 1 skipped in 63.30s (0:01:03)

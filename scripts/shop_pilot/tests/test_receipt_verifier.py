@@ -213,6 +213,34 @@ def test_synthetic_receipt_cannot_pass_physical_gate(tmp_path):
     assert gate["status"] != "passed"
 
 
+def test_fixture_receipt_cannot_claim_new_shop_field(tmp_path):
+    receipt = _base_receipt(tmp_path, gate_id="G16", kind="synthetic_production_path")
+    receipt["receipt_id"] = "R-fixture-field"
+    receipt["scan_id"] = "scan-saved-moffett"
+    receipt["revision_id"] = 4
+    evaluation = evaluate([receipt], artifacts_dir=tmp_path)
+    gate = next(g for g in evaluation["gates"] if g["id"] == "G16")
+    assert gate["status"] != "passed"
+
+
+def test_simulator_evidence_blocks_fresh_phone_gate(tmp_path):
+    receipt = _base_receipt(tmp_path, gate_id="G11", kind="fresh_physical_phone")
+    receipt["receipt_id"] = "R-sim-phone"
+    receipt["scan_id"] = "sim-scan"
+    receipt["revision_id"] = 1
+    evaluation = evaluate([receipt], artifacts_dir=tmp_path)
+    gate = next(g for g in evaluation["gates"] if g["id"] == "G11")
+    assert gate["status"] == "externally_blocked"
+
+
+def test_agent_identity_rejected_as_human_review(tmp_path):
+    receipt = _base_receipt(tmp_path, gate_id="G14", kind="human_rule_review")
+    receipt["receipt_id"] = "R-agent-review"
+    receipt["evaluator_identity"] = {"actor": "agent", "attestation": "I read the law"}
+    result = verify_receipt(receipt, artifacts_dir=tmp_path)
+    assert result["status"] == "invalid"
+
+
 def test_g9_certificate_blocked_by_invalid_receipt(tmp_path):
     receipt = _base_receipt(tmp_path, gate_id="G09", kind="synthetic_production_path")
     receipt["receipt_id"] = "R-g9"

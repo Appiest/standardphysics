@@ -50,6 +50,9 @@ def _named_artifact(assertion: dict[str, Any], key: str | None) -> dict[str, Any
     artifacts = assertion.get("_resolved_artifacts")
     if not isinstance(artifacts, list) or not artifacts:
         raise AssertionError("assertion has no resolved evidence artifacts")
+    explicit = assertion.get("params", {}).get("artifact")
+    if explicit is not None:
+        key = explicit
     if key is None:
         return artifacts[0]
     for artifact in artifacts:

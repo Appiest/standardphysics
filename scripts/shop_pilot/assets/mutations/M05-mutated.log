@@ -1,0 +1,86 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_____ test_pipe_01_surface_outlet_persisted_not_discarded_by_solid_carving _____
+
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-67/test_pipe_01_surface_outlet_pe0')
+
+    def test_pipe_01_surface_outlet_persisted_not_discarded_by_solid_carving(tmp_path: pathlib.Path):
+        """PIPE-01: Production discovery entry attaches detected outlet to surface and returns it."""
+        inputs, wall_node = create_synthetic_discovery_fixture(tmp_path)
+    
+        # Fixture transport returning an outlet detection in the center of the frame
+        # box in normalized 0-1000: [ymin, xmin, ymax, xmax] -> [450, 450, 550, 550]
+        def fixture_transport(prompt: str, schema: dict, headers: dict) -> dict:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps({
+                                "objects": [
+                                    {
+                                        "name": "outlet",
+                                        "box_2d": [450, 450, 550, 550],
+                                        "movable": False,
+                                        "confidence": 0.95,
+                                    }
+                                ]
+                            })
+                        }
+                    }
+                ]
+            }
+    
+        result = discover_objects(inputs, transport=fixture_transport)
+    
+        # Verify an outlet node is returned
+        outlet_nodes = [n for n in result.nodes if n.kind == "outlet" or (n.attachment and n.attachment.support_type != "unanchored")]
+>       assert len(outlet_nodes) == 1, f"Expected 1 outlet node, got {len(outlet_nodes)}: {result.nodes}"
+E       AssertionError: Expected 1 outlet node, got 0: []
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+packages/pipeline/tests/test_discover_outlets.py:175: AssertionError
+_______________ test_pipe_02_replay_same_discovery_inputs_twice ________________
+
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-67/test_pipe_02_replay_same_disco0')
+
+    def test_pipe_02_replay_same_discovery_inputs_twice(tmp_path: pathlib.Path):
+        """PIPE-02: Replaying the same discovery inputs twice produces stable IDs and no duplicate evidence."""
+        inputs, wall_node = create_synthetic_discovery_fixture(tmp_path)
+    
+        def fixture_transport(prompt: str, schema: dict, headers: dict) -> dict:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps({
+                                "objects": [
+                                    {
+                                        "name": "outlet",
+                                        "box_2d": [450, 450, 550, 550],
+                                        "movable": False,
+                                        "confidence": 0.95,
+                                    }
+                                ]
+                            })
+                        }
+                    }
+                ]
+            }
+    
+        res1 = discover_objects(inputs, transport=fixture_transport)
+        res2 = discover_objects(inputs, transport=fixture_transport)
+    
+        assert len(res1.nodes) == len(res2.nodes)
+        outlets_1 = [n for n in res1.nodes if n.attachment is not None]
+        outlets_2 = [n for n in res2.nodes if n.attachment is not None]
+    
+>       assert len(outlets_1) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+packages/pipeline/tests/test_discover_outlets.py:217: AssertionError
+=========================== short test summary info ============================
+FAILED packages/pipeline/tests/test_discover_outlets.py::test_pipe_01_surface_outlet_persisted_not_discarded_by_solid_carving
+FAILED packages/pipeline/tests/test_discover_outlets.py::test_pipe_02_replay_same_discovery_inputs_twice
+2 failed in 0.21s

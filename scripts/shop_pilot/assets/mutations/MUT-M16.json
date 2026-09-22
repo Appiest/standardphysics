@@ -1,0 +1,132 @@
+{
+  "receipt_id": "MUT-M16",
+  "gate_id": "G00",
+  "run_id": "opencode-20260921-170615",
+  "lane_id": "Q",
+  "evidence_kind": "synthetic_component",
+  "source_commit": "96c8dba649b24ca07213b94f17db4682fffd145f",
+  "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+  "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
+  "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
+  "input_artifacts": [
+    {
+      "path": "detect.py.original",
+      "sha256": "ccbc485f3baef5e99ace191aee351d04c89b7a75e396c6fcf0ef6a0fa51679a4",
+      "size_bytes": 20958,
+      "content_type": "text/plain"
+    }
+  ],
+  "output_artifacts": [
+    {
+      "path": "M16-mutated.log",
+      "sha256": "a6c4f118ec12f8d631a45303bcb8fd202218f6fbc88d5978075e7d5a7d930cf7",
+      "size_bytes": 1411,
+      "content_type": "text/plain"
+    },
+    {
+      "path": "M16-clean-after.log",
+      "sha256": "2207aede3effc76057a2a3e57150b95838d002e9383df950aadd0fec45f590e8",
+      "size_bytes": 98,
+      "content_type": "text/plain"
+    }
+  ],
+  "scan_id": null,
+  "revision_id": null,
+  "scenario_hash": null,
+  "scope_manifest_hash": null,
+  "evidence_manifest_hash": null,
+  "command_or_recorded_ui_steps": "pytest packages/pipeline/tests/test_outlet_detection.py -q (clean); mutate packages/pipeline/standardphysics_pipeline/discovery/detect.py; pytest packages/pipeline/tests/test_outlet_detection.py -q (expect behavioral failure); restore source",
+  "working_directory": "/tmp/q-mutations",
+  "environment_versions": {
+    "python": "3.11"
+  },
+  "started_at": "2026-09-21T17:30:00-07:00",
+  "finished_at": "2026-09-21T17:40:00-07:00",
+  "exit_code": 1,
+  "assertions": [
+    {
+      "id": "mutated-run-failed-behaviorally",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "params": {
+        "substring": "DID NOT RAISE DetectionAuthError",
+        "artifact": "M16-mutated.log"
+      },
+      "evidence_paths": [
+        "M16-mutated.log"
+      ]
+    },
+    {
+      "id": "mutated-run-recorded-kill-test",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "params": {
+        "substring": "packages/pipeline/tests/test_outlet_detection.py::test_det_03_error_distinction_and_no_retry_for_auth",
+        "artifact": "M16-mutated.log"
+      },
+      "evidence_paths": [
+        "M16-mutated.log"
+      ]
+    },
+    {
+      "id": "clean-rerun-passed",
+      "measurement_method": "text_contains",
+      "expected": true,
+      "params": {
+        "substring": "passed",
+        "artifact": "M16-clean-after.log"
+      },
+      "evidence_paths": [
+        "M16-clean-after.log"
+      ]
+    },
+    {
+      "id": "restored-source-hash",
+      "measurement_method": "file_sha256",
+      "expected": "ccbc485f3baef5e99ace191aee351d04c89b7a75e396c6fcf0ef6a0fa51679a4",
+      "params": {
+        "artifact": "detect.py.original"
+      },
+      "evidence_paths": [
+        "detect.py.original"
+      ]
+    },
+    {
+      "id": "logs-are-secret-free",
+      "measurement_method": "text_clean",
+      "expected": true,
+      "params": {
+        "artifact": "M16-mutated.log"
+      },
+      "evidence_paths": [
+        "M16-mutated.log"
+      ]
+    },
+    {
+      "id": "cmd-was-pytest",
+      "measurement_method": "command_matches",
+      "expected": true,
+      "params": {
+        "required_substrings": [
+          "pytest"
+        ]
+      },
+      "evidence_paths": []
+    }
+  ],
+  "raw_log_path": "M16-mutated.log",
+  "evaluator_identity": {
+    "actor": "lane-Q",
+    "attestation": "independent fault injection in a disposable worktree, reverted and verified"
+  },
+  "fault": {
+    "fault": "detect.py: provider auth/schema/error converted to empty successful detection",
+    "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/detect.py",
+    "restored_sha256": "ccbc485f3baef5e99ace191aee351d04c89b7a75e396c6fcf0ef6a0fa51679a4",
+    "killed_by": "packages/pipeline/tests/test_outlet_detection.py::test_det_03_error_distinction_and_no_retry_for_auth",
+    "behavioral_assertion": "DID NOT RAISE DetectionAuthError",
+    "mutated_log": "M16-mutated.log",
+    "clean_log": "M16-clean-after.log",
+    "original_copy": "detect.py.original"
+  }
+}

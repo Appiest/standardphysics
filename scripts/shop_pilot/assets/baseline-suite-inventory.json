@@ -1,0 +1,69 @@
+{
+  "kind": "baseline_suite_inventory_not_claimed_results",
+  "run_id": "opencode-20260921-170615",
+  "evaluator": "lane-Q independent",
+  "head": "54e09e4de879702dc18595273507bb4d62ae92cd",
+  "note": "Failures re-verified at 8f2962f (plan's cited baseline) in a disposable worktree; they predate tonight's lanes.",
+  "suites": [
+    {
+      "command": ".venv/bin/python -m pytest services/api/tests -q",
+      "exit": 1,
+      "summary": "1 failed, 174 passed",
+      "log": "scripts/shop_pilot/assets/logs/baseline-services-api-20260921.log",
+      "failures": [
+        "services/api/tests/test_combine_scans.py::test_overlay_aligns_capture_floors_without_mutating_payloads"
+      ],
+      "owner": "G (combine.py)"
+    },
+    {
+      "command": ".venv/bin/python -m pytest packages/pipeline/tests packages/contracts/tests -q",
+      "exit": 0,
+      "summary": "238 passed, 32 skipped",
+      "log": "scripts/shop_pilot/assets/logs/baseline-pipeline-contracts-20260921.log",
+      "failures": []
+    },
+    {
+      "command": ".venv/bin/python -m pytest packages/agents/tests -q",
+      "exit": 1,
+      "summary": "7 failed, 720 passed, 1 skipped",
+      "log": "scripts/shop_pilot/assets/logs/baseline-agents-20260921.log",
+      "failures": [
+        "packages/agents/tests/test_ask.py::TestWhere::test_where_is_the_counter",
+        "packages/agents/tests/test_ask.py::TestSpace::test_something_small_finds_a_place",
+        "packages/agents/tests/test_ask.py::TestSpace::test_the_placement_it_offers_breaks_nothing",
+        "packages/agents/tests/test_evaluation.py::TestTheRun::test_every_expected_problem_is_reported",
+        "packages/agents/tests/test_evaluation.py::TestTheRun::test_measurements_land_within_a_tenth_of_an_inch",
+        "packages/agents/tests/test_tiers.py::TestProtrudingObjects::test_a_deep_shelf_at_head_height_is_a_problem",
+        "packages/agents/tests/test_workflows.py::test_every_inferred_entrance_gets_a_route_to_every_object"
+      ],
+      "owner": "A (agents checks/rules) and S/R where crossed"
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q",
+      "exit": 1,
+      "summary": "11 failed, 1238 passed, 33 skipped, 3 xfailed",
+      "log": "scripts/shop_pilot/assets/logs/baseline-top-tests-20260921.log",
+      "failures": [
+        "tests/test_astra.py::test_local_rebuild_keeps_roomplan_provenance_and_measured_identity",
+        "tests/test_astra.py::test_partial_or_malformed_model_response_falls_back_without_partial_mutation",
+        "tests/test_ontology_is_not_fixed.py::test_nothing_new_branches_on_what_kind_of_thing_it_is",
+        "tests/test_ontology_is_not_fixed.py::test_the_baselines_are_honest - A...",
+        "packages/agents/tests/test_ask.py::TestWhere::test_where_is_the_counter",
+        "packages/agents/tests/test_ask.py::TestSpace::test_something_small_finds_a_place",
+        "packages/agents/tests/test_ask.py::TestSpace::test_the_placement_it_offers_breaks_nothing",
+        "packages/agents/tests/test_evaluation.py::TestTheRun::test_every_expected_problem_is_reported",
+        "packages/agents/tests/test_evaluation.py::TestTheRun::test_measurements_land_within_a_tenth_of_an_inch",
+        "packages/agents/tests/test_tiers.py::TestProtrudingObjects::test_a_deep_shelf_at_head_height_is_a_problem",
+        "packages/agents/tests/test_workflows.py::test_every_inferred_entrance_gets_a_route_to_every_object"
+      ],
+      "owner": "unowned top tests -> K assignment"
+    },
+    {
+      "command": ".venv/bin/python -m pytest scripts/shop_pilot/tests scripts/tests/test_verify_outlet_repair_acceptance.py -q",
+      "exit": 0,
+      "summary": "32 passed (Q acceptance area incl. full legacy-verifier suite)",
+      "log": "n/a (no captured log; rerun command for raw log)",
+      "failures": []
+    }
+  ]
+}
