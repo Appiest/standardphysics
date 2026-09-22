@@ -178,7 +178,7 @@ class TestTelevisionProxyGeometry:
         assert node.dimensions.as_tuple() == (0.0, 0.0, 0.0)
         assert any("no measured size" in reason for reason in node.attachment.uncertainty_reasons)
 
-    def test_outlet_faceplate_behavior_unchanged(self):
+    def test_outlet_faceplate_dimensions_are_labeled_unmeasured(self):
         wall = wall_node()
         graph = SceneGraph(scan_id=uuid.uuid4(), nodes=[wall], capture_to_room=capture_to_room(0.0))
         cam = camera_at((0.0, 0.0, 1.0), (0.0, 2.0, 1.0))
@@ -187,6 +187,42 @@ class TestTelevisionProxyGeometry:
             detection, cam, graph, depth_buffer=np.full((480, 640), 1.95)
         )
         assert node.dimensions.as_tuple() == (0.12, 0.03, 0.12)
+        assert node.quality != "measured"
+        assert any("documented default" in reason for reason in node.attachment.uncertainty_reasons)
+        assert node.attachment.localization_quality == "verified_support"
+
+
+class TestProxyDimensionsRefusedByMeasurements:
+    """G's measurement primitives inherit node.quality. A proxy-sized node must
+    never yield a measurement tagged 'measured', however verified its position."""
+
+    def test_size_of_proxy_node_is_needs_another_look(self):
+        from standardphysics_pipeline.primitives.measurements import AxisArgument, size_of
+        from standardphysics_pipeline.primitives.registry import Context
+
+        wall = wall_node()
+        cam = camera_at((0.0, 0.0, 1.0), (0.0, 2.0, 1.0))
+        outlet_detection = Detection("frame-0001", "outlet", (300.0, 220.0, 340.0, 260.0), False, 0.95)
+        _, outlet = attach_detection_to_surface(
+            outlet_detection, cam, SceneGraph(scan_id=uuid.uuid4(), nodes=[wall], capture_to_room=capture_to_room(0.0)),
+            depth_buffer=np.full((480, 640), 1.95),
+        )
+        tv_detection = Detection("frame-0001", "television", (280.0, 200.0, 360.0, 280.0), False, 0.92)
+        _, tv = attach_detection_to_surface(
+            tv_detection, cam, SceneGraph(scan_id=uuid.uuid4(), nodes=[wall], capture_to_room=capture_to_room(0.0)),
+            depth_buffer=np.full((480, 640), 1.95),
+        )
+        graph = SceneGraph(
+            scan_id=uuid.uuid4(),
+            nodes=[wall, outlet, tv],
+            capture_to_room=capture_to_room(0.0),
+        )
+        outlet_result = size_of(AxisArgument(node_id=outlet.id, axis="height"), Context(graph=graph))
+        assert outlet_result.quality == "needs_another_look"
+        tv_result = size_of(AxisArgument(node_id=tv.id, axis="width"), Context(graph=graph))
+        assert tv_result.quality == "needs_another_look"
+        wall_result = size_of(AxisArgument(node_id=wall.id, axis="height"), Context(graph=graph))
+        assert wall_result.quality == "measured"
 
 
 class TestSemanticAbstention:
@@ -562,6 +598,8 @@ class TestDiscoveryWiresSecondaryCorrections:
             assert board.attachment is not None
             assert board.attachment.identity_confidence > 0
             assert board.attachment.observations
+            assert board.quality != "measured"
+            assert any("not a physical device size" in reason for reason in board.attachment.uncertainty_reasons)
 
     def test_outlet_crop_evidence_and_image_url_flow(self, tmp_path):
         payload = [

@@ -237,7 +237,10 @@ def detect_and_attach_whiteboard(
         identity_confidence=float(detection.confidence),
         review_status="detected",
         observations=[crop],
-        uncertainty_reasons=[],
+        uncertainty_reasons=[
+            "extent is an estimate from the wall-plane span of the observed region, "
+            "not a physical device size; never read as a measured whiteboard"
+        ],
     )
 
     return SceneNode(
@@ -249,6 +252,7 @@ def detect_and_attach_whiteboard(
         transform=Mat4(m=[round(val, 6) for val in rot_matrix.ravel().tolist()]),
         parent_id=wall_node.id,
         relation="attached_to",
+        quality="needs_another_look",
         attachment=attachment,
     )
 
