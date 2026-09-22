@@ -2,7 +2,7 @@ FF                                                                       [100%]
 =================================== FAILURES ===================================
 _____ test_pipe_01_surface_outlet_persisted_not_discarded_by_solid_carving _____
 
-tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-67/test_pipe_01_surface_outlet_pe0')
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-445/test_pipe_01_surface_outlet_pe0')
 
     def test_pipe_01_surface_outlet_persisted_not_discarded_by_solid_carving(tmp_path: pathlib.Path):
         """PIPE-01: Production discovery entry attaches detected outlet to surface and returns it."""
@@ -42,7 +42,7 @@ E        +  where 0 = len([])
 packages/pipeline/tests/test_discover_outlets.py:175: AssertionError
 _______________ test_pipe_02_replay_same_discovery_inputs_twice ________________
 
-tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-67/test_pipe_02_replay_same_disco0')
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-445/test_pipe_02_replay_same_disco0')
 
     def test_pipe_02_replay_same_discovery_inputs_twice(tmp_path: pathlib.Path):
         """PIPE-02: Replaying the same discovery inputs twice produces stable IDs and no duplicate evidence."""
@@ -83,4 +83,4 @@ packages/pipeline/tests/test_discover_outlets.py:217: AssertionError
 =========================== short test summary info ============================
 FAILED packages/pipeline/tests/test_discover_outlets.py::test_pipe_01_surface_outlet_persisted_not_discarded_by_solid_carving
 FAILED packages/pipeline/tests/test_discover_outlets.py::test_pipe_02_replay_same_discovery_inputs_twice
-2 failed in 0.21s
+2 failed in 0.29s

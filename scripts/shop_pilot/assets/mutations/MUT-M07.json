@@ -6,8 +6,8 @@
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "96d72199700036e618fd91e9379a8c533d2fe46a",
-  "eval_source_head": "422d16e (S lane HEAD)",
+  "source_commit": "b17a40eb8823a44d0ecd52f6d5537f10887c7706",
+  "eval_source_head": "534b7e0 (final K HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
@@ -15,22 +15,22 @@
   "input_artifacts": [
     {
       "path": "reconcile.py.original",
-      "sha256": "728a1afaefef13fc9d5cc450851d34b5d48db17899c52ecbd302c48844d3e440",
-      "size_bytes": 9696,
+      "sha256": "7cc419e25cbfe30086371b29802be8b64ad61e8e5cad984eee58316662fbd962",
+      "size_bytes": 10541,
       "content_type": "text/plain"
     }
   ],
   "output_artifacts": [
     {
       "path": "M07-mutated.log",
-      "sha256": "95e736f9239598401d31176d856634f05b6c9ab412f7210196e9701a173bef64",
+      "sha256": "671f689abed33b001c1bf17506609a97c7e42bba4cc9ec1a11cf02346e160e8d",
       "size_bytes": 1635,
       "content_type": "text/plain"
     },
     {
       "path": "M07-clean-after.log",
-      "sha256": "71808535af46fe626b2fea83bedf237f0912b36bb6b3a50d553c8d93e57f99a8",
-      "size_bytes": 98,
+      "sha256": "27ddcae8e8563cc14cee85fea35bbff573fc602f43158ff6bf4ded2fdce61f00",
+      "size_bytes": 99,
       "content_type": "text/plain"
     }
   ],
@@ -44,8 +44,8 @@
   "environment_versions": {
     "python": "3.11"
   },
-  "started_at": "2026-09-21T22:32:06.599159-07:00",
-  "finished_at": "2026-09-21T22:32:06.599159-07:00",
+  "started_at": "2026-09-21T23:15:22.988488-07:00",
+  "finished_at": "2026-09-21T23:15:22.988488-07:00",
   "exit_code": 1,
   "assertions": [
     {
@@ -90,7 +90,7 @@
     {
       "id": "restored-source-hash",
       "measurement_method": "file_sha256",
-      "expected": "728a1afaefef13fc9d5cc450851d34b5d48db17899c52ecbd302c48844d3e440",
+      "expected": "7cc419e25cbfe30086371b29802be8b64ad61e8e5cad984eee58316662fbd962",
       "params": {
         "artifact": "reconcile.py.original"
       },
@@ -128,11 +128,11 @@
   },
   "fault": {
     "id": "M07",
-    "source_head": "422d16e (S lane HEAD)",
+    "source_head": "534b7e0 (final K HEAD)",
     "outcome": "killed",
     "fault": "reconcile.py: MAX_SAME_OUTLET_SURFACE_DISTANCE_M 0.06 -> 6.0 (adjacent outlets merge)",
     "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/reconcile.py",
-    "restored_sha256": "728a1afaefef13fc9d5cc450851d34b5d48db17899c52ecbd302c48844d3e440",
+    "restored_sha256": "7cc419e25cbfe30086371b29802be8b64ad61e8e5cad984eee58316662fbd962",
     "killed_by": "packages/pipeline/tests/test_reconcile_outlets.py::test_merge_02_separate_plates_and_opposite_walls_do_not_collapse",
     "behavioral_assertion": "assert not True",
     "mutated_log": "M07-mutated.log",

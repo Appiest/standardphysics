@@ -1,24 +1,59 @@
 """Multi-view reconciliation of surface-attached detections.
 
-Reconciles observations from multiple camera views without coarse distance-based
-merging that would collapse adjacent outlets, duplex plates, or fixtures on
-opposite sides of a wall.
+Reconciles observations from multiple camera views, and refuses to merge
+anything without agreeing visual evidence: proximity alone never collapses
+two adjacent outlets into one, because the count of nearby devices is unknown
+until their photos actually show the same device.
 """
 
 from __future__ import annotations
 
-import math
-from dataclasses import replace
 from typing import Sequence
 
 import numpy as np
-from standardphysics_contracts import SceneNode, SurfaceAttachment, Vec3
+from standardphysics_contracts import SceneNode, SurfaceAttachment
 
 from ..textures.camera import PhotoCamera
+from .detect import box_iou
 
 MIN_INDEPENDENT_VIEW_DISTANCE_M = 0.50
 MAX_SAME_OUTLET_SURFACE_DISTANCE_M = 0.06  # 6 cm faceplate tolerance
 NORMAL_ALIGNMENT_MIN_COS = 0.85
+VISUAL_AGREEMENT_IOU = 0.30
+"""How much two boxes in the same photo must overlap to count as one detection."""
+
+
+def _visually_agree(att_a: SurfaceAttachment, att_b: SurfaceAttachment) -> bool:
+    """Whether some single photo shows both crops overlapping substantially.
+
+    Two detections in the same frame that cover the same region are strong
+    evidence of one device read twice. Detections from different frames carry
+    no such evidence without a camera to verify against.
+    """
+    for obs_a in att_a.observations:
+        for obs_b in att_b.observations:
+            if obs_a.frame_id != obs_b.frame_id:
+                continue
+            if box_iou(tuple(obs_a.sensor_box), tuple(obs_b.sensor_box)) >= VISUAL_AGREEMENT_IOU:
+                return True
+    return False
+
+
+def _reprojection_agrees(
+    att: SurfaceAttachment,
+    pos_other: np.ndarray,
+    camera: PhotoCamera,
+) -> bool:
+    """Whether the other node's 3D centre lands inside this observation's padded photo box."""
+    if not att.observations:
+        return False
+    col, row, depth = camera.project(pos_other.reshape(1, 3))
+    if depth[0] <= 0:
+        return False
+    obs_box = att.observations[0].sensor_box
+    pad_x = (obs_box[2] - obs_box[0]) * 0.20
+    pad_y = (obs_box[3] - obs_box[1]) * 0.20
+    return obs_box[0] - pad_x <= col[0] <= obs_box[2] + pad_x and obs_box[1] - pad_y <= row[0] <= obs_box[3] + pad_y
 
 
 def are_compatible_observations(
@@ -34,53 +69,38 @@ def are_compatible_observations(
     - Opposite or tilted surface normals (e.g. opposite sides of a wall)
     - Surface distance exceeding faceplate tolerance (e.g. adjacent duplex sockets)
     - Reprojection mismatches when cameras are provided
+    - Any pair with neither camera nor shared-photo visual agreement:
+      distance on its own never proves one device, so adjacent outlets stay
+      separate and the count stays unknown
     """
     att_a = node_a.attachment
     att_b = node_b.attachment
     if att_a is None or att_b is None:
         return False
-
-    # Must share same support parent
-    if att_a.support_node_id != att_b.support_node_id:
-        return False
-
-    # Both must have normal defined, and normals must be aligned
-    if att_a.normal is None or att_b.normal is None:
+    if att_a.support_node_id != att_b.support_node_id or att_a.normal is None or att_b.normal is None:
         return False
     norm_a = np.array([att_a.normal.x, att_a.normal.y, att_a.normal.z], dtype=np.float64)
     norm_b = np.array([att_b.normal.x, att_b.normal.y, att_b.normal.z], dtype=np.float64)
     if float(np.dot(norm_a, norm_b)) < NORMAL_ALIGNMENT_MIN_COS:
         return False
-
-    # Check 3D distance between centers
     pos_a = np.array([node_a.transform.m[3], node_a.transform.m[7], node_a.transform.m[11]], dtype=np.float64)
     pos_b = np.array([node_b.transform.m[3], node_b.transform.m[7], node_b.transform.m[11]], dtype=np.float64)
-    dist = float(np.linalg.norm(pos_a - pos_b))
-    if dist > MAX_SAME_OUTLET_SURFACE_DISTANCE_M:
+    if float(np.linalg.norm(pos_a - pos_b)) > MAX_SAME_OUTLET_SURFACE_DISTANCE_M:
         return False
 
-    # Reprojection check if cameras available
-    if camera_a is not None and len(att_a.observations) > 0:
-        col, row, depth = camera_a.project(pos_b.reshape(1, 3))
-        if depth[0] <= 0:
+    verified = False
+    if camera_a is not None:
+        if not _reprojection_agrees(att_a, pos_b, camera_a):
             return False
-        obs_box = att_a.observations[0].sensor_box
-        pad_x = (obs_box[2] - obs_box[0]) * 0.20
-        pad_y = (obs_box[3] - obs_box[1]) * 0.20
-        if not (obs_box[0] - pad_x <= col[0] <= obs_box[2] + pad_x and obs_box[1] - pad_y <= row[0] <= obs_box[3] + pad_y):
+        verified = True
+    if camera_b is not None:
+        if not _reprojection_agrees(att_b, pos_a, camera_b):
             return False
+        verified = True
 
-    if camera_b is not None and len(att_b.observations) > 0:
-        col, row, depth = camera_b.project(pos_a.reshape(1, 3))
-        if depth[0] <= 0:
-            return False
-        obs_box = att_b.observations[0].sensor_box
-        pad_x = (obs_box[2] - obs_box[0]) * 0.20
-        pad_y = (obs_box[3] - obs_box[1]) * 0.20
-        if not (obs_box[0] - pad_x <= col[0] <= obs_box[2] + pad_x and obs_box[1] - pad_y <= row[0] <= obs_box[3] + pad_y):
-            return False
-
-    return True
+    if verified:
+        return True
+    return _visually_agree(att_a, att_b)
 
 
 def merge_cluster(cluster: Sequence[SceneNode], cameras: dict[str, PhotoCamera] | None = None) -> SceneNode:

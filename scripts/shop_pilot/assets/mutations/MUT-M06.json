@@ -6,8 +6,8 @@
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "96d72199700036e618fd91e9379a8c533d2fe46a",
-  "eval_source_head": "422d16e (S lane HEAD)",
+  "source_commit": "b17a40eb8823a44d0ecd52f6d5537f10887c7706",
+  "eval_source_head": "534b7e0 (final K HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
@@ -23,14 +23,14 @@
   "output_artifacts": [
     {
       "path": "M06-mutated.log",
-      "sha256": "016a4093788648644b08006f7d1d171ca7639313677f5aa929f004d4a3e52465",
-      "size_bytes": 98,
+      "sha256": "e238da73433ee387b565aef1c1a525e4fb17b4fb3252c5ecead948568c298d8b",
+      "size_bytes": 99,
       "content_type": "text/plain"
     },
     {
       "path": "M06-clean-after.log",
-      "sha256": "71808535af46fe626b2fea83bedf237f0912b36bb6b3a50d553c8d93e57f99a8",
-      "size_bytes": 98,
+      "sha256": "27ddcae8e8563cc14cee85fea35bbff573fc602f43158ff6bf4ded2fdce61f00",
+      "size_bytes": 99,
       "content_type": "text/plain"
     }
   ],
@@ -44,8 +44,8 @@
   "environment_versions": {
     "python": "3.11"
   },
-  "started_at": "2026-09-21T22:32:06.599159-07:00",
-  "finished_at": "2026-09-21T22:32:06.599159-07:00",
+  "started_at": "2026-09-21T23:15:22.988488-07:00",
+  "finished_at": "2026-09-21T23:15:22.988488-07:00",
   "exit_code": 0,
   "assertions": [
     {
@@ -54,7 +54,7 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "1 passed",
+        "substring": "36 passed",
         "artifact": "M06-mutated.log"
       },
       "evidence_paths": [
@@ -128,12 +128,12 @@
   },
   "fault": {
     "id": "M06",
-    "source_head": "422d16e (S lane HEAD)",
+    "source_head": "534b7e0 (final K HEAD)",
     "outcome": "survived_gap",
     "fault": "detect.py: encode_frame orientation rotation zeroed (turns=0) on S HEAD",
     "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/detect.py",
     "restored_sha256": "b2ac0a9b2e05812d30dcd20ed1a816c0e9a308618782fbbb98c1277e8ae55432",
-    "survived_by": "test_det_01_asymmetric_rotations_crops_and_tiles still passed (1 passed)",
+    "log_marker": "36 passed",
     "mutated_log": "M06-mutated.log",
     "clean_log": "M06-clean-after.log",
     "original_copy": "detect-s-head.py.original",

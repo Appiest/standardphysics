@@ -1,4 +1,4 @@
-.F...                                                                    [100%]
+.F......                                                                 [100%]
 =================================== FAILURES ===================================
 _______ test_merge_02_separate_plates_and_opposite_walls_do_not_collapse _______
 
@@ -11,9 +11,9 @@ _______ test_merge_02_separate_plates_and_opposite_walls_do_not_collapse _______
         plate_b = make_outlet_node((0.20, 2.0, 1.0), support_id=support_id)
 >       assert not are_compatible_observations(plate_a, plate_b)
 E       AssertionError: assert not True
-E        +  where True = are_compatible_observations(SceneNode(id=UUID('f652473b-03bb-4f4a-843b-2f2fc7205df4'), kind='outlet', label='Outlet', raw_category='outlet', dimen...], identity_confidence=0.9, localization_quality='verified_support', review_status='detected', uncertainty_reasons=[])), SceneNode(id=UUID('a6a8a4be-9f67-4c1d-b800-058f60db3a3c'), kind='outlet', label='Outlet', raw_category='outlet', dimen...], identity_confidence=0.9, localization_quality='verified_support', review_status='detected', uncertainty_reasons=[])))
+E        +  where True = are_compatible_observations(SceneNode(id=UUID('3bd9d5fb-b256-42d2-802b-5647eb0d2762'), kind='outlet', label='Outlet', raw_category='outlet', dimen...], identity_confidence=0.9, localization_quality='verified_support', review_status='detected', uncertainty_reasons=[])), SceneNode(id=UUID('a929ae16-d883-4f5d-874a-bfe74aacc512'), kind='outlet', label='Outlet', raw_category='outlet', dimen...], identity_confidence=0.9, localization_quality='verified_support', review_status='detected', uncertainty_reasons=[])))
 
-packages/pipeline/tests/test_reconcile_outlets.py:129: AssertionError
+packages/pipeline/tests/test_reconcile_outlets.py:127: AssertionError
 =========================== short test summary info ============================
 FAILED packages/pipeline/tests/test_reconcile_outlets.py::test_merge_02_separate_plates_and_opposite_walls_do_not_collapse
-1 failed, 4 passed in 0.19s
+1 failed, 7 passed in 0.21s

@@ -6,8 +6,8 @@
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "96d72199700036e618fd91e9379a8c533d2fe46a",
-  "eval_source_head": "q-worktree-pre-freeze (local)",
+  "source_commit": "b17a40eb8823a44d0ecd52f6d5537f10887c7706",
+  "eval_source_head": "534b7e0 (final K HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
@@ -15,22 +15,22 @@
   "input_artifacts": [
     {
       "path": "discover.py.original",
-      "sha256": "2fce2b73a71ead820f333d18a2ccfb5e7d8f505d0b7667f39db702fda4b38b94",
-      "size_bytes": 13599,
+      "sha256": "7c5a63d7e4fe33c23598120bc4166eb9b8b6ae57cef07a4ef976039230bf4568",
+      "size_bytes": 16253,
       "content_type": "text/plain"
     }
   ],
   "output_artifacts": [
     {
       "path": "M05-mutated.log",
-      "sha256": "5a83d01c57bd999e9ba91aafc3bd4abb16cb8923908609bb425fb2ef305ef8b4",
-      "size_bytes": 4226,
+      "sha256": "fbf1169928a711e5261ac2e578cc7edabc0fee90ed87bedf62c8102584c12220",
+      "size_bytes": 4228,
       "content_type": "text/plain"
     },
     {
       "path": "M05-clean-after.log",
-      "sha256": "615346574e154b3beff92a0c3300cc216b1d715cbac6441c7dbf923797c8c68f",
-      "size_bytes": 98,
+      "sha256": "27ddcae8e8563cc14cee85fea35bbff573fc602f43158ff6bf4ded2fdce61f00",
+      "size_bytes": 99,
       "content_type": "text/plain"
     }
   ],
@@ -44,8 +44,8 @@
   "environment_versions": {
     "python": "3.11"
   },
-  "started_at": "2026-09-21T22:32:06.599159-07:00",
-  "finished_at": "2026-09-21T22:32:06.599159-07:00",
+  "started_at": "2026-09-21T23:15:22.988488-07:00",
+  "finished_at": "2026-09-21T23:15:22.988488-07:00",
   "exit_code": 1,
   "assertions": [
     {
@@ -90,7 +90,7 @@
     {
       "id": "restored-source-hash",
       "measurement_method": "file_sha256",
-      "expected": "2fce2b73a71ead820f333d18a2ccfb5e7d8f505d0b7667f39db702fda4b38b94",
+      "expected": "7c5a63d7e4fe33c23598120bc4166eb9b8b6ae57cef07a4ef976039230bf4568",
       "params": {
         "artifact": "discover.py.original"
       },
@@ -128,11 +128,11 @@
   },
   "fault": {
     "id": "M05",
-    "source_head": "q-worktree-pre-freeze (local)",
+    "source_head": "534b7e0 (final K HEAD)",
     "outcome": "killed",
     "fault": "discover.py: production surface attachment loop removed (geometry bypass)",
     "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/discover.py",
-    "restored_sha256": "2fce2b73a71ead820f333d18a2ccfb5e7d8f505d0b7667f39db702fda4b38b94",
+    "restored_sha256": "7c5a63d7e4fe33c23598120bc4166eb9b8b6ae57cef07a4ef976039230bf4568",
     "killed_by": "packages/pipeline/tests/test_discover_outlets.py::test_pipe_01_surface_outlet_persisted_not_discarded_by_solid_carving",
     "behavioral_assertion": "Expected 1 outlet node, got 0",
     "mutated_log": "M05-mutated.log",
