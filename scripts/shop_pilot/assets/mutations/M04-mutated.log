@@ -1,8 +1,8 @@
-F.                                                                       [100%]
+F                                                                        [100%]
 =================================== FAILURES ===================================
 __________ test_sweep_never_retries_a_failed_input_until_new_evidence __________
 
-tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-321/test_sweep_never_retries_a_fai0')
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-399/test_sweep_never_retries_a_fai0')
 
     def test_sweep_never_retries_a_failed_input_until_new_evidence(tmp_path):
         import conftest
@@ -43,7 +43,7 @@ tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/p
                 time.sleep(0.1)
             failed = client.get(f"/api/scans/{scan_id}/evidence").json()
 >           assert failed["semantic_state"] == "failed", failed
-E           AssertionError: {'scan_id': '576714a1-6593-4ba5-9b36-620819f08e71', 'geometry_state': 'ready', 'evidence_state': 'complete', 'semantic_state': 'complete', ...}
+E           AssertionError: {'scan_id': '5329b975-e305-480f-9ff2-a9df97503b2d', 'geometry_state': 'ready', 'evidence_state': 'complete', 'semantic_state': 'complete', ...}
 E           assert 'complete' == 'failed'
 E             
 E             - failed
@@ -51,21 +51,21 @@ E             + complete
 
 services/api/tests/test_job_lifecycle.py:564: AssertionError
 ------------------------------ Captured log call -------------------------------
-ERROR    standardphysics_api.worker:worker.py:190 job process 576714a1-6593-4ba5-9b36-620819f08e71 failed:
+ERROR    standardphysics_api.worker:worker.py:192 job process 5329b975-e305-480f-9ff2-a9df97503b2d failed:
 Traceback (most recent call last):
-  File "/tmp/q-final/services/api/standardphysics_api/worker.py", line 187, in _run
+  File "/tmp/q-final2/services/api/standardphysics_api/worker.py", line 189, in _run
     follow_up = handler(scan_id=scan_id, revision=revision, job=job)
                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/tmp/q-final/services/api/standardphysics_api/worker.py", line 224, in _process
+  File "/tmp/q-final2/services/api/standardphysics_api/worker.py", line 226, in _process
     graph, outcome = self.stages.ingest_with_report(
                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/tmp/q-final/services/api/standardphysics_api/stages.py", line 181, in ingest_with_report
+  File "/tmp/q-final2/services/api/standardphysics_api/stages.py", line 183, in ingest_with_report
     return self.discover_scan_with_report(
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/tmp/q-final/services/api/standardphysics_api/stages.py", line 215, in discover_scan_with_report
+  File "/tmp/q-final2/services/api/standardphysics_api/stages.py", line 217, in discover_scan_with_report
     result = self.discover(inputs)
              ^^^^^^^^^^^^^^^^^^^^^
-  File "/private/tmp/q-final/services/api/tests/test_job_lifecycle.py", line 534, in flaky
+  File "/private/tmp/q-final2/services/api/tests/test_job_lifecycle.py", line 534, in flaky
     raise RuntimeError("provider died")
 RuntimeError: provider died
 =============================== warnings summary ===============================
@@ -76,4 +76,4 @@ RuntimeError: provider died
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 =========================== short test summary info ============================
 FAILED services/api/tests/test_job_lifecycle.py::test_sweep_never_retries_a_failed_input_until_new_evidence
-1 failed, 1 passed, 1 warning in 60.30s (0:01:00)
+1 failed, 1 warning in 60.14s (0:01:00)

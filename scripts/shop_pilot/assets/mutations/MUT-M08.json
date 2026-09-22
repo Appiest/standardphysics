@@ -6,8 +6,8 @@
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "f8e6e93ea1e70b9d4226134bc595456ff9bbd3d4",
-  "eval_source_head": "aa8fd81 (K integration HEAD)",
+  "source_commit": "96d72199700036e618fd91e9379a8c533d2fe46a",
+  "eval_source_head": "8b48f9e (final K HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
@@ -15,21 +15,21 @@
   "input_artifacts": [
     {
       "path": "worker.py.original",
-      "sha256": "687821227217a07160065eec4d23442f3c92bc3675856aa99a3b943d4811ac89",
-      "size_bytes": 16619,
+      "sha256": "be0dcd38cf27ae47c3ac5d6115d59e8a2df742098c5d72cd4f0c45858a1d454b",
+      "size_bytes": 17227,
       "content_type": "text/plain"
     }
   ],
   "output_artifacts": [
     {
       "path": "M08-mutated.log",
-      "sha256": "767bc1a1244eb819a725487858e39d3aaba6c7123e48f68af914cecd5431a715",
+      "sha256": "b4edfe7d05a435c6f3a8eaa04677d2922d8c1c0c278cba5f3912ecfac83ee606",
       "size_bytes": 2639,
       "content_type": "text/plain"
     },
     {
       "path": "M08-clean-after.log",
-      "sha256": "e0db3c5e43c135e838bac609951051e83a6d562b2cc873fd4ff32fe63b191b6c",
+      "sha256": "3b6d028a5caa6ab55a173709681d711a5c5296fe9b19f737833f5f6ded3efd9e",
       "size_bytes": 688,
       "content_type": "text/plain"
     }
@@ -44,8 +44,8 @@
   "environment_versions": {
     "python": "3.11"
   },
-  "started_at": "2026-09-21T20:41:46.833974-07:00",
-  "finished_at": "2026-09-21T20:41:46.833974-07:00",
+  "started_at": "2026-09-21T22:32:06.599159-07:00",
+  "finished_at": "2026-09-21T22:32:06.599159-07:00",
   "exit_code": 1,
   "assertions": [
     {
@@ -90,7 +90,7 @@
     {
       "id": "restored-source-hash",
       "measurement_method": "file_sha256",
-      "expected": "687821227217a07160065eec4d23442f3c92bc3675856aa99a3b943d4811ac89",
+      "expected": "be0dcd38cf27ae47c3ac5d6115d59e8a2df742098c5d72cd4f0c45858a1d454b",
       "params": {
         "artifact": "worker.py.original"
       },
@@ -128,11 +128,11 @@
   },
   "fault": {
     "id": "M08",
-    "source_head": "aa8fd81 (K integration HEAD)",
+    "source_head": "8b48f9e (final K HEAD)",
     "outcome": "killed",
     "fault": "worker.py: ingest saves at the latest owner revision, clobbering the reviewed graph (stale async overwrites review)",
     "fault_file": "services/api/standardphysics_api/worker.py",
-    "restored_sha256": "687821227217a07160065eec4d23442f3c92bc3675856aa99a3b943d4811ac89",
+    "restored_sha256": "be0dcd38cf27ae47c3ac5d6115d59e8a2df742098c5d72cd4f0c45858a1d454b",
     "killed_by": "services/api/tests/test_review_safety.py::test_late_process_job_replaces_ingest_revision_but_never_owner_decisions",
     "behavioral_assertion": "assert latest[\"revision\"] == 1",
     "mutated_log": "M08-mutated.log",

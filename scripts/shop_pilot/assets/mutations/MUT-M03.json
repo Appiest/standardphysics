@@ -6,8 +6,8 @@
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "f8e6e93ea1e70b9d4226134bc595456ff9bbd3d4",
-  "eval_source_head": "q-worktree-early-freeze (local)",
+  "source_commit": "96d72199700036e618fd91e9379a8c533d2fe46a",
+  "eval_source_head": "8b48f9e (final K HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
@@ -15,21 +15,21 @@
   "input_artifacts": [
     {
       "path": "repository.py.original",
-      "sha256": "b3bd33871fdc02ce1f9b438da844aa7f719297dffe729519839ae7f251a019a3",
-      "size_bytes": 18234,
+      "sha256": "ec82157b9fdff3bdd37e2794e15c0bf35f2d92094153859326c965f8ee1d6851",
+      "size_bytes": 23401,
       "content_type": "text/plain"
     }
   ],
   "output_artifacts": [
     {
       "path": "M03-mutated.log",
-      "sha256": "49636f27f063989056ef86de11edf3300bad3f04ef0021611c357de00a82f569",
-      "size_bytes": 2043,
+      "sha256": "496aae7a3577888114cdc9027913632950e4052df1a2874cb515fda9a8fc7bac",
+      "size_bytes": 2072,
       "content_type": "text/plain"
     },
     {
       "path": "M03-clean-after.log",
-      "sha256": "77698177124d1f50fe500acf0cd0cf561cca829c25c55a2f8f1438975549d2b8",
+      "sha256": "7051221594f3eaa966517b8092d01db528077aa0c0f700516019a696338a0825",
       "size_bytes": 686,
       "content_type": "text/plain"
     }
@@ -44,8 +44,8 @@
   "environment_versions": {
     "python": "3.11"
   },
-  "started_at": "2026-09-21T20:41:46.833974-07:00",
-  "finished_at": "2026-09-21T20:41:46.833974-07:00",
+  "started_at": "2026-09-21T22:32:06.599159-07:00",
+  "finished_at": "2026-09-21T22:32:06.599159-07:00",
   "exit_code": 1,
   "assertions": [
     {
@@ -90,7 +90,7 @@
     {
       "id": "restored-source-hash",
       "measurement_method": "file_sha256",
-      "expected": "b3bd33871fdc02ce1f9b438da844aa7f719297dffe729519839ae7f251a019a3",
+      "expected": "ec82157b9fdff3bdd37e2794e15c0bf35f2d92094153859326c965f8ee1d6851",
       "params": {
         "artifact": "repository.py.original"
       },
@@ -128,11 +128,11 @@
   },
   "fault": {
     "id": "M03",
-    "source_head": "q-worktree-early-freeze (local)",
+    "source_head": "8b48f9e (final K HEAD)",
     "outcome": "killed",
     "fault": "repository.py: evidence bundle declared complete despite missing required kinds (early finalize)",
     "fault_file": "services/api/standardphysics_api/repository.py",
-    "restored_sha256": "b3bd33871fdc02ce1f9b438da844aa7f719297dffe729519839ae7f251a019a3",
+    "restored_sha256": "ec82157b9fdff3bdd37e2794e15c0bf35f2d92094153859326c965f8ee1d6851",
     "killed_by": "services/api/tests/test_evidence_closure.py::test_legacy_geometry_complete_stays_browsable_with_semantics_blocked",
     "behavioral_assertion": "assert 'complete' == 'blocked_incomplete_evidence'",
     "mutated_log": "M03-mutated.log",

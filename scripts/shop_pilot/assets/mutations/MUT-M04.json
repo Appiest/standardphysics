@@ -6,8 +6,8 @@
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "f8e6e93ea1e70b9d4226134bc595456ff9bbd3d4",
-  "eval_source_head": "aa8fd81 (K integration HEAD)",
+  "source_commit": "96d72199700036e618fd91e9379a8c533d2fe46a",
+  "eval_source_head": "8b48f9e (final K HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
@@ -23,14 +23,14 @@
   "output_artifacts": [
     {
       "path": "M04-mutated.log",
-      "sha256": "77409ea40408ca4a787dbc4c5f40c1b3c25ea1f503e25d30a6d8a6b80d7c29d9",
-      "size_bytes": 4220,
+      "sha256": "ae42b248cb9ffa4abbce3ea778d29da49c700a8e2d7523eacb15d95a9d674587",
+      "size_bytes": 4215,
       "content_type": "text/plain"
     },
     {
       "path": "M04-clean-after.log",
-      "sha256": "94a6872708e55fc38882d520327ad7bcdfeee29f4ed47dfc00934ec0970b3c43",
-      "size_bytes": 686,
+      "sha256": "3b6d028a5caa6ab55a173709681d711a5c5296fe9b19f737833f5f6ded3efd9e",
+      "size_bytes": 688,
       "content_type": "text/plain"
     }
   ],
@@ -44,8 +44,8 @@
   "environment_versions": {
     "python": "3.11"
   },
-  "started_at": "2026-09-21T20:41:46.833974-07:00",
-  "finished_at": "2026-09-21T20:41:46.833974-07:00",
+  "started_at": "2026-09-21T22:32:06.599159-07:00",
+  "finished_at": "2026-09-21T22:32:06.599159-07:00",
   "exit_code": 1,
   "assertions": [
     {
@@ -128,7 +128,7 @@
   },
   "fault": {
     "id": "M04",
-    "source_head": "aa8fd81 (K integration HEAD)",
+    "source_head": "8b48f9e (final K HEAD)",
     "outcome": "killed",
     "fault": "evidence.py: attempted-input gating removed from maybe_queue_semantic (failed-bundle retry storm)",
     "fault_file": "services/api/standardphysics_api/evidence.py",

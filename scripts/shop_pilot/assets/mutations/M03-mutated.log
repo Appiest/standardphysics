@@ -1,12 +1,12 @@
-F.......                                                                 [100%]
+F.....                                                                   [100%]
 =================================== FAILURES ===================================
 _____ test_legacy_geometry_complete_stays_browsable_with_semantics_blocked _____
 
-make_client = <function make_client.<locals>.build at 0x1088f2160>
+make_client = <function make_client.<locals>.build at 0x112cc5120>
 
     def test_legacy_geometry_complete_stays_browsable_with_semantics_blocked(make_client):
         stages, calls = _closing_stages()
-        with make_client(stages=stages) as client:
+        with make_client(stages=stages, evidence_settle_seconds=0.0) as client:
             scan_id = create_scan(client)
             _complete_geometry(client, scan_id)
             completed = client.post(f"/api/scans/{scan_id}/complete")
@@ -31,4 +31,4 @@ services/api/tests/test_evidence_closure.py:110: AssertionError
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 =========================== short test summary info ============================
 FAILED services/api/tests/test_evidence_closure.py::test_legacy_geometry_complete_stays_browsable_with_semantics_blocked
-1 failed, 7 passed, 1 warning in 0.68s
+1 failed, 5 passed, 1 warning in 0.60s
