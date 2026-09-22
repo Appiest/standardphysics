@@ -21,10 +21,11 @@ import tempfile
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
+from standardphysics_contracts.hashing import graph_hash  # noqa: F401  (import path probe)
+
 from standardphysics_api.app import create_app
 from standardphysics_api.settings import Settings
 from standardphysics_api.stages import Stages, preview_ledger
-from standardphysics_contracts.hashing import graph_hash  # noqa: F401  (import path probe)
 
 OUT_DIR = pathlib.Path("scripts/shop_pilot/assets/slices/i1")
 
