@@ -221,36 +221,74 @@ def _finding_row(
     )
 
 
+_SUBJECT_MATCHES = {
+    "door": lambda node: node.kind in {"door", "opening"}
+    or "door" in (node.raw_category or "").casefold(),
+    "entrance": lambda node: node.kind in {"door", "opening"}
+    or "door" in (node.raw_category or "").casefold(),
+    "service_counter": lambda node: node.kind in {"service_counter", "counter"}
+    or "counter" in (node.raw_category or "").casefold()
+    or "counter" in node.label.casefold(),
+    "point_of_sale": lambda node: node.kind in {"point_of_sale", "counter"}
+    or "counter" in (node.raw_category or "").casefold()
+    or "counter" in node.label.casefold(),
+    "dining_surface": lambda node: "table" in (node.raw_category or "").casefold(),
+    "floor": lambda node: node.kind == "floor"
+    or "floor" in (node.raw_category or "").casefold(),
+    "wall_mounted": lambda node: node.kind == "wall"
+    or "wall" in (node.raw_category or "").casefold(),
+    "restroom": lambda node: "restroom" in (node.raw_category or "").casefold()
+    or "restroom" in node.label.casefold(),
+}
+"""Requirement subjects read from the pack's applies_to, matched against the
+graph's own categories and labels. A locus that mixes a subject with its
+blockers (the counter and the chairs crowding its approach) must row the
+subject, never whatever node happens to come first."""
+
+
 def _item_for(
     check: Check, finding: Finding, index: int, total: int, graph: SceneGraph
 ) -> ScopeItem:
-    """The measured item a finding is about, or the site when it names none.
+    """The item a finding is about, rooted in the graph's own categories.
 
-    A finding's locus carries the nodes the measurement rested on. The first
-    node that exists in the graph becomes the item, with its id bound into the
-    slug so the obligation stays stable across revisions. A site-level finding
-    (no locus) keeps the site slug it always had.
+    A locus that names one node becomes that node. A locus that names several
+    (a counter plus the chairs crowding its clear floor space) prefers the
+    node matching the requirement's subject, and only falls back to the first
+    locus node when nothing matches. A finding with no locus keeps the site
+    slug it always had. A question finding observes nothing yet: whatever the
+    row names, it stays unobserved until a capture answers it.
     """
     nodes = _locus_nodes(finding, graph)
     if nodes:
-        node = nodes[0]
+        node = _subject_node(nodes, getattr(check, "applies_to", []) or [])
         kind = _ITEM_KINDS_FOR_NODES.get(node.kind, "object")
+        observed = finding.outcome != "question"
         return ScopeItem(
             item_id=node.id,
             item_slug=f"{check.id}:{node.id}",
             item_kind=kind,
             label=node.label,
-            observed=True,
-            source="measured",
+            observed=observed,
+            source="measured" if observed else "requested_not_observed",
         )
     slug = f"site:{check.id}" if total == 1 else f"site:{check.id}:{index}"
+    observed = finding.outcome != "question" and finding.measured_inches is not None
     return ScopeItem(
         item_slug=slug,
         item_kind="site",
         label=finding.title or check.title,
-        observed=True,
-        source="measured",
+        observed=observed,
+        source="measured" if observed else "requested_not_observed",
     )
+
+
+def _subject_node(nodes: list, applies_to: list[str]):
+    matchers = [_SUBJECT_MATCHES[subject] for subject in applies_to if subject in _SUBJECT_MATCHES]
+    for matcher in matchers:
+        for node in nodes:
+            if matcher(node):
+                return node
+    return nodes[0]
 
 
 def _locus_nodes(finding: Finding, graph: SceneGraph) -> list:
@@ -426,7 +464,7 @@ def build_evidence_dossier(
     site: Mapping[str, str],
     control_measurement_gaps: list[str],
     recapture_notes: list[str],
-    before_after: list[str] | None = None,
+    before_after: list | None = None,
 ) -> dict:
     """The scoped evidence dossier G13 describes, from a frozen manifest.
 
@@ -437,12 +475,19 @@ def build_evidence_dossier(
     unless complete, so an unreviewed or unevaluated requirement can never
     fall out of the dossier.
 
-    `before_after` holds recommendation evidence and stays absent (and the
-    dossier says so) when no justified before/after exists at this revision.
+    The assessment is bound to the manifest by identity before anything is
+    published: an assessment from another scan, revision, graph or rulepack is
+    a DossierIdentityError, never a dossier.
+
+    `before_after` holds recommendation evidence; any nonempty entry must
+    carry real before AND after measurements with provenance or the dossier
+    refuses, so an unmeasured claim can never be marked justified.
     """
     from collections import defaultdict
 
     allowed = {"satisfied", "violation", "needs_verification", "not_applicable", "unobserved"}
+    _bind_assessment_identity(manifest, assessment)
+    before_after = _validated_before_after(before_after)
     by_requirement: dict[str, list[dict]] = defaultdict(list)
     for row in manifest.rows:
         if not row.requested:
@@ -533,6 +578,54 @@ def build_evidence_dossier(
             "note": "a complete dossier can truthfully contain violations and unknowns, and never certifies the site",
         },
     }
+
+
+class DossierIdentityError(ValueError):
+    """The assessment does not belong to the manifest it is being published with."""
+
+    def __init__(self, field: str, manifest_value, assessment_value) -> None:
+        self.field = field
+        self.manifest_value = manifest_value
+        self.assessment_value = assessment_value
+        super().__init__(
+            f"assessment and scope manifest disagree on {field}: "
+            f"manifest {manifest_value!r} vs assessment {assessment_value!r}"
+        )
+
+
+class DossierProvenanceError(ValueError):
+    """A before/after recommendation carries no measured provenance."""
+
+
+def _bind_assessment_identity(manifest: ScopeManifest, assessment: Assessment) -> None:
+    """The assessment the dossier publishes must be the manifest's own."""
+    pairs = [
+        ("scan_id", str(manifest.scan_id), str(assessment.scan_id)),
+        ("graph_revision", manifest.graph_revision, assessment.graph_revision),
+        ("graph_hash", manifest.graph_hash, assessment.graph_hash),
+        ("rulepack_version", manifest.rulepack_version, assessment.rulepack_version),
+    ]
+    for field, manifest_value, assessment_value in pairs:
+        if manifest_value != assessment_value:
+            raise DossierIdentityError(field, manifest_value, assessment_value)
+
+
+def _validated_before_after(entries: list | None) -> list:
+    """Entries without measured before/after provenance are refused outright."""
+    clean = list(entries or [])
+    for entry in clean:
+        if not isinstance(entry, dict):
+            raise DossierProvenanceError(
+                f"before_after entry is not a record: {entry!r}"
+            )
+        for side in ("before", "after"):
+            record = entry.get(side)
+            if not isinstance(record, dict) or not record.get("measurement") or not record.get("provenance"):
+                raise DossierProvenanceError(
+                    f"before_after entry {entry!r} lacks a measured {side} "
+                    "record with measurement and provenance"
+                )
+    return clean
 
 
 def _hash(**fields) -> str:

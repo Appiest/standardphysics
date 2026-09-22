@@ -222,3 +222,117 @@ class TestEvidenceDossier:
         )
         assert dossier["before_after"]["justified"] is False
         assert dossier["before_after"]["entries"] == []
+
+
+class TestDossierTrustBoundary:
+    """The supervisor's boundary repro: an assessment from a different scan,
+    revision, graph or rulepack must never ride a manifest into a dossier."""
+
+    def _parts(self, manifest, pack):
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        return graph, scenario, pack, book, assess(
+            graph, scenario, PipelineMeasurements(), rules=pack, ledger=book, max_tier=3,
+        )
+
+    def test_a_different_scan_id_is_refused(self, manifest, pack):
+        _, _, _, _, result = self._parts(manifest, pack)
+        from standardphysics_api.scope_manifest import DossierIdentityError
+        alien = result.assessment.model_copy(
+            update={"scan_id": "78269703-964c-4147-b602-e60bd9d4b097"}
+        )
+        with pytest.raises(DossierIdentityError) as caught:
+            build_evidence_dossier(
+                manifest, alien, site={}, control_measurement_gaps=[], recapture_notes=[],
+            )
+        assert caught.value.field == "scan_id"
+
+    def test_a_foreign_revision_is_refused(self, manifest, pack):
+        _, _, _, _, result = self._parts(manifest, pack)
+        from standardphysics_api.scope_manifest import DossierIdentityError
+        alien = result.assessment.model_copy(update={"graph_revision": 999})
+        with pytest.raises(DossierIdentityError) as caught:
+            build_evidence_dossier(
+                manifest, alien, site={}, control_measurement_gaps=[], recapture_notes=[],
+            )
+        assert caught.value.field == "graph_revision"
+
+    def test_a_foreign_graph_hash_is_refused(self, manifest, pack):
+        _, _, _, _, result = self._parts(manifest, pack)
+        from standardphysics_api.scope_manifest import DossierIdentityError
+        alien = result.assessment.model_copy(update={"graph_hash": "f" * 64})
+        with pytest.raises(DossierIdentityError) as caught:
+            build_evidence_dossier(
+                manifest, alien, site={}, control_measurement_gaps=[], recapture_notes=[],
+            )
+        assert caught.value.field == "graph_hash"
+
+    def test_a_foreign_rulepack_is_refused(self, manifest, pack):
+        _, _, _, _, result = self._parts(manifest, pack)
+        from standardphysics_api.scope_manifest import DossierIdentityError
+        alien = result.assessment.model_copy(update={"rulepack_version": "9.9.9"})
+        with pytest.raises(DossierIdentityError) as caught:
+            build_evidence_dossier(
+                manifest, alien, site={}, control_measurement_gaps=[], recapture_notes=[],
+            )
+        assert caught.value.field == "rulepack_version"
+
+    def test_a_matching_assessment_is_accepted(self, manifest, pack):
+        _, _, _, _, result = self._parts(manifest, pack)
+        dossier = build_evidence_dossier(
+            manifest, result.assessment, site={},
+            control_measurement_gaps=[], recapture_notes=[],
+        )
+        assert dossier["pinned"]["scan_id"] == str(manifest.scan_id)
+
+
+class TestDossierBeforeAfterProvenance:
+    def test_an_entry_without_measured_sides_is_refused(self, manifest, pack):
+        from standardphysics_api.scope_manifest import DossierProvenanceError
+
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        result = assess(graph, scenario, PipelineMeasurements(),
+                        rules=pack, ledger=book, max_tier=3)
+        with pytest.raises(DossierProvenanceError):
+            build_evidence_dossier(
+                manifest, result.assessment, site={},
+                control_measurement_gaps=[], recapture_notes=[],
+                before_after=[{"claim": "unsupported claim"}],
+            )
+
+    def test_a_measured_before_after_is_justified(self, manifest, pack):
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        result = assess(graph, scenario, PipelineMeasurements(),
+                        rules=pack, ledger=book, max_tier=3)
+        dossier = build_evidence_dossier(
+            manifest, result.assessment, site={},
+            control_measurement_gaps=[], recapture_notes=[],
+            before_after=[{
+                "before": {"measurement": {"inches": 31.0}, "provenance": {"scan": "r0"}},
+                "after": {"measurement": {"inches": 36.0}, "provenance": {"scan": "r1"}},
+            }],
+        )
+        assert dossier["before_after"]["justified"] is True
+        assert len(dossier["before_after"]["entries"]) == 1
+
+
+class TestDossierItemRooting:
+    def test_the_approach_rows_the_counter_not_a_blocking_chair(self, manifest, pack):
+        from standardphysics_api.scope_manifest import _subject_node
+        from standardphysics_fixtures.shop import node_id
+
+        graph = build_graph()
+        chair = graph.by_id(node_id("chair_3"))
+        counter = graph.by_id(node_id("counter"))
+        assert _subject_node([chair, counter], ["service_counter"]).id == counter.id
+
+    def test_question_rows_observe_nothing(self, manifest):
+        for row in manifest.rows:
+            if row.requirement_id in ("door_hardware", "entrance_threshold", "floor_surface"):
+                assert row.item.observed is False, row.requirement_id
+                assert row.item.source == "requested_not_observed", row.requirement_id
