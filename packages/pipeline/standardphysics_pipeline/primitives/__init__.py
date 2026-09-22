@@ -15,13 +15,25 @@ from .registry import (
     primitive,
     vocabulary,
 )
+from .uncertainty import (  # noqa: F401  (re-exported for lanes consuming bounds)
+    MeasurementBounds,
+    combine,
+    compare,
+    from_controls,
+    unknown_bounds,
+)
 
 __all__ = [
     "BadArguments",
     "Context",
+    "MeasurementBounds",
     "Primitive",
     "UnknownPrimitive",
     "call",
+    "combine",
+    "compare",
+    "from_controls",
     "primitive",
+    "unknown_bounds",
     "vocabulary",
 ]
