@@ -50,6 +50,171 @@ function FrameThumb({ frame, selected, onChoose }: { frame: FrameEntry; selected
   );
 }
 
+function DrawFrame({ frame, alt, surfaceRef, onDown, onMove, onUp }: {
+  frame: FrameEntry;
+  alt: string;
+  surfaceRef: React.RefObject<HTMLImageElement | null>;
+  onDown: (event: React.PointerEvent<HTMLImageElement>) => void;
+  onMove: (event: React.PointerEvent<HTMLImageElement>) => void;
+  onUp: () => void;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <p role="status" className="p-3 text-xs text-ink-muted">
+        This photo could not be loaded from the server. Pick another one.
+      </p>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      ref={surfaceRef}
+      src={frame.image_url}
+      alt={alt}
+      draggable={false}
+      className="max-h-[42vh] w-full touch-none select-none object-contain lg:max-h-[50vh]"
+      onError={() => setFailed(true)}
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+    />
+  );
+}
+
+function ListStatus({ listState, listingError, onRetry }: { listState: ListState; listingError: string | null; onRetry: () => void }) {
+  if (listState === "loading") {
+    return <p role="status" className="text-sm text-ink-muted">Loading the photos from your scan…</p>;
+  }
+  if (listState === "unavailable") {
+    return (
+      <p role="status" className="rounded-lg bg-rule/30 p-3 text-xs text-ink-muted">
+        This server does not serve a photo list yet, so there is no frame to draw on. Nothing is saved without real
+        frame pixels. Your photos are still stored with the scan; update the server&apos;s review routes, then try again.
+      </p>
+    );
+  }
+  if (listState === "failed") {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-rose-50 p-3 text-xs text-problem">
+        <span role="alert">{listingError}</span>
+        <Button variant="quiet" onClick={onRetry}>Try loading again</Button>
+      </div>
+    );
+  }
+  return null;
+}
+
+function FramePicker({ frames, targetLabel, selected, box, listRef, surfaceRef, onChoose, onDown, onMove, onUp }: {
+  frames: FrameEntry[];
+  targetLabel: string;
+  selected: FrameEntry | null;
+  box: PointerBox | null;
+  listRef: React.RefObject<HTMLDivElement | null>;
+  surfaceRef: React.RefObject<HTMLImageElement | null>;
+  onChoose: (frame: FrameEntry) => void;
+  onDown: (event: React.PointerEvent<HTMLImageElement>) => void;
+  onMove: (event: React.PointerEvent<HTMLImageElement>) => void;
+  onUp: () => void;
+}) {
+  if (frames.length === 0) {
+    return (
+      <p role="status" className="rounded-lg bg-rule/30 p-3 text-xs text-ink-muted">
+        This scan has no stored photographs to mark in. Take more photos in the app, upload them, then try again.
+      </p>
+    );
+  }
+  return (
+    <>
+      <p className="text-xs text-ink-muted">
+        Pick the photo that shows the {targetLabel}, then drag a box around it.
+      </p>
+      <div ref={listRef} role="group" aria-label="Your scan photos" className="grid max-h-40 grid-cols-4 gap-2 overflow-y-auto pr-1 sm:grid-cols-6">
+        {frames.map((frame, index) => (
+          <div key={frame.frame_id} className="shrink-0">
+            <FrameThumb frame={frame} selected={frame.frame_id === selected?.frame_id} onChoose={() => onChoose(frame)} />
+            <p className="mt-0.5 text-center text-[10px] text-ink-muted">{index + 1}</p>
+          </div>
+        ))}
+      </div>
+      {selected === null ? (
+        <p className="text-xs text-ink-muted">Choose a photo above to start marking.</p>
+      ) : (
+        <div className="overflow-hidden rounded-xl bg-rule/40">
+          <DrawFrame
+            key={selected.frame_id}
+            frame={selected}
+            alt={`Photo ${selected.frame_id}. Drag a box around the ${targetLabel} with your finger`}
+            surfaceRef={surfaceRef}
+            onDown={onDown}
+            onMove={onMove}
+            onUp={onUp}
+          />
+          {box && isUsablePointerBox(box) && (
+            <p className="px-2 py-1 text-[11px] text-ink-muted">
+              {pointerBoxLabel(box)}. Saved marks keep this spot as photographed evidence.
+            </p>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function MarkForm({ suggestedNodeId, attachNode, setAttachNode, note, setNote, saving, refusal, canSubmit, onClose, onSave }: {
+  suggestedNodeId: string | null;
+  attachNode: boolean;
+  setAttachNode: (value: boolean) => void;
+  note: string;
+  setNote: (value: string) => void;
+  saving: boolean;
+  refusal: string | null;
+  canSubmit: boolean;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <>
+      <label className="flex items-start gap-2 text-xs text-ink-muted">
+        <input
+          type="checkbox"
+          checked={attachNode}
+          onChange={(event) => setAttachNode(event.target.checked)}
+          disabled={suggestedNodeId === null}
+          className="mt-0.5 size-4 shrink-0 accent-accent"
+        />
+        <span>
+          {suggestedNodeId === null
+            ? "No measured object selected. The mark stays photo-only with no position on the map."
+            : "Attach to the measured object: it keeps that object's measured position. The mark is never moved to where you clicked."}
+        </span>
+      </label>
+
+      <label className="grid gap-1 text-xs font-medium text-ink-muted">
+        Note (optional)
+        <textarea
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          maxLength={500}
+          rows={2}
+          placeholder="What you can see in this spot"
+          className="w-full resize-none rounded-lg border border-rule bg-sheet px-2 py-2 text-sm text-ink"
+        />
+      </label>
+
+      {saving && <p role="status" className="text-xs text-ink-muted">Saving your mark…</p>}
+      {refusal && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-problem">{refusal}</p>}
+
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="quiet" onClick={onClose}>Cancel</Button>
+        <Button variant="primary" disabled={!canSubmit} onClick={onSave}>
+          Save manual mark
+        </Button>
+      </div>
+    </>
+  );
+}
+
 /**
  * A person picks one of their scan's real photographs and points at the pixels
  * of a target the pipeline missed. No invented frame identity exists: every
@@ -95,8 +260,11 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
     }
   }, [scanId]);
 
-  useEffect(() => { void load(); }, [load]);
-  useEffect(() => { closeRef.current?.focus(); }, []);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => { void load(); });
+    closeRef.current?.focus();
+    return () => cancelAnimationFrame(frame);
+  }, [load]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -169,135 +337,37 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
           </button>
         </div>
 
-        {listState === "loading" && (
-          <p role="status" className="text-sm text-ink-muted">Loading the photos from your scan…</p>
-        )}
-        {listState === "unavailable" && (
-          <p role="status" className="rounded-lg bg-rule/30 p-3 text-xs text-ink-muted">
-            This server does not serve a photo list yet, so there is no frame to draw on. Nothing is saved without real
-            frame pixels. Your photos are still stored with the scan; update the server&apos;s review routes, then try again.
-          </p>
-        )}
-        {listState === "failed" && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-rose-50 p-3 text-xs text-problem">
-            <span role="alert">{listingError}</span>
-            <Button variant="quiet" onClick={() => void load()}>Try loading again</Button>
-          </div>
-        )}
-        {listState === "ready" && frames.length === 0 && (
-          <p role="status" className="rounded-lg bg-rule/30 p-3 text-xs text-ink-muted">
-            This scan has no stored photographs to mark in. Take more photos in the app, upload them, then try again.
-          </p>
-        )}
-        {listState === "ready" && frames.length > 0 && (
-          <>
-            <p className="text-xs text-ink-muted">
-              Pick the photo that shows the {targetLabel}, then drag a box around it.
-            </p>
-            <div ref={listRef} role="group" aria-label="Your scan photos" className="grid max-h-40 grid-cols-4 gap-2 overflow-y-auto pr-1 sm:grid-cols-6">
-              {frames.map((frame, index) => (
-                <div key={frame.frame_id} className="shrink-0">
-                  <FrameThumb frame={frame} selected={frame.frame_id === selectedId} onChoose={() => choose(frame)} />
-                  <p className="mt-0.5 text-center text-[10px] text-ink-muted">{index + 1}</p>
-                </div>
-              ))}
-            </div>
-            {selected === null ? (
-              <p className="text-xs text-ink-muted">Choose a photo above to start marking.</p>
-            ) : (
-              <div className="overflow-hidden rounded-xl bg-rule/40">
-                <DrawFrame
-                  key={selected.frame_id}
-                  frame={selected}
-                  alt={`Photo ${selected.frame_id}. Drag a box around the ${targetLabel} with your finger`}
-                  surfaceRef={surfaceRef}
-                  onDown={onPointerDown}
-                  onMove={onPointerMove}
-                  onUp={onPointerEnd}
-                />
-                {box && isUsablePointerBox(box) && (
-                  <p className="px-2 py-1 text-[11px] text-ink-muted">
-                    {pointerBoxLabel(box)}. Saved marks keep this spot as photographed evidence.
-                  </p>
-                )}
-              </div>
-            )}
-          </>
-        )}
+        <ListStatus listState={listState} listingError={listingError} onRetry={() => void load()} />
 
         {listState === "ready" && (
           <>
-            <label className="flex items-start gap-2 text-xs text-ink-muted">
-              <input
-                type="checkbox"
-                checked={attachNode}
-                onChange={(event) => setAttachNode(event.target.checked)}
-                disabled={suggestedNodeId === null}
-                className="mt-0.5 size-4 shrink-0 accent-accent"
-              />
-              <span>
-                {suggestedNodeId === null
-                  ? "No measured object selected. The mark stays photo-only with no position on the map."
-                  : "Attach to the measured object: it keeps that object's measured position. The mark is never moved to where you clicked."}
-              </span>
-            </label>
-
-            <label className="grid gap-1 text-xs font-medium text-ink-muted">
-              Note (optional)
-              <textarea
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                maxLength={500}
-                rows={2}
-                placeholder="What you can see in this spot"
-                className="w-full resize-none rounded-lg border border-rule bg-sheet px-2 py-2 text-sm text-ink"
-              />
-            </label>
-
-            {saving && <p role="status" className="text-xs text-ink-muted">Saving your mark…</p>}
-            {refusal && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-problem">{refusal}</p>}
-
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button variant="quiet" onClick={onClose}>Cancel</Button>
-              <Button variant="primary" disabled={!canSubmit} onClick={() => void save()}>
-                Save manual mark
-              </Button>
-            </div>
+            <FramePicker
+              frames={frames}
+              targetLabel={targetLabel}
+              selected={selected}
+              box={box}
+              listRef={listRef}
+              surfaceRef={surfaceRef}
+              onChoose={choose}
+              onDown={onPointerDown}
+              onMove={onPointerMove}
+              onUp={onPointerEnd}
+            />
+            <MarkForm
+              suggestedNodeId={suggestedNodeId}
+              attachNode={attachNode}
+              setAttachNode={setAttachNode}
+              note={note}
+              setNote={setNote}
+              saving={saving}
+              refusal={refusal}
+              canSubmit={canSubmit}
+              onClose={onClose}
+              onSave={() => void save()}
+            />
           </>
         )}
       </div>
     </div>
-  );
-}
-
-function DrawFrame({ frame, alt, surfaceRef, onDown, onMove, onUp }: {
-  frame: FrameEntry;
-  alt: string;
-  surfaceRef: React.RefObject<HTMLImageElement | null>;
-  onDown: (event: React.PointerEvent<HTMLImageElement>) => void;
-  onMove: (event: React.PointerEvent<HTMLImageElement>) => void;
-  onUp: () => void;
-}) {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
-    return (
-      <p role="status" className="p-3 text-xs text-ink-muted">
-        This photo could not be loaded from the server. Pick another one.
-      </p>
-    );
-  }
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      ref={surfaceRef}
-      src={frame.image_url}
-      alt={alt}
-      draggable={false}
-      className="max-h-[42vh] w-full touch-none select-none object-contain lg:max-h-[50vh]"
-      onError={() => setFailed(true)}
-      onPointerDown={onDown}
-      onPointerMove={onMove}
-      onPointerUp={onUp}
-    />
   );
 }

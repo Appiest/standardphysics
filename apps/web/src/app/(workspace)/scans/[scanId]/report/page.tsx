@@ -3,9 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FloorPlan } from "@/components/FloorPlan";
 import { PrintButton } from "@/components/PrintButton";
+import { OutcomeMatrix } from "@/components/workspace/OutcomeMatrix";
 import { getReport } from "@/lib/api";
 import { formatInches, groupFindings } from "@/lib/findings";
-import type { Finding, ReviewedRule, Scenario } from "@/types/contracts";
+import { scopedSummary } from "@/lib/outcomes";
+import type { Assessment, Finding, ReviewedRule, Scenario } from "@/types/contracts";
 import { requireSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -159,6 +161,26 @@ function PreviewNotice({ preview }: { preview: boolean }) {
   );
 }
 
+function ScopedSection({ scope, findings }: { scope: NonNullable<Assessment["scope"]>; findings: Finding[] }) {
+  const summary = scopedSummary(scope);
+  return (
+    <section className="mt-12 break-inside-avoid" aria-label="Scoped check outcomes">
+      <h2 className="heading-display text-2xl">Scoped check outcomes</h2>
+      {summary && <p className="mt-2 text-ink-muted">{summary}</p>}
+      <div className="mt-4 border-t border-rule">
+        <OutcomeMatrix scope={scope} findings={findings} />
+      </div>
+    </section>
+  );
+}
+
+function ScopedOrNothing({ assessment }: { assessment: Assessment | null }) {
+  const scope = assessment?.scope ?? null;
+  const findings = assessment?.findings ?? [];
+  if (scope === null) return null;
+  return <ScopedSection scope={scope} findings={findings} />;
+}
+
 export default async function ReportPage({ params }: PageProps<"/scans/[scanId]/report">) {
   await requireSession();
   const { scanId } = await params;
@@ -195,6 +217,9 @@ export default async function ReportPage({ params }: PageProps<"/scans/[scanId]/
       </header>
 
       <ProblemsSection problems={groups.problems} />
+
+      <ScopedOrNothing assessment={assessment} />
+
       <NextStepsSection questions={groups.questions} />
 
       <WhatWeChecked scenario={scenario} passes={groups.passes} rules={rules} />
