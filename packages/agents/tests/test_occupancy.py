@@ -16,6 +16,7 @@ from standardphysics_agents.fix.occupancy import (
     DEFAULT_OCCUPANTS,
     MANUAL_WHEELCHAIR,
     OCCUPANTS,
+    HorizontalReach,
     OccupantProfile,
     ensure_spacing,
     occupant,
@@ -70,6 +71,12 @@ class TestNamedDefaults:
             assert profile.body_length_inches > 0
             assert profile.turning_diameter_inches > 0
             assert profile.personal_reach_inches is not None
+
+    def test_defaults_never_carry_a_horizontal_reach(self):
+        """A hand-reach distance is a fact about the person. No default is
+        allowed to invent one from the chair."""
+        for profile in DEFAULT_OCCUPANTS:
+            assert profile.horizontal_reach is None
 
     def test_personal_reach_is_an_assumption_not_a_rule_limit(self):
         """The default reach is a screening number about the person. Nothing
@@ -133,6 +140,42 @@ class TestAdjustment:
             MANUAL_WHEELCHAIR.body_length_inches,
             MANUAL_WHEELCHAIR.turning_diameter_inches,
         )
+
+    def test_changing_body_dimensions_does_not_touch_reach_assumptions(self):
+        widened = resize(MANUAL_WHEELCHAIR, body_width_inches=40.0)
+        assert widened.horizontal_reach is None
+        assert widened.personal_reach_inches == MANUAL_WHEELCHAIR.personal_reach_inches
+
+
+class TestHorizontalReach:
+    def test_it_carries_a_value_and_provenance(self):
+        reach = HorizontalReach(30.0, "owner measured fingertip reach")
+        assert reach.inches == 30.0
+        assert "owner" in reach.provenance
+
+    def test_a_value_without_provenance_is_refused(self):
+        with pytest.raises(ValueError):
+            HorizontalReach(30.0, "")
+
+    @pytest.mark.parametrize("bad", [0.0, -5.0, math.inf])
+    def test_non_positive_or_non_finite_values_are_refused(self, bad):
+        with pytest.raises(ValueError):
+            HorizontalReach(bad, "test suite")
+
+    def test_a_profile_keeps_an_explicit_reach_and_can_drop_it(self):
+        provided = HorizontalReach(30.0, "test suite")
+        with_reach = resize(MANUAL_WHEELCHAIR, horizontal_reach=provided)
+        assert with_reach.horizontal_reach == provided
+        assert MANUAL_WHEELCHAIR.horizontal_reach is None
+
+    def test_the_chair_width_is_not_the_reach(self):
+        """The two quantities live on separate fields and neither resize
+        path mixes them."""
+        wide = resize(MANUAL_WHEELCHAIR, body_width_inches=60.0)
+        assert wide.horizontal_reach is None
+        with_reach = resize(wide, horizontal_reach=HorizontalReach(30.0, "test suite"))
+        assert with_reach.body_width_inches == 60.0
+        assert with_reach.horizontal_reach.inches == 30.0
 
 
 class TestSweptSampling:

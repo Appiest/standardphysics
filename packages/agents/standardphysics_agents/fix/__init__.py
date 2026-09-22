@@ -22,6 +22,7 @@ from .occupancy import (
     POWER_WHEELCHAIR,
     SHORT_REACH,
     WALKER_USER,
+    HorizontalReach,
     OccupantProfile,
     ensure_spacing,
     occupant,
@@ -47,5 +48,6 @@ __all__ = [
     "support_of", "target_height_inches",
     "BARIATRIC_WHEELCHAIR", "MANUAL_WHEELCHAIR", "OCCUPANTS",
     "POWER_WHEELCHAIR", "SHORT_REACH", "WALKER_USER", "OccupantProfile",
+    "HorizontalReach",
     "ensure_spacing", "occupant", "resize",
 ]

@@ -28,13 +28,36 @@ _KEEP_SENTINEL = object()
 
 
 @dataclass(frozen=True)
+class HorizontalReach:
+    """A person-provided horizontal reach assumption, with provenance.
+
+    How far sideways this occupant can grasp is a fact about the person, not
+    about their chair: a wheelchair's body bounds where the chair fits, never
+    where the hand lands. There are no defaults and no geometric inference.
+    Without one of these on a profile, horizontal reach is unmeasured, and a
+    result that lacks one must say so instead of guessing.
+    """
+
+    inches: float
+    provenance: str
+    """Who provided this number. Never an agent alias."""
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.inches) or self.inches <= 0:
+            raise ValueError("horizontal reach must be finite and positive")
+        if not self.provenance.strip():
+            raise ValueError("a horizontal reach must name who provided it")
+
+
+@dataclass(frozen=True)
 class OccupantProfile:
     """Physical screening dimensions for one kind of occupant.
 
     All inch fields are positive and finite by construction. `personal_reach_
     inches` is the highest point this person can grasp while seated; it is a
     screening assumption about the person, never a legal maximum, and it does
-    not appear in any rule.
+    not appear in any rule. `horizontal_reach` is the sideways grasp distance,
+    present only when someone actually provided it.
     """
 
     id: str
@@ -43,6 +66,7 @@ class OccupantProfile:
     body_length_inches: float
     turning_diameter_inches: float
     personal_reach_inches: float | None = None
+    horizontal_reach: HorizontalReach | None = None
 
     def __post_init__(self) -> None:
         values = {
@@ -153,13 +177,15 @@ def resize(
     body_length_inches: float | object = _KEEP_SENTINEL,
     turning_diameter_inches: float | object = _KEEP_SENTINEL,
     personal_reach_inches: float | None | object = _KEEP_SENTINEL,
+    horizontal_reach: HorizontalReach | None | object = _KEEP_SENTINEL,
 ) -> OccupantProfile:
-    """A new profile with the same filename identity and new dimensions.
+    """A new profile with the same identity and new dimensions.
 
-    The original profile is frozen; nothing here mutates a default. Personal
-    reach adjusts freely (including to `None`, "not assumed") because it is a
-    personal screening assumption, while the rule pack that holds any legal
-    reach band is untouched by this call.
+    The original profile is frozen; nothing here mutates a default. Body
+    dimensions describe the chair, the reach assumptions describe the person,
+    and none of them implies any other: changing the chair's width does not
+    produce a hand-reach number, and adding a hand-reach number does not
+    change the chair.
     """
 
     def pick(current, wanted):
@@ -180,6 +206,7 @@ def resize(
         personal_reach_inches=pick(
             profile.personal_reach_inches, personal_reach_inches
         ),
+        horizontal_reach=pick(profile.horizontal_reach, horizontal_reach),
     )
 
 
@@ -227,6 +254,7 @@ __all__ = [
     "POWER_WHEELCHAIR",
     "SHORT_REACH",
     "WALKER_USER",
+    "HorizontalReach",
     "OccupantProfile",
     "ensure_spacing",
     "occupant",

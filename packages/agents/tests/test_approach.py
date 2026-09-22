@@ -20,6 +20,7 @@ from standardphysics_agents.fix.approach import (
 )
 from standardphysics_agents.fix.occupancy import (
     MANUAL_WHEELCHAIR,
+    HorizontalReach,
     resize,
 )
 from standardphysics_agents.fix.search import propose_fix
@@ -170,20 +171,51 @@ def ledger(pack):
     return book
 
 
+PROVIDED_REACH = HorizontalReach(30.0, "test fixture: owner-provided fingertip reach")
+"""An explicit, provenance-bearing personal assumption.
+
+Named profile defaults deliberately carry no horizontal reach; a test that
+expects a reach verdict supplies this one, exactly as a caller must."""
+
+
 class TestClearLayout:
-    def test_an_open_room_outlet_is_clear_for_a_manual_wheelchair(self):
+    def test_an_open_room_outlet_is_clear_when_horizontal_reach_is_provided(self):
         graph = _room("clear_room")
+        outlet = _outlet(graph, "west")
+        occupant = resize(MANUAL_WHEELCHAIR, horizontal_reach=PROVIDED_REACH)
+        result = evaluate_approach(
+            graph, outlet, _start(graph),
+            measure=FixtureMeasure(), occupants=(occupant,),
+        )
+        assert result.status == "clear", result.reasons
+        assert result.path is not None
+        assert result.aisle_width_inches >= occupant.travel_width_inches
+        assert result.obstruction_labels == ()
+        assert result.floor_supported is True
+        record = result.reaches[0]
+        assert record.vertical_status == "within_vertical_reach"
+        assert record.horizontal_status == "within_horizontal_reach"
+        assert record.horizontal_reach_provenance == PROVIDED_REACH.provenance
+
+    def test_without_a_horizontal_reach_assumption_the_approach_needs_verification(self):
+        """The geometry may pass and the height may be fine; without a
+        person-provided horizontal reach the target distance is unmeasured,
+        and unmeasured is never clear."""
+        graph = _room("unassumed_room")
         outlet = _outlet(graph, "west")
         result = evaluate_approach(
             graph, outlet, _start(graph),
             measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
         )
-        assert result.status == "clear", result.reasons
-        assert result.path is not None
-        assert result.aisle_width_inches >= MANUAL_WHEELCHAIR.travel_width_inches
-        assert result.obstruction_labels == ()
-        assert result.floor_supported is True
-        assert result.reaches[0].status == "within_personal_reach"
+        assert result.status == "needs_verification"
+        assert any(
+            "horizontal reach to the target is unmeasured" in reason
+            for reason in result.reasons
+        )
+        record = result.reaches[0]
+        assert record.horizontal_status == "unmeasured"
+        assert record.horizontal_reach_inches is None
+        assert record.horizontal_reach_provenance is None
 
     def test_the_wall_thin_attachment_is_not_a_solid_obstacle(self):
         """The wall the outlet hangs in occupies the grid. If the support is
@@ -193,7 +225,8 @@ class TestClearLayout:
         outlet = _outlet(graph, "west")
         result = evaluate_approach(
             graph, outlet, _start(graph),
-            measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
+            measure=FixtureMeasure(),
+            occupants=(resize(MANUAL_WHEELCHAIR, horizontal_reach=PROVIDED_REACH),),
         )
         assert result.status == "clear", result.reasons
         assert "below-reach obstruction" not in " ".join(result.reasons)
@@ -201,10 +234,15 @@ class TestClearLayout:
     def test_a_short_reach_profile_is_blocked_only_on_reach(self):
         graph = _room("reach_room")
         outlet = _outlet(graph, "west")
-        reachy = resize(MANUAL_WHEELCHAIR, personal_reach_inches=12.0)
+        reachy = resize(
+            MANUAL_WHEELCHAIR,
+            personal_reach_inches=12.0,
+            horizontal_reach=PROVIDED_REACH,
+        )
         standard = evaluate_approach(
             graph, outlet, _start(graph),
-            measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
+            measure=FixtureMeasure(),
+            occupants=(resize(MANUAL_WHEELCHAIR, horizontal_reach=PROVIDED_REACH),),
         )
         narrow = evaluate_approach(
             graph, outlet, _start(graph),
@@ -214,7 +252,10 @@ class TestClearLayout:
         assert narrow.status == "blocked"
         assert any("personal reach" in reason for reason in narrow.reasons)
 
-    def test_adjusting_one_profile_never_changes_another(self):
+    def test_changing_chair_width_never_changes_the_reach_evidence(self):
+        """The chair's body is collision geometry only. Widening it must not
+        conjure a hand-reach number, so the horizontal verdict stays exactly
+        as unmeasured as before."""
         graph = _room("adjust_room")
         outlet = _outlet(graph, "west")
         wider = resize(MANUAL_WHEELCHAIR, body_width_inches=48.0)
@@ -222,9 +263,32 @@ class TestClearLayout:
             graph, outlet, _start(graph),
             measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
         )
+        widened = evaluate_approach(
+            graph, outlet, _start(graph),
+            measure=FixtureMeasure(), occupants=(wider,),
+        )
         assert wider.body_width_inches != MANUAL_WHEELCHAIR.body_width_inches
-        assert standard.status == "clear"
         assert MANUAL_WHEELCHAIR.body_width_inches == 26.0
+        assert standard.reaches[0].horizontal_status == "unmeasured"
+        assert widened.reaches[0].horizontal_status == "unmeasured"
+        assert widened.reaches[0].horizontal_reach_inches is None
+
+    def test_an_explicit_reach_limit_behaves_independently_of_the_chair(self):
+        graph = _room("independent_room")
+        outlet = _outlet(graph, "west")
+        wide_reach = resize(
+            MANUAL_WHEELCHAIR,
+            body_width_inches=48.0,
+            horizontal_reach=PROVIDED_REACH,
+        )
+        result = evaluate_approach(
+            graph, outlet, _start(graph),
+            measure=FixtureMeasure(), occupants=(wide_reach,),
+        )
+        assert result.status == "clear"
+        record = result.reaches[0]
+        assert record.horizontal_status == "within_horizontal_reach"
+        assert record.horizontal_reach_inches == PROVIDED_REACH.inches
 
 
 class TestBlockedAisle:
@@ -314,7 +378,7 @@ class TestUnobservedInputs:
             measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
         )
         assert result.status == "needs_verification"
-        assert result.reaches[0].status == "unmeasured"
+        assert result.reaches[0].vertical_status == "unmeasured"
         assert any("unmeasured" in reason for reason in result.reasons)
 
     def test_an_unassumed_personal_reach_is_needs_verification(self):
@@ -326,7 +390,7 @@ class TestUnobservedInputs:
             measure=FixtureMeasure(), occupants=(no_reach,),
         )
         assert result.status == "needs_verification"
-        assert result.reaches[0].status == "unmeasured"
+        assert result.reaches[0].vertical_status == "unmeasured"
 
     def test_missing_inputs_are_never_promoted_to_clear(self):
         graph = _room("never_clear_room")
@@ -410,10 +474,10 @@ class TestFalseClearGuards:
     """Counterexamples from the supervisor review, each one a way the module
     used to claim reachable with no basis."""
 
-    def test_a_stop_far_from_the_target_is_blocked_on_the_body_envelope(self):
-        """Height reach alone once passed a stop 2.45 metres away. The
-        occupant's body envelope is the measured limit; the arm is not
-        assumed, so beyond it the approach is blocked, never clear."""
+    def test_a_stop_far_from_the_target_without_a_reach_assumption_needs_verification(self):
+        """The 2.45 metre false-clear, corrected: with no person-provided
+        horizontal reach, distance from the body says nothing about the
+        hand, so the result must ask rather than claim or refuse."""
         graph = _room("far_reach")
         outlet = _outlet(graph, "west")
         result = evaluate_approach(
@@ -421,11 +485,48 @@ class TestFalseClearGuards:
             measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
             approach_stop=Vec3(x=0.0, y=0.0, z=0.0),
         )
-        assert result.status == "blocked"
-        assert any("body" in reason and "envelope" in reason for reason in result.reasons)
+        assert result.status == "needs_verification"
+        assert any(
+            "horizontal reach to the target is unmeasured" in reason
+            for reason in result.reasons
+        )
         record = result.reaches[0]
-        assert record.horizontal_status == "beyond_body_envelope"
-        assert record.horizontal_distance_inches > record.body_envelope_radius_inches
+        assert record.horizontal_status == "unmeasured"
+        assert record.horizontal_distance_inches is not None
+        assert record.horizontal_distance_inches > 90.0
+
+    def test_a_far_stop_is_blocked_when_a_provided_reach_limit_is_exceeded(self):
+        """With an explicit, provenance-carrying limit, 2.45 metres is
+        unambiguously beyond it and the result can say blocked."""
+        graph = _room("far_reach_provided")
+        outlet = _outlet(graph, "west")
+        occupant = resize(MANUAL_WHEELCHAIR, horizontal_reach=PROVIDED_REACH)
+        result = evaluate_approach(
+            graph, outlet, _start(graph),
+            measure=FixtureMeasure(), occupants=(occupant,),
+            approach_stop=Vec3(x=0.0, y=0.0, z=0.0),
+        )
+        assert result.status == "blocked"
+        assert any("beyond the Manual wheelchair horizontal reach" in reason for reason in result.reasons)
+        record = result.reaches[0]
+        assert record.horizontal_status == "exceeded_horizontal_reach"
+        assert record.horizontal_reach_provenance == PROVIDED_REACH.provenance
+
+    def test_the_same_distance_within_the_provided_limit_is_not_blocked(self):
+        graph = _room("far_within_provided")
+        outlet = _outlet(graph, "west")
+        big_reach = resize(
+            MANUAL_WHEELCHAIR,
+            horizontal_reach=HorizontalReach(96.0, "test fixture: generous reach"),
+        )
+        result = evaluate_approach(
+            graph, outlet, _start(graph),
+            measure=FixtureMeasure(), occupants=(big_reach,),
+            approach_stop=Vec3(x=0.0, y=0.0, z=0.0),
+        )
+        record = result.reaches[0]
+        assert record.horizontal_status == "within_horizontal_reach"
+        assert result.status == "clear"
 
     def test_furniture_covering_the_outlet_is_not_a_support(self):
         """A sofa whose footprint covers the outlet's plan position used to
@@ -477,17 +578,19 @@ class TestFalseClearGuards:
         assert result.turning_space_inches is not None
         assert result.turning_space_inches < MANUAL_WHEELCHAIR.turning_diameter_inches
 
-    def test_a_stop_beside_the_target_is_within_the_body_envelope(self):
+    def test_a_stop_beside_the_target_with_a_provided_limit_is_within_it(self):
         graph = _room("beside_room")
         outlet = _outlet(graph, "west")
+        occupant = resize(MANUAL_WHEELCHAIR, horizontal_reach=PROVIDED_REACH)
         result = evaluate_approach(
             graph, outlet, _start(graph),
-            measure=FixtureMeasure(), occupants=(MANUAL_WHEELCHAIR,),
+            measure=FixtureMeasure(), occupants=(occupant,),
         )
         assert result.status == "clear"
         record = result.reaches[0]
-        assert record.horizontal_status == "at_target"
-        assert record.horizontal_distance_inches <= record.body_envelope_radius_inches
+        assert record.horizontal_status == "within_horizontal_reach"
+        assert record.horizontal_distance_inches <= PROVIDED_REACH.inches
+        assert record.horizontal_reach_provenance == PROVIDED_REACH.provenance
 
 
 class TestSuggestedStops:

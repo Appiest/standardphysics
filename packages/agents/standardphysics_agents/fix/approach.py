@@ -54,7 +54,7 @@ from .occupancy import (
 
 ApproachStatus = Literal["clear", "blocked", "needs_verification"]
 
-HorizontalStatus = Literal["at_target", "beyond_body_envelope", "unmeasured"]
+HorizontalStatus = Literal["within_horizontal_reach", "exceeded_horizontal_reach", "unmeasured"]
 
 OBSTRUCTION_STEP_METERS = 0.05
 """How finely the occupant-to-target line is sampled for furniture in the way."""
@@ -67,27 +67,35 @@ walkable evidence."""
 
 @dataclass(frozen=True)
 class ReachRecord:
-    """Personal reach for one occupant; legal reach is decided in the assessment.
+    """Personal reach for one occupant, split vertical from horizontal.
 
-    Height is the measured top of the target against the occupant's assumed
-    grasp ceiling. The horizontal distance from the standing point to the
-    target is screened against the occupant's own body envelope (half the
-    footprint diagonal): the body is measured, the arm is not, so nothing
-    beyond the body envelope is ever claimed reachable.
+    Vertical reach compares the measured height of the target against the
+    occupant's assumed grasp ceiling. Horizontal reach compares the measured
+    plan distance from the standing point against a person-provided grasp
+    distance with provenance; the chair's body is collision geometry only and
+    never produces a hand-reach number. A component with no assumption is
+    unmeasured, and unmeasured is never an answer.
     """
 
     occupant_id: str
     occupant_title: str
     target_height_inches: float | None
     personal_reach_inches: float | None
-    status: Literal["within_personal_reach", "beyond_personal_reach", "unmeasured"]
+    """Vertical grasp ceiling assumption; None when not assumed."""
+
+    vertical_status: Literal[
+        "within_vertical_reach", "beyond_vertical_reach", "unmeasured"
+    ]
     horizontal_distance_inches: float | None
-    horizontal_status: HorizontalStatus
-    body_envelope_radius_inches: float
+    horizontal_reach_inches: float | None
+    horizontal_reach_provenance: str | None
+    horizontal_status: Literal[
+        "within_horizontal_reach", "exceeded_horizontal_reach", "unmeasured"
+    ]
 
     @property
     def measured(self) -> bool:
-        return self.status != "unmeasured" and self.horizontal_status != "unmeasured"
+        return self.vertical_status != "unmeasured" and self.horizontal_status != "unmeasured"
 
 
 @dataclass(frozen=True)
@@ -96,8 +104,8 @@ class ApproachResult:
 
     `clear` means the measured approach holds for every occupant asked about:
     path, aisle, turn, mesh sweep, standing floor, a target beside the body
-    and within personal reach. It never means legally compliant, and every
-    unmeasured input keeps the status at `needs_verification`.
+    and within both personal reaches. It never means legally compliant, and
+    every unmeasured input keeps the status at `needs_verification`.
     """
 
     target_id: uuid.UUID
@@ -277,15 +285,22 @@ def _plan_gap_inches(stop: Vec3, target: SceneNode) -> float:
 def _reach_record(
     target: SceneNode, profile: OccupantProfile, stop: Vec3 | None
 ) -> ReachRecord:
-    horizontal: HorizontalStatus = "unmeasured"
     distance: float | None = None
     if stop is not None:
         distance = _plan_gap_inches(stop, target)
-        horizontal = (
-            "at_target"
-            if distance <= profile.envelope_radius_inches
-            else "beyond_body_envelope"
+
+    horizontal_status: HorizontalStatus = "unmeasured"
+    horizontal_inches: float | None = None
+    horizontal_provenance: str | None = None
+    if profile.horizontal_reach is not None and distance is not None:
+        horizontal_inches = profile.horizontal_reach.inches
+        horizontal_provenance = profile.horizontal_reach.provenance
+        horizontal_status = (
+            "within_horizontal_reach"
+            if distance <= profile.horizontal_reach.inches
+            else "exceeded_horizontal_reach"
         )
+
     height = target_height_inches(target)
     if height is None:
         return ReachRecord(
@@ -293,10 +308,11 @@ def _reach_record(
             occupant_title=profile.title,
             target_height_inches=None,
             personal_reach_inches=profile.personal_reach_inches,
-            status="unmeasured",
+            vertical_status="unmeasured",
             horizontal_distance_inches=distance,
-            horizontal_status=horizontal,
-            body_envelope_radius_inches=profile.envelope_radius_inches,
+            horizontal_reach_inches=horizontal_inches,
+            horizontal_reach_provenance=horizontal_provenance,
+            horizontal_status=horizontal_status,
         )
     if profile.personal_reach_inches is None:
         return ReachRecord(
@@ -304,25 +320,27 @@ def _reach_record(
             occupant_title=profile.title,
             target_height_inches=height,
             personal_reach_inches=None,
-            status="unmeasured",
+            vertical_status="unmeasured",
             horizontal_distance_inches=distance,
-            horizontal_status=horizontal,
-            body_envelope_radius_inches=profile.envelope_radius_inches,
+            horizontal_reach_inches=horizontal_inches,
+            horizontal_reach_provenance=horizontal_provenance,
+            horizontal_status=horizontal_status,
         )
-    status = (
-        "within_personal_reach"
+    vertical_status = (
+        "within_vertical_reach"
         if height <= profile.personal_reach_inches
-        else "beyond_personal_reach"
+        else "beyond_vertical_reach"
     )
     return ReachRecord(
         occupant_id=profile.id,
         occupant_title=profile.title,
         target_height_inches=height,
         personal_reach_inches=profile.personal_reach_inches,
-        status=status,
+        vertical_status=vertical_status,
         horizontal_distance_inches=distance,
-        horizontal_status=horizontal,
-        body_envelope_radius_inches=profile.envelope_radius_inches,
+        horizontal_reach_inches=horizontal_inches,
+        horizontal_reach_provenance=horizontal_provenance,
+        horizontal_status=horizontal_status,
     )
 
 
@@ -504,9 +522,10 @@ def evaluate_approach(
                 sampled = ensure_spacing(list(path), radius)
                 if mesh.collides(sampled, profile.travel_width_inches / 2):
                     mesh_collision = True
-                    blocked.append(
-                        "raw capture collides with the swept body along the "
-                        f"path ({profile.title})"
+                    unverified.append(
+                        f"raw capture touches the swept disc envelope along the "
+                        f"path ({profile.title}); an oriented-body collision is "
+                        "not proven, verify in person"
                     )
                     break
 
@@ -520,23 +539,36 @@ def evaluate_approach(
     if not floor_ok:
         unverified.append("the floor is unobserved; no support under the route")
     for record in reaches:
-        if record.status == "unmeasured":
+        if record.vertical_status == "unmeasured":
             unverified.append(
                 "target height or "
-                f"{record.occupant_title} personal reach is unmeasured"
+                f"{record.occupant_title} vertical personal reach is unmeasured"
             )
-        elif record.status == "beyond_personal_reach":
+        elif record.vertical_status == "beyond_vertical_reach":
             blocked.append(
-                f"target above personal reach for {record.occupant_title} "
-                f"({record.target_height_inches:.1f} in > "
-                f"{record.personal_reach_inches:.1f} in assumed reach)"
+                f"target above the vertical personal reach for "
+                f"{record.occupant_title} ({record.target_height_inches:.1f} in > "
+                f"{record.personal_reach_inches:.1f} in assumed grasp ceiling)"
             )
-        if record.horizontal_status == "beyond_body_envelope":
+        if record.horizontal_status == "exceeded_horizontal_reach":
             blocked.append(
-                f"the approach stop stands {record.horizontal_distance_inches:.1f} in "
-                f"from the target; beyond the {record.occupant_title} body "
-                f"envelope of {record.body_envelope_radius_inches:.1f} in"
+                f"the target is {record.horizontal_distance_inches:.1f} in away; "
+                f"beyond the {record.occupant_title} horizontal reach of "
+                f"{record.horizontal_reach_inches:.1f} in "
+                f"({record.horizontal_reach_provenance})"
             )
+        elif record.horizontal_status == "unmeasured":
+            if record.horizontal_distance_inches is not None:
+                unverified.append(
+                    f"horizontal reach to the target is unmeasured for "
+                    f"{record.occupant_title} (standing "
+                    f"{record.horizontal_distance_inches:.1f} in away)"
+                )
+            else:
+                unverified.append(
+                    f"horizontal reach to the target is unmeasured for "
+                    f"{record.occupant_title}"
+                )
 
     if blocked:
         status: ApproachStatus = "blocked"
