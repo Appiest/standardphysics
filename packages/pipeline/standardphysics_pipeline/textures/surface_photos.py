@@ -54,7 +54,7 @@ def visible_points(camera: PhotoCamera, points: np.ndarray, buffer: np.ndarray, 
     return inside & np.isfinite(nearest) & (np.abs(depth-nearest) <= tolerance), u, v
 
 
-def choose_views_partial(vertices, triangles, cameras, depth_vertices=None, depth_triangles=None, on_progress=None, min_facing=0.2, centre_required=True):
+def choose_views_partial(vertices, triangles, cameras, depth_vertices=None, depth_triangles=None, on_progress=None, min_facing=0.2, centre_required=True, smooth_factor=None, smooth_min_votes=2):
     """Partial-support photograph selection.
 
     Unlike ``choose_views`` this does not demand every corner of a face be
@@ -63,6 +63,12 @@ def choose_views_partial(vertices, triangles, cameras, depth_vertices=None, dept
     centre) passes the depth check, so partially occluded surfaces keep their
     photograph instead of dropping to neutral. Unknown depth is never treated
     as visible. Faces no photograph reaches remain unassigned.
+
+    With ``smooth_factor`` (0..1): after selection, faces whose second-best
+    accepting camera scores within ``smooth_factor`` of their best AND matches
+    at least ``smooth_min_votes`` neighbour faces are relabelled to that
+    camera, reducing per-face mosaic seams. Relabelling only ever uses a
+    camera that passed this face's own visibility/occlusion/depth checks.
     """
     corners = vertices[triangles]
     centres = corners.mean(axis=1)
@@ -72,7 +78,9 @@ def choose_views_partial(vertices, triangles, cameras, depth_vertices=None, dept
     areas = np.linalg.norm(cross, axis=1) / 2
     normals = cross / np.maximum(2 * areas[:, None], 1e-12)
     best = np.zeros(len(triangles), dtype=np.float32)
+    second = np.zeros(len(triangles), dtype=np.float32)
     assignment = np.full(len(triangles), -1, dtype=np.int32)
+    second_assignment = np.full(len(triangles), -1, dtype=np.int32)
     depth_vertices = vertices if depth_vertices is None else depth_vertices
     depth_triangles = triangles if depth_triangles is None else depth_triangles
     for index, camera in enumerate(cameras):
@@ -97,12 +105,61 @@ def choose_views_partial(vertices, triangles, cameras, depth_vertices=None, dept
         else:
             accepted = (face_support >= MIN_SAMPLES) & spread & (facing > min_facing) & (border > 0.02)
         score = np.where(accepted, facing ** 2 / np.maximum(distance, 0.5) * border * face_support / SAMPLES, 0)
-        better = score > best
-        assignment[better] = index
-        best[better] = score[better]
+        assignment, best, second, second_assignment = _top2_update(
+            score, index, assignment, best, second, second_assignment)
         if on_progress:
             on_progress(index + 1, len(cameras), float(areas[assignment >= 0].sum() / max(areas.sum(), 1e-9)))
+    if smooth_factor is not None:
+        assignment = smooth_assignment(triangles, assignment, second_assignment,
+                                       best, second, smooth_factor, smooth_min_votes, rounds=2)
     return assignment, areas
+
+
+def smooth_assignment(triangles, assignment, second_assignment, best, second,
+                      smooth_factor=0.85, min_votes=2, rounds=2):
+    """Relabel a face to its second-best camera when neighbours vote for it.
+
+    Only cameras that passed the face's own acceptance checks (its top two)
+    are candidates, so occlusion/visibility/depth acceptance is preserved
+    exactly. Faces relabel in synchronous rounds; the vote counts only
+    neighbour faces whose current label equals the candidate camera.
+    """
+    if smooth_factor <= 0 or smooth_factor > 1:
+        raise ValueError("smooth_factor must be in (0, 1]")
+    if min_votes < 1:
+        raise ValueError("min_votes must be at least 1")
+    edges = np.concatenate([triangles[:, [0, 1]], triangles[:, [1, 2]], triangles[:, [2, 0]]], axis=0)
+    faces = np.tile(np.arange(len(triangles)), 3)
+    keys = np.sort(edges, axis=1)
+    rows = np.lexsort((faces, keys[:, 1], keys[:, 0]))
+    sorted_keys = keys[rows]
+    sorted_faces = faces[rows]
+    first = np.concatenate([[True], (sorted_keys[1:] != sorted_keys[:-1]).any(axis=1)])
+    starts = np.flatnonzero(first)
+    ends = np.append(starts[1:], len(sorted_keys))
+    keep = starts != (ends - 1)
+    edge_left = sorted_faces[starts[keep]]
+    edge_right = sorted_faces[ends[keep] - 1]
+    for _ in range(rounds):
+        votes = np.zeros(len(triangles), dtype=np.int32)
+        np.add.at(votes, edge_left, (assignment[edge_right] == second_assignment[edge_left]).astype(np.int32))
+        np.add.at(votes, edge_right, (assignment[edge_left] == second_assignment[edge_right]).astype(np.int32))
+        eligible = (second_assignment >= 0) & (votes >= min_votes) & \
+            (second >= smooth_factor * best) & (best > 0)
+        assignment = np.where(eligible, second_assignment, assignment)
+    return assignment
+
+
+def _top2_update(score, index, assignment, best, second, second_assignment):
+    better = score > best
+    second = np.where(better, best, second)
+    second_assignment = np.where(better, assignment, second_assignment)
+    best = np.where(better, score, best)
+    assignment = np.where(better, index, assignment)
+    improved_second = (score > second) & ~better
+    second = np.where(improved_second, score, second)
+    second_assignment = np.where(improved_second, index, second_assignment)
+    return assignment, best, second, second_assignment
 
 
 SAMPLES = 7
