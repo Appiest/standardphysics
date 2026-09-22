@@ -22,6 +22,11 @@
     "pose_entries_in_manifest": 465,
     "frame_pose_ids_match": true
   },
+  "unique_sha256_count": 473,
+  "claim_verdict": {
+    "supervisor_counts_confirmed": true,
+    "all_frames_readable": true
+  },
   "db_read_only_snapshot": {
     "tables": [
       "artifacts",
@@ -110,10 +115,5 @@
       }
     ]
   },
-  "unique_sha256_count": 473,
-  "claim_verdict": {
-    "supervisor_counts_confirmed": true,
-    "all_frames_readable": true
-  },
-  "started_at": "2026-09-21T18:13:23.505920-07:00"
+  "started_at": "2026-09-21T18:15:18.007894-07:00"
 }

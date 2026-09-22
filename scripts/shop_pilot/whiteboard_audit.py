@@ -40,42 +40,34 @@ def _jpeg_size(path: pathlib.Path) -> tuple[int, int] | None:
         return None
 
 
-def audit() -> dict[str, Any]:
-    source_dir = API_DATA / "scans" / SCAN_ID / "artifacts"
-    if not source_dir.is_dir():
-        raise FileNotFoundError(source_dir)
-
-    files = sorted(source_dir.iterdir())
-    hashes: dict[str, str] = {}
-    sizes: dict[str, int] = {}
-    for entry in files:
-        if entry.is_file():
-            hashes[entry.name] = sha256_file(entry)
-            sizes[entry.name] = entry.stat().st_size
-
-    jpeg_names = [name for name in hashes if name.startswith("frame-")]
+def _frame_metrics(source_dir: pathlib.Path, hashes: dict[str, str]) -> dict[str, Any]:
+    frame_names = [name for name in hashes if name.startswith("frame-")]
     dimensions: dict[str, int] = {}
     unreadable: list[str] = []
-    for name in jpeg_names:
+    for name in frame_names:
         size = _jpeg_size(source_dir / name)
         if size is None:
             unreadable.append(name)
         else:
             key = f"{size[0]}x{size[1]}"
             dimensions[key] = dimensions.get(key, 0) + 1
+    return {
+        "frame_count": len(frame_names),
+        "jpeg_dimensions": dimensions,
+        "unreadable_jpegs": unreadable,
+    }
 
+
+def _pairing(source_dir: pathlib.Path, hashes: dict[str, str]) -> dict[str, Any]:
     manifest_name = [name for name in hashes if "manifest" in name]
-    manifest: dict[str, Any] = {}
+    frames_in_manifest: list[str] = []
     if manifest_name:
         manifest = json.loads((source_dir / manifest_name[0]).read_text(encoding="utf-8"))
-
-    def _ids(values: Any) -> list[str]:
-        if not isinstance(values, list):
-            return []
-        return [item["frame_id"] if isinstance(item, dict) else str(item) for item in values]
-
-    if isinstance(manifest, dict):
-        frames_in_manifest = _ids(manifest.get("frames", []))
+        if isinstance(manifest, dict) and isinstance(manifest.get("frames"), list):
+            frames_in_manifest = [
+                item["frame_id"] if isinstance(item, dict) else str(item)
+                for item in manifest["frames"]
+            ]
     poses: list[str] = []
     if "poses" in hashes:
         poses_raw = json.loads((source_dir / "poses").read_text(encoding="utf-8"))
@@ -84,7 +76,30 @@ def audit() -> dict[str, Any]:
             else str(item.get("frame_id", item.get("id", item)))
             for item in poses_raw
         ]
-    frame_files = sorted(name for name in hashes if name.startswith("frame-"))
+    return {
+        "manifest_file": manifest_name[0] if manifest_name else None,
+        "manifest_frame_ids_sample": [frames_in_manifest[0], frames_in_manifest[-1]],
+        "frame_pos_counts_pairing": {
+            "frame_files": len([name for name in hashes if name.startswith("frame-")]),
+            "pose_entries_in_manifest": len(poses),
+            "frame_pose_ids_match": sorted(frames_in_manifest) == sorted(poses),
+        },
+    }
+
+
+def audit() -> dict[str, Any]:
+    source_dir = API_DATA / "scans" / SCAN_ID / "artifacts"
+    if not source_dir.is_dir():
+        raise FileNotFoundError(source_dir)
+
+    files = sorted(source_dir.iterdir())
+    hashes: dict[str, str] = {}
+    for entry in files:
+        if entry.is_file():
+            hashes[entry.name] = sha256_file(entry)
+
+    frames = _frame_metrics(source_dir, hashes)
+    pairing = _pairing(source_dir, hashes)
 
     claims = json.loads(EVIDENCE.read_text(encoding="utf-8"))
     return {
@@ -94,21 +109,17 @@ def audit() -> dict[str, Any]:
         "artifact_bytes_hashed": len(hashes),
         "supervisor_claimed_artifact_count": claims.get("artifact_count"),
         "count_matches": len(hashes) == claims.get("artifact_count"),
-        "jpeg_count": len(jpeg_names),
-        "jpeg_dimensions": dimensions,
-        "unreadable_jpegs": unreadable,
-        "frame_count": len(frame_files),
+        "jpeg_count": frames["frame_count"],
+        "jpeg_dimensions": frames["jpeg_dimensions"],
+        "unreadable_jpegs": frames["unreadable_jpegs"],
+        "frame_count": frames["frame_count"],
         "supervisor_manifest_frame_count": claims.get("manifest_frame_count"),
-        "manifest_file": manifest_name[0] if manifest_name else None,
-        "manifest_frame_ids_sample": [frames_in_manifest[0], frames_in_manifest[-1]],
-        "frame_pos_counts_pairing": {
-            "frame_files": len(frame_files),
-            "pose_entries_in_manifest": len(poses),
-            "frame_pose_ids_match": sorted(frames_in_manifest) == sorted(poses),
-        },
-        "db_read_only_snapshot": _db_snapshot(),
+        "manifest_file": pairing["manifest_file"],
+        "manifest_frame_ids_sample": pairing["manifest_frame_ids_sample"],
+        "frame_pos_counts_pairing": pairing["frame_pos_counts_pairing"],
         "unique_sha256_count": len(set(hashes.values())),
-        "claim_verdict": _verdict(claims, hashes, dimensions, frame_files, poses),
+        "claim_verdict": _verdict(claims, hashes, frames),
+        "db_read_only_snapshot": _db_snapshot(),
     }
 
 
@@ -168,18 +179,17 @@ def _db_snapshot() -> dict[str, Any]:
     }
 
 
-def _verdict(claims: dict, hashes: dict, dimensions: dict, frames: list, poses: list) -> dict[str, bool]:
-    pose_count = len(poses)
-    if not isinstance(claims.get("pose_count"), int):
-        pose_count = (pose_count, claims.get("pose_count"))
+def _verdict(claims: dict, hashes: dict, frames: dict) -> dict[str, bool]:
+    pose_count = claims.get("pose_count")
+    pose_ok = True if not isinstance(pose_count, int) else frames["frame_count"] == pose_count
     return {
         "supervisor_counts_confirmed": (
             len(hashes) == claims.get("artifact_count")
-            and len(frames) == claims.get("manifest_frame_count")
-            and (len(poses) == claims.get("pose_count") if isinstance(claims.get("pose_count"), int) else True)
-            and "1920x1440" in dimensions
+            and frames["frame_count"] == claims.get("manifest_frame_count")
+            and pose_ok
+            and "1920x1440" in frames["jpeg_dimensions"]
         ),
-        "all_frames_readable": dimensions.get("1920x1440", 0) == len(frames),
+        "all_frames_readable": frames["jpeg_dimensions"].get("1920x1440", 0) == frames["frame_count"],
     }
 
 
