@@ -155,7 +155,6 @@ def edge_width_profiles(reference: np.ndarray, candidate: np.ndarray, mask: np.n
         pairs = freeze_edge_pairs(reference, mask)
         if edge_pairs_path is not None:
             edge_pairs_path.write_text(json.dumps(pairs))
-    rows = 10
     widths = {"reference": [], "candidate": [], "added": []}
     for pair in pairs[:10]:
         y, x0, x1 = pair["y"], pair["x0"], pair["x1"]
@@ -206,6 +205,92 @@ def freeze_edge_pairs(reference: np.ndarray, mask: np.ndarray | None, max_pairs:
         if len(pairs) >= max_pairs:
             break
     return pairs
+
+
+def build_captured_view_500(frame_id: str, camera) -> RasterCamera:
+    """Captured view rendered natively at the benchmark size.
+
+    The square central crop keeps the native pixel scale: only cx shifts by the
+    crop, then the calibration intrinsics rescale to 500 x 500 exactly like
+    :func:`RasterCamera.resized` semantics (pixel-centre accounting).
+    """
+    scale = FINAL / CAPTURE_RENDER["width"]
+    return camera_from_room(frame_id, camera.room_to_camera, camera.fx * scale, camera.fy * scale,
+                            (camera.cx - CROP_LEFT + 0.5) * scale - 0.5,
+                            (camera.cy + 0.5) * scale - 0.5, FINAL, FINAL)
+
+
+def weaker_axis_resolution(uv: np.ndarray, texi: np.ndarray, depth: np.ndarray,
+                           tex_dims: dict[int, tuple[int, int]]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Per-pixel anisotropic resolution: the weaker linear axis, in texel units.
+
+    Returns (weaker, stronger, active_mip, valid) arrays. For each pixel the
+    screen-space UV gradients give two sampling rates (texels per output pixel,
+    one per screen axis). The weaker axis bounds real resolution; a symmetric
+    Jacobian determinant cannot see anisotropy, so it is not used for gating.
+    ``active_mip`` is the mip level a trilinear sampler would select from the
+    stronger axis, floored and clamped to the texture's own mip chain.
+    """
+    height, width = uv.shape[:2]
+    dudx = (np.roll(uv[..., 0], -1, axis=1) - np.roll(uv[..., 0], 1, axis=1)) / 2.0
+    dvdx = (np.roll(uv[..., 1], -1, axis=1) - np.roll(uv[..., 1], 1, axis=1)) / 2.0
+    dudy = (np.roll(uv[..., 0], -1, axis=0) - np.roll(uv[..., 0], 1, axis=0)) / 2.0
+    dvdy = (np.roll(uv[..., 1], -1, axis=0) - np.roll(uv[..., 1], 1, axis=0)) / 2.0
+    weaker = np.zeros((height, width), dtype=np.float64)
+    stronger = np.zeros((height, width), dtype=np.float64)
+    mip = np.zeros((height, width), dtype=np.int32)
+    valid = np.zeros((height, width), dtype=bool)
+    neighbours = np.stack([np.roll(texi, -1, axis=1), np.roll(texi, 1, axis=1),
+                           np.roll(texi, -1, axis=0), np.roll(texi, 1, axis=0)], axis=0)
+    interior = np.all(neighbours == texi[None, ...], axis=0) & (texi >= 0) & np.isfinite(depth)
+    for index, dims in tex_dims.items():
+        tw, th = dims[1], dims[0]
+        where = interior & (texi == index)
+        if not where.any():
+            continue
+        rate_x = np.sqrt((dudx[where] * tw) ** 2 + (dvdx[where] * th) ** 2)
+        rate_y = np.sqrt((dudy[where] * tw) ** 2 + (dvdy[where] * th) ** 2)
+        minor = np.minimum(rate_x, rate_y)
+        major = np.maximum(rate_x, rate_y)
+        weaker[where] = minor
+        stronger[where] = major
+        max_level = np.floor(np.log2(max(float(min(tw, th)), 2.0)))
+        mip[where] = np.clip(np.floor(np.log2(np.maximum(major, 1e-9))).astype(np.int32), 0,
+                             int(max_level))
+        valid[where] = True
+    return weaker, stronger, mip, valid
+
+
+def resolution_gate_stats(weaker: np.ndarray, stronger: np.ndarray, mip: np.ndarray,
+                          valid: np.ndarray, roi: np.ndarray | None = None) -> dict:
+    """Aggregate weaker-axis resolution stats; source samples account for the
+    active mip level, so minification never earns phantom source detail."""
+    selected = valid
+    if not selected.any():
+        return {"valid_pixels": 0, "median_weaker_texels_per_px": np.nan,
+                "median_source_samples_per_px_at_mip": np.nan,
+                "fraction_meeting_both_1": np.nan, "median_active_mip": np.nan,
+                "anisotropy_p95_ratio": np.nan, "critical_roi_source_meeting_2": np.nan,
+                "critical_roi_pixels": 0}
+    source = weaker / np.power(2.0, mip.astype(np.float64))
+    anisotropy = np.maximum(stronger, 1e-9) / np.maximum(weaker, 1e-9)
+    stats = {
+        "valid_pixels": int(valid.sum()),
+        "median_weaker_texels_per_px": float(np.median(weaker[selected])),
+        "median_source_samples_per_px_at_mip": float(np.median(source[selected])),
+        "fraction_meeting_both_1": float(((weaker[selected] >= 1.0) & (source[selected] >= 1.0)).mean()),
+        "median_active_mip": float(np.median(mip[selected])),
+        "anisotropy_p95_ratio": float(np.percentile(anisotropy[selected], 95)),
+    }
+    if roi is not None:
+        roi_selected = selected & roi.astype(bool)
+        stats["critical_roi_source_meeting_2"] = float(
+            (source[roi_selected] >= 2.0).mean()) if roi_selected.any() else np.nan
+        stats["critical_roi_pixels"] = int(roi_selected.sum())
+    else:
+        stats["critical_roi_source_meeting_2"] = np.nan
+        stats["critical_roi_pixels"] = 0
+    return stats
 
 
 def build_frozen_camera(view: dict) -> RasterCamera:

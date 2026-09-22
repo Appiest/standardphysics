@@ -108,6 +108,35 @@ def choose_views_partial(vertices, triangles, cameras, depth_vertices=None, dept
 SAMPLES = 7
 MIN_SAMPLES = 5
 
+def region_weighted_decimate(vertices, triangles, region_mask, region_budget, rest_budget):
+    """Decimate measured geometry with separate budgets inside and outside a region.
+
+    Display-mesh simplification that collapses detail uniformly can erase a
+    wall segment entirely (diagnosis v-diag-001: the Moffett pilot wall vanished
+    from a 250k-face display mesh, leaving the far surface rendered neutral).
+    This keeps ``region_budget`` faces inside ``region_mask`` and ``rest_budget``
+    outside; both parts snap back onto the measured surface later in the bake.
+    Returns (display_vertices, display_triangles).
+    """
+    import trimesh
+
+    if not region_mask.any():
+        raise ValueError("region mask selects no faces")
+    if region_budget < 4 or rest_budget < 4:
+        raise ValueError("budgets must be at least 4 faces")
+    parts = []
+    for label, mask, budget in (("region", region_mask, region_budget),
+                                ("rest", ~region_mask, rest_budget)):
+        part = trimesh.Trimesh(vertices, triangles[mask], process=False)
+        reduced = part.simplify_quadric_decimation(face_count=min(budget, len(part.faces)))
+        parts.append((np.asarray(reduced.vertices), np.asarray(reduced.faces, dtype=np.int64)))
+    display_vertices = np.concatenate([part[0] for part in parts], axis=0)
+    offsets = np.concatenate([[0], np.cumsum([len(part[0]) for part in parts[:-1]])])
+    display_triangles = np.concatenate(
+        [np.asarray(part[1]) + int(offset) for part, offset in zip(parts, offsets)], axis=0)
+    return display_vertices, display_triangles
+
+
 def snap_to_measured(display_vertices, full_vertices, max_distance=0.15):
     """Pull simplified display vertices back onto the measured surface.
 
