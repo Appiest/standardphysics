@@ -1,9 +1,9 @@
 {
   "kind": "certificate_matrix_final",
-  "version": 8,
+  "version": 9,
   "run_id": "opencode-20260921-170615",
   "evaluator": "lane Q independent (fireworks-ai deepseek-pro-latest)",
-  "computed_at": "2026-09-22T00:04:59-07:00",
+  "computed_at": "2026-09-22T00:14:53-07:00",
   "integration_head_evaluated": "1dcfd8f (K: provider request metadata at response time; exact head read from k-remote)",
   "policy": "frozen docs unchanged",
   "verification_scope_at_this_head": "exact M06 mutation on test_orientation_end_to_end at bb8ded9 (clean 4 passed -> mutant 3 failed behaviorally -> restored hash b2ac0a9b... -> clean rerun 4 passed); M06 receipt rebound to bb8ded9. K states suites green at bb8ded9; no broad rerun of mine per dispatch.",
@@ -12,7 +12,7 @@
       "id": "G00",
       "status": "passed",
       "blocker": null,
-      "note": "All 18 required controls executed with behavioral assertions, clean counterparts, restored hashes and raw logs: 15 product fault injections (M03-M17 incl. M17 render-denominator killed at 1dcfd8f) + M01/M02/M18 defined by the spec as receipt/certificate validation failures, executed against the independent verifier suite (24 tests, verbose log, 24 PASSED). Mutation receipts self-verified valid; no numbers reused across candidates."
+      "note": "All 18 required controls with behavioral assertions, clean counterparts, restored hashes, raw logs. M17 re-executed against the SHIPPED G15 evaluator (scripts/evaluate_photo_mesh_500.py covered_fraction): deterministic 96/100 fixture, injected photographed:=ones(fixed_mask) once, killed by assert 0.0 == 0.04, restored 121a0d7e..., clean rerun. The earlier render_efficiency/metrics.py result is informative only and is NOT counted toward M17."
     },
     {
       "id": "G01",
@@ -85,7 +85,7 @@
     {
       "id": "G13",
       "status": "failed_waiting_A_repair",
-      "blocker": "ROOT independent reproduction (supervisor-g13-builder-boundary-repro.json, A6068082 gap): builder accepts mismatched assessment identity (random scan_id, revision 999, unrelated graph_hash/rulepack) and arbitrary before_after strings marked justified=True. A's dossier repairs not yet integrated; re-evaluate on integration."
+      "blocker": "Two independent root reproductions: identity (random scan_id/revision 999/unrelated graph_hash/rulepack accepted) and provenance (synthetic before_after measurement/provenance strings accepted as justified=True; supervisor-g13-provenance-second-repro.json). Refuse nonempty before_after until typed identity-bound measured evidence; A c4b7830 still fails. FURTHER root finding: new_SUBJECT_MATCHES widens kind branches 34->40 - do not inflate the baseline."
     },
     {
       "id": "G14",
@@ -111,70 +111,204 @@
   "certificates": {
     "software_verified": {
       "status": "not_awarded",
+      "all_of": [
+        "G00",
+        "G01",
+        "G02",
+        "G03",
+        "G04",
+        "G05",
+        "G06",
+        "G07",
+        "G08",
+        "G09"
+      ],
       "blocked_by": [
-        "G09 portable-network/phone test",
-        "G13 A dossier builder boundary"
+        "G09"
+      ],
+      "derived_from_policy_lists": true,
+      "notes": [
+        "targeted verification at candidate heads; full-suite re-verify deferred to the frozen candidate integration",
+        "root-independent 60/60 + 66/66 + visual overlay; browser mouse events, touch remains G11"
       ]
     },
     "saved_capture_verified": {
       "status": "not_awarded",
-      "blocked_by": [
+      "all_of": [
+        "G00",
+        "G01",
+        "G02",
+        "G03",
+        "G04",
+        "G05",
+        "G06",
+        "G07",
+        "G08",
         "G09",
-        "G13",
-        "G10 texture confirmation residual"
+        "G10"
+      ],
+      "blocked_by": [
+        "G09"
+      ],
+      "derived_from_policy_lists": true,
+      "notes": [
+        "targeted verification at candidate heads; full-suite re-verify deferred to the frozen candidate integration",
+        "root-independent 60/60 + 66/66 + visual overlay; browser mouse events, touch remains G11",
+        "real paid run + LAN-verified corrected replay; counts are inventory not accuracy (G12); texture completion unconfirmed"
       ]
     },
     "phone_pilot_ready": {
       "status": "not_awarded",
-      "blocked_by": [
+      "all_of": [
+        "G00",
+        "G01",
+        "G02",
+        "G03",
+        "G04",
+        "G05",
+        "G06",
+        "G07",
+        "G08",
+        "G09",
         "G11"
+      ],
+      "blocked_by": [
+        "G09",
+        "G11"
+      ],
+      "derived_from_policy_lists": true,
+      "notes": [
+        "targeted verification at candidate heads; full-suite re-verify deferred to the frozen candidate integration",
+        "root-independent 60/60 + 66/66 + visual overlay; browser mouse events, touch remains G11"
       ]
     },
     "shop_field_validated": {
       "status": "not_awarded",
+      "all_of": [
+        "G00",
+        "G01",
+        "G02",
+        "G03",
+        "G04",
+        "G05",
+        "G06",
+        "G07",
+        "G08",
+        "G09",
+        "G11",
+        "G16"
+      ],
       "blocked_by": [
-        "G16",
-        "G17"
+        "G09",
+        "G11",
+        "G16"
+      ],
+      "derived_from_policy_lists": true,
+      "notes": [
+        "targeted verification at candidate heads; full-suite re-verify deferred to the frozen candidate integration",
+        "root-independent 60/60 + 66/66 + visual overlay; browser mouse events, touch remains G11"
       ]
     },
     "automatic_semantics_benchmark_passed": {
       "status": "not_awarded",
+      "all_of": [
+        "G00",
+        "G02",
+        "G03",
+        "G10",
+        "G12"
+      ],
       "blocked_by": [
         "G12"
+      ],
+      "derived_from_policy_lists": true,
+      "notes": [
+        "real paid run + LAN-verified corrected replay; counts are inventory not accuracy (G12); texture completion unconfirmed"
       ]
     },
     "scoped_assessment_evidence_ready": {
       "status": "not_awarded",
+      "all_of": [
+        "G00",
+        "G06",
+        "G08",
+        "G10",
+        "G13"
+      ],
       "blocked_by": [
         "G13"
+      ],
+      "derived_from_policy_lists": true,
+      "notes": [
+        "root-independent 60/60 + 66/66 + visual overlay; browser mouse events, touch remains G11",
+        "real paid run + LAN-verified corrected replay; counts are inventory not accuracy (G12); texture completion unconfirmed"
       ]
     },
     "scoped_requirements_satisfied": {
       "status": "not_awarded",
-      "blocked_by": [
+      "all_of": [
+        "G00",
+        "G05",
+        "G06",
+        "G13",
         "G14",
         "G17"
-      ]
+      ],
+      "blocked_by": [
+        "G13",
+        "G14",
+        "G17"
+      ],
+      "derived_from_policy_lists": true,
+      "notes": []
     },
     "photo_mesh_500_verified": {
       "status": "not_awarded",
-      "blocked_by": [
+      "all_of": [
+        "G00",
+        "G05",
+        "G09",
         "G15"
-      ]
+      ],
+      "blocked_by": [
+        "G09",
+        "G15"
+      ],
+      "derived_from_policy_lists": true,
+      "notes": []
     },
     "whole_site_ADA_compliance": {
       "automated_certificate_allowed": false
     }
   },
   "corrections_from_supervisor": [
-    "G01 audit reds removed (fixtures fixed; verified by me at 6e01067)",
-    "M06 counted as killed (orientation test integrated)",
-    "approach consumer gap closed (direct repro returns None/unmeasured)",
-    "B corrected replay failed; no fresh corrected revision exists",
-    "symlink removal confirmed at this head",
-    "ownership repaired b86a89cf->af071129 and live-validated per replay supplement; original B receipt preserved",
-    "G15: c11 visual verdict FAILED - source churn reduction is not a quality pass"
+    "M17 must target the shipped evaluator (scripts/evaluate_photo_mesh_500.py covered_fraction), not render_efficiency/metrics.py - DONE, kill bound at 1dcfd8f",
+    "software_verified blockers must exclude G13 - DONE via programmatic all_of derivation from 04-hard-gates.json (blocked only by G09)",
+    "G13 provenance second repro added; kind-branch inflation flagged for A"
   ],
   "software_line": "K suites green at bb8ded9 per K; Q evidence: all prior recomputes + M06 mutation binding + targeted orientation cycle at this head. G09 portable-network test and G11 user review remain the physical blockers for certificates.",
-  "notes_ten_controls": "Ten-controls slice complete: M09-M14 + M17 product mutations killed at source-bound heads (bb8ded9/1dcfd8f) with raw logs; M01/M02/M18 validator-side negative controls executed with the 24-test verifier suite verbose log; all 18 registry entries self-verify. G00 passes on the frozen evaluator count (18/18)."
+  "notes_ten_controls": "All 18 controls secured across source-bound heads; M17 bound to the ACTUAL shipped evaluator denominator with a deterministic fixture; certificate blocker lists are programmatically derived from the frozen policy, never hand-edited.",
+  "certificate_derivation": {
+    "method": "programmatic all_of evaluation from docs/deepseek-shop-pilot/04-hard-gates.json",
+    "gate_dispositions": {
+      "G00": true,
+      "G01": true,
+      "G02": true,
+      "G03": true,
+      "G04": true,
+      "G05": true,
+      "G06": true,
+      "G07": true,
+      "G08": true,
+      "G09": false,
+      "G10": true,
+      "G11": false,
+      "G12": false,
+      "G13": false,
+      "G14": false,
+      "G15": false,
+      "G16": false,
+      "G17": false
+    }
+  }
 }

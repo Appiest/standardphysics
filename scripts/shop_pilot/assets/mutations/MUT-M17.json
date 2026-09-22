@@ -6,7 +6,7 @@
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "d369dc0d6315263efb883b1fb4b4409c8cfa9740",
+  "source_commit": "7c68dafbc7c69dd2ac9b4ae0a8e23bdcb3879558",
   "eval_source_head": "1dcfd8f (final K HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
@@ -14,22 +14,22 @@
   "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
   "input_artifacts": [
     {
-      "path": "metrics.py.original",
-      "sha256": "85c2e8743b77a9fffa7295e3223553ca571935c41cb981839f02b329525760fa",
-      "size_bytes": 5664,
+      "path": "evaluate_photo_mesh_500.py.original",
+      "sha256": "121a0d7e0dbc6c78555c1899ff2cd9758cfcac0b814c0863b3d3fa08bc733f9c",
+      "size_bytes": 22855,
       "content_type": "text/plain"
     }
   ],
   "output_artifacts": [
     {
-      "path": "M17-mutated.log",
-      "sha256": "3d4a998615246e85806bafbfe187a55f472e344f6ce98aa1aa5cd9c957c82f1e",
-      "size_bytes": 849,
+      "path": "M17-evaluator-mutated.log",
+      "sha256": "0bdcd96c68b33e06a35a079ef78c95f36f1afb0a95259a979b8eacfc5b8fb840",
+      "size_bytes": 1249,
       "content_type": "text/plain"
     },
     {
-      "path": "M17-clean-after.log",
-      "sha256": "4de64934605dc63b561f8b2a59ff4a7fa10d1068e8dfcae0f632ddefa3a3b684",
+      "path": "M17-evaluator-clean.log",
+      "sha256": "073b1bbed3fedd224b758a734fc16517c5bf3d17bd10f69d131ecd1b1c9690ca",
       "size_bytes": 98,
       "content_type": "text/plain"
     }
@@ -39,13 +39,13 @@
   "scenario_hash": null,
   "scope_manifest_hash": null,
   "evidence_manifest_hash": null,
-  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate packages/pipeline/standardphysics_pipeline/render_efficiency/metrics.py; pytest <owning suite> -q (record outcome); restore source",
+  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate scripts/evaluate_photo_mesh_500.py (the shipped G15 evaluator, line 251 denominator); pytest <owning suite> -q (record outcome); restore source",
   "working_directory": "/tmp/q-mutations or /tmp/q-review-s (disposable worktrees)",
   "environment_versions": {
     "python": "3.11"
   },
-  "started_at": "2026-09-22T00:04:31.092818-07:00",
-  "finished_at": "2026-09-22T00:04:31.092818-07:00",
+  "started_at": "2026-09-22T00:13:25.893489-07:00",
+  "finished_at": "2026-09-22T00:13:25.893489-07:00",
   "exit_code": 1,
   "assertions": [
     {
@@ -54,11 +54,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "Obtained: 0.0",
-        "artifact": "M17-mutated.log"
+        "substring": "assert 0.0 == 0.04",
+        "artifact": "M17-evaluator-mutated.log"
       },
       "evidence_paths": [
-        "M17-mutated.log"
+        "M17-evaluator-mutated.log"
       ]
     },
     {
@@ -67,11 +67,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "packages/pipeline/tests/test_render_efficiency.py::test_coverage_threshold",
-        "artifact": "M17-mutated.log"
+        "substring": "test_denominator_counts_only_photographed_pixels",
+        "artifact": "M17-evaluator-mutated.log"
       },
       "evidence_paths": [
-        "M17-mutated.log"
+        "M17-evaluator-mutated.log"
       ]
     },
     {
@@ -81,21 +81,21 @@
       "observed": true,
       "params": {
         "substring": "passed",
-        "artifact": "M17-clean-after.log"
+        "artifact": "M17-evaluator-clean.log"
       },
       "evidence_paths": [
-        "M17-clean-after.log"
+        "M17-evaluator-clean.log"
       ]
     },
     {
       "id": "restored-source-hash",
       "measurement_method": "file_sha256",
-      "expected": "85c2e8743b77a9fffa7295e3223553ca571935c41cb981839f02b329525760fa",
+      "expected": "121a0d7e0dbc6c78555c1899ff2cd9758cfcac0b814c0863b3d3fa08bc733f9c",
       "params": {
-        "artifact": "metrics.py.original"
+        "artifact": "evaluate_photo_mesh_500.py.original"
       },
       "evidence_paths": [
-        "metrics.py.original"
+        "evaluate_photo_mesh_500.py.original"
       ]
     },
     {
@@ -103,10 +103,10 @@
       "measurement_method": "text_clean",
       "expected": true,
       "params": {
-        "artifact": "M17-mutated.log"
+        "artifact": "M17-evaluator-mutated.log"
       },
       "evidence_paths": [
-        "M17-mutated.log"
+        "M17-evaluator-mutated.log"
       ]
     },
     {
@@ -121,7 +121,7 @@
       "evidence_paths": []
     }
   ],
-  "raw_log_path": "M17-mutated.log",
+  "raw_log_path": "M17-evaluator-mutated.log",
   "evaluator_identity": {
     "actor": "lane-Q",
     "attestation": "independent fault injection in a disposable worktree, reverted and hash-verified"
@@ -130,13 +130,14 @@
     "id": "M17",
     "source_head": "1dcfd8f (final K HEAD)",
     "outcome": "killed",
-    "fault": "render_efficiency/metrics.py: uncovered_fraction counts transparent/inpainted pixels as photographed",
-    "fault_file": "packages/pipeline/standardphysics_pipeline/render_efficiency/metrics.py",
-    "restored_sha256": "85c2e8743b77a9fffa7295e3223553ca571935c41cb981839f02b329525760fa",
-    "killed_by": "packages/pipeline/tests/test_render_efficiency.py::test_coverage_threshold",
-    "behavioral_assertion": "Obtained: 0.0",
-    "mutated_log": "M17-mutated.log",
-    "clean_log": "M17-clean-after.log",
-    "original_copy": "metrics.py.original"
+    "fault": "scripts/evaluate_photo_mesh_500.py covered_fraction: counted transparent/unphotographed pixels as photographed (photographed := ones(fixed_mask.shape))",
+    "fault_file": "scripts/evaluate_photo_mesh_500.py (the shipped G15 evaluator, line 251 denominator)",
+    "restored_sha256": "121a0d7e0dbc6c78555c1899ff2cd9758cfcac0b814c0863b3d3fa08bc733f9c",
+    "killed_by": "test_denominator_counts_only_photographed_pixels",
+    "behavioral_assertion": "assert 0.0 == 0.04",
+    "mutated_log": "M17-evaluator-mutated.log",
+    "clean_log": "M17-evaluator-clean.log",
+    "original_copy": "evaluate_photo_mesh_500.py.original",
+    "note": "re-executed against the SHIPPED evaluator call graph (evaluate_view -> covered_fraction) with a deterministic 96/100 fixture; the earlier render_efficiency/metrics.py test is informative but not proof for the c9/c11 denominator and is not counted"
   }
 }

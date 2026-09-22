@@ -1,16 +1,8 @@
-============================= test session starts ==============================
-platform darwin -- Python 3.11.1, pytest-9.1.1, pluggy-1.6.0 -- /Users/yanzihao/Documents/standardphysics/.venv/bin/python
-cachedir: .pytest_cache
-rootdir: /tmp
-plugins: anyio-4.15.1
-collecting ... collected 1 item
-
-../../../tmp/q7-g15-test.py::test_denominator_counts_only_photographed_pixels FAILED [100%]
-
+F                                                                        [100%]
 =================================== FAILURES ===================================
 _______________ test_denominator_counts_only_photographed_pixels _______________
 
-tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-496/test_denominator_counts_only_p0')
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-492/test_denominator_counts_only_p0')
 
     def test_denominator_counts_only_photographed_pixels(tmp_path):
         photographed_path = tmp_path / "coverage.png"
@@ -28,4 +20,4 @@ E       assert 0.0 == 0.04
 /tmp/q7-g15-test.py:41: AssertionError
 =========================== short test summary info ============================
 FAILED ../../../tmp/q7-g15-test.py::test_denominator_counts_only_photographed_pixels
-============================== 1 failed in 0.52s ===============================
+1 failed in 0.46s
