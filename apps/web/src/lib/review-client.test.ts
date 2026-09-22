@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cropUrl, frameUrl, getEvidence, isPlausibleSensorBox, markObservation, reviewAttachment } from "@/lib/review-client";
+import { cropUrl, getFrames, getEvidence, isPlausibleSensorBox, manualMarkRefusal, markObservation, reviewAttachment, type FrameListing } from "@/lib/review-client";
 
 afterEach(() => vi.restoreAllMocks());
+
+const listing: FrameListing = {
+  frames: [
+    { frame_id: "frame-0000", width: 1920, height: 1440, image_url: "/api/scans/scan-1/frames/frame-0000" },
+    { frame_id: "frame-0001", width: 1920, height: 1440, image_url: "/api/scans/scan-1/frames/frame-0001" },
+  ],
+};
 
 describe("review-client", () => {
   it("cropUrl points at the owner-authenticated crop route and escapes the id", () => {
@@ -11,15 +18,24 @@ describe("review-client", () => {
     expect(trapped.startsWith("/api/scans/scan-1/crops/")).toBe(true);
   });
 
-  it("frameUrl uses the frames route for original photo marking", () => {
-    expect(frameUrl("scan-1", "frame-42")).toBe("/api/scans/scan-1/frames/frame-42");
+  it("getFrames reads the agreed listing shape and passes the real frames straight through", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, json: async () => listing } as Response);
+    const frames = await getFrames("scan-1");
+    expect(fetchSpy).toHaveBeenCalledWith("/api/scans/scan-1/frames", { cache: "no-store" });
+    expect(frames).toEqual(listing);
+    expect(frames?.frames.every((frame) => frame.frame_id && frame.width > 0 && frame.image_url.length > 0)).toBe(true);
+  });
+
+  it("no frame route on the server build reads as explicitly unavailable, never as an empty room", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false, status: 404, json: async () => ({}) } as Response);
+    expect(await getFrames("scan-1")).toBeNull();
   });
 
   it("a manual mark posts the frozen ManualMarkRequest shape to the observations route", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, json: async () => ({ revision: 1 }) } as Response);
     await markObservation("scan-1", 3, {
       target_class: "television",
-      frame_id: "frame-9",
+      frame_id: "frame-0000",
       sensor_box: [10, 20, 90, 80],
       node_id: "node-5",
       review_status: "candidate",
@@ -31,12 +47,17 @@ describe("review-client", () => {
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     expect(body).toEqual({
       target_class: "television",
-      frame_id: "frame-9",
+      frame_id: "frame-0000",
       node_id: "node-5",
       sensor_box: [10, 20, 90, 80],
       note: null,
       review_status: "candidate",
     });
+  });
+
+  it("manual mark refusals tell the person a newer revision exists instead of a generic failure", () => {
+    expect(manualMarkRefusal({ status: 409 })).toContain("changed while you were marking");
+    expect(manualMarkRefusal({ status: 422 })).toContain("did not save");
   });
 
   it("reviews ride the attachment review route with the explicit status", async () => {

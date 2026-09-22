@@ -1,4 +1,5 @@
 import { isMarkedCounter } from "@/lib/counter";
+import { isPlausibleSensorBox } from "./review-client";
 import type { ObservationCrop, SceneGraph, SceneNode, UnlocalizedObservation, Vec3 } from "@/types/contracts";
 
 export type TargetClass = "outlet" | "television" | "service_counter" | "restroom_entrance";
@@ -102,6 +103,18 @@ export function reviewEntriesFor(scene: SceneGraph, filter: TargetClassFilter): 
 /** Photographed evidence of a class exists but only in photos, with no measured position. */
 export function unlocalizedCount(scene: SceneGraph, targetClass: TargetClass): number {
   return (scene.unlocalized_observations ?? []).filter((observation) => UNLOCALIZED_CLASS[observation.target_class] === targetClass).length;
+}
+
+/**
+ * The observation whose crop image can actually be shown. A manual mark's
+ * server-cut crop counts exactly like an automatic one: both are authenticated
+ * pixels from the frame, distinguished only by provenance.
+ */
+export function firstRenderableCrop(observations: ObservationCrop[]): ObservationCrop | null {
+  return (
+    observations.find((candidate) => candidate.image_url !== null && candidate.image_url !== undefined && isPlausibleSensorBox(candidate.sensor_box))
+    ?? null
+  );
 }
 
 /** No detection is `unknown`, never "none in the room". This is the wording to prove it. */

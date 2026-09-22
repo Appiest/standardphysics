@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isUsablePointerBox, pointerBoxLabel, sensorBoxFromPointer } from "@/lib/sensor-box";
+import { containedContentRect, isUsablePointerBox, pointerBoxLabel, sensorBoxFromPointer } from "@/lib/sensor-box";
 
 describe("sensor box pointer math", () => {
   const rect = { left: 100, top: 50, width: 400, height: 300 };
@@ -13,6 +13,27 @@ describe("sensor box pointer math", () => {
   it("normalizes any drag direction and clamps to the frame", () => {
     const box = sensorBoxFromPointer({ x: 560, y: 400 }, { x: 90, y: 40 }, rect, natural);
     expect(box).toEqual({ left: 0, top: 0, right: 1200, bottom: 900 });
+  });
+
+  it("maps through the object-contain letterbox when the photo does not fill the element", () => {
+    const element = { left: 0, top: 0, width: 400, height: 200 };
+    const content = containedContentRect(element, natural);
+    expect(content.height).toBeCloseTo(200, 2);
+    expect(content.width).toBeCloseTo(266.667, 2);
+    expect(content.left).toBeCloseTo(66.667, 2);
+
+    const box = sensorBoxFromPointer({ x: 100, y: 50 }, { x: 300, y: 150 }, element, natural);
+    expect(box.left).toBeCloseTo(150, 0);
+    expect(box.top).toBeCloseTo(225, 0);
+    expect(box.right).toBeCloseTo(1050, 0);
+    expect(box.bottom).toBeCloseTo(675, 0);
+  });
+
+  it("a pointer in the letterbox bars clamps to the photo edge instead of inventing a position", () => {
+    const element = { left: 0, top: 0, width: 400, height: 200 };
+    const box = sensorBoxFromPointer({ x: 0, y: 0 }, { x: 300, y: 150 }, element, natural);
+    expect(box.left).toBe(0);
+    expect(box.top).toBe(0);
   });
 
   it("rejects degenerate and non-finite boxes before a request is ever sent", () => {

@@ -30,6 +30,25 @@ export async function getEvidence(scanId: string): Promise<EvidenceStatus | null
   return (await response.json()) as EvidenceStatus;
 }
 
+/** One original stored photograph the owner may look at and mark. */
+export type FrameEntry = {
+  frame_id: string;
+  width: number;
+  height: number;
+  image_url: string;
+};
+
+/** The frame listing agreed with K: GET /api/scans/{scan_id}/frames. */
+export type FrameListing = { frames: FrameEntry[] };
+
+/** The owner's original photographs for this scan. Null means the server build has no frame route. */
+export async function getFrames(scanId: string): Promise<FrameListing | null> {
+  const response = await fetch(`/api/scans/${scanId}/frames`, { cache: "no-store" });
+  if (response.status === 404) return null;
+  if (!response.ok) throw await refusal(response);
+  return (await response.json()) as FrameListing;
+}
+
 /** A person's photo mark: evidence where the pipeline found nothing. */
 export function markObservation(
   scanId: string,
@@ -43,14 +62,18 @@ export function markObservation(
   );
 }
 
+/** What to tell the person who just could not save a manual mark. */
+export function manualMarkRefusal(error: unknown): string {
+  const status = (error as { status?: number }).status;
+  if (status === 409) {
+    return "This scan changed while you were marking. Close this, reload, and mark again on the latest revision.";
+  }
+  return "The mark did not save. Try again in a moment.";
+}
+
 /** The authenticated crop image for an observation, cut from the actual frame bytes. */
 export function cropUrl(scanId: string, cropId: string): string {
   return `/api/scans/${scanId}/crops/${encodeURIComponent(cropId)}`;
-}
-
-/** An original frame photo, for a person to look at and mark. 404 until the route ships. */
-export function frameUrl(scanId: string, frameId: string): string {
-  return `/api/scans/${scanId}/frames/${encodeURIComponent(frameId)}`;
 }
 
 /** Confirm or reject a photographed object, so the person's decision rides with the evidence. */

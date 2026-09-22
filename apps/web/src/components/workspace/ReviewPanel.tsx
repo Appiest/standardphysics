@@ -16,6 +16,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import {
   classEmptyDetail,
+  firstRenderableCrop,
   nodePosition,
   reviewEntriesFor,
   TARGET_CLASSES,
@@ -24,7 +25,7 @@ import {
   type TargetClass,
   type TargetClassFilter,
 } from "@/lib/review-targets";
-import { cropUrl, isPlausibleSensorBox, reviewAttachment } from "@/lib/review-client";
+import { cropUrl, reviewAttachment } from "@/lib/review-client";
 import type { ObservationCrop, SceneGraph, SceneNode } from "@/types/contracts";
 import { MarkInPhoto } from "./MarkInPhoto";
 
@@ -194,7 +195,7 @@ function SelectedDetails({ scanId, scene, entry, onPersisted }: {
   const attachment = node.attachment;
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const crop = observations.find((candidate) => candidate.image_url && isPlausibleSensorBox(candidate.sensor_box));
+  const crop = firstRenderableCrop(observations);
 
   const applyReview = useCallback(async (status: "confirmed_by_user" | "rejected_by_user") => {
     setSaving(true);
