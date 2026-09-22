@@ -42,11 +42,37 @@ CERTIFICATE_GATES: dict[str, tuple[str, ...]] = {
     "scoped_requirements_satisfied": ("G00", "G05", "G06", "G13", "G14", "G17"),
     "photo_mesh_500_verified": ("G00", "G05", "G09", "G15"),
 }
+# Hard minimums from 04-hard-gates.json that receipts alone must meet.
+# G00: 18 behavioral mutation kills (limits.mutations_required).
+GATE_MINIMUMS: dict[str, tuple[tuple[str, int], ...]] = {
+    "G00": (("mutation_receipts", 18),),
+}
+
+
+def _below_minimum(gate_id: str, verifications: list[dict[str, Any]]) -> str | None:
+    for metric, minimum in GATE_MINIMUMS.get(gate_id, ()):
+        if metric == "mutation_receipts":
+            count = sum(
+                1
+                for result in verifications
+                if result["status"] == STATUS_VALID and result.get("mutation_id")
+            )
+            if count < minimum:
+                return f"only {count} of {minimum} required behavioral mutation kills evidenced"
+    return None
+
+
 def _gate_outcome(gate_id: str, verifications: list[dict[str, Any]]) -> dict[str, Any]:
     allowed = REQUIRED_EVIDENCE.get(gate_id, ())
-    for result in verifications:
-        if result["evidence_kind"] in allowed and result["status"] == STATUS_VALID:
-            return {"id": gate_id, "status": "passed", "receipt_ids": [result["receipt_id"]]}
+    passing = [r for r in verifications if r["evidence_kind"] in allowed and r["status"] == STATUS_VALID]
+    if passing:
+        shortfall = _below_minimum(gate_id, passing)
+        if shortfall is not None:
+            return {
+                "id": gate_id, "status": "failed", "reason": shortfall,
+                "receipt_ids": [r["receipt_id"] for r in passing],
+            }
+        return {"id": gate_id, "status": "passed", "receipt_ids": [r["receipt_id"] for r in passing]}
     invalid = [r for r in verifications if r["status"] == STATUS_INVALID]
     if invalid:
         return {

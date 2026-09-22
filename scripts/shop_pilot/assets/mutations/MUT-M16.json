@@ -1,11 +1,13 @@
 {
   "receipt_id": "MUT-M16",
   "gate_id": "G00",
+  "mutation_id": "M16",
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "96c8dba649b24ca07213b94f17db4682fffd145f",
+  "source_commit": "719247d584ce49ec92ff72836adb427b9b5d6c6a",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+  "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
   "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
   "input_artifacts": [
@@ -40,8 +42,8 @@
   "environment_versions": {
     "python": "3.11"
   },
-  "started_at": "2026-09-21T17:30:00-07:00",
-  "finished_at": "2026-09-21T17:40:00-07:00",
+  "started_at": "2026-09-21T17:39:15.327044-07:00",
+  "finished_at": "2026-09-21T17:39:15.327044-07:00",
   "exit_code": 1,
   "assertions": [
     {

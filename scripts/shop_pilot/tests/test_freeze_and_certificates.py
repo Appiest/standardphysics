@@ -7,7 +7,7 @@ import pathlib
 import subprocess
 
 from scripts.shop_pilot.certificates import evaluate
-from scripts.shop_pilot.evidence import sha256_bytes, sha256_file
+from scripts.shop_pilot.evidence import canonical_dirty_digest, sha256_bytes, sha256_file
 from scripts.shop_pilot.freeze import build_freeze
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -33,7 +33,8 @@ def _valid_receipt(tmp_path: pathlib.Path, gate: str, kind: str) -> dict:
     ).stdout.strip()
     return {
         "receipt_id": f"R-{gate}", "gate_id": gate, "run_id": "run", "lane_id": "K",
-        "evidence_kind": kind, "source_commit": head, "dirty_source_digest": sha256_bytes(b"x"),
+        "evidence_kind": kind, "source_commit": head, "dirty_source_digest": canonical_dirty_digest({}),
+        "dirty_source_files": {},
         "contract_hash": sha256_bytes(b"c"), "policy_hash": sha256_file(POLICY),
         "input_artifacts": [],
         "output_artifacts": [{
@@ -67,3 +68,12 @@ def test_software_certificate_requires_all_member_gates(tmp_path):
     receipt = _valid_receipt(tmp_path, "G01", "synthetic_component")
     evaluation = evaluate([receipt], artifacts_dir=tmp_path)
     assert evaluation["certificates"]["software_verified"]["status"] == "pending"
+
+
+def test_g00_fails_without_required_mutation_kill_count(tmp_path):
+    receipt = _valid_receipt(tmp_path, "G00", "synthetic_component")
+    receipt["mutation_id"] = "M01"
+    evaluation = evaluate([receipt], artifacts_dir=tmp_path)
+    gate = next(g for g in evaluation["gates"] if g["id"] == "G00")
+    assert gate["status"] == "failed"
+    assert "18" in gate["reason"]

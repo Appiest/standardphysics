@@ -13,7 +13,7 @@ import pathlib
 import subprocess
 
 from scripts.shop_pilot.certificates import evaluate
-from scripts.shop_pilot.evidence import sha256_bytes, sha256_file
+from scripts.shop_pilot.evidence import canonical_dirty_digest, sha256_bytes, sha256_file
 from scripts.shop_pilot.receipt_verifier import verify_receipt
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -47,7 +47,8 @@ def _base_receipt(tmp_path: pathlib.Path, gate_id: str = "G01", kind: str = "syn
         "lane_id": "K",
         "evidence_kind": kind,
         "source_commit": _head(),
-        "dirty_source_digest": sha256_bytes(b"clean"),
+        "dirty_source_digest": canonical_dirty_digest({}),
+        "dirty_source_files": {},
         "contract_hash": sha256_bytes(b"contract"),
         "policy_hash": sha256_file(POLICY),
         "input_artifacts": [],
@@ -239,6 +240,89 @@ def test_agent_identity_rejected_as_human_review(tmp_path):
     receipt["evaluator_identity"] = {"actor": "agent", "attestation": "I read the law"}
     result = verify_receipt(receipt, artifacts_dir=tmp_path)
     assert result["status"] == "invalid"
+
+
+def test_fabricated_dirty_source_digest_fails_recompute(tmp_path):
+    receipt = _base_receipt(tmp_path)
+    receipt["dirty_source_digest"] = "a" * 64
+    result = verify_receipt(receipt, artifacts_dir=tmp_path)
+    assert result["status"] == "invalid"
+    assert any("dirty_source_digest" in reason for reason in result["invalid_reasons"])
+
+
+def test_declared_dirty_file_with_wrong_hash_is_invalid(tmp_path):
+    receipt = _base_receipt(tmp_path)
+    dirty_file = tmp_path / "dirty.py"
+    dirty_file.write_text("print('x')\n", encoding="utf-8")
+    receipt["dirty_source_files"] = {"dirty.py": "c" * 64}
+    receipt["dirty_source_digest"] = None
+    result = verify_receipt(receipt, artifacts_dir=tmp_path, git_worktree=tmp_path)
+    assert result["status"] == "invalid"
+    assert any("dirty.py" in reason for reason in result["invalid_reasons"])
+
+
+def test_receipt_bound_to_stale_commit_is_blocked(tmp_path):
+    receipt = _base_receipt(tmp_path)
+    receipt["source_commit"] = "8f2962fc992e7ef502ad57d37eb0695b2bd66e08"
+    result = verify_receipt(receipt, artifacts_dir=tmp_path, git_worktree=REPO_ROOT)
+    assert result["status"] == "externally_blocked"
+
+
+def test_human_review_without_corroboration_is_blocked(tmp_path):
+    receipt = _base_receipt(tmp_path, gate_id="G14", kind="human_rule_review")
+    receipt["receipt_id"] = "R-human-uncorroborated"
+    receipt["evaluator_identity"] = {
+        "actor": "External Reviewer",
+        "attestation": "I reviewed the counter-height rule in person.",
+        "contact": {"email": "reviewer@example.com"},
+    }
+    result = verify_receipt(receipt, artifacts_dir=tmp_path)
+    assert result["status"] == "externally_blocked"
+    assert any("corroborated" in reason for reason in result["blocked_reasons"])
+
+
+def test_human_review_corroborated_by_artifact_bytes_is_valid(tmp_path):
+    attestation = "I reviewed the counter-height rule in person on 2026-09-21."
+    review_file = tmp_path / "review-attestation.txt"
+    review_file.write_text(attestation, encoding="utf-8")
+    graph_file = tmp_path / "graph.json"
+    graph_file.write_text(
+        json.dumps({"scan_id": "scan-1", "revision_id": 4, "nodes": []}), encoding="utf-8"
+    )
+    receipt = _base_receipt(tmp_path, gate_id="G14", kind="human_rule_review")
+    receipt["receipt_id"] = "R-human-corroborated"
+    receipt["scan_id"] = "scan-1"
+    receipt["revision_id"] = 4
+    receipt["output_artifacts"] = [
+        _artifact(review_file, "review-attestation.txt"),
+        _artifact(graph_file, "graph.json"),
+    ]
+    receipt["evaluator_identity"] = {
+        "actor": "External Reviewer",
+        "attestation": attestation,
+        "contact": {"email": "reviewer@example.com"},
+    }
+    receipt["review_attestation"] = {"artifact_sha256": sha256_file(review_file)}
+    receipt["assertions"] = [
+        {
+            "id": "attestation-hash",
+            "measurement_method": "file_sha256",
+            "expected": sha256_file(review_file),
+            "observed": sha256_file(review_file),
+            "params": {"artifact": "review-attestation.txt"},
+            "evidence_paths": ["review-attestation.txt"],
+        },
+        {
+            "id": "identity",
+            "measurement_method": "identity_consistent",
+            "expected": True,
+            "observed": True,
+            "params": {"artifact": "graph.json", "fields": ["scan_id", "revision_id"]},
+            "evidence_paths": ["graph.json"],
+        },
+    ]
+    result = verify_receipt(receipt, artifacts_dir=tmp_path)
+    assert result["status"] == "valid"
 
 
 def test_g9_certificate_blocked_by_invalid_receipt(tmp_path):

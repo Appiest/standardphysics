@@ -21,7 +21,7 @@ from typing import Any
 from .assertions import recompute_assertion
 from .evidence import (
     ArtifactError,
-    is_sha256_hex,
+    canonical_dirty_digest,
     load_json,
     resolve_artifact,
     sha256_file,
@@ -160,7 +160,87 @@ def _verify_human_reviewer(receipt: dict[str, Any]) -> list[str]:
         return ["human evidence requires an attributable non-implementation reviewer"]
     if not reviewer.get("attestation"):
         return ["human evidence requires a review attestation"]
+    contact = reviewer.get("contact")
+    if not isinstance(contact, dict) or not (contact.get("email") or contact.get("name")):
+        return ["human evidence requires attributable contact details for the reviewer"]
     return []
+
+
+def _corroborate_human_review(receipt: dict[str, Any], resolved: list[dict[str, Any]]) -> list[str]:
+    """Human receipt claims need corroborating provenance beyond receipt prose."""
+    if receipt.get("evidence_kind") not in HUMAN_KINDS:
+        return []
+    attestation = str(receipt.get("evaluator_identity", {}).get("attestation", ""))
+    artifact_hash = receipt.get("review_attestation", {}).get("artifact_sha256") if isinstance(
+        receipt.get("review_attestation"), dict
+    ) else None
+    found = False
+    for artifact in resolved:
+        if artifact_hash is not None and artifact.get("sha256") != artifact_hash:
+            continue
+        try:
+            text = pathlib.Path(artifact["path"]).read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            return [f"cannot open review attestation artifact: {exc}"]
+        if attestation and attestation in text:
+            found = True
+            break
+    if not found:
+        return ["human review attestation is not corroborated by any referenced artifact bytes"]
+    return []
+
+
+def _verify_source_state(
+    receipt: dict[str, Any], git_worktree: pathlib.Path | None
+) -> tuple[list[str], list[str]]:
+    """Recompute the declared dirty-source digest against declarated files.
+
+    A sha256-shaped string is not source freshness. The receipt must declare
+    exactly which files were dirty (path -> sha256) and the canonical digest
+    over that map must equal ``dirty_source_digest``; each file is then
+    re-hashed in the worktree. When the worktree HEAD no longer matches the
+    receipt's source_commit, the receipt is bound to stale source and cannot
+    prove current behavior.
+    """
+    hard: list[str] = []
+    blocked: list[str] = []
+    declared_digest = receipt.get("dirty_source_digest")
+    declared_files = receipt.get("dirty_source_files", {})
+    if not isinstance(declared_files, dict):
+        return ["dirty_source_files must be a path->sha256 map"], blocked
+    if declared_digest is not None:
+        recomputed = canonical_dirty_digest(declared_files)
+        if declared_digest != recomputed:
+            hard.append(f"dirty_source_digest {declared_digest!r} != recomputed {recomputed!r}")
+    if git_worktree is None:
+        return hard, blocked
+    for relative, declared_hash in declared_files.items():
+        candidate = git_worktree / relative
+        if not candidate.is_file():
+            hard.append(f"dirty source file {relative!r} does not exist in the worktree")
+            continue
+        actual = sha256_file(candidate)
+        if actual != declared_hash:
+            hard.append(f"dirty source file {relative!r} hash {actual} != declared {declared_hash}")
+    source_commit = receipt.get("source_commit")
+    if source_commit:
+        head = _git_head(git_worktree)
+        if head is not None and source_commit != head:
+            blocked.append(
+                f"receipt is bound to source_commit {source_commit} but worktree HEAD is {head}; "
+                "stale source cannot prove current behavior"
+            )
+    return hard, blocked
+
+
+def _git_head(workdir: pathlib.Path) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=workdir, capture_output=True, text=True
+        )
+    except FileNotFoundError:
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def _has_identity_assertion(receipt: dict[str, Any]) -> bool:
@@ -194,9 +274,9 @@ def verify_receipt(
         if not _git_commit_exists(git_worktree, source_commit):
             hard.append(f"source_commit {source_commit!r} does not exist in the repository")
 
-    digest = receipt.get("dirty_source_digest")
-    if digest is not None and not _is_explicit_null(digest) and not is_sha256_hex(digest):
-        hard.append("dirty_source_digest is not a sha256 hex string")
+    source_hard, source_blocked = _verify_source_state(receipt, git_worktree)
+    hard.extend(source_hard)
+    blocked.extend(source_blocked)
 
     output_records = receipt.get("output_artifacts")
     resolved_inputs, input_problems = _resolve_artifact_list(
@@ -220,6 +300,7 @@ def verify_receipt(
         blocked.append(
             "physical evidence has no identity_consistent assertion to cross-check scan/revision/owner"
         )
+    blocked.extend(_corroborate_human_review(receipt, all_resolved))
 
     if hard:
         status = STATUS_INVALID
@@ -232,6 +313,7 @@ def verify_receipt(
         "receipt_id": receipt.get("receipt_id"),
         "gate_id": receipt.get("gate_id"),
         "evidence_kind": receipt.get("evidence_kind"),
+        "mutation_id": receipt.get("mutation_id"),
         "status": status,
         "invalid_reasons": hard,
         "blocked_reasons": blocked,

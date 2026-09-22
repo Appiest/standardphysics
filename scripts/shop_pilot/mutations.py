@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import pathlib
 import subprocess
+from datetime import datetime, timezone
 from typing import Any
 
 from .evidence import canonical_dirty_digest, sha256_file
@@ -79,6 +80,7 @@ def _head() -> str:
 
 def build_receipts(assets: pathlib.Path = ASSETS) -> list[dict[str, Any]]:
     head = _head()
+    stamp = datetime.now(timezone.utc).astimezone().isoformat()
     receipts: list[dict[str, Any]] = []
     for mutation in MUTATIONS:
         mutated_log = assets / mutation["mutated_log"]
@@ -92,11 +94,13 @@ def build_receipts(assets: pathlib.Path = ASSETS) -> list[dict[str, Any]]:
         receipt = {
             "receipt_id": f"MUT-{mutation['id']}",
             "gate_id": "G00",
+            "mutation_id": mutation["id"],
             "run_id": "opencode-20260921-170615",
             "lane_id": "Q",
             "evidence_kind": "synthetic_component",
             "source_commit": head,
             "dirty_source_digest": canonical_dirty_digest({}),
+            "dirty_source_files": {},
             "contract_hash": sha256_file(CONTRACT_DOC),
             "policy_hash": sha256_file(POLICY_DOC),
             "input_artifacts": [_artifact(original, mutation["original_copy"])],
@@ -115,8 +119,8 @@ def build_receipts(assets: pathlib.Path = ASSETS) -> list[dict[str, Any]]:
             ),
             "working_directory": "/tmp/q-mutations",
             "environment_versions": {"python": "3.11"},
-            "started_at": "2026-09-21T17:30:00-07:00",
-            "finished_at": "2026-09-21T17:40:00-07:00",
+            "started_at": stamp,
+            "finished_at": stamp,
             "exit_code": 1,
             "assertions": [
                 {
