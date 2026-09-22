@@ -1,48 +1,178 @@
 {
   "kind": "certificate_matrix_final",
-  "version": 5,
+  "version": 6,
   "run_id": "opencode-20260921-170615",
   "evaluator": "lane Q independent (fireworks-ai deepseek-pro-latest)",
-  "computed_at": "2026-09-21T23:40:00-07:00",
-  "integration_head_evaluated": "6e010677bd4d9fe6c133ecc020ba81d1fce62afe",
+  "computed_at": "2026-09-21T23:41:30-07:00",
+  "integration_head_evaluated": "bb8ded966cff7f2eebe94706af096cc209ccd77f",
   "policy": "frozen docs unchanged",
-  "verification_scope_at_this_head": "targeted source-bound runs only (no broad suite repeats on moving heads): M06 mutation cycle on the new orientation test; audit_open_findings; astra+ontology+reads_as_wall; approach consumer direct reproduction; tracked-symlink check",
+  "verification_scope_at_this_head": "exact M06 mutation on test_orientation_end_to_end at bb8ded9 (clean 4 passed -> mutant 3 failed behaviorally -> restored hash b2ac0a9b... -> clean rerun 4 passed); M06 receipt rebound to bb8ded9. K states suites green at bb8ded9; no broad rerun of mine per dispatch.",
   "gate_matrix": [
-    {"id": "G00", "status": "failed", "blocker": "8 of 18 required behavioral mutation kills evidenced at source-bound heads (M03/M04/M05/M06/M07/M08/M15/M16). M06 is no longer a gap: S's test_orientation_end_to_end.py at 6e01067 makes the turns=0 mutation die behaviorally (3/4 cases fail; restored hash b2ac0a9b...). 10 cases remain (component-dependent M09-M14, M17 and others)."},
-    {"id": "G01", "status": "passed_targeted_with_note", "blocker": null, "note": "All previously-visible top-level reds verified resolved at 6e01067: audit_open_findings 10 passed + 3 xfailed (fixture fix 8ed34a3), astra+ontology 29 passed (R's reads_as_wall/ontology ratchet), tracked absolute .node_modules-link absent from the tree. Full-suite re-verify deferred to the frozen candidate per dispatch."},
-    {"id": "G02", "status": "passed", "blocker": null, "note": "closure suite + review safety green at 534b7e0; convention unchanged by 6e01067 (test-only + predicate rename)."},
-    {"id": "G03", "status": "passed", "blocker": null, "note": "S proxy-semantics chain integrated; end-to-end orientation test present; M06 mutation now killed at this head (was a survived gap)."},
-    {"id": "G04", "status": "passed", "blocker": null, "note": "review-safety green; M08 mutation killed."},
-    {"id": "G05", "status": "passed", "blocker": null, "note": "Direct reproduction of the supervisor consumer-gap at 6e01067: needs_another_look television (0.12x0.03x0.12m at z=0.5) yields _extents_trusted=False and target_height_inches=None - proxy extents can no longer produce within-reach verdicts."},
-    {"id": "G06", "status": "passed", "blocker": null, "note": "scope rows green."},
-    {"id": "G07", "status": "passed", "blocker": null, "note": "uncertain reach stays uncertain at this head (fix/approach guard + existing 56 approach/reach tests); approach UI is the remaining separate item."},
-    {"id": "G08", "status": "passed_with_named_limitation", "blocker": null, "note": "root-independent 60/60 + 66/66 and visual overlay verification; physical touch deferred to G11."},
-    {"id": "G09", "status": "pending", "blocker": "portable-network/phone user test still missing; E runtime receipts + root LAN verification exist."},
-    {"id": "G10", "status": "passed_process_residuals", "blocker": "real paid run audited (398 requests, truthful counts, detector not stubbed). Residuals: texture previously exited running and B's corrected replay wb-verify-replay-v2 FAILED (no scene after settlement; receipt checked 06:20) - no fresh corrected-recognition revision exists yet."},
-    {"id": "G11", "status": "externally_blocked", "blocker": "user LAN-only physical Safari review unanswered; capture+upload legs real and byte-verified."},
-    {"id": "G12", "status": "pending", "blocker": "human-reviewed held-out inventories; counts are not one-to-one accuracy."},
-    {"id": "G13", "status": "pending", "blocker": "A dossier not handed to Q."},
-    {"id": "G14", "status": "externally_blocked", "blocker": "qualified human legal review."},
-    {"id": "G15", "status": "failed", "blocker": "independent visual rejection stands; V c11 awaits root visual verdict - graphics gate remains failed until that verdict."},
-    {"id": "G16", "status": "externally_blocked", "blocker": "cannot exist before the boba-shop visit."},
-    {"id": "G17", "status": "externally_blocked", "blocker": "field control measurements missing."}
+    {
+      "id": "G00",
+      "status": "failed",
+      "blocker": "8 of 18 required behavioral mutation kills (M03/M04/M05/M06/M07/M08/M15/M16). M06 exact turns=0 mutation re-verified KILLED at bb8ded9 (orientation patch round-trip assertions fail 3/4). 10 cases retained."
+    },
+    {
+      "id": "G01",
+      "status": "passed_targeted_with_note",
+      "blocker": null,
+      "note": "All previously-visible top-level reds verified resolved at 6e01067: audit_open_findings 10 passed + 3 xfailed (fixture fix 8ed34a3), astra+ontology 29 passed (R's reads_as_wall/ontology ratchet), tracked absolute .node_modules-link absent from the tree. Full-suite re-verify deferred to the frozen candidate per dispatch."
+    },
+    {
+      "id": "G02",
+      "status": "passed",
+      "blocker": null,
+      "note": "closure suite + review safety green at 534b7e0; convention unchanged by 6e01067 (test-only + predicate rename)."
+    },
+    {
+      "id": "G03",
+      "status": "passed",
+      "blocker": null,
+      "note": "S proxy-semantics chain integrated; end-to-end orientation test present; M06 mutation now killed at this head (was a survived gap)."
+    },
+    {
+      "id": "G04",
+      "status": "passed",
+      "blocker": null,
+      "note": "review-safety green; M08 mutation killed."
+    },
+    {
+      "id": "G05",
+      "status": "passed",
+      "blocker": null,
+      "note": "Direct reproduction of the supervisor consumer-gap at 6e01067: needs_another_look television (0.12x0.03x0.12m at z=0.5) yields _extents_trusted=False and target_height_inches=None - proxy extents can no longer produce within-reach verdicts."
+    },
+    {
+      "id": "G06",
+      "status": "passed",
+      "blocker": null,
+      "note": "scope rows green."
+    },
+    {
+      "id": "G07",
+      "status": "passed",
+      "blocker": null,
+      "note": "uncertain reach stays uncertain at this head (fix/approach guard + existing 56 approach/reach tests); approach UI is the remaining separate item."
+    },
+    {
+      "id": "G08",
+      "status": "passed_with_named_limitation",
+      "blocker": null,
+      "note": "root-independent 60/60 + 66/66 and visual overlay verification; physical touch deferred to G11."
+    },
+    {
+      "id": "G09",
+      "status": "pending",
+      "blocker": "portable-network/phone user test still missing; E runtime receipts + root LAN verification exist."
+    },
+    {
+      "id": "G10",
+      "status": "passed_process_residuals",
+      "blocker": "real paid run audited (398 requests, truthful counts, detector not stubbed). Corrected replay at b86a89cf: cached-only (398 cache files matched, 104 objects, 2 unread, 0 provider calls), ownership repaired b86a89cf owner -> af071129 (was pilot-u synthetic 1b0be788); original receipt preserved (sha256 d6ae37af...). Supplementary caveats: frames_read dict, objects_found null, abstentions example-only. Not a detector-accuracy pass (G12)."
+    },
+    {
+      "id": "G11",
+      "status": "externally_blocked",
+      "blocker": "user LAN-only physical Safari review unanswered; capture+upload legs real and byte-verified."
+    },
+    {
+      "id": "G12",
+      "status": "pending",
+      "blocker": "human-reviewed held-out inventories; counts are not one-to-one accuracy."
+    },
+    {
+      "id": "G13",
+      "status": "pending",
+      "blocker": "A dossier not handed to Q."
+    },
+    {
+      "id": "G14",
+      "status": "externally_blocked",
+      "blocker": "qualified human legal review."
+    },
+    {
+      "id": "G15",
+      "status": "failed",
+      "blocker": "root c11 visual verdict FAILED (fragmented triangles/holes persist across quad images 0086/0001 and c9/c11 source maps). V code integration at bb8ded9 is source integration, not a quality pass. G15 remains failed."
+    },
+    {
+      "id": "G16",
+      "status": "externally_blocked",
+      "blocker": "cannot exist before the boba-shop visit."
+    },
+    {
+      "id": "G17",
+      "status": "externally_blocked",
+      "blocker": "field control measurements missing."
+    }
   ],
   "certificates": {
-    "software_verified": {"status": "not_awarded", "blocked_by": ["G00", "G09"]},
-    "saved_capture_verified": {"status": "not_awarded", "blocked_by": ["G00", "G09", "G10 corrected-replay missing"]},
-    "phone_pilot_ready": {"status": "not_awarded", "blocked_by": ["G11"]},
-    "shop_field_validated": {"status": "not_awarded", "blocked_by": ["G16", "G17"]},
-    "automatic_semantics_benchmark_passed": {"status": "not_awarded", "blocked_by": ["G12"]},
-    "scoped_assessment_evidence_ready": {"status": "not_awarded", "blocked_by": ["G13"]},
-    "scoped_requirements_satisfied": {"status": "not_awarded", "blocked_by": ["G14", "G17"]},
-    "photo_mesh_500_verified": {"status": "not_awarded", "blocked_by": ["G15"]},
-    "whole_site_ADA_compliance": {"automated_certificate_allowed": false}
+    "software_verified": {
+      "status": "not_awarded",
+      "blocked_by": [
+        "G00",
+        "G09"
+      ]
+    },
+    "saved_capture_verified": {
+      "status": "not_awarded",
+      "blocked_by": [
+        "G00",
+        "G09",
+        "G10 corrected-replay missing"
+      ]
+    },
+    "phone_pilot_ready": {
+      "status": "not_awarded",
+      "blocked_by": [
+        "G11"
+      ]
+    },
+    "shop_field_validated": {
+      "status": "not_awarded",
+      "blocked_by": [
+        "G16",
+        "G17"
+      ]
+    },
+    "automatic_semantics_benchmark_passed": {
+      "status": "not_awarded",
+      "blocked_by": [
+        "G12"
+      ]
+    },
+    "scoped_assessment_evidence_ready": {
+      "status": "not_awarded",
+      "blocked_by": [
+        "G13"
+      ]
+    },
+    "scoped_requirements_satisfied": {
+      "status": "not_awarded",
+      "blocked_by": [
+        "G14",
+        "G17"
+      ]
+    },
+    "photo_mesh_500_verified": {
+      "status": "not_awarded",
+      "blocked_by": [
+        "G15"
+      ]
+    },
+    "whole_site_ADA_compliance": {
+      "automated_certificate_allowed": false
+    }
   },
   "corrections_from_supervisor": [
     "G01 audit reds removed (fixtures fixed; verified by me at 6e01067)",
     "M06 counted as killed (orientation test integrated)",
     "approach consumer gap closed (direct repro returns None/unmeasured)",
     "B corrected replay failed; no fresh corrected revision exists",
-    "symlink removal confirmed at this head"
-  ]
+    "symlink removal confirmed at this head",
+    "ownership repaired b86a89cf->af071129 and live-validated per replay supplement; original B receipt preserved",
+    "G15: c11 visual verdict FAILED - source churn reduction is not a quality pass"
+  ],
+  "software_line": "K suites green at bb8ded9 per K; Q evidence: all prior recomputes + M06 mutation binding + targeted orientation cycle at this head. G09 portable-network test and G11 user review remain the physical blockers for certificates."
 }

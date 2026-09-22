@@ -52,7 +52,7 @@ MUTATIONS: list[dict[str, Any]] = [
     },
     {
         "id": "M06",
-        "source_head": "6e01067 (final K HEAD)",
+        "source_head": "bb8ded9 (final K HEAD)",
         "outcome": "killed",
         "fault": "detect.py: encode_frame orientation rotation zeroed (turns=0)",
         "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/detect.py",

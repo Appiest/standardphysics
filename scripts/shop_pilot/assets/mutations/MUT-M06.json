@@ -6,8 +6,8 @@
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "59f7fdaff63083870c6f38dd710f88b37b064fd7",
-  "eval_source_head": "6e01067 (final K HEAD)",
+  "source_commit": "8d72e2faade9e0c0f74d317fb07113ff4dbcb776",
+  "eval_source_head": "bb8ded9 (final K HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
@@ -23,13 +23,13 @@
   "output_artifacts": [
     {
       "path": "M06-mutated.log",
-      "sha256": "5f92acf7ed5a6a1401c79bf37bbff9e52b99892143694ef56f56bca6701c49ee",
+      "sha256": "41213bb1575ed906e46c01d61ac43cee48c8767d295fafd56186d162f67247b0",
       "size_bytes": 8927,
       "content_type": "text/plain"
     },
     {
       "path": "M06-clean-after.log",
-      "sha256": "285a0fcb19d88aef8d3a8bf03456688755f33b03ab786144fe993e1bc0fc4738",
+      "sha256": "b4e6716fbd6745e8531d806d530757d7b2e907a881718c8369d92405a53c4ebc",
       "size_bytes": 98,
       "content_type": "text/plain"
     }
@@ -44,8 +44,8 @@
   "environment_versions": {
     "python": "3.11"
   },
-  "started_at": "2026-09-21T23:35:26.889452-07:00",
-  "finished_at": "2026-09-21T23:35:26.889452-07:00",
+  "started_at": "2026-09-21T23:41:17.656643-07:00",
+  "finished_at": "2026-09-21T23:41:17.656643-07:00",
   "exit_code": 1,
   "assertions": [
     {
@@ -128,7 +128,7 @@
   },
   "fault": {
     "id": "M06",
-    "source_head": "6e01067 (final K HEAD)",
+    "source_head": "bb8ded9 (final K HEAD)",
     "outcome": "killed",
     "fault": "detect.py: encode_frame orientation rotation zeroed (turns=0)",
     "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/detect.py",

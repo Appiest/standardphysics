@@ -2,8 +2,8 @@ F.FF                                                                     [100%]
 =================================== FAILURES ===================================
 _ TestEncodeFrameOrientationEndToEnd.test_patch_round_trips_upright_and_back_to_sensor_pixels[landscape_left] _
 
-self = <test_orientation_end_to_end.TestEncodeFrameOrientationEndToEnd object at 0x104ccaed0>
-tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-466/test_patch_round_trips_upright0')
+self = <test_orientation_end_to_end.TestEncodeFrameOrientationEndToEnd object at 0x10a35bc90>
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-473/test_patch_round_trips_upright0')
 orientation = 'landscape_left'
 
     @pytest.mark.parametrize("orientation", sorted(CASES))
@@ -57,8 +57,8 @@ E         1     | 514.5    | 85.0 ± 4
 packages/pipeline/tests/test_orientation_end_to_end.py:123: AssertionError
 _ TestEncodeFrameOrientationEndToEnd.test_patch_round_trips_upright_and_back_to_sensor_pixels[portrait] _
 
-self = <test_orientation_end_to_end.TestEncodeFrameOrientationEndToEnd object at 0x10621c190>
-tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-466/test_patch_round_trips_upright2')
+self = <test_orientation_end_to_end.TestEncodeFrameOrientationEndToEnd object at 0x10a334710>
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-473/test_patch_round_trips_upright2')
 orientation = 'portrait'
 
     @pytest.mark.parametrize("orientation", sorted(CASES))
@@ -102,8 +102,8 @@ E         Use -v to get more diff
 packages/pipeline/tests/test_orientation_end_to_end.py:119: AssertionError
 _ TestEncodeFrameOrientationEndToEnd.test_patch_round_trips_upright_and_back_to_sensor_pixels[portrait_upside_down] _
 
-self = <test_orientation_end_to_end.TestEncodeFrameOrientationEndToEnd object at 0x10621c3d0>
-tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-466/test_patch_round_trips_upright3')
+self = <test_orientation_end_to_end.TestEncodeFrameOrientationEndToEnd object at 0x10a334950>
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-473/test_patch_round_trips_upright3')
 orientation = 'portrait_upside_down'
 
     @pytest.mark.parametrize("orientation", sorted(CASES))
@@ -149,4 +149,4 @@ packages/pipeline/tests/test_orientation_end_to_end.py:119: AssertionError
 FAILED packages/pipeline/tests/test_orientation_end_to_end.py::TestEncodeFrameOrientationEndToEnd::test_patch_round_trips_upright_and_back_to_sensor_pixels[landscape_left]
 FAILED packages/pipeline/tests/test_orientation_end_to_end.py::TestEncodeFrameOrientationEndToEnd::test_patch_round_trips_upright_and_back_to_sensor_pixels[portrait]
 FAILED packages/pipeline/tests/test_orientation_end_to_end.py::TestEncodeFrameOrientationEndToEnd::test_patch_round_trips_upright_and_back_to_sensor_pixels[portrait_upside_down]
-3 failed, 1 passed in 0.23s
+3 failed, 1 passed in 0.22s
