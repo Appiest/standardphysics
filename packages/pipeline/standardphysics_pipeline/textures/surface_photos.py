@@ -116,7 +116,8 @@ def region_weighted_decimate(vertices, triangles, region_mask, region_budget, re
     from a 250k-face display mesh, leaving the far surface rendered neutral).
     This keeps ``region_budget`` faces inside ``region_mask`` and ``rest_budget``
     outside; both parts snap back onto the measured surface later in the bake.
-    Returns (display_vertices, display_triangles).
+    Returns (display_vertices, display_triangles, region_face_count); the
+    region part is written first, so its faces are the leading rows.
     """
     import trimesh
 
@@ -134,7 +135,42 @@ def region_weighted_decimate(vertices, triangles, region_mask, region_budget, re
     offsets = np.concatenate([[0], np.cumsum([len(part[0]) for part in parts[:-1]])])
     display_triangles = np.concatenate(
         [np.asarray(part[1]) + int(offset) for part, offset in zip(parts, offsets)], axis=0)
-    return display_vertices, display_triangles
+    return display_vertices, display_triangles, len(parts[0][1])
+
+
+def subdivide_masked_faces(vertices, triangles, mask):
+    """Split masked faces into four midpoint subfaces (planar, same winding).
+
+    Subdivision reduces per-face projective warp for oblique textured faces:
+    a large display triangle carrying one photograph warps visibly, while
+    four smaller coplanar subfaces keep per-face distortion low and let the
+    selector assign finer photographic support. Midpoints lie on the parent
+    face plane by construction; a following snap pass locks them onto the
+    measured surface. Only masked faces change; the rest stays untouched, so
+    the only new T-junctions sit at the mask boundary.
+    """
+    if not mask.any():
+        return vertices.copy(), triangles.copy()
+    corners = vertices[triangles[mask]].astype(np.float64)
+    mab = (corners[:, 0] + corners[:, 1]) / 2.0
+    mbc = (corners[:, 1] + corners[:, 2]) / 2.0
+    mca = (corners[:, 2] + corners[:, 0]) / 2.0
+    base = len(vertices)
+    added = np.concatenate([mab, mbc, mca], axis=0)
+    new_vertices = np.concatenate([vertices.astype(np.float64), added], axis=0)
+    a, b, c = triangles[mask][:, 0], triangles[mask][:, 1], triangles[mask][:, 2]
+    count = len(a)
+    iab = base + np.arange(count)
+    ibc = base + count + np.arange(count)
+    ica = base + 2 * count + np.arange(count)
+    children = np.stack([
+        np.column_stack([a, iab, ica]),
+        np.column_stack([iab, b, ibc]),
+        np.column_stack([ica, ibc, c]),
+        np.column_stack([iab, ibc, ica]),
+    ]).reshape(-1, 3)
+    new_triangles = np.concatenate([triangles[~mask], children], axis=0)
+    return new_vertices, new_triangles
 
 
 def snap_to_measured(display_vertices, full_vertices, max_distance=0.15):

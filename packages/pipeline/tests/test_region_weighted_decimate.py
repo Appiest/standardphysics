@@ -17,8 +17,9 @@ def test_region_weighted_decimate_preserves_region_face_budget():
     triangles = np.asarray(triangles)
     region_faces = left[triangles].all(axis=1)
     assert region_faces.any() and (~region_faces).any()
-    display_v, display_t = region_weighted_decimate(vertices, triangles, region_faces,
+    display_v, display_t, region_count = region_weighted_decimate(vertices, triangles, region_faces,
                                                     region_budget=60, rest_budget=40)
+    assert 0 < region_count <= 60
     assert 0 < len(display_t) <= 100
     assert display_t.min() >= 0 and display_t.max() < len(display_v)
 
@@ -64,8 +65,9 @@ def test_region_weighted_decimate_keeps_wall_sheet():
     triangles = np.asarray(triangles)
     region_faces = np.zeros(len(triangles), dtype=bool)
     region_faces[: 2 * 18 * 18] = True
-    display_v, display_t = region_weighted_decimate(vertices, triangles, region_faces,
+    display_v, display_t, region_count = region_weighted_decimate(vertices, triangles, region_faces,
                                                     region_budget=300, rest_budget=100)
+    assert 0 < region_count <= 648
     front_faces = (display_t < n).all(axis=1).sum()
     back_faces = (display_t >= n).any(axis=1).sum()
     half_of_sheet = (2 * 18 * 18) // 2

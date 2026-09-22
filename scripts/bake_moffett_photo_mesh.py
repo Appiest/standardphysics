@@ -23,6 +23,7 @@ from standardphysics_pipeline.textures.surface_photos import (
     choose_views_partial,
     region_weighted_decimate,
     snap_to_measured,
+    subdivide_masked_faces,
 )
 
 
@@ -80,20 +81,26 @@ def region_faces_of(vertices, triangles, region_from: Path | None,
 def display_mesh(cache: Path, vertices, triangles, args, region_faces: np.ndarray | None):
     if cache.exists():
         saved = np.load(cache)
-        return saved["vertices"], saved["triangles"]
+        if region_faces is None or not args.subdivide_region or "region_mask" in saved:
+            mask = saved["region_mask"] if "region_mask" in saved else None
+            return saved["vertices"], saved["triangles"], mask
     if region_faces is not None:
         if args.region_face_fraction <= 0 or args.region_face_fraction >= 1:
             raise ValueError("region-face-fraction must be between 0 and 1")
         region_budget = max(int(args.faces * args.region_face_fraction), 4)
         rest_budget = max(args.faces - region_budget, 4)
-        display_vertices, display_triangles = region_weighted_decimate(
+        display_vertices, display_triangles, region_face_count = region_weighted_decimate(
             vertices, triangles, region_faces, region_budget, rest_budget)
+        combined_mask = np.zeros(len(display_triangles), dtype=bool)
+        combined_mask[:region_face_count] = True
     else:
         mesh = trimesh.Trimesh(vertices, triangles, process=False)
         reduced = mesh.simplify_quadric_decimation(face_count=args.faces)
         display_vertices, display_triangles = reduced.vertices, reduced.faces
-    np.savez_compressed(cache, vertices=display_vertices, triangles=display_triangles)
-    return display_vertices, display_triangles
+        combined_mask = np.zeros(len(display_triangles), dtype=bool)
+    np.savez_compressed(cache, vertices=display_vertices, triangles=display_triangles,
+                        region_mask=combined_mask)
+    return display_vertices, display_triangles, combined_mask
 
 
 def source_cameras(directory, c2r, excluded_frames: set[str], camera_count: int):
@@ -181,6 +188,9 @@ def main():
                              "decimation so measured walls are not erased from the display mesh")
     parser.add_argument("--region-face-fraction", type=float, default=0.6,
                         help="fraction of --faces reserved for the region (default 0.6)")
+    parser.add_argument("--subdivide-region", action="store_true",
+                        help="split region display faces into four midpoint subfaces before "
+                             "snapping, so oblique photographed faces warp less per face")
     args = parser.parse_args()
     directory = args.captures/CAPTURES[args.room]
     output = args.output/args.room
@@ -194,7 +204,13 @@ def main():
     cache_tag = "-region" if args.region_from is not None else ""
     cache = output/f"display-{mesh_sha}-{room_sha}-{args.faces}-{args.region_face_fraction}{cache_tag}-{code_key()}.npz"
     excluded_frames, split_block = excluded_frames_from_args(args)
-    display_vertices, display_triangles = display_mesh(cache, vertices, triangles, args, region_faces)
+    display_vertices, display_triangles, display_region_mask = display_mesh(
+        cache, vertices, triangles, args, region_faces)
+    if args.subdivide_region and region_faces is not None:
+        display_vertices, display_triangles = subdivide_masked_faces(
+            display_vertices, display_triangles, display_region_mask)
+        print(args.room, "display triangles after region subdivision:",
+              len(display_triangles), flush=True)
     print(args.room, "display triangles", len(display_triangles), flush=True)
     snap_status = None
     if args.snap:
