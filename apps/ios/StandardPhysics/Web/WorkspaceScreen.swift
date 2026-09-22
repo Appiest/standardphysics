@@ -4,7 +4,10 @@ import WebKit
 
 struct WorkspaceScreen: View {
     @ObservedObject var appModel: AppModel
-    let scanID: UUID
+    /// The scan to open, or nil to land on the workspace itself so a scan that
+    /// lives only on the server (a copy, or another device's capture) can be
+    /// opened from the web app's own list.
+    let scanID: UUID?
     @State private var message: String?
 
     var body: some View {
@@ -15,8 +18,9 @@ struct WorkspaceScreen: View {
                    origin.allowsLocalDemo,
                    message == nil {
                     WorkspaceWebView(
-                        url: workspaceURL.appendingPathComponent("scans").appendingPathComponent(scanID.uuidString),
+                        url: Self.url(workspace: workspaceURL, scanID: scanID),
                         allowedOrigin: origin,
+                        sessionToken: appModel.session.token,
                         onScanRequested: { appModel.beginCapture() },
                         onFailure: { message = $0 }
                     )
@@ -43,16 +47,23 @@ struct WorkspaceScreen: View {
             }
         }
     }
+
+    static func url(workspace: URL, scanID: UUID?) -> URL {
+        guard let scanID else { return workspace }
+        return workspace.appendingPathComponent("scans").appendingPathComponent(scanID.uuidString)
+    }
 }
 
 struct WorkspaceWebView: UIViewRepresentable {
     let url: URL
     let allowedOrigin: WebOrigin
+    let sessionToken: String?
     let onScanRequested: () -> Void
     let onFailure: (String) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(allowedOrigin: allowedOrigin,
+            sessionToken: sessionToken,
             onScanRequested: onScanRequested, onFailure: onFailure)
     }
 
@@ -81,6 +92,7 @@ struct WorkspaceWebView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, WKDownloadDelegate {
         private let allowedOrigin: WebOrigin
+        private let sessionToken: String?
         private let onScanRequested: () -> Void
         private let onFailure: (String) -> Void
         private var requestedURL: URL?
@@ -88,8 +100,10 @@ struct WorkspaceWebView: UIViewRepresentable {
         private var downloadDestinations: [ObjectIdentifier: URL] = [:]
 
         init(allowedOrigin: WebOrigin,
+             sessionToken: String?,
              onScanRequested: @escaping () -> Void, onFailure: @escaping (String) -> Void) {
             self.allowedOrigin = allowedOrigin
+            self.sessionToken = sessionToken
             self.onScanRequested = onScanRequested
             self.onFailure = onFailure
         }
@@ -101,7 +115,21 @@ struct WorkspaceWebView: UIViewRepresentable {
         func load(_ url: URL, in webView: WKWebView) {
             guard requestedURL != url, allowedOrigin.allowsLocalDemo, allowedOrigin.contains(url) else { return }
             requestedURL = url
-            webView.load(URLRequest(url: url))
+            let request = URLRequest(url: url)
+            // The workspace authenticates the same way the phone does: one
+            // sp_session cookie on the workspace origin, forwarded by its
+            // server to the API. Hand the signed-in session over before the
+            // first navigation, or the shop opens to a sign-in screen.
+            guard let cookie = WorkspaceSessionBridge.cookie(token: sessionToken, origin: allowedOrigin) else {
+                webView.load(request)
+                return
+            }
+            webView.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) {
+                DispatchQueue.main.async {
+                    guard self.webView === webView else { return }
+                    webView.load(request)
+                }
+            }
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -281,11 +309,37 @@ enum WorkspaceDownloadDestination {
     }
 }
 
+/// The signed-in owner's session, handed to the workspace web view as the one
+/// cookie the workspace and the API both understand. Same name and meaning as
+/// the web app's own `sp_session`, scoped to the workspace origin only.
+struct WorkspaceSessionBridge {
+    static let sessionCookieName = "sp_session"
+
+    /// The cookie to plant on the workspace origin, or nil when the token is
+    /// empty or the origin is not a local demo workspace. Never wildcard the
+    /// domain: this cookie travels to exactly one host, or nowhere.
+    static func cookie(token: String?, origin: WebOrigin) -> HTTPCookie? {
+        guard let token, !token.isEmpty, origin.allowsLocalDemo else { return nil }
+        var properties: [HTTPCookiePropertyKey: Any] = [
+            .name: sessionCookieName,
+            .value: token,
+            .domain: origin.host,
+            .path: "/",
+            .expires: Date().addingTimeInterval(12 * 60 * 60),
+        ]
+        // HTTPCookie(properties:) treats the key's mere presence as "secure",
+        // so the key must be absent for a plain http workspace.
+        if origin.scheme == "https" {
+            properties[.secure] = String(true)
+        }
+        return HTTPCookie(properties: properties)
+    }
+}
+
 struct WebOrigin: Equatable, Sendable {
     let scheme: String
     let host: String
     let port: Int?
-
     var allowsLocalDemo: Bool { ServiceAddress.isLocalHost(host) }
 
     init?(url: URL) {

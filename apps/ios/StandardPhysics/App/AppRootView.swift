@@ -8,7 +8,7 @@ final class AppModel: ObservableObject {
         case capture
         case review(CapturedScan)
         case upload(UploadViewModel)
-        case workspace(UUID)
+        case workspace(UUID?)
         case connection
         case signIn
     }
@@ -232,6 +232,8 @@ private struct StartView: View {
         VStack(spacing: AppTheme.Spacing.small) {
             Button("Start scanning") { model.beginCapture() }
                 .buttonStyle(AppButtonStyle())
+            Button("Open the workspace") { model.screen = .workspace(nil) }
+                .buttonStyle(AppButtonStyle(.secondary))
             Button("Change the upload address") { model.screen = .connection }
                 .buttonStyle(AppButtonStyle(.secondary))
         }

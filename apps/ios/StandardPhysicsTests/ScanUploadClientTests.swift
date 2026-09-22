@@ -104,6 +104,52 @@ final class ScanUploadClientTests: XCTestCase {
 }
 
 final class WorkspaceWebViewTests: XCTestCase {
+    func testSessionBridgePlantsAHostOnlyCookieOnALocalWorkspace() throws {
+        let origin = try XCTUnwrap(WebOrigin(url: URL(string: "http://10.9.104.8:8893")!))
+        let cookie = try XCTUnwrap(WorkspaceSessionBridge.cookie(token: "abc123", origin: origin))
+
+        XCTAssertEqual(cookie.name, "sp_session")
+        XCTAssertEqual(cookie.value, "abc123")
+        XCTAssertEqual(cookie.domain, "10.9.104.8")
+        XCTAssertEqual(cookie.path, "/")
+        XCTAssertFalse(cookie.isSecure)
+        XCTAssertNotNil(cookie.expiresDate)
+    }
+
+    func testSessionBridgeScopesCookiesToDotLocalAndHTTPSHosts() throws {
+        let local = try XCTUnwrap(WebOrigin(url: URL(string: "http://macbook-pro.local:8893")!))
+        let localCookie = try XCTUnwrap(WorkspaceSessionBridge.cookie(token: "abc123", origin: local))
+        XCTAssertEqual(localCookie.domain, "macbook-pro.local")
+        XCTAssertFalse(localCookie.isSecure)
+
+        let secureLocal = try XCTUnwrap(WebOrigin(url: URL(string: "https://macbook-pro.local")!))
+        let secureCookie = try XCTUnwrap(WorkspaceSessionBridge.cookie(token: "abc123", origin: secureLocal))
+        XCTAssertTrue(secureCookie.isSecure)
+    }
+
+    func testSessionBridgeNeverLeaksATokenOutsideALocalWorkspace() {
+        let hosted = WebOrigin(url: URL(string: "https://workspace.example")!)
+        XCTAssertNotNil(hosted)
+        XCTAssertNil(WorkspaceSessionBridge.cookie(token: "abc123", origin: hosted!))
+        XCTAssertFalse(hosted!.allowsLocalDemo)
+    }
+
+    func testSessionBridgeRefusesEmptyTokens() throws {
+        let origin = try XCTUnwrap(WebOrigin(url: URL(string: "http://10.9.104.8:8893")!))
+        XCTAssertNil(WorkspaceSessionBridge.cookie(token: nil, origin: origin))
+        XCTAssertNil(WorkspaceSessionBridge.cookie(token: "", origin: origin))
+    }
+
+    func testWorkspaceURLKeepsScanPathsAndBareOriginIntact() throws {
+        let workspace = URL(string: "http://10.9.104.8:8893")!
+        XCTAssertEqual(WorkspaceScreen.url(workspace: workspace, scanID: nil), workspace)
+
+        let scanID = UUID(uuidString: "97FDFEFC-957C-4A09-8D39-554CC8ADB09F")!
+        XCTAssertEqual(
+            WorkspaceScreen.url(workspace: workspace, scanID: scanID),
+            URL(string: "http://10.9.104.8:8893/scans/97FDFEFC-957C-4A09-8D39-554CC8ADB09F")!
+        )
+    }
     func testNoSignInDemoIsRestrictedToLocalWorkspaces() throws {
         for address in ["http://MacBook-Pro.local:3000", "http://10.20.9.207:3000", "http://localhost:3000"] {
             let origin = try XCTUnwrap(WebOrigin(url: URL(string: address)!))
