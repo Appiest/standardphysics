@@ -1,10 +1,10 @@
 {
   "kind": "certificate_matrix_final",
-  "version": 11,
+  "version": 12,
   "run_id": "opencode-20260921-170615",
   "evaluator": "lane Q independent (fireworks-ai deepseek-pro-latest)",
-  "computed_at": "2026-09-22T00:48:40-07:00",
-  "integration_head_evaluated": "e4318296d177c4c57255ec333263cef51133da4d (G10 provenance correction + explicit PYTHONPATH docs)",
+  "computed_at": "2026-09-22T01:02:32-07:00",
+  "integration_head_evaluated": "e4318296d177c4c57255ec333263cef51133da4d (revision-5 corrected G10 copy independently verified)",
   "policy": "frozen docs unchanged",
   "verification_scope_at_this_head": "exact M06 mutation on test_orientation_end_to_end at bb8ded9 (clean 4 passed -> mutant 3 failed behaviorally -> restored hash b2ac0a9b... -> clean rerun 4 passed); M06 receipt rebound to bb8ded9. K states suites green at bb8ded9; no broad rerun of mine per dispatch.",
   "gate_matrix": [
@@ -72,7 +72,7 @@
       "id": "G10",
       "status": "passed",
       "blocker": null,
-      "note": "Verified byte-level at e431829: g10-corrected-report.json scene revision 3 on scan b86a89cf; node 126c3739 back to candidate; observation on frame-0309 (root-reviewed real faceplate crop, two receptacle openings, 84d5d5f8... ZIP recomputed) with the embedded note 'AI-assisted QA review (automated, not the account owner or any human)...' - honest provenance, quality needs_another_look preserved; no texture, human-confirmation or accuracy claims are required or made; manual node is NOT counted as detected."
+      "note": "Revision-5 copy independently verified (no self-report): zip sha256 57271bcec6... == recomputed; scene + assessment at revision 5; the manual observation now lives on f4213100 carrying the node's OWN existing crop id frame-0309-751385505449bca0 (frame-0309, sensor_box [1161.6,691.2,1248.0,741.6]) with provenance manual and the embedded 'AI-assisted QA review... cross-node identity is NOT established' note; 126c3739 no longer carries any manual/noted observation; f421 localization stays needs_verification and uncertainty flags unchanged from rev4; rev3/rev4 artifacts and the superseded receipts preserved. Residual observations, not blockers: the report JSON does not serialize an actor/time string for the manual record (note carries the automated attribution), and root's visual review supports image-level outlet evidence only."
     },
     {
       "id": "G11",
@@ -87,7 +87,7 @@
     {
       "id": "G13",
       "status": "pending",
-      "blocker": null,
+      "blocker": "pending-on-A, not external: the real revision-pinned Moffett dossier artifacts do not exist in the evidence tree yet. Exact required sources to bind: Moffett scan f143082d-f529-494b-b80d-97729234e334 with scenario/assessment at revision 7, built by services/api/standardphysics_api/scope_manifest.py at K head e431829 (builder sha256 9b5da4e5...); boundary behavior is independently verified (root 7 negative probes refused; 28 scope+ontology tests pass; my 25-test rerun at e431829 green). before_after must stay empty until measured evidence exists.",
       "note": "Builder boundary defects are closed and independently verified (root: 7 negative probes all refused, 4 identity fields + shallow/typed/ nonexistent before_after; 28 scope+ontology tests pass; my rerun at e431829: 25 scope tests). Gate still requires the actual revision-pinned dossier artifacts which Q has not independently audited at this head."
     },
     {
