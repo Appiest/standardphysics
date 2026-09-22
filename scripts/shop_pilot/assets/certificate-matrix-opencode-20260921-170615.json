@@ -1,10 +1,10 @@
 {
   "kind": "certificate_matrix_final",
-  "version": 9,
+  "version": 10,
   "run_id": "opencode-20260921-170615",
   "evaluator": "lane Q independent (fireworks-ai deepseek-pro-latest)",
-  "computed_at": "2026-09-22T00:14:53-07:00",
-  "integration_head_evaluated": "1dcfd8f (K: provider request metadata at response time; exact head read from k-remote)",
+  "computed_at": "2026-09-22T00:31:21-07:00",
+  "integration_head_evaluated": "8c5d40b (A chain integrated: dossier refuses all nonempty before/after until measured evidence)",
   "policy": "frozen docs unchanged",
   "verification_scope_at_this_head": "exact M06 mutation on test_orientation_end_to_end at bb8ded9 (clean 4 passed -> mutant 3 failed behaviorally -> restored hash b2ac0a9b... -> clean rerun 4 passed); M06 receipt rebound to bb8ded9. K states suites green at bb8ded9; no broad rerun of mine per dispatch.",
   "gate_matrix": [
@@ -12,7 +12,7 @@
       "id": "G00",
       "status": "passed",
       "blocker": null,
-      "note": "All 18 required controls with behavioral assertions, clean counterparts, restored hashes, raw logs. M17 re-executed against the SHIPPED G15 evaluator (scripts/evaluate_photo_mesh_500.py covered_fraction): deterministic 96/100 fixture, injected photographed:=ones(fixed_mask) once, killed by assert 0.0 == 0.04, restored 121a0d7e..., clean rerun. The earlier render_efficiency/metrics.py result is informative only and is NOT counted toward M17."
+      "note": "All 18 required controls with behavioral assertions, clean counterparts, restored hashes, raw logs. M17 re-executed against the SHIPPED G15 evaluator (scripts/evaluate_photo_mesh_500.py covered_fraction): deterministic 96/100 fixture, injected photographed:=ones(fixed_mask) once, killed by assert 0.0 == 0.04, restored 121a0d7e..., clean rerun. The earlier render_efficiency/metrics.py result is informative only and is NOT counted toward M17. M09/M11 re-killed and rebound at 8c5d40b (scope_manifest chain changed); M17 shipped-evaluator proof durable at 8c5d40b (clean 1 passed / mutant assert 0.0==0.04 / restore 121a0d7e / clean rerun)."
     },
     {
       "id": "G01",
@@ -65,12 +65,12 @@
     {
       "id": "G09",
       "status": "pending",
-      "blocker": "portable-network/phone user test still missing; E runtime receipts + root LAN verification exist."
+      "blocker": "literal policy gap, not a physical-phone requirement (G11 owns physical): authenticated LAN journey verified (owner-repaired account, scene/frames 200) and auth denials tested, but start.sh does not yet document the portable-network and unavailable-feature behavior blocks the policy asks for (E owns; only docs missing)."
     },
     {
       "id": "G10",
-      "status": "passed_process_residuals",
-      "blocker": "real paid run audited (398 requests, truthful counts, detector not stubbed). Corrected cached-only replay now LAN-verified after ownership repair (af071129; scene 200, 465 frames served; supervisor-corrected-replay-verification.json). Residuals carried elsewhere: counts are not unique accuracy (G12); texture completion state remains to be confirmed (G15 domain); abstentions example-only caveat (B receipt)."
+      "status": "pending",
+      "blocker": "real paid run + LAN-verified cached replay exist; policy has NO texture-completion requirement (removed that invented blocker). Still missing, literally from 04-hard-gates G10.requires: a real review and a scoped report saved under a NEW revision on the corrected replay; detector invocation, crops, truthful counts are already evidenced."
     },
     {
       "id": "G11",
@@ -84,8 +84,9 @@
     },
     {
       "id": "G13",
-      "status": "failed_waiting_A_repair",
-      "blocker": "Two independent root reproductions: identity (random scan_id/revision 999/unrelated graph_hash/rulepack accepted) and provenance (synthetic before_after measurement/provenance strings accepted as justified=True; supervisor-g13-provenance-second-repro.json). Refuse nonempty before_after until typed identity-bound measured evidence; A c4b7830 still fails. FURTHER root finding: new_SUBJECT_MATCHES widens kind branches 34->40 - do not inflate the baseline."
+      "status": "passed",
+      "blocker": null,
+      "note": "boundary tests green at 8c5d40b (25): foreign scan_id/revision/graph_hash/rulepack refused; before_after stays empty until supported; measured before_after justified; A refused-all-nonempty stance implemented. Transitively blocked by G10 via depends_on."
     },
     {
       "id": "G14",
@@ -126,11 +127,7 @@
       "blocked_by": [
         "G09"
       ],
-      "derived_from_policy_lists": true,
-      "notes": [
-        "targeted verification at candidate heads; full-suite re-verify deferred to the frozen candidate integration",
-        "root-independent 60/60 + 66/66 + visual overlay; browser mouse events, touch remains G11"
-      ]
+      "derived_from_policy_lists": true
     },
     "saved_capture_verified": {
       "status": "not_awarded",
@@ -148,14 +145,10 @@
         "G10"
       ],
       "blocked_by": [
-        "G09"
+        "G09",
+        "G10"
       ],
-      "derived_from_policy_lists": true,
-      "notes": [
-        "targeted verification at candidate heads; full-suite re-verify deferred to the frozen candidate integration",
-        "root-independent 60/60 + 66/66 + visual overlay; browser mouse events, touch remains G11",
-        "real paid run + LAN-verified corrected replay; counts are inventory not accuracy (G12); texture completion unconfirmed"
-      ]
+      "derived_from_policy_lists": true
     },
     "phone_pilot_ready": {
       "status": "not_awarded",
@@ -176,11 +169,7 @@
         "G09",
         "G11"
       ],
-      "derived_from_policy_lists": true,
-      "notes": [
-        "targeted verification at candidate heads; full-suite re-verify deferred to the frozen candidate integration",
-        "root-independent 60/60 + 66/66 + visual overlay; browser mouse events, touch remains G11"
-      ]
+      "derived_from_policy_lists": true
     },
     "shop_field_validated": {
       "status": "not_awarded",
@@ -203,11 +192,7 @@
         "G11",
         "G16"
       ],
-      "derived_from_policy_lists": true,
-      "notes": [
-        "targeted verification at candidate heads; full-suite re-verify deferred to the frozen candidate integration",
-        "root-independent 60/60 + 66/66 + visual overlay; browser mouse events, touch remains G11"
-      ]
+      "derived_from_policy_lists": true
     },
     "automatic_semantics_benchmark_passed": {
       "status": "not_awarded",
@@ -219,12 +204,10 @@
         "G12"
       ],
       "blocked_by": [
+        "G10",
         "G12"
       ],
-      "derived_from_policy_lists": true,
-      "notes": [
-        "real paid run + LAN-verified corrected replay; counts are inventory not accuracy (G12); texture completion unconfirmed"
-      ]
+      "derived_from_policy_lists": true
     },
     "scoped_assessment_evidence_ready": {
       "status": "not_awarded",
@@ -236,13 +219,10 @@
         "G13"
       ],
       "blocked_by": [
+        "G10",
         "G13"
       ],
-      "derived_from_policy_lists": true,
-      "notes": [
-        "root-independent 60/60 + 66/66 + visual overlay; browser mouse events, touch remains G11",
-        "real paid run + LAN-verified corrected replay; counts are inventory not accuracy (G12); texture completion unconfirmed"
-      ]
+      "derived_from_policy_lists": true
     },
     "scoped_requirements_satisfied": {
       "status": "not_awarded",
@@ -259,8 +239,7 @@
         "G14",
         "G17"
       ],
-      "derived_from_policy_lists": true,
-      "notes": []
+      "derived_from_policy_lists": true
     },
     "photo_mesh_500_verified": {
       "status": "not_awarded",
@@ -274,41 +253,245 @@
         "G09",
         "G15"
       ],
-      "derived_from_policy_lists": true,
-      "notes": []
+      "derived_from_policy_lists": true
     },
     "whole_site_ADA_compliance": {
       "automated_certificate_allowed": false
     }
   },
   "corrections_from_supervisor": [
-    "M17 must target the shipped evaluator (scripts/evaluate_photo_mesh_500.py covered_fraction), not render_efficiency/metrics.py - DONE, kill bound at 1dcfd8f",
-    "software_verified blockers must exclude G13 - DONE via programmatic all_of derivation from 04-hard-gates.json (blocked only by G09)",
-    "G13 provenance second repro added; kind-branch inflation flagged for A"
+    "G15 durable test: blanket except/skip removed; plain import of the K evaluator, verified clean/mutated/restored at 8c5d40b",
+    "recompute_certificates: dispositions read from the current matrix, transitive depends_on honored, unknown/failed conservative; negative proofs committed",
+    "G10 texture 'requirement' removed (not in policy); literal missing items are review + scoped report under a new revision",
+    "G09': literal gap is the documentation block, not a phone probe (G11 owns physical)"
   ],
   "software_line": "K suites green at bb8ded9 per K; Q evidence: all prior recomputes + M06 mutation binding + targeted orientation cycle at this head. G09 portable-network test and G11 user review remain the physical blockers for certificates.",
   "notes_ten_controls": "All 18 controls secured across source-bound heads; M17 bound to the ACTUAL shipped evaluator denominator with a deterministic fixture; certificate blocker lists are programmatically derived from the frozen policy, never hand-edited.",
   "certificate_derivation": {
-    "method": "programmatic all_of evaluation from docs/deepseek-shop-pilot/04-hard-gates.json",
-    "gate_dispositions": {
-      "G00": true,
-      "G01": true,
-      "G02": true,
-      "G03": true,
-      "G04": true,
-      "G05": true,
-      "G06": true,
-      "G07": true,
-      "G08": true,
-      "G09": false,
-      "G10": true,
-      "G11": false,
-      "G12": false,
-      "G13": false,
-      "G14": false,
-      "G15": false,
-      "G16": false,
-      "G17": false
+    "gate_statuses_read_from_matrix": [
+      [
+        "G00",
+        "passed"
+      ],
+      [
+        "G01",
+        "passed_targeted_with_note"
+      ],
+      [
+        "G02",
+        "passed"
+      ],
+      [
+        "G03",
+        "passed"
+      ],
+      [
+        "G04",
+        "passed"
+      ],
+      [
+        "G05",
+        "passed"
+      ],
+      [
+        "G06",
+        "passed"
+      ],
+      [
+        "G07",
+        "passed"
+      ],
+      [
+        "G08",
+        "passed_with_named_limitation"
+      ],
+      [
+        "G09",
+        "pending"
+      ],
+      [
+        "G10",
+        "pending"
+      ],
+      [
+        "G11",
+        "externally_blocked"
+      ],
+      [
+        "G12",
+        "pending"
+      ],
+      [
+        "G13",
+        "passed"
+      ],
+      [
+        "G14",
+        "externally_blocked"
+      ],
+      [
+        "G15",
+        "failed"
+      ],
+      [
+        "G16",
+        "externally_blocked"
+      ],
+      [
+        "G17",
+        "externally_blocked"
+      ]
+    ],
+    "dependency_closure_respected": true,
+    "certificates": {
+      "software_verified": {
+        "status": "not_awarded",
+        "all_of": [
+          "G00",
+          "G01",
+          "G02",
+          "G03",
+          "G04",
+          "G05",
+          "G06",
+          "G07",
+          "G08",
+          "G09"
+        ],
+        "blocked_by": [
+          "G09"
+        ],
+        "derived_from_policy_lists": true
+      },
+      "saved_capture_verified": {
+        "status": "not_awarded",
+        "all_of": [
+          "G00",
+          "G01",
+          "G02",
+          "G03",
+          "G04",
+          "G05",
+          "G06",
+          "G07",
+          "G08",
+          "G09",
+          "G10"
+        ],
+        "blocked_by": [
+          "G09",
+          "G10"
+        ],
+        "derived_from_policy_lists": true
+      },
+      "phone_pilot_ready": {
+        "status": "not_awarded",
+        "all_of": [
+          "G00",
+          "G01",
+          "G02",
+          "G03",
+          "G04",
+          "G05",
+          "G06",
+          "G07",
+          "G08",
+          "G09",
+          "G11"
+        ],
+        "blocked_by": [
+          "G09",
+          "G11"
+        ],
+        "derived_from_policy_lists": true
+      },
+      "shop_field_validated": {
+        "status": "not_awarded",
+        "all_of": [
+          "G00",
+          "G01",
+          "G02",
+          "G03",
+          "G04",
+          "G05",
+          "G06",
+          "G07",
+          "G08",
+          "G09",
+          "G11",
+          "G16"
+        ],
+        "blocked_by": [
+          "G09",
+          "G11",
+          "G16"
+        ],
+        "derived_from_policy_lists": true
+      },
+      "automatic_semantics_benchmark_passed": {
+        "status": "not_awarded",
+        "all_of": [
+          "G00",
+          "G02",
+          "G03",
+          "G10",
+          "G12"
+        ],
+        "blocked_by": [
+          "G10",
+          "G12"
+        ],
+        "derived_from_policy_lists": true
+      },
+      "scoped_assessment_evidence_ready": {
+        "status": "not_awarded",
+        "all_of": [
+          "G00",
+          "G06",
+          "G08",
+          "G10",
+          "G13"
+        ],
+        "blocked_by": [
+          "G10",
+          "G13"
+        ],
+        "derived_from_policy_lists": true
+      },
+      "scoped_requirements_satisfied": {
+        "status": "not_awarded",
+        "all_of": [
+          "G00",
+          "G05",
+          "G06",
+          "G13",
+          "G14",
+          "G17"
+        ],
+        "blocked_by": [
+          "G13",
+          "G14",
+          "G17"
+        ],
+        "derived_from_policy_lists": true
+      },
+      "photo_mesh_500_verified": {
+        "status": "not_awarded",
+        "all_of": [
+          "G00",
+          "G05",
+          "G09",
+          "G15"
+        ],
+        "blocked_by": [
+          "G09",
+          "G15"
+        ],
+        "derived_from_policy_lists": true
+      },
+      "whole_site_ADA_compliance": {
+        "automated_certificate_allowed": false
+      }
     }
   }
 }

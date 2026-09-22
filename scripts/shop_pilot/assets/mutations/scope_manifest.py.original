@@ -40,6 +40,7 @@ from standardphysics_contracts import (
     ScopeManifest,
     ScopeRow,
 )
+from standardphysics_agents.checks import roles
 
 PILOT_TARGET_CLASSES = ["outlet", "television", "service_counter", "restroom_entrance"]
 
@@ -221,36 +222,67 @@ def _finding_row(
     )
 
 
+_SUBJECT_ROLE_FINDERS = {
+    "service_counter": lambda graph: {n.id for n in roles.service_counters(graph)},
+    "point_of_sale": lambda graph: {n.id for n in roles.point_of_sale(graph)},
+    "dining_surface": lambda graph: {n.id for n in roles.dining_surfaces(graph)},
+    "floor": lambda graph: {n.id for n in roles.floors(graph)},
+    "door": lambda graph: {n.id for n in roles.doors(graph)},
+    "entrance": lambda graph: {n.id for n in roles.doors(graph)},
+}
+"""Requirement subjects resolved by the existing role predicates, which read
+labels and geometry rather than branching on a closed set of kinds. A locus
+that mixes a subject with its blockers (the counter and the chairs crowding
+its approach) must row the subject, never whatever node happens to come first."""
+
+
 def _item_for(
     check: Check, finding: Finding, index: int, total: int, graph: SceneGraph
 ) -> ScopeItem:
-    """The measured item a finding is about, or the site when it names none.
+    """The item a finding is about, rooted in the graph's own roles.
 
-    A finding's locus carries the nodes the measurement rested on. The first
-    node that exists in the graph becomes the item, with its id bound into the
-    slug so the obligation stays stable across revisions. A site-level finding
-    (no locus) keeps the site slug it always had.
+    A locus that names one node becomes that node. A locus that names several
+    (a counter plus the chairs crowding its clear floor space) prefers the
+    node the role predicates call the requirement's subject, and only falls
+    back to the first locus node when nothing matches. A finding with no locus
+    keeps the site slug it always had. A question finding observes nothing
+    yet: whatever the row names, it stays unobserved until a capture answers
+    it.
     """
     nodes = _locus_nodes(finding, graph)
     if nodes:
-        node = nodes[0]
+        node = _subject_node(nodes, getattr(check, "applies_to", []) or [], graph)
         kind = _ITEM_KINDS_FOR_NODES.get(node.kind, "object")
+        observed = finding.outcome != "question"
         return ScopeItem(
             item_id=node.id,
             item_slug=f"{check.id}:{node.id}",
             item_kind=kind,
             label=node.label,
-            observed=True,
-            source="measured",
+            observed=observed,
+            source="measured" if observed else "requested_not_observed",
         )
     slug = f"site:{check.id}" if total == 1 else f"site:{check.id}:{index}"
+    observed = finding.outcome != "question" and finding.measured_inches is not None
     return ScopeItem(
         item_slug=slug,
         item_kind="site",
         label=finding.title or check.title,
-        observed=True,
-        source="measured",
+        observed=observed,
+        source="measured" if observed else "requested_not_observed",
     )
+
+
+def _subject_node(nodes: list, applies_to: list[str], graph: SceneGraph):
+    for subject in applies_to:
+        finder = _SUBJECT_ROLE_FINDERS.get(subject)
+        if finder is None:
+            continue
+        role_ids = finder(graph)
+        for node in nodes:
+            if node.id in role_ids:
+                return node
+    return nodes[0]
 
 
 def _locus_nodes(finding: Finding, graph: SceneGraph) -> list:
@@ -417,6 +449,177 @@ def _stand_in_check(check_id: str, finding: Finding) -> Check:
         threshold=0.0,
         unit="in",
     )
+
+
+def build_evidence_dossier(
+    manifest: ScopeManifest,
+    assessment: Assessment,
+    *,
+    site: Mapping[str, str],
+    control_measurement_gaps: list[str],
+    recapture_notes: list[str],
+    before_after: list | None = None,
+) -> dict:
+    """The scoped evidence dossier G13 describes, from a frozen manifest.
+
+    Every requested requirement carries its visible rows with provenance
+    (item identity and source), the calculation outcome, the reason or the
+    exact missing input, the source edition and the legal-review status.
+    Outcome coverage over the requested denominator is computed and refused
+    unless complete, so an unreviewed or unevaluated requirement can never
+    fall out of the dossier.
+
+    The assessment is bound to the manifest by identity before anything is
+    published: an assessment from another scan, revision, graph or rulepack is
+    a DossierIdentityError, never a dossier.
+
+    `before_after` holds recommendation evidence; any nonempty entry must
+    carry real before AND after measurements with provenance or the dossier
+    refuses, so an unmeasured claim can never be marked justified.
+    """
+    from collections import defaultdict
+
+    allowed = {"satisfied", "violation", "needs_verification", "not_applicable", "unobserved"}
+    _bind_assessment_identity(manifest, assessment)
+    before_after = _validated_before_after(before_after, manifest)
+    by_requirement: dict[str, list[dict]] = defaultdict(list)
+    for row in manifest.rows:
+        if not row.requested:
+            continue
+        by_requirement[row.requirement_id].append(
+            {
+                "item": {
+                    "slug": row.item.item_slug,
+                    "kind": row.item.item_kind,
+                    "item_id": str(row.item.item_id) if row.item.item_id else None,
+                    "label": row.item.label,
+                    "observed": row.item.observed,
+                    "source": row.item.source,
+                },
+                "outcome": row.outcome,
+                "reason": row.reason,
+                "applicability": row.applicability,
+                "applicability_reason": row.applicability_reason,
+                "evidence_refs": row.evidence_refs,
+                "measurement": row.measurement,
+                "source_version": row.source_version,
+                "legal_review_status": row.legal_review_status,
+            }
+        )
+
+    requested = sorted(manifest.requested_requirements)
+    covered = [req for req in requested if by_requirement.get(req)]
+    fraction = len(covered) / max(len(requested), 1)
+    if fraction < 1.0:
+        missing = sorted(set(requested) - set(covered))
+        raise ValueError(
+            f"dossier cannot omit requested requirements: {missing}; "
+            f"coverage {fraction:g} < 1.0"
+        )
+    for req in requested:
+        for entry in by_requirement[req]:
+            if entry["outcome"] not in allowed:
+                raise ValueError(f"row for {req} has outcome {entry['outcome']!r}")
+            if not entry.get("reason"):
+                raise ValueError(f"row for {req} has no reason or missing-input note")
+
+    return {
+        "schema_version": 1,
+        "kind": "moffett_scoped_evidence_dossier",
+        "pinned": {
+            "scan_id": str(manifest.scan_id),
+            "graph_revision": manifest.graph_revision,
+            "graph_hash": manifest.graph_hash,
+            "rulepack_version": manifest.rulepack_version,
+            "manifest_id": str(manifest.id),
+            "manifest_hash": manifest.manifest_hash,
+            "assessment_id": str(assessment.id),
+            "assessment_pass_number": assessment.pass_number,
+            "created_at": manifest.created_at.isoformat(),
+        },
+        "site": dict(site),
+        "requested_requirements": requested,
+        "requested_classes": manifest.requested_classes,
+        "route_endpoints": manifest.route_endpoints,
+        "applicability_questions": manifest.applicability_questions,
+        "unresolved_questions": manifest.unresolved_questions,
+        "requirements": {
+            req: by_requirement[req] for req in requested
+        },
+        "legal_review": {
+            "status": "no human reviews recorded at this revision",
+            "per_row_statuses_present": True,
+            "note": "every row carries its own legal_review_status; no row may claim reviewer_supplied unless a review was supplied",
+        },
+        "control_measurements": {
+            "independent_field_controls": [],
+            "gaps": list(control_measurement_gaps),
+        },
+        "recapture_and_verification": list(recapture_notes),
+        "before_after": {
+            "justified": bool(before_after),
+            "entries": list(before_after or []),
+            "note": (
+                "recommendations appear only where a before/after measurement "
+                "set supports them; an empty list means none is justified at this revision"
+            ),
+        },
+        "coverage": {
+            "requested_requirements": len(requested),
+            "requirements_with_explicit_outcome": len(covered),
+            "outcome_coverage_fraction": fraction,
+            "unsupported_whole_site_compliance_claims": 0,
+            "note": "a complete dossier can truthfully contain violations and unknowns, and never certifies the site",
+        },
+    }
+
+
+class DossierIdentityError(ValueError):
+    """The assessment does not belong to the manifest it is being published with."""
+
+    def __init__(self, field: str, manifest_value, assessment_value) -> None:
+        self.field = field
+        self.manifest_value = manifest_value
+        self.assessment_value = assessment_value
+        super().__init__(
+            f"assessment and scope manifest disagree on {field}: "
+            f"manifest {manifest_value!r} vs assessment {assessment_value!r}"
+        )
+
+
+class DossierProvenanceError(ValueError):
+    """A before/after recommendation carries no measured provenance."""
+
+
+def _bind_assessment_identity(manifest: ScopeManifest, assessment: Assessment) -> None:
+    """The assessment the dossier publishes must be the manifest's own."""
+    pairs = [
+        ("scan_id", str(manifest.scan_id), str(assessment.scan_id)),
+        ("graph_revision", manifest.graph_revision, assessment.graph_revision),
+        ("graph_hash", manifest.graph_hash, assessment.graph_hash),
+        ("rulepack_version", manifest.rulepack_version, assessment.rulepack_version),
+    ]
+    for field, manifest_value, assessment_value in pairs:
+        if manifest_value != assessment_value:
+            raise DossierIdentityError(field, manifest_value, assessment_value)
+
+
+def _validated_before_after(entries: list | None, manifest: ScopeManifest) -> list:
+    """Recommendation evidence stays off until real measured evidence exists.
+
+    This pilot has no persisted, identity-bound, measured before/after
+    evidence store to look anything up in, so ANY nonempty entry is refused
+    outright: a dossier with recommendations marked justified must never
+    exist while a fabricated revision can still describe one. An empty list
+    is the honest default, and the dossier states the limitation when asked
+    to carry entries.
+    """
+    if entries:
+        raise DossierProvenanceError(
+            "before/after recommendation evidence is not yet supported: no persisted "
+            "measured-evidence lookup exists in this pilot; leave the list empty"
+        )
+    return []
 
 
 def _hash(**fields) -> str:

@@ -1,14 +1,16 @@
 """Deterministic denominator test for the SHIPPED G15 evaluator (K head).
 
-Import the actual c9/c11 denominator entry points: covered_fraction and
-hole_metrics from scripts/evaluate_photo_mesh_500.py. Fixture: a 10x10 fixed
-measured mask with a photographed pass missing exactly 4 pixels. Baseline
-must report 0.96 photographed/critical-ROI fraction and a 0.04 hole; an
-injection that counts unphotographed/transparent pixels as photographed
-flips the fractions to 1.0/0.0 and fails these assertions behaviorally.
+Loads the actual c9/c11 denominator entry points from the checkout named by
+EVALUATOR_DIR (default: this repository root) and requires EVALUATOR_DIR to
+name a checkout whose scripts/evaluate_photo_mesh_500.py exposes
+covered_fraction and hole_metrics. There is deliberately NO skip wrapper: an
+import failure is a visible error, never a hidden pass.
 
-Set EVALUATOR_DIR to the checkout whose evaluator should be exercised
-(default: this repository's own scripts directory).
+Run against the integrated K tree like:
+
+  EVALUATOR_DIR=<K-tree> \
+  <venv>/python -m pytest scripts/shop_pilot/tests/test_g15_evaluator_denominator.py \
+    -o pythonpath="<K-tree>/packages/pipeline:<K-tree>/packages/contracts:<K-tree>/packages/fixtures:<K-tree>/scripts"
 """
 
 from __future__ import annotations
@@ -20,14 +22,22 @@ import sys
 import numpy as np
 from PIL import Image
 
-EVALUATOR_DIR = pathlib.Path(os.environ.get("EVALUATOR_DIR", str(pathlib.Path(__file__).resolve().parents[3])))
-sys.path.insert(0, str(EVALUATOR_DIR / "scripts"))
+EVALUATOR_DIR = pathlib.Path(
+    os.environ.get(
+        "EVALUATOR_DIR",
+        str(pathlib.Path(__file__).resolve().parents[3]),
+    )
+)
 
-try:
-    from evaluate_photo_mesh_500 import covered_fraction, hole_metrics  # noqa: E402
-    HAS_EVALUATOR = True
-except Exception:  # evaluator not importable in this checkout
-    HAS_EVALUATOR = False
+for entry in (
+    EVALUATOR_DIR / "scripts",
+    EVALUATOR_DIR / "packages" / "pipeline",
+    EVALUATOR_DIR / "packages" / "contracts",
+    EVALUATOR_DIR / "packages" / "fixtures",
+):
+    sys.path.insert(0, str(entry))
+
+from evaluate_photo_mesh_500 import covered_fraction, hole_metrics  # noqa: E402
 
 
 def _pass_with_hole(path: pathlib.Path) -> None:
@@ -37,10 +47,6 @@ def _pass_with_hole(path: pathlib.Path) -> None:
 
 
 def test_denominator_counts_only_photographed_pixels(tmp_path):
-    if not HAS_EVALUATOR:
-        import pytest
-
-        pytest.skip(f"shipped evaluator unavailable under {EVALUATOR_DIR}")
     photographed_path = tmp_path / "coverage.png"
     _pass_with_hole(photographed_path)
     fixed_mask = np.ones((10, 10), dtype=bool)

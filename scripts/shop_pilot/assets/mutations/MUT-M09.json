@@ -6,8 +6,8 @@
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "7c68dafbc7c69dd2ac9b4ae0a8e23bdcb3879558",
-  "eval_source_head": "bb8ded9 (final K HEAD)",
+  "source_commit": "586f284e886e14bf76628ca01e0af31a793671cd",
+  "eval_source_head": "8c5d40b (A chain integrated)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
@@ -15,21 +15,21 @@
   "input_artifacts": [
     {
       "path": "scope_manifest.py.original",
-      "sha256": "41f325e83b6ddf5ff8d7eca6be7b68c6f6f8bea869d121ea1927d98190fd4f96",
-      "size_bytes": 15511,
+      "sha256": "9b5da4e5ec45c8b8de8eb90e983ebd0fc74520d41ea5898e63fd435d1df83abc",
+      "size_bytes": 24634,
       "content_type": "text/plain"
     }
   ],
   "output_artifacts": [
     {
       "path": "M09-mutated.log",
-      "sha256": "74fdb17962780c2e2bdbcbb71bdde75c731c0ed28fbe7d97c7ff2a8424d93506",
-      "size_bytes": 1186,
+      "sha256": "b576f6b953d25087815ba93cabbf391f78549d5dbc56e8d58ab8e159c8531f8f",
+      "size_bytes": 23284,
       "content_type": "text/plain"
     },
     {
       "path": "M09-clean-after.log",
-      "sha256": "f85c5b3a2091c2c7dfd13a6d2bca1172753fd6c56693a44cf3a07c5f6b617267",
+      "sha256": "b56e52536d7305b264fe355f3a053570c4ce600678156bd6b365a69a8de9b35e",
       "size_bytes": 99,
       "content_type": "text/plain"
     }
@@ -44,8 +44,8 @@
   "environment_versions": {
     "python": "3.11"
   },
-  "started_at": "2026-09-22T00:13:25.893489-07:00",
-  "finished_at": "2026-09-22T00:13:25.893489-07:00",
+  "started_at": "2026-09-22T00:30:59.851987-07:00",
+  "finished_at": "2026-09-22T00:30:59.851987-07:00",
   "exit_code": 1,
   "assertions": [
     {
@@ -90,7 +90,7 @@
     {
       "id": "restored-source-hash",
       "measurement_method": "file_sha256",
-      "expected": "41f325e83b6ddf5ff8d7eca6be7b68c6f6f8bea869d121ea1927d98190fd4f96",
+      "expected": "9b5da4e5ec45c8b8de8eb90e983ebd0fc74520d41ea5898e63fd435d1df83abc",
       "params": {
         "artifact": "scope_manifest.py.original"
       },
@@ -128,11 +128,11 @@
   },
   "fault": {
     "id": "M09",
-    "source_head": "bb8ded9 (final K HEAD)",
+    "source_head": "8c5d40b (A chain integrated)",
     "outcome": "killed",
     "fault": "scope_manifest.py: requested requirements dropped when no finding exists (hidden unknown)",
     "fault_file": "services/api/standardphysics_api/scope_manifest.py",
-    "restored_sha256": "41f325e83b6ddf5ff8d7eca6be7b68c6f6f8bea869d121ea1927d98190fd4f96",
+    "restored_sha256": "9b5da4e5ec45c8b8de8eb90e983ebd0fc74520d41ea5898e63fd435d1df83abc",
     "killed_by": "packages/agents/tests/test_scope_rows.py::test_every_requested_requirement_has_a_visible_row",
     "behavioral_assertion": "AssertionError: assert {",
     "mutated_log": "M09-mutated.log",

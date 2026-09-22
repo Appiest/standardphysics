@@ -1,4 +1,4 @@
-F..........                                                              [100%]
+F..........F.F....F.F....                                                [100%]
 =================================== FAILURES ===================================
 ______________ test_every_requested_requirement_has_a_visible_row ______________
 
@@ -13,7 +13,413 @@ E         Extra items in the left set:
 E         'turning_space'
 E         'point_of_sale_height'
 
-packages/agents/tests/test_scope_rows.py:51: AssertionError
+packages/agents/tests/test_scope_rows.py:52: AssertionError
+____ TestEvidenceDossier.test_a_dossier_covers_every_requested_requirement _____
+
+self = <test_scope_rows.TestEvidenceDossier object at 0x10dee3b90>
+manifest = ScopeManifest(id=UUID('b7be583a-a070-5b71-9803-f52cc46f7730'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), v...he declared area', evidence_refs=[], measurement=None, source_version=None, legal_review_status='unreviewed_preview')])
+pack = AgentRulePack(version='1.0.0', rules=[RuleSpec(id='route_clear_width', title='The path is too narrow', citation=Citati... of seats, not every seat. The share and the height are two separate checks and this entry only carries the height.')])
+
+    def test_a_dossier_covers_every_requested_requirement(self, manifest, pack):
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        result = assess(graph, scenario, PipelineMeasurements(),
+                        rules=pack, ledger=book, max_tier=3)
+>       dossier = build_evidence_dossier(
+            manifest, result.assessment,
+            site={"scan": "synthetic fixture"},
+            control_measurement_gaps=["no independent field controls exist"],
+            recapture_notes=["no human inventory recorded"],
+        )
+
+packages/agents/tests/test_scope_rows.py:178: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+manifest = ScopeManifest(id=UUID('b7be583a-a070-5b71-9803-f52cc46f7730'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), v...he declared area', evidence_refs=[], measurement=None, source_version=None, legal_review_status='unreviewed_preview')])
+assessment = Assessment(id=UUID('7e4ee268-6f11-58d3-8ed3-43bf0260700d'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), grap...9997, z=0.0), fov_degrees=65.0), render_url=None))], decision=None, weave_run_url=None, rules_checked=None, scope=None)
+site = {'scan': 'synthetic fixture'}
+control_measurement_gaps = ['no independent field controls exist']
+recapture_notes = ['no human inventory recorded'], before_after = []
+
+    def build_evidence_dossier(
+        manifest: ScopeManifest,
+        assessment: Assessment,
+        *,
+        site: Mapping[str, str],
+        control_measurement_gaps: list[str],
+        recapture_notes: list[str],
+        before_after: list | None = None,
+    ) -> dict:
+        """The scoped evidence dossier G13 describes, from a frozen manifest.
+    
+        Every requested requirement carries its visible rows with provenance
+        (item identity and source), the calculation outcome, the reason or the
+        exact missing input, the source edition and the legal-review status.
+        Outcome coverage over the requested denominator is computed and refused
+        unless complete, so an unreviewed or unevaluated requirement can never
+        fall out of the dossier.
+    
+        The assessment is bound to the manifest by identity before anything is
+        published: an assessment from another scan, revision, graph or rulepack is
+        a DossierIdentityError, never a dossier.
+    
+        `before_after` holds recommendation evidence; any nonempty entry must
+        carry real before AND after measurements with provenance or the dossier
+        refuses, so an unmeasured claim can never be marked justified.
+        """
+        from collections import defaultdict
+    
+        allowed = {"satisfied", "violation", "needs_verification", "not_applicable", "unobserved"}
+        _bind_assessment_identity(manifest, assessment)
+        before_after = _validated_before_after(before_after, manifest)
+        by_requirement: dict[str, list[dict]] = defaultdict(list)
+        for row in manifest.rows:
+            if not row.requested:
+                continue
+            by_requirement[row.requirement_id].append(
+                {
+                    "item": {
+                        "slug": row.item.item_slug,
+                        "kind": row.item.item_kind,
+                        "item_id": str(row.item.item_id) if row.item.item_id else None,
+                        "label": row.item.label,
+                        "observed": row.item.observed,
+                        "source": row.item.source,
+                    },
+                    "outcome": row.outcome,
+                    "reason": row.reason,
+                    "applicability": row.applicability,
+                    "applicability_reason": row.applicability_reason,
+                    "evidence_refs": row.evidence_refs,
+                    "measurement": row.measurement,
+                    "source_version": row.source_version,
+                    "legal_review_status": row.legal_review_status,
+                }
+            )
+    
+        requested = sorted(manifest.requested_requirements)
+        covered = [req for req in requested if by_requirement.get(req)]
+        fraction = len(covered) / max(len(requested), 1)
+        if fraction < 1.0:
+            missing = sorted(set(requested) - set(covered))
+>           raise ValueError(
+                f"dossier cannot omit requested requirements: {missing}; "
+                f"coverage {fraction:g} < 1.0"
+            )
+E           ValueError: dossier cannot omit requested requirements: ['point_of_sale_height', 'turning_space']; coverage 0.904762 < 1.0
+
+services/api/standardphysics_api/scope_manifest.py:515: ValueError
+______ TestEvidenceDossier.test_before_after_stays_empty_until_supported _______
+
+self = <test_scope_rows.TestEvidenceDossier object at 0x10df5ef90>
+manifest = ScopeManifest(id=UUID('b7be583a-a070-5b71-9803-f52cc46f7730'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), v...he declared area', evidence_refs=[], measurement=None, source_version=None, legal_review_status='unreviewed_preview')])
+pack = AgentRulePack(version='1.0.0', rules=[RuleSpec(id='route_clear_width', title='The path is too narrow', citation=Citati... of seats, not every seat. The share and the height are two separate checks and this entry only carries the height.')])
+
+    def test_before_after_stays_empty_until_supported(self, manifest, pack):
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        result = assess(graph, scenario, PipelineMeasurements(),
+                        rules=pack, ledger=book, max_tier=3)
+>       dossier = build_evidence_dossier(
+            manifest, result.assessment,
+            site={}, control_measurement_gaps=[], recapture_notes=[],
+        )
+
+packages/agents/tests/test_scope_rows.py:219: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+manifest = ScopeManifest(id=UUID('b7be583a-a070-5b71-9803-f52cc46f7730'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), v...he declared area', evidence_refs=[], measurement=None, source_version=None, legal_review_status='unreviewed_preview')])
+assessment = Assessment(id=UUID('7e4ee268-6f11-58d3-8ed3-43bf0260700d'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), grap...9997, z=0.0), fov_degrees=65.0), render_url=None))], decision=None, weave_run_url=None, rules_checked=None, scope=None)
+site = {}, control_measurement_gaps = [], recapture_notes = []
+before_after = []
+
+    def build_evidence_dossier(
+        manifest: ScopeManifest,
+        assessment: Assessment,
+        *,
+        site: Mapping[str, str],
+        control_measurement_gaps: list[str],
+        recapture_notes: list[str],
+        before_after: list | None = None,
+    ) -> dict:
+        """The scoped evidence dossier G13 describes, from a frozen manifest.
+    
+        Every requested requirement carries its visible rows with provenance
+        (item identity and source), the calculation outcome, the reason or the
+        exact missing input, the source edition and the legal-review status.
+        Outcome coverage over the requested denominator is computed and refused
+        unless complete, so an unreviewed or unevaluated requirement can never
+        fall out of the dossier.
+    
+        The assessment is bound to the manifest by identity before anything is
+        published: an assessment from another scan, revision, graph or rulepack is
+        a DossierIdentityError, never a dossier.
+    
+        `before_after` holds recommendation evidence; any nonempty entry must
+        carry real before AND after measurements with provenance or the dossier
+        refuses, so an unmeasured claim can never be marked justified.
+        """
+        from collections import defaultdict
+    
+        allowed = {"satisfied", "violation", "needs_verification", "not_applicable", "unobserved"}
+        _bind_assessment_identity(manifest, assessment)
+        before_after = _validated_before_after(before_after, manifest)
+        by_requirement: dict[str, list[dict]] = defaultdict(list)
+        for row in manifest.rows:
+            if not row.requested:
+                continue
+            by_requirement[row.requirement_id].append(
+                {
+                    "item": {
+                        "slug": row.item.item_slug,
+                        "kind": row.item.item_kind,
+                        "item_id": str(row.item.item_id) if row.item.item_id else None,
+                        "label": row.item.label,
+                        "observed": row.item.observed,
+                        "source": row.item.source,
+                    },
+                    "outcome": row.outcome,
+                    "reason": row.reason,
+                    "applicability": row.applicability,
+                    "applicability_reason": row.applicability_reason,
+                    "evidence_refs": row.evidence_refs,
+                    "measurement": row.measurement,
+                    "source_version": row.source_version,
+                    "legal_review_status": row.legal_review_status,
+                }
+            )
+    
+        requested = sorted(manifest.requested_requirements)
+        covered = [req for req in requested if by_requirement.get(req)]
+        fraction = len(covered) / max(len(requested), 1)
+        if fraction < 1.0:
+            missing = sorted(set(requested) - set(covered))
+>           raise ValueError(
+                f"dossier cannot omit requested requirements: {missing}; "
+                f"coverage {fraction:g} < 1.0"
+            )
+E           ValueError: dossier cannot omit requested requirements: ['point_of_sale_height', 'turning_space']; coverage 0.904762 < 1.0
+
+services/api/standardphysics_api/scope_manifest.py:515: ValueError
+_______ TestDossierTrustBoundary.test_a_matching_assessment_is_accepted ________
+
+self = <test_scope_rows.TestDossierTrustBoundary object at 0x10df2c150>
+manifest = ScopeManifest(id=UUID('b7be583a-a070-5b71-9803-f52cc46f7730'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), v...he declared area', evidence_refs=[], measurement=None, source_version=None, legal_review_status='unreviewed_preview')])
+pack = AgentRulePack(version='1.0.0', rules=[RuleSpec(id='route_clear_width', title='The path is too narrow', citation=Citati... of seats, not every seat. The share and the height are two separate checks and this entry only carries the height.')])
+
+    def test_a_matching_assessment_is_accepted(self, manifest, pack):
+        _, _, _, _, result = self._parts(manifest, pack)
+>       dossier = build_evidence_dossier(
+            manifest, result.assessment, site={},
+            control_measurement_gaps=[], recapture_notes=[],
+        )
+
+packages/agents/tests/test_scope_rows.py:283: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+manifest = ScopeManifest(id=UUID('b7be583a-a070-5b71-9803-f52cc46f7730'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), v...he declared area', evidence_refs=[], measurement=None, source_version=None, legal_review_status='unreviewed_preview')])
+assessment = Assessment(id=UUID('7e4ee268-6f11-58d3-8ed3-43bf0260700d'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), grap...9997, z=0.0), fov_degrees=65.0), render_url=None))], decision=None, weave_run_url=None, rules_checked=None, scope=None)
+site = {}, control_measurement_gaps = [], recapture_notes = []
+before_after = []
+
+    def build_evidence_dossier(
+        manifest: ScopeManifest,
+        assessment: Assessment,
+        *,
+        site: Mapping[str, str],
+        control_measurement_gaps: list[str],
+        recapture_notes: list[str],
+        before_after: list | None = None,
+    ) -> dict:
+        """The scoped evidence dossier G13 describes, from a frozen manifest.
+    
+        Every requested requirement carries its visible rows with provenance
+        (item identity and source), the calculation outcome, the reason or the
+        exact missing input, the source edition and the legal-review status.
+        Outcome coverage over the requested denominator is computed and refused
+        unless complete, so an unreviewed or unevaluated requirement can never
+        fall out of the dossier.
+    
+        The assessment is bound to the manifest by identity before anything is
+        published: an assessment from another scan, revision, graph or rulepack is
+        a DossierIdentityError, never a dossier.
+    
+        `before_after` holds recommendation evidence; any nonempty entry must
+        carry real before AND after measurements with provenance or the dossier
+        refuses, so an unmeasured claim can never be marked justified.
+        """
+        from collections import defaultdict
+    
+        allowed = {"satisfied", "violation", "needs_verification", "not_applicable", "unobserved"}
+        _bind_assessment_identity(manifest, assessment)
+        before_after = _validated_before_after(before_after, manifest)
+        by_requirement: dict[str, list[dict]] = defaultdict(list)
+        for row in manifest.rows:
+            if not row.requested:
+                continue
+            by_requirement[row.requirement_id].append(
+                {
+                    "item": {
+                        "slug": row.item.item_slug,
+                        "kind": row.item.item_kind,
+                        "item_id": str(row.item.item_id) if row.item.item_id else None,
+                        "label": row.item.label,
+                        "observed": row.item.observed,
+                        "source": row.item.source,
+                    },
+                    "outcome": row.outcome,
+                    "reason": row.reason,
+                    "applicability": row.applicability,
+                    "applicability_reason": row.applicability_reason,
+                    "evidence_refs": row.evidence_refs,
+                    "measurement": row.measurement,
+                    "source_version": row.source_version,
+                    "legal_review_status": row.legal_review_status,
+                }
+            )
+    
+        requested = sorted(manifest.requested_requirements)
+        covered = [req for req in requested if by_requirement.get(req)]
+        fraction = len(covered) / max(len(requested), 1)
+        if fraction < 1.0:
+            missing = sorted(set(requested) - set(covered))
+>           raise ValueError(
+                f"dossier cannot omit requested requirements: {missing}; "
+                f"coverage {fraction:g} < 1.0"
+            )
+E           ValueError: dossier cannot omit requested requirements: ['point_of_sale_height', 'turning_space']; coverage 0.904762 < 1.0
+
+services/api/standardphysics_api/scope_manifest.py:515: ValueError
+__ TestDossierBeforeAfterProvenance.test_a_measured_before_after_is_justified __
+
+self = <test_scope_rows.TestDossierBeforeAfterProvenance object at 0x10df2c310>
+manifest = ScopeManifest(id=UUID('b7be583a-a070-5b71-9803-f52cc46f7730'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), v...he declared area', evidence_refs=[], measurement=None, source_version=None, legal_review_status='unreviewed_preview')])
+pack = AgentRulePack(version='1.0.0', rules=[RuleSpec(id='route_clear_width', title='The path is too narrow', citation=Citati... of seats, not every seat. The share and the height are two separate checks and this entry only carries the height.')])
+
+    def test_a_measured_before_after_is_justified(self, manifest, pack):
+        from standardphysics_api.scope_manifest import DossierProvenanceError
+    
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        result = assess(graph, scenario, PipelineMeasurements(),
+                        rules=pack, ledger=book, max_tier=3)
+    
+        def record(inches):
+            return {
+                "measurement": {
+                    "kind": "bounds",
+                    "estimate": inches,
+                    "low": inches,
+                    "high": inches,
+                    "unit": "in",
+                    "method": "tape measure",
+                    "source_revision": 0,
+                },
+                "provenance": {
+                    "scan_id": str(manifest.scan_id),
+                    "revision": 0,
+                    "method": "tape measure",
+                    "actor": "field technician",
+                },
+            }
+    
+        with pytest.raises(DossierProvenanceError) as refused:
+            build_evidence_dossier(
+                manifest, result.assessment, site={},
+                control_measurement_gaps=[], recapture_notes=[],
+                before_after=[{"before": record(31.0), "after": record(36.0)}],
+            )
+        assert "not yet supported" in str(refused.value)
+    
+>       empty = build_evidence_dossier(
+            manifest, result.assessment, site={},
+            control_measurement_gaps=[], recapture_notes=[],
+            before_after=[],
+        )
+
+packages/agents/tests/test_scope_rows.py:342: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+manifest = ScopeManifest(id=UUID('b7be583a-a070-5b71-9803-f52cc46f7730'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), v...he declared area', evidence_refs=[], measurement=None, source_version=None, legal_review_status='unreviewed_preview')])
+assessment = Assessment(id=UUID('7e4ee268-6f11-58d3-8ed3-43bf0260700d'), scan_id=UUID('f68aa174-0c9d-534e-9283-644eb66bc62e'), grap...9997, z=0.0), fov_degrees=65.0), render_url=None))], decision=None, weave_run_url=None, rules_checked=None, scope=None)
+site = {}, control_measurement_gaps = [], recapture_notes = []
+before_after = []
+
+    def build_evidence_dossier(
+        manifest: ScopeManifest,
+        assessment: Assessment,
+        *,
+        site: Mapping[str, str],
+        control_measurement_gaps: list[str],
+        recapture_notes: list[str],
+        before_after: list | None = None,
+    ) -> dict:
+        """The scoped evidence dossier G13 describes, from a frozen manifest.
+    
+        Every requested requirement carries its visible rows with provenance
+        (item identity and source), the calculation outcome, the reason or the
+        exact missing input, the source edition and the legal-review status.
+        Outcome coverage over the requested denominator is computed and refused
+        unless complete, so an unreviewed or unevaluated requirement can never
+        fall out of the dossier.
+    
+        The assessment is bound to the manifest by identity before anything is
+        published: an assessment from another scan, revision, graph or rulepack is
+        a DossierIdentityError, never a dossier.
+    
+        `before_after` holds recommendation evidence; any nonempty entry must
+        carry real before AND after measurements with provenance or the dossier
+        refuses, so an unmeasured claim can never be marked justified.
+        """
+        from collections import defaultdict
+    
+        allowed = {"satisfied", "violation", "needs_verification", "not_applicable", "unobserved"}
+        _bind_assessment_identity(manifest, assessment)
+        before_after = _validated_before_after(before_after, manifest)
+        by_requirement: dict[str, list[dict]] = defaultdict(list)
+        for row in manifest.rows:
+            if not row.requested:
+                continue
+            by_requirement[row.requirement_id].append(
+                {
+                    "item": {
+                        "slug": row.item.item_slug,
+                        "kind": row.item.item_kind,
+                        "item_id": str(row.item.item_id) if row.item.item_id else None,
+                        "label": row.item.label,
+                        "observed": row.item.observed,
+                        "source": row.item.source,
+                    },
+                    "outcome": row.outcome,
+                    "reason": row.reason,
+                    "applicability": row.applicability,
+                    "applicability_reason": row.applicability_reason,
+                    "evidence_refs": row.evidence_refs,
+                    "measurement": row.measurement,
+                    "source_version": row.source_version,
+                    "legal_review_status": row.legal_review_status,
+                }
+            )
+    
+        requested = sorted(manifest.requested_requirements)
+        covered = [req for req in requested if by_requirement.get(req)]
+        fraction = len(covered) / max(len(requested), 1)
+        if fraction < 1.0:
+            missing = sorted(set(requested) - set(covered))
+>           raise ValueError(
+                f"dossier cannot omit requested requirements: {missing}; "
+                f"coverage {fraction:g} < 1.0"
+            )
+E           ValueError: dossier cannot omit requested requirements: ['point_of_sale_height', 'turning_space']; coverage 0.904762 < 1.0
+
+services/api/standardphysics_api/scope_manifest.py:515: ValueError
 =========================== short test summary info ============================
 FAILED packages/agents/tests/test_scope_rows.py::test_every_requested_requirement_has_a_visible_row
-1 failed, 10 passed in 0.78s
+FAILED packages/agents/tests/test_scope_rows.py::TestEvidenceDossier::test_a_dossier_covers_every_requested_requirement
+FAILED packages/agents/tests/test_scope_rows.py::TestEvidenceDossier::test_before_after_stays_empty_until_supported
+FAILED packages/agents/tests/test_scope_rows.py::TestDossierTrustBoundary::test_a_matching_assessment_is_accepted
+FAILED packages/agents/tests/test_scope_rows.py::TestDossierBeforeAfterProvenance::test_a_measured_before_after_is_justified
+5 failed, 20 passed in 4.22s
