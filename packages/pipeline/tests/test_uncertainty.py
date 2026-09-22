@@ -5,6 +5,8 @@ boundary. These are number semantics, not a scan: no fixture becomes a
 physical accuracy claim.
 """
 
+import math
+
 import pytest
 from pydantic import ValidationError
 from standardphysics_pipeline.primitives.uncertainty import (
@@ -154,6 +156,37 @@ class TestFiniteArithmetic:
             compare(fine, 1.0, "min", eps=float("inf"))
         with pytest.raises(ValueError):
             compare(fine, float("inf"), "max")
+
+    def test_widened_refuses_nonfinite_margins(self):
+        fine = bounds(0.9, 1.0)
+        with pytest.raises(ValueError):
+            fine.widened(float("nan"), 0.0)
+        with pytest.raises(ValueError):
+            fine.widened(0.0, float("nan"))
+        with pytest.raises(ValueError):
+            fine.widened(0.0, float("inf"))
+        with pytest.raises(ValueError):
+            fine.widened(float("-inf"), 0.0)
+
+    def test_widened_output_is_revalidated(self):
+        """Supervisor 2026-09-22T01:37Z reproduction: widened must never emit
+        a NaN bound that compare() then turns into satisfied."""
+        fine = bounds(0.9, 1.0)
+        grown = fine.widened(0.1, 0.2)
+        assert math.isfinite(grown.low) and math.isfinite(grown.high)
+        assert compare(grown, 1.1, "max", inclusive=True) in ("needs_verification", "violation", "satisfied")
+
+    def test_compare_never_satisfies_mutated_nonfinite_bounds(self):
+        """compare() is the last line of defence, even for attribute-mutated
+        models that skipped validation."""
+        fine = bounds(0.9, 1.0)
+        fine.low = float("nan")
+        assert compare(fine, 1.1, "max", inclusive=True) == "needs_verification"
+        fine.low = 0.9
+        fine.high = float("nan")
+        assert compare(fine, 0.8, "min") == "needs_verification"
+        fine.high = float("inf")
+        assert compare(fine, 0.8, "min") == "needs_verification"
 
 
 class TestScenarioShapes:

@@ -69,12 +69,19 @@ class MeasurementBounds(BaseModel):
         Margins are absolute and non-negative. They push bounds outward but can
         never create a bound where there was none.
         """
+        if not math.isfinite(lower) or not math.isfinite(upper):
+            raise ValueError("margins must be finite numbers")
         if lower < 0 or upper < 0:
             raise ValueError("margins are magnitudes and cannot be negative")
-        return self.model_copy(update={
-            "low": None if self.low is None else self.low - lower,
-            "high": None if self.high is None else self.high + upper,
-        })
+        return MeasurementBounds(
+            estimate=self.estimate,
+            low=None if self.low is None else self.low - lower,
+            high=None if self.high is None else self.high + upper,
+            unit=self.unit,
+            method=self.method,
+            source_revision=self.source_revision,
+            controls=self.controls,
+        )
 
 
 def unknown_bounds(
@@ -194,6 +201,8 @@ def compare(
     low, high = bounds.low, bounds.high  # not None past this point
     assert low is not None and high is not None
     if low > high:
+        return "needs_verification"
+    if not math.isfinite(low) or not math.isfinite(high):
         return "needs_verification"
 
     return _clean_verdict(low, high, limit, eps, head, inclusive)
