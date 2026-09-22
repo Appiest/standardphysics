@@ -420,6 +420,74 @@ final class UploadViewModelTests: XCTestCase {
         XCTAssertEqual(uploadedIDs, ["optional-1", "optional-0"])
     }
 
+    func testExpiredSessionResumesTheSameRemoteScanAfterSigningInAgain() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let scan = try makeScan(in: directory, optionalArtifactKinds: [.frames])
+        let remoteID = UUID()
+        var store = ResumableUploadStore(captureDirectory: directory)
+        try store.begin(scanID: remoteID, apiBaseURL: URL(string: "https://standard.physics")!)
+        try store.recordUploaded(artifactID: "room-usdz")
+        var createCount = 0
+
+        UploadURLProtocolStub.handler = { request in
+            let path = request.url!.path
+            switch request.httpMethod {
+            case "POST" where path == "/api/scans":
+                createCount += 1
+                return .scan(status: 201, id: remoteID, state: .uploading)
+            case "PUT" where path.contains(remoteID.uuidString):
+                return StubResponse(status: 401, data: Data())
+            default:
+                return StubResponse(status: 500, data: Data())
+            }
+        }
+
+        let expired = UploadViewModel(scan: scan, name: "Tea House", client: makeClient(), pollInterval: .milliseconds(5))
+        expired.start()
+        try await waitUntil { expired.state == .failed }
+
+        XCTAssertEqual(expired.errorMessage, "Your session ended. Sign in again, then upload this scan.")
+        let afterExpiry = ResumableUploadStore(captureDirectory: directory)
+        XCTAssertEqual(afterExpiry.scanID, remoteID)
+        XCTAssertEqual(afterExpiry.completedArtifactIDs, ["room-usdz"])
+        XCTAssertNotEqual(afterExpiry.lastServerState, .failed)
+
+        // The owner signs in again and uploads the same saved scan with a
+        // fresh token. The server still has the scan, so it must be resumed
+        // rather than replaced.
+        var uploadedArtifactIDs: [String] = []
+        UploadURLProtocolStub.handler = { request in
+            let path = request.url!.path
+            switch request.httpMethod {
+            case "POST" where path == "/api/scans":
+                XCTFail("A still-live remote scan must be resumed, not replaced")
+                return StubResponse(status: 500, data: Data())
+            case "PUT":
+                let artifact = try XCTUnwrap(scan.artifacts.first { path.hasSuffix("/\($0.id)") })
+                uploadedArtifactIDs.append(artifact.id)
+                return StubResponse(status: 201, data: Data("{}".utf8))
+            case "POST" where path.hasSuffix("/complete"):
+                return .scan(status: 200, id: remoteID, state: .ready)
+            default:
+                return StubResponse(status: 500, data: Data())
+            }
+        }
+
+        let signedInAgain = UploadViewModel(scan: scan, name: "Tea House", client: makeClient(), pollInterval: .milliseconds(5))
+        XCTAssertEqual(signedInAgain.state, .uploading)
+        signedInAgain.start()
+        try await waitUntil { signedInAgain.state == .ready }
+
+        XCTAssertEqual(createCount, 0)
+        XCTAssertEqual(signedInAgain.scanID, remoteID)
+        XCTAssertEqual(ResumableUploadStore(captureDirectory: directory).scanID, remoteID)
+        XCTAssertEqual(
+            Set(uploadedArtifactIDs),
+            Set(scan.artifacts.map(\.id)).subtracting(["room-usdz"])
+        )
+    }
+
     private func makeClient() -> ScanUploadClient {
         ScanUploadClient(
             baseURL: URL(string: "https://standard.physics")!,

@@ -25,6 +25,11 @@ final class UploadViewModel: ObservableObject {
     private var uploadStore: ResumableUploadStore
     private var task: Task<Void, Never>?
     private var activeRunID: UUID?
+    /// True when the server reported this scan gone (404/410). A fresh remote
+    /// scan is the only recovery. An expired session is NOT this: the scan is
+    /// still there, so a retry after signing in again must resume it instead of
+    /// orphaning the old one and re-uploading everything.
+    private var needsReplacementRemote = false
 
     private enum RunMode {
         case full(replacingFailedRemote: Bool)
@@ -68,7 +73,8 @@ final class UploadViewModel: ObservableObject {
             return
         }
 
-        let replacingFailedRemote = state == .failed || uploadStore.lastServerState == .failed
+        let replacingFailedRemote = needsReplacementRemote || uploadStore.lastServerState == .failed
+        needsReplacementRemote = false
         cancel()
         errorMessage = nil
         optionalUploadErrorMessage = nil
@@ -132,12 +138,12 @@ final class UploadViewModel: ObservableObject {
         } catch UploadClientError.signedOut {
             guard isActive(runID) else { return }
             state = .failed
-            try? uploadStore.record(state: .failed)
             errorMessage = "Your session ended. Sign in again, then upload this scan."
             finish(runID)
         } catch UploadClientError.remoteScanMissing {
             guard isActive(runID) else { return }
             state = .failed
+            needsReplacementRemote = true
             try? uploadStore.record(state: .failed)
             errorMessage = "The upload server lost this scan. Try again to upload your saved copy."
             finish(runID)
