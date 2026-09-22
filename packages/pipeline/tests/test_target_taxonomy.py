@@ -140,6 +140,61 @@ class TestDetectionClassProperties:
         assert not switch.is_attachable_target
 
 
+class TestModelRequestRecording:
+    def test_real_request_metadata_is_recorded_through_discovery(self, tmp_path: pathlib.Path):
+        builder = TestDiscoveryWiresSecondaryCorrections()
+        payload = [{"name": "outlet", "box_2d": [450, 450, 550, 550], "movable": False, "confidence": 0.95}]
+        inputs, _, _, _ = builder.discovery_fixture(tmp_path, [], payload)
+
+        def fixture_transport(url, body, headers):
+            return {
+                "id": "chatcmpl-test-123",
+                "model": body["model"],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 34},
+                "choices": [{"message": {"content": json.dumps({"objects": payload})}}],
+            }
+
+        result = discover_objects(inputs, transport=fixture_transport)
+        assert len(result.model_requests) == 1
+        request = result.model_requests[0]
+        assert request.frame_id == "frame-0001"
+        assert request.request_id == "chatcmpl-test-123"
+        assert request.model
+        assert request.usage == {"prompt_tokens": 12, "completion_tokens": 34}
+        assert request.provider != ""
+
+    def test_cached_frames_record_no_new_requests(self, tmp_path: pathlib.Path):
+        builder = TestDiscoveryWiresSecondaryCorrections()
+        payload = [{"name": "outlet", "box_2d": [450, 450, 550, 550], "movable": False, "confidence": 0.95}]
+        inputs, _, _, _ = builder.discovery_fixture(tmp_path, [], payload)
+        inputs = DiscoveryInputs(
+            graph=inputs.graph,
+            poses_path=inputs.poses_path,
+            frame_paths=inputs.frame_paths,
+            lidar_mesh_path=inputs.lidar_mesh_path,
+            cache_dir=tmp_path / "cache",
+        )
+
+        calls = 0
+
+        def fixture_transport(url, body, headers):
+            nonlocal calls
+            calls += 1
+            return {
+                "id": f"chatcmpl-{calls}",
+                "choices": [{"message": {"content": json.dumps({"objects": payload})}}],
+            }
+
+        first = discover_objects(inputs, transport=fixture_transport)
+        assert len(first.model_requests) == 1
+        assert calls == 1
+
+        second = discover_objects(inputs, transport=fixture_transport)
+        assert calls == 1
+        assert second.model_requests == []
+        assert {n.id for n in second.nodes} == {n.id for n in first.nodes}
+
+
 class TestMalformedInputsRejected:
     def test_nonfinite_confidence_drops_the_detection(self):
         frame = EncodedFrame(jpeg=b"", width=640, height=480, turns=0)

@@ -41,7 +41,15 @@ from .boxes import claimed_by_any, contained_fraction, resting_parent
 from .cache import DetectionCache
 from .carve import FrameView, carve
 from .crops import save_crop
-from .detect import DEFAULT_MODEL, MODEL_ENV, Detection, DetectionError, Transport, detect_objects
+from .detect import (
+    DEFAULT_MODEL,
+    MODEL_ENV,
+    Detection,
+    DetectionError,
+    ModelRequestInfo,
+    Transport,
+    detect_objects,
+)
 from .merge import Candidate, DiscoveredObject, merge_candidates
 from .people import without_people
 from .reconcile import reconcile_outlets
@@ -120,6 +128,8 @@ class DiscoveryResult:
     frames_with_people: int = 0
     failures: list[str] = field(default_factory=list)
     """Frames the vision model could not read. Never silent: a dropped frame is a smaller answer."""
+    model_requests: list[ModelRequestInfo] = field(default_factory=list)
+    """Every actual detector request this run made, for the evidence trail."""
 
     @property
     def mesh_points(self) -> int:
@@ -133,8 +143,10 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
         raise DiscoveryError("the scan has no capture_to_room transform, so photos cannot be projected")
     points = _mesh_points(inputs)
     cameras = _cameras(inputs, graph)
+    requests: list[ModelRequestInfo] = []
     detections, failures = _detect_all(
-        cameras, inputs.frame_paths, transport, _cache_for(inputs), _orientations(inputs.poses_path)
+        cameras, inputs.frame_paths, transport, _cache_for(inputs), _orientations(inputs.poses_path),
+        recorded=requests,
     )
     buffers = {camera.frame_id: depth_buffer(camera, points) for camera in cameras}
     removal = without_people(
@@ -183,6 +195,7 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
         people_points_removed=removal.removed,
         frames_with_people=removal.frames_with_people,
         failures=failures,
+        model_requests=requests,
     )
 
 
@@ -240,6 +253,8 @@ def _detect_all(
     transport: Transport | None,
     cache: DetectionCache | None,
     orientations: dict[str, str],
+    *,
+    recorded: list[ModelRequestInfo] | None = None,
 ) -> tuple[dict[str, list[Detection]], list[str]]:
     detections: dict[str, list[Detection]] = {}
     failures: list[str] = []
@@ -249,6 +264,7 @@ def _detect_all(
             pool.submit(
                 detect_objects, frame_paths[frame_id], frame_id,
                 orientation=orientations.get(frame_id, ""), transport=transport,
+                recorded=recorded,
             ): frame_id
             for frame_id in wanted
         }

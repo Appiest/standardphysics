@@ -134,6 +134,22 @@ CONFUSER_NAMES = taxonomy.names_for(taxonomy.SWITCH) | taxonomy.names_for(taxono
 Transport = Callable[[str, dict[str, Any], dict[str, str]], dict[str, Any]]
 
 
+@dataclass(frozen=True)
+class ModelRequestInfo:
+    """What one real detector request actually was, kept for the evidence trail.
+
+    The provider, the model, the provider's request id, usage and the upright
+    orientation the frame was shown in. Never the frame's pixels or a secret.
+    """
+
+    frame_id: str
+    provider: str
+    model: str
+    orientation: str
+    request_id: str | None = None
+    usage: dict[str, int] | None = None
+
+
 class DetectionError(RuntimeError):
     """The frame could not be read, or the model did not answer."""
 
@@ -258,8 +274,15 @@ def detect_objects(
     *,
     orientation: str = "landscape_right",
     transport: Transport | None = None,
+    recorded: list[ModelRequestInfo] | None = None,
 ) -> list[Detection]:
-    """Every object the model finds in one frame, boxed in that frame's stored pixels."""
+    """Every object the model finds in one frame, boxed in that frame's stored pixels.
+
+    `recorded`, when given, receives one `ModelRequestInfo` per actual request:
+    provider, model, provider request id, usage and orientation. Entries are
+    only appended for real requests, never for cache hits, so a replay that
+    asked nothing records nothing.
+    """
     frame = encode_frame(image_path, orientation)
     api_key = _api_key()
     if transport is None and not api_key:
@@ -267,7 +290,11 @@ def detect_objects(
     body = _request_body(frame)
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            return _detections_from(_post(transport, body, api_key), frame, frame_id)
+            payload = _post(transport, body, api_key)
+            detections = _detections_from(payload, frame, frame_id)
+            if recorded is not None:
+                recorded.append(_request_info(payload, frame_id, orientation))
+            return detections
         except (DetectionAuthError, DetectionSchemaError):
             raise
         except DetectionError:
@@ -322,6 +349,26 @@ def _api_key() -> str:
 def _base_url() -> str:
     configured = os.environ.get(BASE_URL_ENV) or os.environ.get(FALLBACK_BASE_URL_ENV)
     return (configured or DEFAULT_BASE_URL).rstrip("/")
+
+
+def _request_info(payload: dict[str, Any], frame_id: str, orientation: str) -> ModelRequestInfo:
+    """Provider, model, request id and usage from a real response, without secrets."""
+    import urllib.parse
+
+    host = urllib.parse.urlsplit(_base_url()).hostname or "unknown"
+    usage = payload.get("usage")
+    if isinstance(usage, dict):
+        usage = {str(key): int(value) for key, value in usage.items() if isinstance(value, (int, float))}
+    else:
+        usage = None
+    return ModelRequestInfo(
+        frame_id=frame_id,
+        provider=host,
+        model=os.environ.get(MODEL_ENV) or DEFAULT_MODEL,
+        orientation=orientation,
+        request_id=payload.get("id"),
+        usage=usage,
+    )
 
 
 def _request_body(frame: EncodedFrame) -> dict[str, Any]:
