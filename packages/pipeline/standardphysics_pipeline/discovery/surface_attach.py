@@ -279,19 +279,31 @@ def _observed_region(detection: Detection, camera: PhotoCamera, support_node: Sc
 
 def _node_size(
     detection: Detection,
-    support_type: str,
     observed_region: list[Vec3],
     normal: np.ndarray,
     uncertainty_reasons: list[str],
 ) -> tuple[Vec3, str]:
-    """The node's extent and its quality, never letting proxy geometry read as measured."""
+    """The node's extent and its quality, never letting proxy geometry read as measured.
+
+    Neither an outlet's standard faceplate nor a television's wall-plane span
+    is an observed device size. Both get extent placeholders for display and a
+    needs_another_look quality, so every downstream measurement inherits that
+    label instead of a fabricated measured claim. Where the object actually
+    sits is a separate matter, tracked by the attachment's localization
+    quality.
+    """
     dimensions = _surface_dimensions(detection, observed_region, normal)
     if detection.is_outlet:
-        return dimensions, "measured" if support_type == "lidar_surface" else "needs_another_look"
+        if not any("faceplate extent is a documented default" in reason for reason in uncertainty_reasons):
+            uncertainty_reasons.append(
+                "faceplate extent is a documented default, not an observed measurement; "
+                "localization quality is tracked separately"
+            )
+        return dimensions, "needs_another_look"
     if not any("display proxy geometry" in reason for reason in uncertainty_reasons):
         uncertainty_reasons.append(
-            "display proxy geometry: extent is the wall-plane span of the observed region, "
-            "not a verified device size; never read as a measured television"
+            "display proxy geometry: extent is an estimate from the wall-plane span of the observed "
+            "region, not a physical device size; never read as a measured television"
         )
     return dimensions, "needs_another_look"
 
@@ -330,7 +342,7 @@ def _anchored_attachment(
     sockets = _socket_targets(detection, camera, support_node)
     observed_region = _observed_region(detection, camera, support_node)
     localization_quality = "verified_support" if support_type == "lidar_surface" and not uncertainty_reasons else "needs_verification"
-    dimensions, node_quality = _node_size(detection, support_type, observed_region, normal_vec, uncertainty_reasons)
+    dimensions, node_quality = _node_size(detection, observed_region, normal_vec, uncertainty_reasons)
 
     attachment = SurfaceAttachment(
         support_node_id=support_node.id,
