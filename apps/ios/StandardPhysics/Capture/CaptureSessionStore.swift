@@ -47,7 +47,7 @@ final class CaptureSessionStore: ObservableObject {
         guard phase == .scanning else { return }
         self.coverage = coverage
         self.surfaces = surfaces
-        self.instruction = coverage.isComplete ? "You’ve got the whole shop."
+        self.instruction = coverage.isComplete ? CoverageSnapshot.completeInstruction
             : instruction ?? coverage.instruction
     }
 

@@ -124,6 +124,12 @@ struct CoverageSnapshot: Sendable {
     var unfinishedDirection: CoverageAngle = .zero
     var instruction = "Turn around slowly"
 
+    /// Said when every measured surface is covered. Surfaces say nothing about
+    /// outlets, a TV or a restroom, which is why the completion line asks for
+    /// those evidence photos instead of claiming the shop is fully captured.
+    static let completeInstruction =
+        "Room surfaces covered. Now add close-ups of low outlets, the TV, and the restroom entrance."
+
     var isComplete: Bool { !surfaces.isEmpty && surfaces.allSatisfy(\.isDone) }
 }
 
@@ -291,7 +297,7 @@ struct CoverageEngine {
         var result = CoverageSnapshot()
         result.surfaces = surfaces.map(coverage(for:))
         guard let camera else {
-            result.instruction = result.isComplete ? "You’ve got the whole shop." : "Turn around slowly"
+            result.instruction = result.isComplete ? CoverageSnapshot.completeInstruction : "Turn around slowly"
             return result
         }
         let guidance = guidance(for: surfaces, coverage: result.surfaces, camera: camera)
@@ -430,7 +436,7 @@ struct CoverageEngine {
             return nearestCenterSample(on: surface).map { [GuidanceTarget(surface: surface, sample: $0, need: need)] } ?? []
         }
         guard var target = candidates.min(by: { distance(to: $0.sample, on: $0.surface, from: camera) < distance(to: $1.sample, on: $1.surface, from: camera) }) else {
-            return Guidance(angle: .zero, instruction: "You’ve got the whole shop.")
+            return Guidance(angle: .zero, instruction: CoverageSnapshot.completeInstruction)
         }
         let targetDistance = distance(to: target.sample, on: target.surface, from: camera)
         if target.need == .point, !CoveragePolicy.isCloseEnoughToObserve(distance: targetDistance) {

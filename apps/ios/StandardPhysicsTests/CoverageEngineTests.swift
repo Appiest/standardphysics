@@ -482,6 +482,41 @@ final class CoverageEngineTests: XCTestCase {
         XCTAssertTrue(result.isDone)
     }
 
+    func testCompletedSurfacesAskForEvidenceCloseUpsInsteadOfClaimingDone() {
+        var engine = CoverageEngine(gridSize: 1)
+        let surface = SurfaceSnapshot(
+            id: UUID(),
+            width: 1,
+            height: 1,
+            transform: matrix_identity_float4x4,
+            confidence: .high
+        )
+
+        engine.update(
+            surfaces: [surface],
+            camera: .lookingStraightAhead(position: SIMD3<Float>(0, 0, 2))
+        )
+        engine.update(
+            surfaces: [surface],
+            camera: .lookingStraightAhead(position: SIMD3<Float>(1.1, 0, 2))
+        )
+        engine.update(
+            surfaces: [surface],
+            camera: .lookingStraightAhead(position: SIMD3<Float>(-1.1, 0, 2))
+        )
+
+        let coverage = engine.snapshot
+        XCTAssertTrue(coverage.isComplete)
+        XCTAssertEqual(coverage.instruction, CoverageSnapshot.completeInstruction)
+        XCTAssertTrue(coverage.instruction.contains("outlets"))
+        XCTAssertTrue(coverage.instruction.contains("TV"))
+        XCTAssertTrue(coverage.instruction.contains("restroom entrance"))
+
+        let reconciled = engine.reconcile(finalSurfaces: [surface])
+        XCTAssertTrue(reconciled.isComplete)
+        XCTAssertEqual(reconciled.instruction, CoverageSnapshot.completeInstruction)
+    }
+
     func testLowConfidenceSurfaceStaysUnfinished() {
         var engine = CoverageEngine(gridSize: 1)
         let surface = SurfaceSnapshot(
