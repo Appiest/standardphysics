@@ -1,10 +1,10 @@
 {
   "kind": "certificate_matrix_final",
-  "version": 12,
+  "version": 13,
   "run_id": "opencode-20260921-170615",
   "evaluator": "lane Q independent (fireworks-ai deepseek-pro-latest)",
-  "computed_at": "2026-09-22T01:02:32-07:00",
-  "integration_head_evaluated": "e4318296d177c4c57255ec333263cef51133da4d (revision-5 corrected G10 copy independently verified)",
+  "computed_at": "2026-09-22T01:10:40-07:00",
+  "integration_head_evaluated": "e4318296d177c4c57255ec333263cef51133da4d (G13 dossier audited against A's pinned DB copy)",
   "policy": "frozen docs unchanged",
   "verification_scope_at_this_head": "exact M06 mutation on test_orientation_end_to_end at bb8ded9 (clean 4 passed -> mutant 3 failed behaviorally -> restored hash b2ac0a9b... -> clean rerun 4 passed); M06 receipt rebound to bb8ded9. K states suites green at bb8ded9; no broad rerun of mine per dispatch.",
   "gate_matrix": [
@@ -72,7 +72,7 @@
       "id": "G10",
       "status": "passed",
       "blocker": null,
-      "note": "Revision-5 copy independently verified (no self-report): zip sha256 57271bcec6... == recomputed; scene + assessment at revision 5; the manual observation now lives on f4213100 carrying the node's OWN existing crop id frame-0309-751385505449bca0 (frame-0309, sensor_box [1161.6,691.2,1248.0,741.6]) with provenance manual and the embedded 'AI-assisted QA review... cross-node identity is NOT established' note; 126c3739 no longer carries any manual/noted observation; f421 localization stays needs_verification and uncertainty flags unchanged from rev4; rev3/rev4 artifacts and the superseded receipts preserved. Residual observations, not blockers: the report JSON does not serialize an actor/time string for the manual record (note carries the automated attribution), and root's visual review supports image-level outlet evidence only."
+      "note": "Revision-5 copy verified: zip sha256 57271bcec6... == recomputed; scene+assessment revision 5; manual record on f4213100 with its own crop id frame-0309-751385505449bca0, provenance manual, marked_by='automated QA on the isolated copy' and marked_at=2026-09-22T07:51:20.376701Z (both PRESENT in the artifact - v12's 'no actor/time string' wording was a field-name miss, corrected), embedded AI-assisted note with cross-node identity NOT established; 126c3739 cleaned; localization needs_verification unchanged; rev3/rev4 artifacts preserved."
     },
     {
       "id": "G11",
@@ -87,7 +87,7 @@
     {
       "id": "G13",
       "status": "pending",
-      "blocker": "pending-on-A, not external: the real revision-pinned Moffett dossier artifacts do not exist in the evidence tree yet. Exact required sources to bind: Moffett scan f143082d-f529-494b-b80d-97729234e334 with scenario/assessment at revision 7, built by services/api/standardphysics_api/scope_manifest.py at K head e431829 (builder sha256 9b5da4e5...); boundary behavior is independently verified (root 7 negative probes refused; 28 scope+ontology tests pass; my 25-test rerun at e431829 green). before_after must stay empty until measured evidence exists.",
+      "blocker": "pending-on-A with two exact audit findings against the supplied DB copy b74ccfc94a... (1) PIN MISMATCH: dossier pins assessment_id 1666780a-eedd-5280-9c71-6154fd4311cf, pass 1, graph_revision 7 - the copy's assessments table ends at pass 7 / graph_revision 6 (id 8dac0715-4663-5ad3-9f94-afdc53a60966, graph_hash 7a8250e3...); the revision-7 graph row EXISTS with the exact pinned graph_hash, but the pinned assessment/manifest rows are not reproducible from the supplied copy (no scope_manifests table). (2) passing_space row records outcome 'satisfied' while measurement bounds are 'unknown' (labeled unreviewed_preview, calculation-only) - per Contract 4 and the G13 limit unknown_promoted_to_satisfied=0 this must read needs_verification. Boundary behavior stays independently verified green (root 7 probes refused; 28 + my 25 tests); dossier rows themselves are explicit about recapture, controls and empty before_after.",
       "note": "Builder boundary defects are closed and independently verified (root: 7 negative probes all refused, 4 identity fields + shallow/typed/ nonexistent before_after; 28 scope+ontology tests pass; my rerun at e431829: 25 scope tests). Gate still requires the actual revision-pinned dossier artifacts which Q has not independently audited at this head."
     },
     {
