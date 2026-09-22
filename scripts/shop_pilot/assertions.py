@@ -120,6 +120,10 @@ def measure_text_contains(assertion: dict[str, Any], context: dict[str, Any]) ->
     return assertion.get("params", {}).get("substring", "") in _read_text(assertion)
 
 
+def measure_not_text_contains(assertion: dict[str, Any], context: dict[str, Any]) -> bool:
+    return assertion.get("params", {}).get("substring", "") not in _read_text(assertion)
+
+
 def measure_text_clean(assertion: dict[str, Any], context: dict[str, Any]) -> bool:
     text = _read_text(assertion)
     return not any(pattern.search(text) for pattern in SECRET_PATTERNS)
@@ -132,6 +136,7 @@ MEASUREMENTS: dict[str, Callable[[dict[str, Any], dict[str, Any]], Any]] = {
     "identity_consistent": measure_identity_consistent,
     "command_matches": measure_command_matches,
     "text_contains": measure_text_contains,
+    "not_text_contains": measure_not_text_contains,
     "text_clean": measure_text_clean,
 }
 

@@ -1,8 +1,8 @@
 {
-  "receipt_id": "MUT-M15",
+  "receipt_id": "MUT-M06",
   "gate_id": "G00",
-  "mutation_id": "M15",
-  "outcome": "killed",
+  "mutation_id": "M06",
+  "outcome": "survived_gap",
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
@@ -13,23 +13,23 @@
   "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
   "input_artifacts": [
     {
-      "path": "auth.py.original",
-      "sha256": "bb0fec0ffaaf74e2e5e9c4bc4673171ea9208a3b7c5e2806c6c8d932e5a254d6",
-      "size_bytes": 8011,
+      "path": "detect-s-head.py.original",
+      "sha256": "b2ac0a9b2e05812d30dcd20ed1a816c0e9a308618782fbbb98c1277e8ae55432",
+      "size_bytes": 24618,
       "content_type": "text/plain"
     }
   ],
   "output_artifacts": [
     {
-      "path": "M15-mutated.log",
-      "sha256": "62d8d8d25f64fbed258539893f6efe6e2d2e68f50bba9f06ec04767937b35485",
-      "size_bytes": 2479,
+      "path": "M06-mutated.log",
+      "sha256": "016a4093788648644b08006f7d1d171ca7639313677f5aa929f004d4a3e52465",
+      "size_bytes": 98,
       "content_type": "text/plain"
     },
     {
-      "path": "M15-clean-after.log",
-      "sha256": "4c2bf4bc3924d4e0367f85c899356d813de9f0c774fdb65c5ff0af45f2ba2109",
-      "size_bytes": 686,
+      "path": "M06-clean-after.log",
+      "sha256": "71808535af46fe626b2fea83bedf237f0912b36bb6b3a50d553c8d93e57f99a8",
+      "size_bytes": 98,
       "content_type": "text/plain"
     }
   ],
@@ -38,39 +38,39 @@
   "scenario_hash": null,
   "scope_manifest_hash": null,
   "evidence_manifest_hash": null,
-  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate services/api/standardphysics_api/auth.py; pytest <owning suite> -q (record outcome); restore source",
+  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate packages/pipeline/standardphysics_pipeline/discovery/detect.py; pytest <owning suite> -q (record outcome); restore source",
   "working_directory": "/tmp/q-mutations or /tmp/q-review-s (disposable worktrees)",
   "environment_versions": {
     "python": "3.11"
   },
   "started_at": "2026-09-21T17:50:24.445641-07:00",
   "finished_at": "2026-09-21T17:50:24.445641-07:00",
-  "exit_code": 1,
+  "exit_code": 0,
   "assertions": [
     {
-      "id": "mutated-run-failed-behaviorally",
+      "id": "mutation-was-not-killed",
       "measurement_method": "text_contains",
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "assert 200 == 404",
-        "artifact": "M15-mutated.log"
+        "substring": "1 passed",
+        "artifact": "M06-mutated.log"
       },
       "evidence_paths": [
-        "M15-mutated.log"
+        "M06-mutated.log"
       ]
     },
     {
-      "id": "mutated-run-recorded-kill-test",
-      "measurement_method": "text_contains",
+      "id": "no-failure-recorded",
+      "measurement_method": "not_text_contains",
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "services/api/tests/test_crop_routes.py::test_auth_01_crop_authorization_and_traversal_denial",
-        "artifact": "M15-mutated.log"
+        "substring": "FAILED",
+        "artifact": "M06-mutated.log"
       },
       "evidence_paths": [
-        "M15-mutated.log"
+        "M06-mutated.log"
       ]
     },
     {
@@ -80,21 +80,21 @@
       "observed": true,
       "params": {
         "substring": "passed",
-        "artifact": "M15-clean-after.log"
+        "artifact": "M06-clean-after.log"
       },
       "evidence_paths": [
-        "M15-clean-after.log"
+        "M06-clean-after.log"
       ]
     },
     {
       "id": "restored-source-hash",
       "measurement_method": "file_sha256",
-      "expected": "bb0fec0ffaaf74e2e5e9c4bc4673171ea9208a3b7c5e2806c6c8d932e5a254d6",
+      "expected": "b2ac0a9b2e05812d30dcd20ed1a816c0e9a308618782fbbb98c1277e8ae55432",
       "params": {
-        "artifact": "auth.py.original"
+        "artifact": "detect-s-head.py.original"
       },
       "evidence_paths": [
-        "auth.py.original"
+        "detect-s-head.py.original"
       ]
     },
     {
@@ -102,10 +102,10 @@
       "measurement_method": "text_clean",
       "expected": true,
       "params": {
-        "artifact": "M15-mutated.log"
+        "artifact": "M06-mutated.log"
       },
       "evidence_paths": [
-        "M15-mutated.log"
+        "M06-mutated.log"
       ]
     },
     {
@@ -120,21 +120,21 @@
       "evidence_paths": []
     }
   ],
-  "raw_log_path": "M15-mutated.log",
+  "raw_log_path": "M06-mutated.log",
   "evaluator_identity": {
     "actor": "lane-Q",
     "attestation": "independent fault injection in a disposable worktree, reverted and hash-verified"
   },
   "fault": {
-    "id": "M15",
-    "outcome": "killed",
-    "fault": "auth.py: middleware ownership check disabled (cross-owner auth leak)",
-    "fault_file": "services/api/standardphysics_api/auth.py",
-    "restored_sha256": "bb0fec0ffaaf74e2e5e9c4bc4673171ea9208a3b7c5e2806c6c8d932e5a254d6",
-    "killed_by": "services/api/tests/test_crop_routes.py::test_auth_01_crop_authorization_and_traversal_denial",
-    "behavioral_assertion": "assert 200 == 404",
-    "mutated_log": "M15-mutated.log",
-    "clean_log": "M15-clean-after.log",
-    "original_copy": "auth.py.original"
+    "id": "M06",
+    "outcome": "survived_gap",
+    "fault": "detect.py: encode_frame orientation rotation zeroed (turns=0) on S HEAD",
+    "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/detect.py",
+    "restored_sha256": "b2ac0a9b2e05812d30dcd20ed1a816c0e9a308618782fbbb98c1277e8ae55432",
+    "survived_by": "test_det_01_asymmetric_rotations_crops_and_tiles still passed (1 passed)",
+    "mutated_log": "M06-mutated.log",
+    "clean_log": "M06-clean-after.log",
+    "original_copy": "detect-s-head.py.original",
+    "gap_finding": "No test pins encode_frame orientation: DET-01 covers map_crop_box_to_sensor math, not that frames are actually rotated before leaving for the model or that detections return to sensor pixels with the frame's real orientation. S should add a test that encode_frame('portrait') yields a rotated JPEG and that a detection box round-trips through that frame."
   }
 }

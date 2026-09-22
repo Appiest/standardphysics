@@ -52,13 +52,15 @@ GATE_MINIMUMS: dict[str, tuple[tuple[str, int], ...]] = {
 def _below_minimum(gate_id: str, verifications: list[dict[str, Any]]) -> str | None:
     for metric, minimum in GATE_MINIMUMS.get(gate_id, ()):
         if metric == "mutation_receipts":
-            count = sum(
+            killed = sum(
                 1
                 for result in verifications
-                if result["status"] == STATUS_VALID and result.get("mutation_id")
+                if result["status"] == STATUS_VALID
+                and result.get("mutation_id")
+                and result.get("outcome") == "killed"
             )
-            if count < minimum:
-                return f"only {count} of {minimum} required behavioral mutation kills evidenced"
+            if killed < minimum:
+                return f"only {killed} of {minimum} required behavioral mutation kills evidenced"
     return None
 
 

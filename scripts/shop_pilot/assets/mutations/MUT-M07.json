@@ -1,7 +1,7 @@
 {
-  "receipt_id": "MUT-M15",
+  "receipt_id": "MUT-M07",
   "gate_id": "G00",
-  "mutation_id": "M15",
+  "mutation_id": "M07",
   "outcome": "killed",
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
@@ -13,23 +13,23 @@
   "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
   "input_artifacts": [
     {
-      "path": "auth.py.original",
-      "sha256": "bb0fec0ffaaf74e2e5e9c4bc4673171ea9208a3b7c5e2806c6c8d932e5a254d6",
-      "size_bytes": 8011,
+      "path": "reconcile.py.original",
+      "sha256": "728a1afaefef13fc9d5cc450851d34b5d48db17899c52ecbd302c48844d3e440",
+      "size_bytes": 9696,
       "content_type": "text/plain"
     }
   ],
   "output_artifacts": [
     {
-      "path": "M15-mutated.log",
-      "sha256": "62d8d8d25f64fbed258539893f6efe6e2d2e68f50bba9f06ec04767937b35485",
-      "size_bytes": 2479,
+      "path": "M07-mutated.log",
+      "sha256": "95e736f9239598401d31176d856634f05b6c9ab412f7210196e9701a173bef64",
+      "size_bytes": 1635,
       "content_type": "text/plain"
     },
     {
-      "path": "M15-clean-after.log",
-      "sha256": "4c2bf4bc3924d4e0367f85c899356d813de9f0c774fdb65c5ff0af45f2ba2109",
-      "size_bytes": 686,
+      "path": "M07-clean-after.log",
+      "sha256": "71808535af46fe626b2fea83bedf237f0912b36bb6b3a50d553c8d93e57f99a8",
+      "size_bytes": 98,
       "content_type": "text/plain"
     }
   ],
@@ -38,7 +38,7 @@
   "scenario_hash": null,
   "scope_manifest_hash": null,
   "evidence_manifest_hash": null,
-  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate services/api/standardphysics_api/auth.py; pytest <owning suite> -q (record outcome); restore source",
+  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate packages/pipeline/standardphysics_pipeline/discovery/reconcile.py; pytest <owning suite> -q (record outcome); restore source",
   "working_directory": "/tmp/q-mutations or /tmp/q-review-s (disposable worktrees)",
   "environment_versions": {
     "python": "3.11"
@@ -53,11 +53,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "assert 200 == 404",
-        "artifact": "M15-mutated.log"
+        "substring": "assert not True",
+        "artifact": "M07-mutated.log"
       },
       "evidence_paths": [
-        "M15-mutated.log"
+        "M07-mutated.log"
       ]
     },
     {
@@ -66,11 +66,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "services/api/tests/test_crop_routes.py::test_auth_01_crop_authorization_and_traversal_denial",
-        "artifact": "M15-mutated.log"
+        "substring": "packages/pipeline/tests/test_reconcile_outlets.py::test_merge_02_separate_plates_and_opposite_walls_do_not_collapse",
+        "artifact": "M07-mutated.log"
       },
       "evidence_paths": [
-        "M15-mutated.log"
+        "M07-mutated.log"
       ]
     },
     {
@@ -80,21 +80,21 @@
       "observed": true,
       "params": {
         "substring": "passed",
-        "artifact": "M15-clean-after.log"
+        "artifact": "M07-clean-after.log"
       },
       "evidence_paths": [
-        "M15-clean-after.log"
+        "M07-clean-after.log"
       ]
     },
     {
       "id": "restored-source-hash",
       "measurement_method": "file_sha256",
-      "expected": "bb0fec0ffaaf74e2e5e9c4bc4673171ea9208a3b7c5e2806c6c8d932e5a254d6",
+      "expected": "728a1afaefef13fc9d5cc450851d34b5d48db17899c52ecbd302c48844d3e440",
       "params": {
-        "artifact": "auth.py.original"
+        "artifact": "reconcile.py.original"
       },
       "evidence_paths": [
-        "auth.py.original"
+        "reconcile.py.original"
       ]
     },
     {
@@ -102,10 +102,10 @@
       "measurement_method": "text_clean",
       "expected": true,
       "params": {
-        "artifact": "M15-mutated.log"
+        "artifact": "M07-mutated.log"
       },
       "evidence_paths": [
-        "M15-mutated.log"
+        "M07-mutated.log"
       ]
     },
     {
@@ -120,21 +120,21 @@
       "evidence_paths": []
     }
   ],
-  "raw_log_path": "M15-mutated.log",
+  "raw_log_path": "M07-mutated.log",
   "evaluator_identity": {
     "actor": "lane-Q",
     "attestation": "independent fault injection in a disposable worktree, reverted and hash-verified"
   },
   "fault": {
-    "id": "M15",
+    "id": "M07",
     "outcome": "killed",
-    "fault": "auth.py: middleware ownership check disabled (cross-owner auth leak)",
-    "fault_file": "services/api/standardphysics_api/auth.py",
-    "restored_sha256": "bb0fec0ffaaf74e2e5e9c4bc4673171ea9208a3b7c5e2806c6c8d932e5a254d6",
-    "killed_by": "services/api/tests/test_crop_routes.py::test_auth_01_crop_authorization_and_traversal_denial",
-    "behavioral_assertion": "assert 200 == 404",
-    "mutated_log": "M15-mutated.log",
-    "clean_log": "M15-clean-after.log",
-    "original_copy": "auth.py.original"
+    "fault": "reconcile.py: MAX_SAME_OUTLET_SURFACE_DISTANCE_M 0.06 -> 6.0 (adjacent outlets merge)",
+    "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/reconcile.py",
+    "restored_sha256": "728a1afaefef13fc9d5cc450851d34b5d48db17899c52ecbd302c48844d3e440",
+    "killed_by": "packages/pipeline/tests/test_reconcile_outlets.py::test_merge_02_separate_plates_and_opposite_walls_do_not_collapse",
+    "behavioral_assertion": "assert not True",
+    "mutated_log": "M07-mutated.log",
+    "clean_log": "M07-clean-after.log",
+    "original_copy": "reconcile.py.original"
   }
 }

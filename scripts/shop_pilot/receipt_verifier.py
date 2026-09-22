@@ -314,6 +314,7 @@ def verify_receipt(
         "gate_id": receipt.get("gate_id"),
         "evidence_kind": receipt.get("evidence_kind"),
         "mutation_id": receipt.get("mutation_id"),
+        "outcome": receipt.get("outcome"),
         "status": status,
         "invalid_reasons": hard,
         "blocked_reasons": blocked,

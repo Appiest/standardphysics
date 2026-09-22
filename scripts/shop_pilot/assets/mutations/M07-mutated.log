@@ -1,0 +1,19 @@
+.F...                                                                    [100%]
+=================================== FAILURES ===================================
+_______ test_merge_02_separate_plates_and_opposite_walls_do_not_collapse _______
+
+    def test_merge_02_separate_plates_and_opposite_walls_do_not_collapse():
+        """MERGE-02: Nearby separate plates, opposite wall sides and ambiguous A-B-C chain do not merge."""
+        support_id = uuid.uuid4()
+    
+        # 1. Nearby separate plates (distance = 0.20m > 0.06m threshold)
+        plate_a = make_outlet_node((0.0, 2.0, 1.0), support_id=support_id)
+        plate_b = make_outlet_node((0.20, 2.0, 1.0), support_id=support_id)
+>       assert not are_compatible_observations(plate_a, plate_b)
+E       AssertionError: assert not True
+E        +  where True = are_compatible_observations(SceneNode(id=UUID('f652473b-03bb-4f4a-843b-2f2fc7205df4'), kind='outlet', label='Outlet', raw_category='outlet', dimen...], identity_confidence=0.9, localization_quality='verified_support', review_status='detected', uncertainty_reasons=[])), SceneNode(id=UUID('a6a8a4be-9f67-4c1d-b800-058f60db3a3c'), kind='outlet', label='Outlet', raw_category='outlet', dimen...], identity_confidence=0.9, localization_quality='verified_support', review_status='detected', uncertainty_reasons=[])))
+
+packages/pipeline/tests/test_reconcile_outlets.py:129: AssertionError
+=========================== short test summary info ============================
+FAILED packages/pipeline/tests/test_reconcile_outlets.py::test_merge_02_separate_plates_and_opposite_walls_do_not_collapse
+1 failed, 4 passed in 0.19s
