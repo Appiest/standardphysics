@@ -134,7 +134,9 @@ class AgentRulePack(BaseModel):
         for rule in self.rules:
             check = rule.as_check()
             checks.append(
-                check.model_copy(update={"verified_by_human": ledger.verifies(rule)})
+                check.model_copy(
+                    update={"verified_by_human": ledger.personally_verified(rule)}
+                )
             )
         return RulePack(version=self.version, checks=checks)
 

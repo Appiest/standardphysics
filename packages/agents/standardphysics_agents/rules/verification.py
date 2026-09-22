@@ -32,6 +32,29 @@ they do can switch a check on for everybody else.
 
 THRESHOLD_TOLERANCE = 1e-9
 
+PREVIEW_REVIEWER = "unverified preview (development only)"
+"""The one identity a preview runs under.
+
+A preview ledger enables the calculations so a shop owner can see what a
+checked run would look like, but an entry under this name is not a person and
+never counts as one: `is_preview` filters it out of every human-review claim.
+Real reviewers record their own names, and a real conclusion lists them.
+"""
+
+PREVIEW_NAMES = frozenset(
+    {
+        PREVIEW_REVIEWER,
+        "Automated threshold check (needs a person's second check)",
+    }
+)
+"""Every marker string a preview run has ever shipped under.
+
+The current marker is the first one. The second was the pilot's early
+automated-alias preview identity, whose entries are the same thing under an
+older name; `is_preview` reads both so no ledger that was written before the
+rename can pass an automated alias off as a reviewer.
+"""
+
 
 class Verification(BaseModel):
     """One person, one section, one number."""
@@ -47,6 +70,11 @@ class Verification(BaseModel):
     second_check_by: str | None = None
     second_check_at: datetime | None = None
     note: str | None = None
+
+    @property
+    def is_preview(self) -> bool:
+        """Whether this entry was made by a preview marker, not a person."""
+        return self.verified_by in PREVIEW_NAMES
 
     def matches(self, rule: RuleSpec) -> bool:
         return (
@@ -73,9 +101,18 @@ class VerificationLedger(BaseModel):
     def verifies(self, rule: RuleSpec) -> bool:
         return self.entry_for(rule) is not None
 
+    def personally_verified(self, rule: RuleSpec) -> bool:
+        """Whether a person, not the preview marker, verified this rule."""
+        entry = self.entry_for(rule)
+        return entry is not None and not entry.is_preview
+
     def double_checked(self, rule: RuleSpec) -> bool:
         entry = self.entry_for(rule)
-        return entry is not None and entry.second_check_by is not None
+        return (
+            entry is not None
+            and not entry.is_preview
+            and entry.second_check_by is not None
+        )
 
     def record(self, rule: RuleSpec, verified_by: str, note: str | None = None):
         """A new ledger with this rule verified. The old one is left alone."""
