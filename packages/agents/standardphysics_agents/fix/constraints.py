@@ -17,6 +17,7 @@ from standardphysics_pipeline import footprint, gap_between
 from standardphysics_pipeline.footprints import Polygon, distance_outside, floor_polygon, polygon_bounds
 from standardphysics_pipeline.occupancy import blocks_floor
 
+from ..checks.walls import upright_walls
 from ..hashing import inventory
 from .moves import floor_height, rests_on_something, top_of, underside
 
@@ -117,7 +118,7 @@ def interior_bounds(graph: SceneGraph) -> tuple[float, float, float, float] | No
     min_x, min_y, max_x, max_y = bounds
     centre_x, centre_y = (min_x + max_x) / 2, (min_y + max_y) / 2
 
-    for wall in (node for node in graph.nodes if stands_upright(node)):
+    for wall in upright_walls(graph):
         shape = footprint(wall)
         low_x, high_x = min(x for x, _ in shape), max(x for x, _ in shape)
         low_y, high_y = min(y for _, y in shape), max(y for _, y in shape)
@@ -218,7 +219,8 @@ def _collisions(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode])
     obstacles = [
         node
         for node in candidate.nodes
-        if node.id not in moved_ids and (blocks_floor(node) or stands_upright(node))
+        if node.id not in moved_ids
+        and (blocks_floor(node) or stands_upright(node) or node.kind == "wall")
     ]
     swings = [node for node in candidate.nodes if node.kind in SWING_KINDS]
     scene = _Scene(before={node.id: node for node in base.nodes}, floor_z=floor_height(base))
