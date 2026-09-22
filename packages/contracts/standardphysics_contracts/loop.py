@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from .findings import Finding
 from .geometry import Vec3
+from .scope import ScopeManifest
 
 RouterAction = Literal["FIX", "RESCAN_AREA", "ASK_OWNER", "ESCALATE", "DONE"]
 
@@ -60,6 +61,27 @@ class Assessment(BaseModel):
     weave_run_url: str | None = None
     rules_checked: int | None = None
     """How many rules a person had verified when this ran. Zero means nothing was checked."""
+
+    scope: ScopeManifest | None = None
+    """The frozen hashed scope and the complete outcome matrix, when produced.
+
+    `findings` stays the legacy shape existing screens read. The matrix is the
+    authoritative per-requirement view: it can contain violations and unknowns
+    and its absence means no scope was frozen, never that everything passed.
+    """
+
+    @property
+    def outcomes(self):
+        return self.scope.rows if self.scope is not None else []
+
+    @property
+    def outcome_coverage_complete(self) -> bool:
+        """Every requested requirement has a row. Not a statement about passing."""
+        if self.scope is None:
+            return False
+        requested = set(self.scope.requested_requirements)
+        present = {row.requirement_id for row in self.scope.rows if row.requested}
+        return requested <= present
 
     @property
     def problems(self) -> list[Finding]:

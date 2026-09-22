@@ -104,6 +104,19 @@ CREATE TABLE IF NOT EXISTS assessments (
     assessment_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS evidence_bundles (
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    version INTEGER NOT NULL,
+    manifest_hash TEXT NOT NULL,
+    artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+    artifact_hashes_json TEXT NOT NULL DEFAULT '{}',
+    complete INTEGER NOT NULL DEFAULT 0,
+    missing_required_kinds_json TEXT NOT NULL DEFAULT '[]',
+    reasons_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    semantic_processed_hash TEXT,
+    PRIMARY KEY (scan_id, version)
+);
 """
 
 

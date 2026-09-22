@@ -39,6 +39,8 @@ from standardphysics_pipeline import PipelineMeasurements, blender, parse_room_j
 from standardphysics_pipeline.discovery import DiscoveryError, DiscoveryInputs, DiscoveryResult, discover_objects
 from standardphysics_pipeline.textures import BakeInputs, BakeResult, bake_textures
 
+from .scope_manifest import build_scope_manifest
+
 log = logging.getLogger(__name__)
 
 PREVIEW_REVIEWER = "unverified preview (development only)"
@@ -190,16 +192,26 @@ class Stages:
         return self.label(graph)
 
     def assess(self, graph: SceneGraph, scenario: Scenario | None, pass_number: int) -> Assessment:
-        """Every verified rule, or only the rules that need no route until the owner confirms one."""
+        """Every verified rule, or only the rules that need no route until the owner confirms one.
+
+        The frozen scope manifest rides on the assessment (contract 5): one
+        visible outcome per requested requirement, with unevaluated checks as
+        unobserved rows. Lane A hardens applicability behind it.
+        """
         ledger = self.ledger_factory()
+        pack = load_pack()
         if scenario is None:
             ledger, scenario = without_route_rules(ledger), NO_ROUTE_YET
         with self._assess_lock:
             result = assess(graph, scenario, self.measure, ledger=ledger, pass_number=pass_number)
         for missing in result.unevaluated:
             log.info("rule %s not evaluated: %s", missing.rule_id, missing.waiting_on)
-        checked = len(load_pack().enabled(ledger, max_tier=1))
-        return result.assessment.model_copy(update={"rules_checked": checked})
+        checked = len(pack.enabled(ledger, max_tier=1))
+        waiting = {gap.rule_id: gap.waiting_on for gap in result.unevaluated}
+        scope = build_scope_manifest(
+            graph, scenario, result.assessment, pack.enabled(ledger, max_tier=1), waiting
+        )
+        return result.assessment.model_copy(update={"rules_checked": checked, "scope": scope})
 
     def propose(self, graph: SceneGraph, scenario: Scenario, targets: list[Finding]) -> FixOutcome:
         """Lane C's fix agent: one arrangement that clears the targets, or one thing to ask."""

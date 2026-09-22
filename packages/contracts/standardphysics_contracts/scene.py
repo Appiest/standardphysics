@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -123,6 +124,54 @@ class ObservationCrop(BaseModel):
     """[left, top, right, bottom] in stored sensor pixels."""
     confidence: float = Field(default=1.0, ge=0, le=1)
     image_url: str | None = None
+    provenance: Literal["automatic", "manual"] = "automatic"
+    """A person's mark is never reported as a detector's find."""
+    marked_by: str | None = None
+    """Who marked it, for a manual observation. Never an agent alias."""
+    marked_at: datetime | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
+TargetClass = Literal[
+    "outlet", "television", "service_counter", "restroom_entrance",
+    "sofa", "table", "whiteboard", "monitor", "other",
+]
+
+
+class UnlocalizedObservation(BaseModel):
+    """A real thing photographed where no reliable measured surface places it.
+
+    It stays a first-class observation with its source pixels; it is not a
+    SceneNode, because giving it a position would invent geometry. Only a
+    person can create one, and every consumer must show it as unlocalized.
+    """
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    id: UUID
+    target_class: TargetClass
+    frame_id: str = Field(min_length=1, max_length=64)
+    sensor_box: list[float] = Field(min_length=4, max_length=4)
+    provenance: Literal["automatic", "manual"] = "manual"
+    marked_by: str | None = None
+    marked_at: datetime | None = None
+    note: str | None = Field(default=None, max_length=500)
+    review_status: Literal["candidate", "confirmed_by_user", "rejected_by_user"] = "candidate"
+
+
+class ManualMarkRequest(BaseModel):
+    """A person points at the pixels of a target the pipeline did not find.
+
+    With a `node_id` the mark attaches to that measured object. Without one it
+    is stored unlocalized. Either way the evidence is the actual crop, and the
+    server records who marked it and when.
+    """
+
+    target_class: TargetClass
+    frame_id: str = Field(min_length=1, max_length=64)
+    sensor_box: list[float] = Field(min_length=4, max_length=4)
+    node_id: UUID | None = None
+    note: str | None = Field(default=None, max_length=500)
+    review_status: Literal["candidate", "confirmed_by_user"] = "candidate"
 
 
 class SurfaceAttachment(BaseModel):
@@ -290,6 +339,15 @@ class SceneGraph(BaseModel):
 
     Photos and the raw scan are posed in ARKit world, so projecting a photo onto
     the model maps model points back through the inverse of this.
+    """
+
+    unlocalized_observations: list[UnlocalizedObservation] = Field(
+        default_factory=list, exclude_if=lambda value: not value
+    )
+    """Photo evidence for real targets that no measured surface can place yet.
+
+    Kept on the graph so a role confirmation, an assessment and an export all
+    see the same unresolved evidence instead of it living in a UI side channel.
     """
 
     @model_validator(mode="after")
