@@ -1,0 +1,49 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+___ test_late_process_job_replaces_ingest_revision_but_never_owner_decisions ___
+
+make_client = <function make_client.<locals>.build at 0x10700de40>
+
+    def test_late_process_job_replaces_ingest_revision_but_never_owner_decisions(make_client):
+        def first_pass(inputs):
+            return DiscoveryResult(nodes=[_table_node(), _outlet_node("detected")])
+    
+        client, scan_id = _ready_scan(make_client, first_pass)
+        with client:
+            review = client.put(
+                f"/api/scans/{scan_id}/revisions/0/outlets/{OUTLET_ID}/review",
+                json={"status": "confirmed_by_user"},
+            )
+            assert review.status_code == 201, review.text
+    
+        calls = {"passes": 0}
+    
+        def second_pass(inputs):
+            calls["passes"] += 1
+            return DiscoveryResult(nodes=[_table_node()])
+    
+        worker = client.app.state.worker
+        worker.stages.discover = second_pass
+        with client:
+            put_artifact(client, scan_id, "frames-2", b"late evidence arrives", "frames")
+            # An explicit complete is idempotent (frozen contract); with K's settle
+            # gate it forces processing now, without it it is a no-op.
+            client.post(f"/api/scans/{scan_id}/complete")
+            drain(client)
+    
+            latest = client.get(f"/api/scans/{scan_id}/scene").json()
+            assert latest["revision"] == 1
+>           reviewed = next(n for n in latest["nodes"] if n["id"] == str(OUTLET_ID))
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           StopIteration
+
+services/api/tests/test_review_safety.py:240: StopIteration
+=============================== warnings summary ===============================
+../../../Users/yanzihao/Documents/standardphysics/.venv/lib/python3.11/site-packages/starlette/testclient.py:53
+  /Users/yanzihao/Documents/standardphysics/.venv/lib/python3.11/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED services/api/tests/test_review_safety.py::test_late_process_job_replaces_ingest_revision_but_never_owner_decisions
+1 failed, 1 warning in 0.14s

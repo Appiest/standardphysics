@@ -6,7 +6,8 @@
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
-  "source_commit": "d49cff665a4b1f8c8bb8025e22f75e063a6184bd",
+  "source_commit": "f8e6e93ea1e70b9d4226134bc595456ff9bbd3d4",
+  "eval_source_head": "422d16e (S lane HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
@@ -43,8 +44,8 @@
   "environment_versions": {
     "python": "3.11"
   },
-  "started_at": "2026-09-21T18:06:37.908969-07:00",
-  "finished_at": "2026-09-21T18:06:37.908969-07:00",
+  "started_at": "2026-09-21T20:41:46.833974-07:00",
+  "finished_at": "2026-09-21T20:41:46.833974-07:00",
   "exit_code": 1,
   "assertions": [
     {
@@ -127,6 +128,7 @@
   },
   "fault": {
     "id": "M07",
+    "source_head": "422d16e (S lane HEAD)",
     "outcome": "killed",
     "fault": "reconcile.py: MAX_SAME_OUTLET_SURFACE_DISTANCE_M 0.06 -> 6.0 (adjacent outlets merge)",
     "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/reconcile.py",

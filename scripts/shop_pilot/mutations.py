@@ -26,6 +26,7 @@ ASSETS = pathlib.Path("scripts/shop_pilot/assets/mutations")
 MUTATIONS: list[dict[str, Any]] = [
     {
         "id": "M03",
+        "source_head": "q-worktree-early-freeze (local)",
         "outcome": "killed",
         "fault": "repository.py: evidence bundle declared complete despite missing required kinds (early finalize)",
         "fault_file": "services/api/standardphysics_api/repository.py",
@@ -38,6 +39,7 @@ MUTATIONS: list[dict[str, Any]] = [
     },
     {
         "id": "M05",
+        "source_head": "q-worktree-pre-freeze (local)",
         "outcome": "killed",
         "fault": "discover.py: production surface attachment loop removed (geometry bypass)",
         "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/discover.py",
@@ -50,6 +52,7 @@ MUTATIONS: list[dict[str, Any]] = [
     },
     {
         "id": "M06",
+        "source_head": "422d16e (S lane HEAD)",
         "outcome": "survived_gap",
         "fault": "detect.py: encode_frame orientation rotation zeroed (turns=0) on S HEAD",
         "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/detect.py",
@@ -67,6 +70,7 @@ MUTATIONS: list[dict[str, Any]] = [
     },
     {
         "id": "M07",
+        "source_head": "422d16e (S lane HEAD)",
         "outcome": "killed",
         "fault": "reconcile.py: MAX_SAME_OUTLET_SURFACE_DISTANCE_M 0.06 -> 6.0 (adjacent outlets merge)",
         "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/reconcile.py",
@@ -78,7 +82,34 @@ MUTATIONS: list[dict[str, Any]] = [
         "original_copy": "reconcile.py.original",
     },
     {
+        "id": "M04",
+        "source_head": "aa8fd81 (K integration HEAD)",
+        "outcome": "killed",
+        "fault": "evidence.py: attempted-input gating removed from maybe_queue_semantic (failed-bundle retry storm)",
+        "fault_file": "services/api/standardphysics_api/evidence.py",
+        "restored_sha256": "c3a135002dae9b2db2b72c5f60fdafc7e5d6987cd52cc7641b57ba6ed719895f",
+        "killed_by": "services/api/tests/test_job_lifecycle.py::test_sweep_never_retries_a_failed_input_until_new_evidence",
+        "behavioral_assertion": "assert 'complete' == 'failed'",
+        "mutated_log": "M04-mutated.log",
+        "clean_log": "M04-clean-after.log",
+        "original_copy": "evidence.py.original",
+    },
+    {
+        "id": "M08",
+        "source_head": "aa8fd81 (K integration HEAD)",
+        "outcome": "killed",
+        "fault": "worker.py: ingest saves at the latest owner revision, clobbering the reviewed graph (stale async overwrites review)",
+        "fault_file": "services/api/standardphysics_api/worker.py",
+        "restored_sha256": "687821227217a07160065eec4d23442f3c92bc3675856aa99a3b943d4811ac89",
+        "killed_by": "services/api/tests/test_review_safety.py::test_late_process_job_replaces_ingest_revision_but_never_owner_decisions",
+        "behavioral_assertion": "assert latest[\"revision\"] == 1",
+        "mutated_log": "M08-mutated.log",
+        "clean_log": "M08-clean-after.log",
+        "original_copy": "worker.py.original",
+    },
+    {
         "id": "M15",
+        "source_head": "base 54e09e4 (pre-freeze)",
         "outcome": "killed",
         "fault": "auth.py: middleware ownership check disabled (cross-owner auth leak)",
         "fault_file": "services/api/standardphysics_api/auth.py",
@@ -91,6 +122,7 @@ MUTATIONS: list[dict[str, Any]] = [
     },
     {
         "id": "M16",
+        "source_head": "base 54e09e4 (pre-freeze)",
         "outcome": "killed",
         "fault": "detect.py: provider auth/schema/error converted to empty successful detection",
         "fault_file": "packages/pipeline/standardphysics_pipeline/discovery/detect.py",
@@ -177,6 +209,7 @@ def build_receipts(assets: pathlib.Path = ASSETS) -> list[dict[str, Any]]:
             "lane_id": "Q",
             "evidence_kind": "synthetic_component",
             "source_commit": head,
+            "eval_source_head": mutation["source_head"],
             "dirty_source_digest": canonical_dirty_digest({}),
             "dirty_source_files": {},
             "contract_hash": sha256_file(CONTRACT_DOC),

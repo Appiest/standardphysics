@@ -1,35 +1,35 @@
 {
-  "receipt_id": "MUT-M03",
+  "receipt_id": "MUT-M04",
   "gate_id": "G00",
-  "mutation_id": "M03",
+  "mutation_id": "M04",
   "outcome": "killed",
   "run_id": "opencode-20260921-170615",
   "lane_id": "Q",
   "evidence_kind": "synthetic_component",
   "source_commit": "f8e6e93ea1e70b9d4226134bc595456ff9bbd3d4",
-  "eval_source_head": "q-worktree-early-freeze (local)",
+  "eval_source_head": "aa8fd81 (K integration HEAD)",
   "dirty_source_digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "dirty_source_files": {},
   "contract_hash": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
   "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
   "input_artifacts": [
     {
-      "path": "repository.py.original",
-      "sha256": "b3bd33871fdc02ce1f9b438da844aa7f719297dffe729519839ae7f251a019a3",
-      "size_bytes": 18234,
+      "path": "evidence.py.original",
+      "sha256": "c3a135002dae9b2db2b72c5f60fdafc7e5d6987cd52cc7641b57ba6ed719895f",
+      "size_bytes": 9991,
       "content_type": "text/plain"
     }
   ],
   "output_artifacts": [
     {
-      "path": "M03-mutated.log",
-      "sha256": "49636f27f063989056ef86de11edf3300bad3f04ef0021611c357de00a82f569",
-      "size_bytes": 2043,
+      "path": "M04-mutated.log",
+      "sha256": "77409ea40408ca4a787dbc4c5f40c1b3c25ea1f503e25d30a6d8a6b80d7c29d9",
+      "size_bytes": 4220,
       "content_type": "text/plain"
     },
     {
-      "path": "M03-clean-after.log",
-      "sha256": "77698177124d1f50fe500acf0cd0cf561cca829c25c55a2f8f1438975549d2b8",
+      "path": "M04-clean-after.log",
+      "sha256": "94a6872708e55fc38882d520327ad7bcdfeee29f4ed47dfc00934ec0970b3c43",
       "size_bytes": 686,
       "content_type": "text/plain"
     }
@@ -39,7 +39,7 @@
   "scenario_hash": null,
   "scope_manifest_hash": null,
   "evidence_manifest_hash": null,
-  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate services/api/standardphysics_api/repository.py; pytest <owning suite> -q (record outcome); restore source",
+  "command_or_recorded_ui_steps": "pytest <owning suite> -q (clean); mutate services/api/standardphysics_api/evidence.py; pytest <owning suite> -q (record outcome); restore source",
   "working_directory": "/tmp/q-mutations or /tmp/q-review-s (disposable worktrees)",
   "environment_versions": {
     "python": "3.11"
@@ -54,11 +54,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "assert 'complete' == 'blocked_incomplete_evidence'",
-        "artifact": "M03-mutated.log"
+        "substring": "assert 'complete' == 'failed'",
+        "artifact": "M04-mutated.log"
       },
       "evidence_paths": [
-        "M03-mutated.log"
+        "M04-mutated.log"
       ]
     },
     {
@@ -67,11 +67,11 @@
       "expected": true,
       "observed": true,
       "params": {
-        "substring": "services/api/tests/test_evidence_closure.py::test_legacy_geometry_complete_stays_browsable_with_semantics_blocked",
-        "artifact": "M03-mutated.log"
+        "substring": "services/api/tests/test_job_lifecycle.py::test_sweep_never_retries_a_failed_input_until_new_evidence",
+        "artifact": "M04-mutated.log"
       },
       "evidence_paths": [
-        "M03-mutated.log"
+        "M04-mutated.log"
       ]
     },
     {
@@ -81,21 +81,21 @@
       "observed": true,
       "params": {
         "substring": "passed",
-        "artifact": "M03-clean-after.log"
+        "artifact": "M04-clean-after.log"
       },
       "evidence_paths": [
-        "M03-clean-after.log"
+        "M04-clean-after.log"
       ]
     },
     {
       "id": "restored-source-hash",
       "measurement_method": "file_sha256",
-      "expected": "b3bd33871fdc02ce1f9b438da844aa7f719297dffe729519839ae7f251a019a3",
+      "expected": "c3a135002dae9b2db2b72c5f60fdafc7e5d6987cd52cc7641b57ba6ed719895f",
       "params": {
-        "artifact": "repository.py.original"
+        "artifact": "evidence.py.original"
       },
       "evidence_paths": [
-        "repository.py.original"
+        "evidence.py.original"
       ]
     },
     {
@@ -103,10 +103,10 @@
       "measurement_method": "text_clean",
       "expected": true,
       "params": {
-        "artifact": "M03-mutated.log"
+        "artifact": "M04-mutated.log"
       },
       "evidence_paths": [
-        "M03-mutated.log"
+        "M04-mutated.log"
       ]
     },
     {
@@ -121,22 +121,22 @@
       "evidence_paths": []
     }
   ],
-  "raw_log_path": "M03-mutated.log",
+  "raw_log_path": "M04-mutated.log",
   "evaluator_identity": {
     "actor": "lane-Q",
     "attestation": "independent fault injection in a disposable worktree, reverted and hash-verified"
   },
   "fault": {
-    "id": "M03",
-    "source_head": "q-worktree-early-freeze (local)",
+    "id": "M04",
+    "source_head": "aa8fd81 (K integration HEAD)",
     "outcome": "killed",
-    "fault": "repository.py: evidence bundle declared complete despite missing required kinds (early finalize)",
-    "fault_file": "services/api/standardphysics_api/repository.py",
-    "restored_sha256": "b3bd33871fdc02ce1f9b438da844aa7f719297dffe729519839ae7f251a019a3",
-    "killed_by": "services/api/tests/test_evidence_closure.py::test_legacy_geometry_complete_stays_browsable_with_semantics_blocked",
-    "behavioral_assertion": "assert 'complete' == 'blocked_incomplete_evidence'",
-    "mutated_log": "M03-mutated.log",
-    "clean_log": "M03-clean-after.log",
-    "original_copy": "repository.py.original"
+    "fault": "evidence.py: attempted-input gating removed from maybe_queue_semantic (failed-bundle retry storm)",
+    "fault_file": "services/api/standardphysics_api/evidence.py",
+    "restored_sha256": "c3a135002dae9b2db2b72c5f60fdafc7e5d6987cd52cc7641b57ba6ed719895f",
+    "killed_by": "services/api/tests/test_job_lifecycle.py::test_sweep_never_retries_a_failed_input_until_new_evidence",
+    "behavioral_assertion": "assert 'complete' == 'failed'",
+    "mutated_log": "M04-mutated.log",
+    "clean_log": "M04-clean-after.log",
+    "original_copy": "evidence.py.original"
   }
 }

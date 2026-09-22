@@ -1,0 +1,79 @@
+F.                                                                       [100%]
+=================================== FAILURES ===================================
+__________ test_sweep_never_retries_a_failed_input_until_new_evidence __________
+
+tmp_path = PosixPath('/private/var/folders/rz/g3j_5h4n48b96p2bqngh6sq80000gn/T/pytest-of-yanzihao/pytest-321/test_sweep_never_retries_a_fai0')
+
+    def test_sweep_never_retries_a_failed_input_until_new_evidence(tmp_path):
+        import conftest
+    
+        calls = {"discover": 0}
+    
+        def flaky(inputs):
+            calls["discover"] += 1
+            if calls["discover"] == 1:
+                raise RuntimeError("provider died")
+            return DiscoveryResult()
+    
+        client_ctx = _restarted_client(
+            tmp_path,
+            _stages(flaky),
+            conftest.OWNER_EMAIL,
+            conftest.OWNER_PASSWORD,
+            sign_in=False,
+            settle_seconds=0.0,
+        )
+        with client_ctx as client:
+            assert (
+                client.post(
+                    "/api/auth/sign-up",
+                    json={"email": "storm@example.com", "password": "storm-owner-password", "shop_name": "storm"},
+                ).status_code
+                == 201
+            )
+            scan_id = create_scan(client)
+            _complete_geometry(client, scan_id)
+            _complete_semantics(client, scan_id)
+            assert client.post(f"/api/scans/{scan_id}/complete").status_code == 200
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                status = client.get(f"/api/scans/{scan_id}/evidence").json()
+                if status["semantic_state"] == "failed":
+                    break
+                time.sleep(0.1)
+            failed = client.get(f"/api/scans/{scan_id}/evidence").json()
+>           assert failed["semantic_state"] == "failed", failed
+E           AssertionError: {'scan_id': '576714a1-6593-4ba5-9b36-620819f08e71', 'geometry_state': 'ready', 'evidence_state': 'complete', 'semantic_state': 'complete', ...}
+E           assert 'complete' == 'failed'
+E             
+E             - failed
+E             + complete
+
+services/api/tests/test_job_lifecycle.py:564: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    standardphysics_api.worker:worker.py:190 job process 576714a1-6593-4ba5-9b36-620819f08e71 failed:
+Traceback (most recent call last):
+  File "/tmp/q-final/services/api/standardphysics_api/worker.py", line 187, in _run
+    follow_up = handler(scan_id=scan_id, revision=revision, job=job)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/q-final/services/api/standardphysics_api/worker.py", line 224, in _process
+    graph, outcome = self.stages.ingest_with_report(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/q-final/services/api/standardphysics_api/stages.py", line 181, in ingest_with_report
+    return self.discover_scan_with_report(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/q-final/services/api/standardphysics_api/stages.py", line 215, in discover_scan_with_report
+    result = self.discover(inputs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/q-final/services/api/tests/test_job_lifecycle.py", line 534, in flaky
+    raise RuntimeError("provider died")
+RuntimeError: provider died
+=============================== warnings summary ===============================
+../../../Users/yanzihao/Documents/standardphysics/.venv/lib/python3.11/site-packages/starlette/testclient.py:53
+  /Users/yanzihao/Documents/standardphysics/.venv/lib/python3.11/site-packages/starlette/testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED services/api/tests/test_job_lifecycle.py::test_sweep_never_retries_a_failed_input_until_new_evidence
+1 failed, 1 passed, 1 warning in 60.30s (0:01:00)
