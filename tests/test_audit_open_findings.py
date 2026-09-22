@@ -41,6 +41,7 @@ from standardphysics_api.stages import Stages
 THICKNESS = 0.1
 DEPTH = 4.0
 REAL_EXPORTS = Path(standardphysics_fixtures.__file__).parent / "data" / "real"
+DATASET_PHONE = Path(__file__).resolve().parents[1] / "datasets" / "phone"
 
 
 def _box(name: str, kind: str, centre, dims, movable: bool = False) -> SceneNode:
@@ -201,7 +202,7 @@ def test_a49_a_real_scan_that_is_ready_has_been_checked(tmp_path):
         scan_id = client.post("/api/scans", json=body).json()["id"]
         room = (REAL_EXPORTS / "apple_bedroom3.room.json").read_bytes()
         _upload(client, scan_id, "room-json", room, "room_json")
-        _upload(client, scan_id, "room-usdz", b"usdz", "room_usdz")
+        _upload(client, scan_id, "room-usdz", (DATASET_PHONE / "test1" / "room.usdz").read_bytes(), "room_usdz")
         assert _finalize_and_process(client, scan_id) == "ready"
         assert client.get(f"/api/scans/{scan_id}/scene").json()["nodes"]
         assert client.get(f"/api/scans/{scan_id}/assessment").status_code == 200
@@ -212,7 +213,7 @@ def test_a29_a_failed_scan_is_processed_again_once_a_readable_room_arrives(tmp_p
         body = {"name": "Corner cafe", "device_model": "iPhone17,1", "duration_seconds": 60.0}
         scan_id = client.post("/api/scans", json=body).json()["id"]
         _upload(client, scan_id, "room-json", b"{not json", "room_json")
-        _upload(client, scan_id, "room-usdz", b"usdz", "room_usdz")
+        _upload(client, scan_id, "room-usdz", (DATASET_PHONE / "test1" / "room.usdz").read_bytes(), "room_usdz")
         assert _finalize_and_process(client, scan_id) == "failed"
         readable = (REAL_EXPORTS / "apple_bedroom3.room.json").read_bytes()
         _upload(client, scan_id, "room-json-2", readable, "room_json")

@@ -166,6 +166,83 @@ class TestAcceptance:
         assert not gate.accepted
         assert f"{target.check_id} lost its measured answer" in gate.reasons
 
+    def test_a_question_turned_into_a_pass_is_a_fabricated_answer(self, before):
+        """Moving furniture cannot create a measurement the scan never took,
+        so a needs-verification finding may not quietly become a pass when
+        the layout changes."""
+        target = next(f for f in before.questions)
+        findings = [
+            f.model_copy(update={"outcome": "passes", "fix": None})
+            if f.id == target.id else f
+            for f in before.findings
+        ]
+        after = replace(
+            before, assessment=before.assessment.model_copy(update={"findings": findings})
+        )
+        gate = accepts(before, after)
+        assert not gate.accepted
+        assert f"{target.check_id} turned from a question into an answer" in gate.reasons
+
+    def test_a_question_turned_into_a_problem_is_also_fabricated(self, before):
+        target = next(f for f in before.questions)
+        findings = [
+            f.model_copy(update={"outcome": "problem"})
+            if f.id == target.id else f
+            for f in before.findings
+        ]
+        after = replace(
+            before, assessment=before.assessment.model_copy(update={"findings": findings})
+        )
+        gate = accepts(before, after)
+        assert not gate.accepted
+        assert f"{target.check_id} turned from a question into an answer" in gate.reasons
+
+    def test_a_question_that_stayed_a_question_does_not_block(self, before, widened):
+        """The unchanged unknowns stay visible without vetoing a real fix."""
+        gate = accepts(before, widened)
+        assert gate.accepted
+
+    def _bumped(self, result: Pass, delta: float) -> Pass:
+        """Every solved-by-widening problem improved by `delta` inches."""
+        findings = [
+            f.model_copy(update={"measured_inches": f.measured_inches + delta})
+            if (
+                f.outcome == "problem"
+                and f.measured_inches is not None
+                and f.required_inches is not None
+                and f.measured_inches < f.required_inches
+            )
+            else f
+            for f in result.findings
+        ]
+        return replace(
+            result,
+            assessment=result.assessment.model_copy(update={"findings": findings}),
+        )
+
+    def test_a_shortfall_improvement_within_measurement_noise_is_rejected(
+        self, before
+    ):
+        """The grid quantises at about an inch. A candidate that wins less
+        than that has not improved the room; it has rounded it differently."""
+        gate = accepts(before, self._bumped(before, 0.4))
+        assert not gate.accepted
+        assert "improvement within measurement noise" in gate.reasons
+
+    def test_a_shortfall_improvement_past_the_noise_is_accepted(self, before):
+        gate = accepts(before, self._bumped(before, 6.0))
+        assert gate.accepted
+
+    def test_going_backwards_is_rejected(self, before, widened):
+        gate = accepts(widened, before)
+        assert not gate.accepted
+        assert any(
+            "improvement within measurement noise" in reason
+            or "more problems than before" in reason
+            or "nothing measurable changed" in reason
+            for reason in gate.reasons
+        )
+
     def test_losing_a_pass_is_rejected_even_when_another_problem_clears(self, before):
         cleared = _all_clear(before)
         target = next(f for f in before.findings if f.outcome == "passes")

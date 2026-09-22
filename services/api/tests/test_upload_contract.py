@@ -4,7 +4,7 @@ import json
 import pathlib
 import threading
 
-from conftest import REPO, create_scan, drain, put_artifact, unknown_scan
+from conftest import REPO, create_scan, drain, put_artifact, unknown_scan, usdz_fixture
 
 OPENAPI = json.loads((REPO / "services/api/openapi.json").read_text())
 
@@ -82,7 +82,7 @@ def test_finalizing_without_the_room_names_what_is_missing(client):
 def _ready_to_finalize(client) -> str:
     scan_id = create_scan(client)
     put_artifact(client, scan_id, "room-json", b"{}", "room_json")
-    put_artifact(client, scan_id, "room-usdz", b"usdz", "room_usdz")
+    put_artifact(client, scan_id, "room-usdz", usdz_fixture(), "room_usdz")
     return scan_id
 
 

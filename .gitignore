@@ -13,3 +13,7 @@ uv.lock
 # Playwright and Xcode leave build artefacts where they are run
 .playwright-mcp/
 apps/ios/build/
+
+# K local dependency-link backports (worktree plumbing, never tracked)
+.node_modules-link
+apps/web/.node_modules-link

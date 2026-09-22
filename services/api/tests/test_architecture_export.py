@@ -7,11 +7,27 @@ import json
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
+from datetime import datetime
 
 import pytest
 from standardphysics_contracts import (
-    DisplayPart, DisplayReconstruction, Mat4, ObservationCrop, SceneGraph, SceneNode,
-    SocketTarget, SurfaceAttachment, Vec3,
+    Assessment,
+    Citation,
+    DisplayPart,
+    DisplayReconstruction,
+    EvidenceBundle,
+    Finding,
+    Mat4,
+    ObservationCrop,
+    SceneGraph,
+    SceneNode,
+    ScopeItem,
+    ScopeManifest,
+    ScopeRow,
+    SocketTarget,
+    SurfaceAttachment,
+    Vec3,
+    graph_hash,
 )
 
 from conftest import drain
@@ -213,3 +229,256 @@ def test_architecture_export_includes_outlets_json_when_outlets_present():
         assert outlet_export["uncertainty"]["power_state"] == "unknown"
         assert outlet_export["local_height_m"] == pytest.approx(0.40)
         assert len(outlet_export["attachment"]["sockets"]) == 2
+
+
+def _scope(manifest_hash: str = "scope-manifest-hash") -> ScopeManifest:
+    scan_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
+    return ScopeManifest(
+        id=uuid.UUID("00000000-0000-0000-0000-0000000000ab"),
+        scan_id=scan_id,
+        version=2,
+        created_at=datetime(2026, 9, 21, 12, 0, 0),
+        graph_revision=7,
+        graph_hash="scope-was-frozen-for-this-graph",
+        rulepack_version="pilot-v1",
+        manifest_hash=manifest_hash,
+        surveyed_areas=["front"],
+        unobserved_areas=["back room"],
+        route_endpoints=["Entrance", "Counter"],
+        requested_classes=["outlet", "service_counter"],
+        requested_requirements=["route_clear_width", "counter_height"],
+        applicability_questions=["Is the rear counter customer-facing?"],
+        unresolved_questions=["Restroom fixtures were not surveyed."],
+        rows=[
+            ScopeRow(
+                item=ScopeItem(item_slug="counter-main", item_kind="object", label="Main counter"),
+                requirement_id="counter_height",
+                applicability="applicable",
+                applicability_reason="The counter serves customers.",
+                applicability_facts=["owner confirmed the counter is customer-facing"],
+                outcome="satisfied",
+                reason="36 in measured at the accessible section.",
+                evidence_refs=["measurement-31"],
+                measurement={"method": "lidar", "value_in": 36.0},
+                source_version="ADA_2010 904",
+                legal_review_status="unreviewed_preview",
+            ),
+            ScopeRow(
+                item=ScopeItem(item_slug="restroom-entrance", item_kind="class", label="Restroom entrance",
+                               observed=False, source="requested_not_observed"),
+                requirement_id="restroom_entrance_width",
+                applicability="unknown",
+                outcome="unobserved",
+                reason="No restroom entrance was detected or marked.",
+                evidence_refs=[],
+                source_version="ADA_2010 404",
+                legal_review_status="unreviewed_preview",
+            ),
+        ],
+    )
+
+
+def _assessment_for(over_graph: SceneGraph, scope: ScopeManifest | None = None) -> Assessment:
+    graph_h = graph_hash(over_graph)
+    return Assessment(
+        id=uuid.uuid4(), scan_id=over_graph.scan_id, graph_revision=over_graph.revision,
+        graph_hash=graph_h, rulepack_version="pilot-v1", pass_number=1,
+        created_at=datetime(2026, 9, 21, 12, 1, 0), scope=scope,
+        findings=[Finding(
+            id=uuid.uuid4(), check_id="route_clear_width", outcome="question",
+            title="The path to the counter is too narrow", detail="31 in at the tightest point.",
+            measured_inches=31.0, required_inches=36.0,
+            citation=Citation(authority="ADA_2010", edition="2010", section="403.5.1"),
+        )],
+    )
+
+
+def test_export_carries_pinned_scope_evidence_and_scenario_identity():
+    graph = _rotated_plan()
+    scope = _scope()
+    assessment = _assessment_for(graph, scope=scope)
+    bundle = EvidenceBundle(version=2, manifest_hash="evidence-manifest-hash", complete=True)
+    first = build_architecture_zip(
+        graph.scan_id, "Measured shop", graph, assessment,
+        scenario_name="Order a drink", scenario_version=3, evidence_bundle=bundle,
+    )
+    second = build_architecture_zip(
+        graph.scan_id, "Measured shop", graph, assessment,
+        scenario_name="Order a drink", scenario_version=3, evidence_bundle=bundle,
+    )
+    assert first == second
+    with zipfile.ZipFile(io.BytesIO(first)) as zipped:
+        ledger = json.loads(zipped.read("evidence-ledger.json"))
+    assert ledger["format"] == "standardphysics.architecture-evidence-ledger.v2"
+    assert ledger["scene"]["graph_hash"] == graph_hash(graph)
+    assert ledger["evidence_closure"] == {
+        "bundle_version": 2, "evidence_manifest_hash": "evidence-manifest-hash", "complete": True,
+        "note": ledger["evidence_closure"]["note"],
+    }
+    assert ledger["scenario"]["included"] is True
+    assert ledger["scenario"]["pinned_version"] == 3
+    assert ledger["scenario"]["name"] == "Order a drink"
+    assert ledger["assessment"]["included"] is True
+    assert ledger["assessment"]["stale_for_current_graph"] is False
+    exported_scope = ledger["assessment"]["scope"]
+    assert exported_scope["format"] == "standardphysics.scope-matrix.v1"
+    assert exported_scope["manifest"]["manifest_hash"] == "scope-manifest-hash"
+    assert exported_scope["manifest"]["version"] == 2
+    assert exported_scope["unobserved_areas"] == ["back room"]
+    assert exported_scope["unresolved_questions"] == ["Restroom fixtures were not surveyed."]
+    assert len(exported_scope["rows"]) == 2
+    row = exported_scope["rows"][0]
+    assert row["item"]["item_slug"] == "counter-main"
+    assert row["applicability"] == "applicable"
+    assert row["applicability_facts"] == ["owner confirmed the counter is customer-facing"]
+    assert row["outcome"] == "satisfied"
+    assert row["evidence_refs"] == ["measurement-31"]
+    assert row["measurement"]["method"] == "lidar"
+    assert row["source_version"] == "ADA_2010 904"
+    assert row["legal_review_status"] == "unreviewed_preview"
+    unobserved = exported_scope["rows"][1]
+    assert unobserved["outcome"] == "unobserved"
+    assert unobserved["item"]["observed"] is False
+    assert unobserved["item"]["source"] == "requested_not_observed"
+    node = next(item for item in ledger["nodes"] if item["id"].endswith("4"))
+    assert node["label_provenance"] == "roomplan"
+
+
+def test_stale_assessment_is_named_and_never_applied_to_the_scene():
+    graph = _rotated_plan()
+    stale = Assessment(
+        id=uuid.uuid4(), scan_id=graph.scan_id, graph_revision=6,
+        graph_hash="a-different-graph", rulepack_version="pilot-v1", pass_number=1,
+        created_at=datetime(2026, 9, 21, 12, 1, 0), scope=_scope(), findings=[],
+    )
+    archive = build_architecture_zip(graph.scan_id, "Measured shop", graph, stale)
+    with zipfile.ZipFile(io.BytesIO(archive)) as zipped:
+        ledger = json.loads(zipped.read("evidence-ledger.json"))
+    assert ledger["assessment"]["included"] is False
+    assert ledger["assessment"]["stale_for_current_graph"] is True
+    assert ledger["assessment"]["findings"] == []
+    assert "scope" not in ledger["assessment"]
+    assert "stale_note" in ledger["assessment"]
+
+
+def test_revision_pin_regenerates_the_old_export_byte_for_byte(make_client):
+    with make_client(seed=True) as client:
+        drain(client)
+        scan_id = client.get("/api/scans").json()["scans"][0]["id"]
+        latest = client.get(f"/api/scans/{scan_id}/architecture.zip")
+        assert latest.status_code == 200
+        revision = _contents(latest.content)[1]["scene"]["revision"]
+        pinned = client.get(f"/api/scans/{scan_id}/architecture.zip", params={"revision": revision})
+        assert pinned.status_code == 200
+        assert pinned.content == latest.content
+        assert f'r{revision}.zip' in pinned.headers["content-disposition"]
+        assert client.get(f"/api/scans/{scan_id}/architecture.zip", params={"revision": 999999}).status_code == 404
+        assert client.get(f"/api/scans/{scan_id}/architecture.zip", params={"revision": -1}).status_code == 404
+
+
+def _full_journey_stages():
+    from conftest import no_blender_stages
+    from standardphysics_pipeline.discovery import DiscoveryResult
+
+    return no_blender_stages(
+        label=lambda graph, **kwargs: graph,
+        discover=lambda inputs: DiscoveryResult(),
+    )
+
+
+def _identity() -> list[float]:
+    return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -0.5, 0, 1]
+
+
+def _room_payload() -> bytes:
+    return json.dumps({
+        "version": 1,
+        "story": "ground",
+        "captureMetadata": {"source": "pilot"},
+        "walls": [{"identifier": "11111111-1111-1111-1111-111111111111",
+                   "dimensions": [4.0, 2.4, 0.2], "transform": _identity(), "confidence": "high"}],
+        "floors": [{"identifier": "22222222-2222-2222-2222-222222222222",
+                    "dimensions": [4.0, 0.1, 4.0], "transform": _identity(), "confidence": "high"}],
+        "objects": [{"identifier": "33333333-3333-3333-3333-333333333333",
+                     "category": "table", "dimensions": [1.0, 0.8, 1.0],
+                     "transform": [1, 0, 0, 1.0, 0, 1, 0, 0.5, 0, 0, 1, -0.5, 0, 0, 0, 1],
+                     "confidence": "medium"}],
+    }).encode()
+
+
+def _mesh_bytes() -> bytes:
+    return json.dumps({"parts": [{
+        "id": "00000000-0000-0000-0000-000000000001",
+        "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+        "vertices": [0, 0, 0, 1, 0, 0, 0, 1, 0],
+        "triangles": [0, 1, 2],
+    }]}).encode()
+
+
+def test_report_assessment_and_zip_agree_on_the_pinned_scope(make_client):
+    from conftest import create_scan, put_artifact, usdz_fixture
+
+    with make_client(stages=_full_journey_stages()) as client:
+        scan_id = create_scan(client)
+        put_artifact(client, scan_id, "room-json", _room_payload(), "room_json")
+        put_artifact(client, scan_id, "room-usdz", usdz_fixture(), "room_usdz")
+        put_artifact(client, scan_id, "frames", b"frames", "frames")
+        put_artifact(client, scan_id, "poses", b"{}", "poses")
+        put_artifact(client, scan_id, "lidar-mesh", _mesh_bytes(), "lidar_mesh")
+        client.post(f"/api/scans/{scan_id}/complete")
+        drain(client)
+
+        # The suggestion route (R's scenario.py) 500s on this minimal room whose
+        # only table sits at the room centre; confirmed and reported, not fixed
+        # here. Confirm a scenario through the real endpoint instead.
+        scenario = {
+            "name": "Order a drink",
+            "stops": [
+                {"name": "Entrance", "position": {"x": 0.0, "y": -1.5, "z": 0.0}},
+                {"name": "Counter", "position": {"x": 0.0, "y": 1.5, "z": 0.0}},
+            ],
+        }
+        confirmed = client.put(f"/api/scans/{scan_id}/scenario", json=scenario)
+        assert confirmed.status_code == 200, confirmed.text
+        drain(client)
+
+        assessment = client.get(f"/api/scans/{scan_id}/assessment").json()
+        scope = assessment["scope"]
+        assert scope is not None
+        manifest_hash = scope["manifest_hash"]
+        assessment_rows = {(row["requirement_id"], row["item"]["item_slug"], row["outcome"])
+                           for row in scope["rows"]}
+
+        zip_response = client.get(f"/api/scans/{scan_id}/architecture.zip")
+        assert zip_response.status_code == 200
+        with zipfile.ZipFile(io.BytesIO(zip_response.content)) as zipped:
+            ledger = json.loads(zipped.read("evidence-ledger.json"))
+        assert ledger["assessment"]["included"] is True
+        zip_scope = ledger["assessment"]["scope"]
+        assert zip_scope["manifest"]["manifest_hash"] == manifest_hash
+        zip_rows = {(row["requirement_id"], row["item"]["item_slug"], row["outcome"])
+                    for row in zip_scope["rows"]}
+        assert zip_rows == assessment_rows
+        assert ledger["evidence_closure"]["evidence_manifest_hash"]
+
+        report = client.get(f"/api/scans/{scan_id}/report").json()
+        assert report["assessment"]["scope"]["manifest_hash"] == manifest_hash
+        report_scene = SceneGraph.model_validate(report["scene"])
+        assert graph_hash(report_scene) == ledger["scene"]["graph_hash"]
+        assert report_scene.revision == ledger["scene"]["revision"]
+        assert report["scenario"]["name"] == ledger["scenario"]["name"]
+        assert ledger["scenario"]["pinned_version"] is not None
+
+
+def test_export_unboxes_clean_of_secrets_and_filesystem_paths(make_client):
+    with make_client(seed=True) as client:
+        drain(client)
+        scan_id = client.get("/api/scans").json()["scans"][0]["id"]
+        response = client.get(f"/api/scans/{scan_id}/architecture.zip")
+        assert response.status_code == 200
+        forbidden = ("/Users/", "/data", ".sqlite", "Bearer ", "sp_session")
+        with zipfile.ZipFile(io.BytesIO(response.content)) as zipped:
+            for name in zipped.namelist():
+                text = zipped.read(name).decode("utf-8", errors="replace")
+                for fragment in forbidden:
+                    assert fragment not in text, f"{name} leaked {fragment!r}"

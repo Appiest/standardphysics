@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, stands_upright
+from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat
 from standardphysics_pipeline import footprint, gap_between
 from standardphysics_pipeline.footprints import Polygon, distance_outside, floor_polygon, polygon_bounds
 from standardphysics_pipeline.occupancy import blocks_floor
@@ -216,11 +216,12 @@ class _Scene:
 
 def _collisions(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode]) -> list[Violation]:
     moved_ids = {node.id for node in moved}
+    wall_ids = {node.id for node in upright_walls(candidate)}
     obstacles = [
         node
         for node in candidate.nodes
         if node.id not in moved_ids
-        and (blocks_floor(node) or stands_upright(node) or node.kind == "wall")
+        and (blocks_floor(node) or node.id in wall_ids)
     ]
     swings = [node for node in candidate.nodes if node.kind in SWING_KINDS]
     scene = _Scene(before={node.id: node for node in base.nodes}, floor_z=floor_height(base))

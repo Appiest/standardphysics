@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 import numpy as np
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, to_meters
+from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, stands_upright, to_meters
 
 from .footprints import floor_polygon, polygon_bounds
 
@@ -119,6 +119,18 @@ class Grid:
     def contains(self, row: int, col: int) -> bool:
         rows, cols = self.occupied.shape
         return 0 <= row < rows and 0 <= col < cols
+
+
+def reads_as_wall(node: SceneNode) -> bool:
+    """A wall as the capture knows it: an upright room sheet, or the wall
+    class an ingest step or reviewer assigned.
+
+    A wall measured through a door jamb can be too thick for the sheet
+    heuristic to accept while its assigned class still names it a wall, so
+    the class label is the fallback on top of the sheet geometry; it never
+    substitutes for it.
+    """
+    return stands_upright(node) or node.kind == "wall"
 
 
 def blocks_floor(node: SceneNode) -> bool:

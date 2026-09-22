@@ -156,6 +156,9 @@ class UnlocalizedObservation(BaseModel):
     marked_at: datetime | None = None
     note: str | None = Field(default=None, max_length=500)
     review_status: Literal["candidate", "confirmed_by_user", "rejected_by_user"] = "candidate"
+    image_url: str | None = None
+    """A resolvable crop of the marked pixels, when one could be cut. Null means
+    the frame could not be read; the mark itself stays first-class evidence."""
 
 
 class ManualMarkRequest(BaseModel):

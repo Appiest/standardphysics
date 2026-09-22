@@ -275,16 +275,62 @@ def set_job_binding(
     input_hash: str | None,
     note: str | None,
 ) -> None:
-    """Record which input manifest this job run consumed, and its visible outcome.
+    """Record which input manifest this run consumed, and its visible outcome.
 
-    The input hash persists even when the process crashes mid-run, so a restart
-    can tell what the interrupted job was working on. The note carries the
-    discovery outcome: frames read, found objects, per-frame provider failure
-    categories. Neither ever holds a secret.
+    Runs at claim time and again at publish, so a fresh attempt starts from a
+    clean latest view: the previous attempt's note and request receipts are
+    cleared here, and only this attempt's own writes land afterwards.
     """
     connection.execute(
-        "UPDATE jobs SET input_hash = ?, note = ? WHERE id = ?",
+        "UPDATE jobs SET input_hash = ?, note = ?, model_requests_json = NULL WHERE id = ?",
         (input_hash, note, job_id),
+    )
+
+
+def set_job_requests(connection: sqlite3.Connection, job_id: int, requests_json: str | None) -> None:
+    """Persist what every real detector request was: provider, model, provider
+    request id and usage. Categories and counts only; never a secret or a pixel."""
+    connection.execute(
+        "UPDATE jobs SET model_requests_json = ? WHERE id = ?",
+        (requests_json, job_id),
+    )
+
+
+def record_job_attempt(
+    connection: sqlite3.Connection,
+    job_id: int,
+    attempt: int,
+    scan_id: uuid.UUID,
+) -> None:
+    """Snap the finished job row into immutable per-attempt history.
+
+    Each attempt gets its own (job, attempt) row that is never updated: what
+    the attempt consumed, how it ended and which provider requests it made.
+    The mutable jobs row stays the latest active view and is cleared at each
+    claim, so an empty or failed attempt can never inherit the previous
+    attempt's receipts.
+    """
+    row = connection.execute(
+        "SELECT state, error, input_hash, note, model_requests_json FROM jobs WHERE id = ?",
+        (job_id,),
+    ).fetchone()
+    if row is None:
+        return
+    connection.execute(
+        "INSERT INTO job_attempts (job_id, attempt, scan_id, input_hash, state, error, note,"
+        " model_requests_json, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        " ON CONFLICT (job_id, attempt) DO NOTHING",
+        (
+            job_id,
+            attempt,
+            str(scan_id),
+            row["input_hash"],
+            row["state"],
+            row["error"],
+            row["note"],
+            row["model_requests_json"],
+            now(),
+        ),
     )
 
 
@@ -326,7 +372,7 @@ def claim_job(connection: sqlite3.Connection, texture_only: bool | None = None) 
         "UPDATE jobs SET state = 'running', attempts = attempts + 1"
         " WHERE id = (SELECT id FROM jobs WHERE state = 'queued'"
         " AND (? IS NULL OR (kind='texture')=?) ORDER BY id LIMIT 1)"
-        " RETURNING id, scan_id, kind, revision",
+        " RETURNING id, scan_id, kind, revision, attempts",
         (texture_only, texture_only),
     ).fetchone()
 
@@ -519,6 +565,12 @@ def assessment_for_revision(connection: sqlite3.Connection, scan_id: uuid.UUID, 
     if row is None:
         return None
     current = scenario_version(connection, scan_id)
-    if row["scenario_version"] is not None and current is not None and row["scenario_version"] != current:
+    stored = row["scenario_version"]
+    if stored is not None and current is not None and stored != current:
+        return None
+    # Assessments saved before any route existed predate the run they should
+    # re-measure once a route is confirmed. Databases migrated with a version-0
+    # scenario row keep the older tolerance so untouched scans stay readable.
+    if stored is None and current is not None and current > 0:
         return None
     return Assessment.model_validate_json(row["assessment_json"])

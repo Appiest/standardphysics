@@ -87,6 +87,8 @@ class DiscoveryOutcome:
     object_count: int = 0
     people_points_removed: int = 0
     failures: list[str] = field(default_factory=list)
+    model_requests: list = field(default_factory=list)
+    """S's ModelRequestInfo per actual detector request, persisted for the trail."""
 
     def note(self) -> str | None:
         """One visible line for the job record; categories only, never secrets."""
@@ -232,6 +234,7 @@ class Stages:
             object_count=len(result.nodes),
             people_points_removed=result.people_points_removed,
             failures=list(result.failures),
+            model_requests=list(result.model_requests),
         )
         return graph.model_copy(update={"nodes": [*preserved, *result.nodes]}), outcome
 

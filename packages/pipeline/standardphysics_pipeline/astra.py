@@ -34,6 +34,7 @@ from standardphysics_contracts import (
 )
 
 from .footprints import footprint, gap_between
+from .occupancy import reads_as_wall
 from .ingest import FIXED_CATEGORIES
 from .mesh_evidence import object_mesh_profiles
 from .textures.camera import CameraMetadataError, camera_from_pose
@@ -228,7 +229,11 @@ def apply_patches(
 
 
 def local_patches(graph: SceneGraph) -> list[LabelPatch]:
-    walls = [node for node in graph.nodes if stands_upright(node)]
+    # A's SHEET_THICKNESS calibration (0.05m) means a real scan's walls read as
+    # sheets but a labelled wall measured 0.15m thick does not; the scanner's
+    # kind label is the fallback, matching the pipeline's reads_as_wall test
+    # and agents/checks/walls. upright_walls.
+    walls = [node for node in graph.nodes if reads_as_wall(node)]
     objects = graph.contents()
     return [_local_patch(node, walls, objects, graph) for node in graph.nodes]
 

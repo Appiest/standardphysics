@@ -54,6 +54,57 @@ export interface ApiError {
   need: string[] | null;
 }
 /**
+ * Conservative screening answer, never a legal claim (contract 4/6).
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ApproachReport".
+ */
+export interface ApproachReport {
+  aisle_width_inches: number | null;
+  approach_stop: Vec3 | null;
+  floor_supported: boolean | null;
+  mesh_checked: boolean;
+  mesh_collision: boolean;
+  obstruction_labels: string[];
+  path: Vec3[] | null;
+  reaches: ReachReport[];
+  reasons: string[];
+  status: string;
+  target_id: string;
+  turning_space_inches: number | null;
+  unverified: string[];
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ReachReport".
+ */
+export interface ReachReport {
+  horizontal_distance_inches: number | null;
+  horizontal_reach_inches: number | null;
+  horizontal_reach_provenance: string | null;
+  horizontal_status: string;
+  occupant_title: string;
+  target_height_inches: number | null;
+  vertical_status: string;
+}
+/**
+ * One measured journey to one target, evaluated with the owner's profile.
+ *
+ * Nothing reaches here by default: without a person-provided horizontal
+ * reach the evaluation reports it unmeasured, and an unmeasured input is
+ * never an answer.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ApproachRequest".
+ */
+export interface ApproachRequest {
+  approach_stop: Vec3 | null;
+  horizontal_reach_inches: number | null;
+  horizontal_reach_provenance: string | null;
+  occupant_profile: string;
+  target_node_id: string;
+}
+/**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "Artifact".
  */
@@ -492,6 +543,30 @@ export interface EvidenceStatus {
   semantic_job_pending: boolean;
   semantic_state:
     "not_started" | "blocked_incomplete_evidence" | "settling" | "queued" | "running" | "complete" | "failed";
+}
+/**
+ * One stored source-resolution frame a photo review can open.
+ *
+ * `width` and `height` are the stored sensor pixels this frame was captured
+ * at, read from the bytes the server holds - never EXIF display orientation.
+ * `image_url` is the route serving that exact frame's original bytes.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "FrameEntry".
+ */
+export interface FrameEntry {
+  frame_id: string;
+  height: number;
+  image_url: string;
+  width: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "FrameListing".
+ */
+export interface FrameListing {
+  frames: FrameEntry[];
+  unreadable: string[];
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -1101,6 +1176,7 @@ export interface SurfaceText {
 export interface UnlocalizedObservation {
   frame_id: string;
   id: string;
+  image_url: string | null;
   marked_at: string | null;
   marked_by: string | null;
   note: string | null;

@@ -9,7 +9,7 @@ Every call here is an authenticated HTTP request against the real queue.
 import json
 import uuid
 
-from conftest import create_scan, drain, put_artifact
+from conftest import create_scan, drain, put_artifact, usdz_fixture
 from standardphysics_contracts import Mat4, SceneNode, SurfaceAttachment, Vec3
 from standardphysics_pipeline.discovery import DiscoveryResult
 
@@ -111,16 +111,26 @@ def _stages(discover):
 
 
 def _ready_scan(make_client, discover):
-    client = make_client(stages=_stages(discover))
+    client = make_client(stages=_stages(discover), evidence_settle_seconds=0.0)
     scan_id = create_scan(client)
     put_artifact(client, scan_id, "room-json", _room_payload(), "room_json")
-    put_artifact(client, scan_id, "room-usdz", b"usdz", "room_usdz")
+    put_artifact(client, scan_id, "room-usdz", usdz_fixture(), "room_usdz")
     put_artifact(client, scan_id, "frames", b"frame-bytes", "frames")
     put_artifact(client, scan_id, "poses", b"{}", "poses")
     put_artifact(client, scan_id, "lidar-mesh", _mesh_bytes(), "lidar_mesh")
+    put_artifact(client, scan_id, "frame-0100", _jpeg(96, 64), "frames")
+    put_artifact(client, scan_id, "frame-0101", _jpeg(96, 64), "frames")
     client.post(f"/api/scans/{scan_id}/complete")
     drain(client)
     return client, scan_id
+
+
+def _jpeg(width: int = 96, height: int = 64) -> bytes:
+    import io
+    from PIL import Image
+    buffer = io.BytesIO()
+    Image.new("RGB", (width, height), (90, 100, 110)).save(buffer, format="JPEG")
+    return buffer.getvalue()
 
 
 def _two_targets(inputs):
@@ -139,14 +149,14 @@ def test_all_four_target_classes_flow_through_authenticated_routes(make_client, 
 
         television = client.put(
             f"/api/scans/{scan_id}/revisions/1/observations",
-            json={"target_class": "television", "frame_id": "tv-photo", "sensor_box": [1, 2, 3, 4]},
+            json={"target_class": "television", "frame_id": "frame-0100", "sensor_box": [4, 4, 60, 44]},
         )
         assert television.status_code == 201, television.text
         assert television.json()["revision"] == 2
 
         restroom = client.put(
             f"/api/scans/{scan_id}/revisions/2/observations",
-            json={"target_class": "restroom_entrance", "frame_id": "door-photo", "sensor_box": [5, 6, 7, 8]},
+            json={"target_class": "restroom_entrance", "frame_id": "frame-0101", "sensor_box": [8, 8, 72, 52]},
         )
         assert restroom.status_code == 201, restroom.text
         assert restroom.json()["revision"] == 3
@@ -230,6 +240,9 @@ def test_late_process_job_replaces_ingest_revision_but_never_owner_decisions(mak
     worker.stages.discover = second_pass
     with client:
         put_artifact(client, scan_id, "frames-2", b"late evidence arrives", "frames")
+        # An explicit complete is idempotent (frozen contract); with K's settle
+        # gate it forces processing now, without it it is a no-op.
+        client.post(f"/api/scans/{scan_id}/complete")
         drain(client)
 
         latest = client.get(f"/api/scans/{scan_id}/scene").json()
@@ -249,7 +262,7 @@ def test_assessment_never_displays_a_stale_revision(make_client):
     with client:
         marked = client.put(
             f"/api/scans/{scan_id}/revisions/0/observations",
-            json={"target_class": "outlet", "frame_id": "fresh", "sensor_box": [0, 0, 1, 1]},
+            json={"target_class": "outlet", "frame_id": "frame-0101", "sensor_box": [8, 8, 72, 52]},
         )
         assert marked.status_code == 201, marked.text
         stale_view = client.get(f"/api/scans/{scan_id}/assessment")
@@ -271,6 +284,8 @@ def test_changed_scenario_retires_the_old_assessment_until_rechecked(make_client
         assert confirmed.status_code == 200, confirmed.text
         retired = client.get(f"/api/scans/{scan_id}/assessment")
         assert retired.status_code == 404
+        # Idempotent completion; forces the re-check now under K's settle gate.
+        client.post(f"/api/scans/{scan_id}/complete")
         drain(client)
         fresh = client.get(f"/api/scans/{scan_id}/assessment").json()
         assert fresh["created_at"] != first

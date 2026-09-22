@@ -8,12 +8,13 @@ first process's jobs.
 
 from __future__ import annotations
 
+import json
 import logging
 import pathlib
 import threading
 import traceback
 import uuid
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from standardphysics_contracts import SimulationRequest
 
@@ -112,6 +113,7 @@ class Worker:
         outcome = self._run(job)
         with self.database.transaction() as connection:
             repo.finish_job(connection, job["id"], outcome.error)
+            repo.record_job_attempt(connection, job["id"], job["attempts"], uuid.UUID(job["scan_id"]))
         if outcome.follow_up and outcome.error is None:
             self._queue_follow_up_if_due(uuid.UUID(job["scan_id"]))
         return True
@@ -132,9 +134,44 @@ class Worker:
 
     def _loop(self, texture_only: bool = False) -> None:
         while not self._stop.is_set():
-            if not self.run_once(texture_only):
-                self._wake.wait(timeout=2.0)
-                self._wake.clear()
+            if self.run_once(texture_only):
+                continue
+            if not texture_only:
+                self._sweep_due_settled()
+            self._wake.wait(timeout=2.0)
+            self._wake.clear()
+
+    def _sweep_due_settled(self) -> None:
+        """Queue the one due recognition job for every quiet complete bundle.
+
+        Without this, evidence that stops arriving never settles: the next
+        trigger would have to be another request, which a finished upload never
+        makes. The sweep reads the database each tick, so a restart re-derives
+        the same decision with nothing persisted in memory.
+        """
+        try:
+            with self.database.connect() as connection:
+                due = evidence.due_semantic_scans(connection, self.settings.evidence_settle_seconds)
+        except Exception:
+            log.warning("due-settled sweep could not read scans:\n%s", traceback.format_exc())
+            return
+        queued = False
+        for scan in due:
+            try:
+                with self.database.transaction() as connection:
+                    queued = (
+                        evidence.maybe_queue_semantic(
+                            connection,
+                            scan,
+                            PROCESS,
+                            settle_seconds=self.settings.evidence_settle_seconds,
+                        )
+                        == "queued"
+                    ) or queued
+            except Exception:
+                log.warning("due-settled sweep skipped %s:\n%s", scan.id, traceback.format_exc())
+        if queued:
+            self.wake()
 
     def _run(self, job) -> _JobOutcome:
         scan_id, revision = uuid.UUID(job["scan_id"]), job["revision"]
@@ -172,6 +209,9 @@ class Worker:
         with self.database.connect() as connection:
             bundle = repo.latest_bundle(connection, scan_id)
             consumed = (bundle.version, bundle.manifest_hash) if bundle else None
+        if consumed is not None:
+            with self.database.transaction() as connection:
+                repo.set_job_binding(connection, job["id"], consumed[1], None)
         association_state, association_failure, declared = evidence.association_state(
             self.database, self.store, scan_id
         )
@@ -180,7 +220,9 @@ class Worker:
         with self.database.connect() as connection:
             room_json = repo.artifact_of_kind(connection, scan_id, "room_json")
         frame_paths, poses_path, lidar_mesh_path = self.label_inputs(scan_id)
-        run_discovery = not declared or association_state != "waiting_for_photos"
+        # With a declared manifest every state except not_started means the
+        # pairing is unfilled or broken; such a run never counts as semantic.
+        run_discovery = not declared or association_state == "not_started"
         graph, outcome = self.stages.ingest_with_report(
             self.store.artifact_path(scan_id, room_json.id),
             scan_id,
@@ -193,8 +235,21 @@ class Worker:
             outcome = DiscoveryOutcome(deferred_reason=association_failure or association_state)
         with self.database.transaction() as connection:
             repo.save_revision(connection, graph, source="ingest")
-            self._mark_consumed_if_due(connection, scan_id, consumed)
+            if run_discovery:
+                self._mark_consumed_if_due(connection, scan_id, consumed)
             repo.set_job_binding(connection, job["id"], consumed[1] if consumed else None, outcome.note())
+            if outcome.model_requests:
+                repo.set_job_requests(
+                    connection,
+                    job["id"],
+                    json.dumps(
+                        [
+                            request.model_dump(mode="json") if hasattr(request, "model_dump") else asdict(request)
+                            for request in outcome.model_requests
+                        ],
+                        default=str,
+                    ),
+                )
         self._assess(scan_id=scan_id, revision=graph.revision)
         return self._newer_bundle_is_due(scan_id, consumed)
 

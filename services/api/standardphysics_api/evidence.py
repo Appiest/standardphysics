@@ -90,8 +90,26 @@ def maybe_queue_semantic(
         return "pending"
     if not explicit and not _settled(connection, scan.id, bundle, settle_seconds):
         return None
+    if not explicit and _attempted_this_input(connection, scan.id, bundle.manifest_hash):
+        return None
     repo.queue_job_again(connection, scan.id, kind, 0)
     return "queued"
+
+
+def _attempted_this_input(connection: sqlite3.Connection, scan_id: uuid.UUID, manifest_hash: str) -> bool:
+    """Whether a process job already ran on this exact manifest.
+
+    A deferred run never counts, and a failed one must not spin: with no new
+    evidence the settled sweep would otherwise re-queue the same doomed job
+    every idle tick. New evidence changes the manifest, so its first attempt
+    always passes this gate. An explicit /complete bypasses it on purpose.
+    A job that never bound an input failed before it knew what it consumed;
+    it is treated the same rather than retried blind.
+    """
+    last = repo.latest_process_job(connection, scan_id)
+    if last is None:
+        return False
+    return last["input_hash"] is None or last["input_hash"] == manifest_hash
 
 
 def _settled(
@@ -108,6 +126,31 @@ def _settled(
         return True
     arrival = datetime.fromisoformat(latest)
     return (datetime.now(UTC) - arrival).total_seconds() >= settle_seconds
+
+
+def due_semantic_scans(connection: sqlite3.Connection, settle_seconds: float) -> list[Scan]:
+    """Scans whose latest complete bundle is unpublished and quiet long enough.
+
+    The worker sweeps this on its idle tick, so a capture whose only trigger
+    would have been its last upload still gets its one recognition job after
+    the settle window elapses, without any further HTTP request. The decision
+    is recomputed from the database on every tick, so a restart loses nothing.
+    """
+    candidates = connection.execute(
+        "SELECT scan_id FROM evidence_bundles WHERE complete = 1"
+        " AND (semantic_processed_hash IS NULL OR semantic_processed_hash != manifest_hash)"
+        " AND version = (SELECT MAX(v.version) FROM evidence_bundles v WHERE v.scan_id = evidence_bundles.scan_id)"
+    ).fetchall()
+    due: list[Scan] = []
+    for row in candidates:
+        scan_id = uuid.UUID(row["scan_id"])
+        scan = repo.get_scan(connection, scan_id)
+        if scan is None or scan.state == "uploading":
+            continue
+        bundle = repo.latest_bundle(connection, scan_id)
+        if bundle is None or _settled(connection, scan_id, bundle, settle_seconds):
+            due.append(scan)
+    return due
 
 
 def evidence_status_for(database: Database, scan: Scan) -> EvidenceStatus:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isOutletNode } from "./OutletPanel";
+import { isOutletNode } from "@/lib/review-targets";
 import type { SceneNode } from "@/types/contracts";
 
 const baseNode = (overrides: Partial<SceneNode> = {}): SceneNode => ({
@@ -16,12 +16,12 @@ const baseNode = (overrides: Partial<SceneNode> = {}): SceneNode => ({
   ...overrides,
 });
 
-describe("OutletPanel semantic filtering", () => {
+describe("ReviewPanel semantic filtering", () => {
   it("LIST-01: rejects wall/table nodes with attachment omitted, undefined or null", () => {
     const wallOmitted = baseNode({ kind: "wall" });
-    const wallNull = baseNode({ kind: "wall", attachment: null as any });
+    const wallNull = { ...baseNode({ kind: "wall" }), attachment: null };
     const tableOmitted = baseNode({ kind: "object", raw_category: "table", label: "Table" });
-    const tableNull = baseNode({ kind: "object", raw_category: "table", label: "Table", attachment: null as any });
+    const tableNull = { ...baseNode({ kind: "object", raw_category: "table", label: "Table" }), attachment: null };
 
     const nodes = [wallOmitted, wallNull, tableOmitted, tableNull];
     const filtered = nodes.filter(isOutletNode);

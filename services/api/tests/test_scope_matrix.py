@@ -8,7 +8,7 @@ G06/G13; Q recomputes these invariants from raw artifacts.
 
 import json
 
-from conftest import create_scan, drain, put_artifact
+from conftest import create_scan, drain, put_artifact, usdz_fixture
 
 ALLOWED = {"satisfied", "violation", "needs_verification", "not_applicable", "unobserved"}
 
@@ -56,7 +56,7 @@ def test_assessment_carries_a_complete_hashed_scope_matrix(make_client):
     with make_client(stages=stages) as client:
         scan_id = create_scan(client)
         put_artifact(client, scan_id, "room-json", _room_payload(), "room_json")
-        put_artifact(client, scan_id, "room-usdz", b"usdz", "room_usdz")
+        put_artifact(client, scan_id, "room-usdz", usdz_fixture(), "room_usdz")
         put_artifact(client, scan_id, "frames", b"frames", "frames")
         put_artifact(client, scan_id, "poses", b"{}", "poses")
         put_artifact(client, scan_id, "lidar-mesh", _mesh_bytes(), "lidar_mesh")
@@ -92,7 +92,7 @@ def test_matrix_outcomes_map_from_findings_matches_legacy_problems(make_client):
     with make_client(stages=stages) as client:
         scan_id = create_scan(client)
         put_artifact(client, scan_id, "room-json", _room_payload(), "room_json")
-        put_artifact(client, scan_id, "room-usdz", b"usdz", "room_usdz")
+        put_artifact(client, scan_id, "room-usdz", usdz_fixture(), "room_usdz")
         client.post(f"/api/scans/{scan_id}/complete")
         drain(client)
 

@@ -1,7 +1,7 @@
 import hashlib
 import json
 
-from conftest import create_scan, put_artifact, unknown_scan
+from conftest import create_scan, put_artifact, unknown_scan, usdz_fixture
 
 
 def mesh_bytes(**overrides) -> bytes:
@@ -54,7 +54,7 @@ def test_missing_lidar_mesh_is_not_ready(client):
 def test_lidar_mesh_can_arrive_after_scan_completion(client):
     scan_id = create_scan(client)
     put_artifact(client, scan_id, "room-json", b"{}", "room_json")
-    put_artifact(client, scan_id, "room-usdz", b"usdz", "room_usdz")
+    put_artifact(client, scan_id, "room-usdz", usdz_fixture(), "room_usdz")
     assert client.post(f"/api/scans/{scan_id}/complete").status_code == 200
 
     body = mesh_bytes()

@@ -14,6 +14,7 @@ import numpy as np
 from scipy import ndimage
 from standardphysics_contracts import Scenario, SceneGraph, SceneNode, Stop, Vec3, stands_upright
 from standardphysics_pipeline import build_grid, footprint
+from standardphysics_pipeline.footprints import rotation_about_z
 
 STANDING_ROOM = 0.45
 """Metres of clear floor around a stop, about half a wheelchair's turning space."""
@@ -84,10 +85,24 @@ def _nearest(nodes: list[SceneNode], point: tuple[float, float]) -> SceneNode | 
 
 
 def _beside(node: SceneNode, toward: tuple[float, float]) -> tuple[float, float]:
-    """Half a metre out from the face of the node that looks toward a point."""
+    """Half a metre out from the face of the node that looks toward a point.
+
+    A node exactly at the reference point has no direction toward it, and a
+    min over the empty list is a crash pretending to be a suggestion. The
+    forward face (the node's local minus-Y, the face the pipeline treats as
+    the customer side) is the least-invented face to stand beside when nothing
+    points at the node.
+    """
     p = node.transform.position
     dx, dy = toward[0] - p.x, toward[1] - p.y
-    length = math.hypot(dx, dy) or 1.0
+    length = math.hypot(dx, dy)
+    if length < 1e-9:
+        cos_t, sin_t = rotation_about_z(node)
+        return _toward(
+            (p.x, p.y),
+            (p.x + sin_t, p.y - cos_t),
+            node.dimensions.y / 2 + 0.5,
+        )
     angle = math.atan2(node.transform.m[4], node.transform.m[0])
     local_x = abs((dx * math.cos(angle) + dy * math.sin(angle)) / length)
     local_y = abs((-dx * math.sin(angle) + dy * math.cos(angle)) / length)

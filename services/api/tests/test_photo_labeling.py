@@ -5,7 +5,7 @@ import uuid
 
 from PIL import Image
 
-from conftest import create_scan, drain, put_artifact
+from conftest import create_scan, drain, put_artifact, usdz_fixture
 
 
 def test_ingest_passes_uploaded_frames_to_the_default_astra_labeler(client, monkeypatch):
@@ -44,7 +44,7 @@ def test_ingest_passes_uploaded_frames_to_the_default_astra_labeler(client, monk
     monkeypatch.setattr("standardphysics_pipeline.astra._openrouter_post", transport)
     scan_id = create_scan(client)
     put_artifact(client, scan_id, "room-json", json.dumps({"objects": [room_object]}).encode(), "room_json")
-    put_artifact(client, scan_id, "room-usdz", b"usdz", "room_usdz")
+    put_artifact(client, scan_id, "room-usdz", usdz_fixture(), "room_usdz")
     put_artifact(client, scan_id, "poses", json.dumps(poses).encode(), "poses")
     put_artifact(client, scan_id, "frame-0000", image.getvalue(), "frames")
 

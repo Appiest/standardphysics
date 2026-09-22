@@ -10,7 +10,7 @@ import json
 import threading
 import time
 
-from conftest import create_scan, drain, put_artifact
+from conftest import create_scan, drain, put_artifact, usdz_fixture
 from fastapi.testclient import TestClient
 from standardphysics_pipeline.discovery import DiscoveryResult
 
@@ -102,7 +102,7 @@ def _job_states(client, scan_id) -> list[tuple[str, int]]:
 
 def _complete_geometry(client, scan_id) -> None:
     put_artifact(client, scan_id, "room-json", _room_payload(), "room_json")
-    put_artifact(client, scan_id, "room-usdz", b"usdz", "room_usdz")
+    put_artifact(client, scan_id, "room-usdz", usdz_fixture(), "room_usdz")
 
 
 def _complete_semantics(client, scan_id, frame_id="frames", frame=b"frame-bytes") -> None:
@@ -136,7 +136,7 @@ def test_out_of_order_and_duplicate_uploads_schedule_exactly_one_job(make_client
         calls["discover"] += 1
         return DiscoveryResult()
 
-    with make_client(stages=_stages(discover)) as client:
+    with make_client(stages=_stages(discover), evidence_settle_seconds=0.0) as client:
         scan_id = create_scan(client)
         put_artifact(client, scan_id, "lidar-mesh", _mesh_bytes(), "lidar_mesh")
         put_artifact(client, scan_id, "poses", _poses(), "poses")
@@ -163,7 +163,7 @@ def test_late_upload_during_a_run_never_marks_the_newer_bundle_processed(make_cl
         release.wait(timeout=10)
         return DiscoveryResult()
 
-    with make_client(stages=_stages(discover)) as client:
+    with make_client(stages=_stages(discover), evidence_settle_seconds=0.0) as client:
         scan_id = create_scan(client)
         _complete_geometry(client, scan_id)
         _complete_semantics(client, scan_id)
@@ -213,7 +213,7 @@ def test_late_upload_during_a_run_never_marks_the_newer_bundle_processed(make_cl
         assert marks[-1] == final["manifest_hash"]
 
 
-def _restarted_client(tmp_path, stages, owner_email, owner_password):
+def _restarted_client(tmp_path, stages, owner_email, owner_password, sign_in: bool = True, settle_seconds: float = 0.0):
     """A second app on the same database, with its worker really running.
 
     Entering the context starts the worker, which re-queues any job a crashed
@@ -229,21 +229,23 @@ def _restarted_client(tmp_path, stages, owner_email, owner_password):
         settings = Settings(
             data_dir=tmp_path / "var",
             max_artifact_bytes=5_000_000,
+            evidence_settle_seconds=settle_seconds,
         )
         test_client = TestClient(create_app(settings, stages, run_worker=True))
         with test_client:
-            response = test_client.post(
-                "/api/auth/sign-in",
-                json={"email": owner_email, "password": owner_password},
-            )
-            assert response.status_code == 200, response.text
+            if sign_in:
+                response = test_client.post(
+                    "/api/auth/sign-in",
+                    json={"email": owner_email, "password": owner_password},
+                )
+                assert response.status_code == 200, response.text
             yield test_client
 
     return build()
 
 
 def test_crash_after_claim_recovers_with_one_coherent_revision(make_client, tmp_path):
-    with make_client(stages=_stages(lambda inputs: DiscoveryResult())) as client:
+    with make_client(stages=_stages(lambda inputs: DiscoveryResult()), evidence_settle_seconds=0.0) as client:
         scan_id = create_scan(client)
         _complete_geometry(client, scan_id)
         _complete_semantics(client, scan_id)
@@ -288,7 +290,7 @@ def test_declared_evidence_mismatch_is_a_visible_failure_and_new_evidence_repair
         calls["discover"] += 1
         return DiscoveryResult()
 
-    with make_client(stages=_stages(discover)) as client:
+    with make_client(stages=_stages(discover), evidence_settle_seconds=0.0) as client:
         scan_id = create_scan(client)
         _complete_geometry(client, scan_id)
         client.post(f"/api/scans/{scan_id}/complete")
@@ -334,7 +336,7 @@ def test_manifest_declaring_missing_photos_defers_discovery_until_all_arrive(mak
         calls["discover"] += 1
         return DiscoveryResult()
 
-    with make_client(stages=_stages(discover)) as client:
+    with make_client(stages=_stages(discover), evidence_settle_seconds=0.0) as client:
         scan_id = create_scan(client)
         _complete_geometry(client, scan_id)
         client.post(f"/api/scans/{scan_id}/complete")
@@ -355,6 +357,12 @@ def test_manifest_declaring_missing_photos_defers_discovery_until_all_arrive(mak
         status = client.get(f"/api/scans/{scan_id}/evidence").json()
         assert status["latest_bundle"]["semantic_processed_hash"] is None
         assert status["complete_evidence"] is True
+        with client.app.state.database.connect() as connection:
+            marked = connection.execute(
+                "SELECT COUNT(*) FROM evidence_bundles WHERE scan_id = ? AND semantic_processed_hash IS NOT NULL",
+                (scan_id,),
+            ).fetchone()[0]
+        assert marked == 0
 
         put_artifact(client, scan_id, "frame-0007", b"frame-bytes", "frames")
         drain(client)
@@ -375,7 +383,7 @@ def test_provider_failure_categories_are_visible_and_secret_free(make_client, mo
     def empty_discover(inputs):
         return DiscoveryResult(frames_read=3)
 
-    with make_client(stages=_stages(failing_discover)) as client:
+    with make_client(stages=_stages(failing_discover), evidence_settle_seconds=0.0) as client:
         scan_id = create_scan(client)
         _complete_geometry(client, scan_id)
         _complete_semantics(client, scan_id)
@@ -399,6 +407,353 @@ def test_provider_failure_categories_are_visible_and_secret_free(make_client, mo
         assert "read 3 photos" in text
         assert "found 0 objects" in text
         assert "unread" not in text
+
+
+def test_background_worker_settles_late_evidence_without_a_manual_drain(tmp_path):
+    import conftest
+
+    client_ctx = _restarted_client(
+        tmp_path,
+        _stages(lambda inputs: DiscoveryResult()),
+        conftest.OWNER_EMAIL,
+        conftest.OWNER_PASSWORD,
+        sign_in=False,
+    )
+    with client_ctx as client:
+        assert (
+            client.post(
+                "/api/auth/sign-up",
+                json={"email": "late@example.com", "password": "late-evidence-password", "shop_name": "late"},
+            ).status_code
+            == 201
+        )
+        scan_id = create_scan(client)
+        _complete_geometry(client, scan_id)
+        _complete_semantics(client, scan_id)
+        assert client.post(f"/api/scans/{scan_id}/complete").status_code == 200
+
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            status = client.get(f"/api/scans/{scan_id}/evidence").json()
+            if status["semantic_state"] == "complete":
+                break
+            time.sleep(0.1)
+        first = client.get(f"/api/scans/{scan_id}/evidence").json()
+        assert first["semantic_state"] == "complete", first
+        assert first["semantic_job_pending"] is False
+
+        put_artifact(client, scan_id, "frames-late", b"late evidence bytes", "frames")
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            status = client.get(f"/api/scans/{scan_id}/evidence").json()
+            if (
+                status["semantic_job_pending"] is False
+                and status["semantic_state"] == "complete"
+                and status["manifest_hash"] != first["manifest_hash"]
+            ):
+                break
+            time.sleep(0.1)
+        settled = client.get(f"/api/scans/{scan_id}/evidence").json()
+        assert settled["semantic_job_pending"] is False
+        assert settled["semantic_state"] == "complete"
+        assert settled["manifest_hash"] != first["manifest_hash"]
+        assert settled["latest_bundle"]["semantic_processed_hash"] == settled["manifest_hash"]
+        assert [row[:2] for row in _job_states(client, scan_id)] == [("done", 2)]
+
+
+def test_quiet_late_evidence_settles_by_worker_sweep_across_restart(tmp_path):
+    import conftest
+
+    stages_for = _stages(lambda inputs: DiscoveryResult())
+    sign_up = {
+        "json": {"email": "quiet@example.com", "password": "quiet-owner-password", "shop_name": "quiet"},
+    }
+    first = _restarted_client(
+        tmp_path,
+        stages_for,
+        conftest.OWNER_EMAIL,
+        conftest.OWNER_PASSWORD,
+        sign_in=False,
+        settle_seconds=30.0,
+    )
+    with first as client:
+        assert client.post("/api/auth/sign-up", **sign_up).status_code == 201
+        scan_id = create_scan(client)
+        _complete_geometry(client, scan_id)
+        _complete_semantics(client, scan_id)
+        assert client.post(f"/api/scans/{scan_id}/complete").status_code == 200
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            status = client.get(f"/api/scans/{scan_id}/evidence").json()
+            if status["semantic_state"] == "complete":
+                break
+            time.sleep(0.1)
+        first_hash = client.get(f"/api/scans/{scan_id}/evidence").json()["manifest_hash"]
+
+        put_artifact(client, scan_id, "frames-late", b"quiet-window evidence", "frames")
+        unquiet = client.get(f"/api/scans/{scan_id}/evidence").json()
+        assert unquiet["semantic_job_pending"] is False
+        assert unquiet["latest_bundle"]["semantic_processed_hash"] is None
+        assert unquiet["manifest_hash"] != first_hash
+
+    second = _restarted_client(
+        tmp_path,
+        stages_for,
+        "quiet@example.com",
+        "quiet-owner-password",
+        sign_in=True,
+        settle_seconds=1.0,
+    )
+    with second as client:
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            status = client.get(f"/api/scans/{scan_id}/evidence").json()
+            if (
+                status["semantic_state"] == "complete"
+                and status["semantic_job_pending"] is False
+                and status["manifest_hash"] != first_hash
+            ):
+                break
+            time.sleep(0.1)
+        settled = client.get(f"/api/scans/{scan_id}/evidence").json()
+        assert settled["semantic_state"] == "complete", settled
+        assert settled["semantic_job_pending"] is False
+        assert settled["manifest_hash"] != first_hash
+        assert settled["latest_bundle"]["semantic_processed_hash"] == settled["manifest_hash"]
+        assert [row[:2] for row in _job_states(client, scan_id)] == [("done", 2)]
+
+
+def test_sweep_never_retries_a_failed_input_until_new_evidence(tmp_path):
+    import conftest
+
+    calls = {"discover": 0}
+
+    def flaky(inputs):
+        calls["discover"] += 1
+        if calls["discover"] == 1:
+            raise RuntimeError("provider died")
+        return DiscoveryResult()
+
+    client_ctx = _restarted_client(
+        tmp_path,
+        _stages(flaky),
+        conftest.OWNER_EMAIL,
+        conftest.OWNER_PASSWORD,
+        sign_in=False,
+        settle_seconds=0.0,
+    )
+    with client_ctx as client:
+        assert (
+            client.post(
+                "/api/auth/sign-up",
+                json={"email": "storm@example.com", "password": "storm-owner-password", "shop_name": "storm"},
+            ).status_code
+            == 201
+        )
+        scan_id = create_scan(client)
+        _complete_geometry(client, scan_id)
+        _complete_semantics(client, scan_id)
+        assert client.post(f"/api/scans/{scan_id}/complete").status_code == 200
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            status = client.get(f"/api/scans/{scan_id}/evidence").json()
+            if status["semantic_state"] == "failed":
+                break
+            time.sleep(0.1)
+        failed = client.get(f"/api/scans/{scan_id}/evidence").json()
+        assert failed["semantic_state"] == "failed", failed
+        with client.app.state.database.connect() as connection:
+            attempts_after_failure = connection.execute(
+                "SELECT attempts FROM jobs WHERE scan_id = ? AND kind = 'process'",
+                (scan_id,),
+            ).fetchone()[0]
+        assert attempts_after_failure == 1
+
+        # Let the idle sweep tick several times; nothing may re-queue the same input.
+        time.sleep(6)
+        with client.app.state.database.connect() as connection:
+            row = connection.execute(
+                "SELECT state, attempts FROM jobs WHERE scan_id = ? AND kind = 'process'",
+                (scan_id,),
+            ).fetchone()
+        assert tuple(row) == ("failed", 1), tuple(row)
+
+        put_artifact(client, scan_id, "frames-fresh", b"evidence that changes the input", "frames")
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            status = client.get(f"/api/scans/{scan_id}/evidence").json()
+            if status["semantic_state"] == "complete":
+                break
+            time.sleep(0.1)
+        settled = client.get(f"/api/scans/{scan_id}/evidence").json()
+        assert settled["semantic_state"] == "complete", settled
+        assert calls["discover"] == 2
+        assert [row[:2] for row in _job_states(client, scan_id)] == [("done", 2)]
+
+
+def test_provider_request_metadata_persists_on_the_job(make_client):
+    from standardphysics_pipeline.discovery import ModelRequestInfo
+
+    def discover(inputs):
+        return DiscoveryResult(
+            frames_read=2,
+            model_requests=[
+                ModelRequestInfo(
+                    frame_id="frame-a",
+                    provider="api.example.test",
+                    model="test-model",
+                    orientation="landscape_right",
+                    request_id="req-1",
+                    usage={"total_tokens": 100},
+                ),
+                ModelRequestInfo(
+                    frame_id="frame-b",
+                    provider="api.example.test",
+                    model="test-model",
+                    orientation="portrait",
+                    request_id="req-2",
+                    usage={"total_tokens": 80},
+                ),
+            ],
+        )
+
+    with make_client(stages=_stages(discover), evidence_settle_seconds=0.0) as client:
+        scan_id = create_scan(client)
+        _complete_geometry(client, scan_id)
+        _complete_semantics(client, scan_id)
+        client.post(f"/api/scans/{scan_id}/complete")
+        drain(client)
+
+        with client.app.state.database.connect() as connection:
+            payload = connection.execute(
+                "SELECT model_requests_json FROM jobs WHERE scan_id = ? AND kind = 'process'",
+                (scan_id,),
+            ).fetchone()["model_requests_json"]
+        requests = json.loads(payload)
+        assert [request["frame_id"] for request in requests] == ["frame-a", "frame-b"]
+        assert requests[0]["provider"] == "api.example.test"
+        assert requests[0]["request_id"] == "req-1"
+        assert requests[0]["usage"]["total_tokens"] == 100
+        logged = json.dumps(requests)
+        assert "token" not in logged.replace("total_tokens", "").lower()
+
+
+def _attempt_rows(client, scan_id):
+    with client.app.state.database.connect() as connection:
+        return [
+            dict(row)
+            for row in connection.execute(
+                "SELECT a.attempt, a.input_hash, a.state, a.error, a.note, a.model_requests_json"
+                " FROM job_attempts a JOIN jobs j ON j.id = a.job_id"
+                " WHERE a.scan_id = ? AND j.kind = 'process' ORDER BY a.job_id, a.attempt",
+                (scan_id,),
+            ).fetchall()
+        ]
+
+
+def test_attempt_history_binds_requests_to_their_input_and_the_latest_view_stays_empty(make_client):
+    from standardphysics_pipeline.discovery import ModelRequestInfo
+
+    calls = {"discover": 0}
+
+    def discover(inputs):
+        calls["discover"] += 1
+        if calls["discover"] == 1:
+            return DiscoveryResult(
+                frames_read=1,
+                model_requests=[
+                    ModelRequestInfo(
+                        frame_id="frame-a",
+                        provider="api.example.test",
+                        model="test-model",
+                        orientation="landscape_right",
+                        request_id="old-request",
+                        usage={"total_tokens": 12},
+                    )
+                ],
+            )
+        return DiscoveryResult(frames_read=1)
+
+    with make_client(stages=_stages(discover), evidence_settle_seconds=0.0) as client:
+        scan_id = create_scan(client)
+        _complete_geometry(client, scan_id)
+        _complete_semantics(client, scan_id)
+        client.post(f"/api/scans/{scan_id}/complete")
+        drain(client)
+
+        tries = _attempt_rows(client, scan_id)
+        assert [row["attempt"] for row in tries] == [1]
+        old_requests = json.loads(tries[0]["model_requests_json"])
+        assert old_requests[0]["request_id"] == "old-request"
+        first_hash = tries[0]["input_hash"]
+
+        put_artifact(client, scan_id, "frames-fresh", b"evidence that changes the input", "frames")
+        drain(client)
+
+        with client.app.state.database.connect() as connection:
+            latest_view = connection.execute(
+                "SELECT model_requests_json FROM jobs WHERE scan_id = ? AND kind = 'process'",
+                (scan_id,),
+            ).fetchone()["model_requests_json"]
+        assert latest_view is None
+
+        tries = _attempt_rows(client, scan_id)
+        assert [row["attempt"] for row in tries] == [1, 2]
+        assert tries[0]["input_hash"] == first_hash
+        assert tries[1]["input_hash"] != first_hash
+        assert json.loads(tries[0]["model_requests_json"])[0]["request_id"] == "old-request"
+        assert tries[1]["model_requests_json"] is None
+        assert tries[1]["state"] == "done"
+
+
+def test_failed_second_attempt_records_itself_without_inheriting_old_requests(make_client):
+    from standardphysics_pipeline.discovery import ModelRequestInfo
+
+    calls = {"discover": 0}
+
+    def discover(inputs):
+        calls["discover"] += 1
+        if calls["discover"] == 1:
+            return DiscoveryResult(
+                frames_read=1,
+                model_requests=[
+                    ModelRequestInfo(
+                        frame_id="frame-a",
+                        provider="api.example.test",
+                        model="test-model",
+                        orientation="landscape_right",
+                        request_id="first-request",
+                        usage={"total_tokens": 12},
+                    )
+                ],
+            )
+        raise RuntimeError("provider quota exhausted")
+
+    with make_client(stages=_stages(discover), evidence_settle_seconds=0.0) as client:
+        scan_id = create_scan(client)
+        _complete_geometry(client, scan_id)
+        _complete_semantics(client, scan_id)
+        client.post(f"/api/scans/{scan_id}/complete")
+        drain(client)
+
+        put_artifact(client, scan_id, "frames-fresh", b"evidence that changes the input", "frames")
+        drain(client)
+
+        tries = _attempt_rows(client, scan_id)
+        assert [row["attempt"] for row in tries] == [1, 2]
+        assert tries[0]["state"] == "done"
+        assert json.loads(tries[0]["model_requests_json"])[0]["request_id"] == "first-request"
+        assert tries[1]["state"] == "failed"
+        assert "provider quota" in tries[1]["error"]
+        assert tries[1]["model_requests_json"] is None
+        with client.app.state.database.connect() as connection:
+            latest_view = connection.execute(
+                "SELECT model_requests_json FROM jobs WHERE scan_id = ? AND kind = 'process'",
+                (scan_id,),
+            ).fetchone()["model_requests_json"]
+        assert latest_view is None
+        status = client.get(f"/api/scans/{scan_id}/evidence").json()
+        assert status["semantic_state"] == "failed"
 
 
 def test_discovery_inputs_point_crops_at_the_scan_crop_dir(tmp_path):
@@ -431,7 +786,7 @@ def test_failed_job_is_not_rerun_without_new_inputs(make_client):
     def broken(inputs):
         raise RuntimeError("provider died")
 
-    with make_client(stages=_stages(broken)) as client:
+    with make_client(stages=_stages(broken), evidence_settle_seconds=0.0) as client:
         scan_id = create_scan(client)
         _complete_geometry(client, scan_id)
         _complete_semantics(client, scan_id)

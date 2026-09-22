@@ -1,4 +1,4 @@
-import type { CameraPose, SceneGraph } from "@/types/contracts";
+import type { CameraPose, SceneGraph, Vec3 } from "@/types/contracts";
 import { Box3, Vector3 } from "three";
 import { toViewer, type ViewerPoint } from "./coordinates";
 
@@ -61,6 +61,19 @@ export function topDownPose(scene: SceneGraph): ViewerPose {
   return {
     position: toViewer({ x: cx, y: cy - 0.001, z: span * 1.45 }),
     target: toViewer({ x: cx, y: cy, z: 0 }),
+    fov: 50,
+  };
+}
+
+/** Face a point in the room from a raised corner, so picking an object in a
+ *  list moves the camera to show it. Unlocalized marks have no point to face. */
+export function poseAtPoint(point: Vec3, scene: SceneGraph): ViewerPose {
+  const { span } = footprintBounds(scene);
+  const standoff = Math.max(span * 0.3, 0.9);
+  const eye = Math.max(point.z, 0.05) + standoff * 0.6;
+  return {
+    position: toViewer({ x: point.x, y: point.y - standoff, z: eye }),
+    target: toViewer({ x: point.x, y: point.y, z: Math.max(point.z, 0.05) }),
     fov: 50,
   };
 }

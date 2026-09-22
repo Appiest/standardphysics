@@ -4,6 +4,17 @@
 #
 #   ./start.sh          development server, reloads on save
 #   ./start.sh --prod   production build, for the demo
+#
+# A phone on this LAN can also reach the API: run
+#   SP_API_ORIGIN=http://<this-mac-lan-ip>:8787 ./start.sh --prod
+# shorthand: SP_API_ORIGIN=http://$(ipconfig getifaddr en0 2>/dev/null):8787
+# Because Next bakes the origin into the production build, --prod must be
+# rebuilt whenever the origin or the LAN address changes.
+#
+# Restart: Ctrl-C, run the same command again. Scans live in .env/SP_DATA_DIR
+# (default services/api/var), not in this script, so a restart keeps them.
+# Rollback of these scripts is a plain `git checkout <previous> -- start.sh`.
+# One API process per data dir: do not run two servers against one database.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -98,6 +109,11 @@ if ! command -v blender >/dev/null && [ -z "${BLENDER:-}" ] && [ ! -d /Applicati
   echo "To fix that on a Mac: brew install --cask --force blender"
 fi
 [ -f .env ] || echo "No .env yet. Scans are checked without one; copy .env.example to .env for model calls."
+
+# The web process rewrites /api to this origin. The default matches the API on
+# :8787 below. To let a phone on this LAN reach the API too, run
+#   SP_API_ORIGIN=http://<this-mac-lan-ip>:8787 ./start.sh
+export SP_API_ORIGIN="${SP_API_ORIGIN:-http://127.0.0.1:8787}"
 
 .venv/bin/python -m standardphysics_api &
 API_PID=$!

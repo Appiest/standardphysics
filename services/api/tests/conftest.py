@@ -124,5 +124,16 @@ def put_artifact(test_client, scan_id, artifact_id, body: bytes, kind: str, chec
     )
 
 
+def usdz_fixture() -> bytes:
+    """A minimal valid USDZ archive, so receipt validation sees a real container."""
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
+        archive.writestr("model.usdc", "#usda 1.0\n")
+    return buffer.getvalue()
+
+
 def unknown_scan() -> str:
     return str(uuid.uuid4())

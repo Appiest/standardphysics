@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import json
 import logging
 import pathlib
+import re
 import uuid
 from typing import Annotated
 
 from fastapi import FastAPI, Header, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from PIL import Image as PILImage
 from pydantic import BaseModel
 from standardphysics_agents import init_tracing, project_url, shutdown_tracing
 from standardphysics_contracts import (
+    ApproachReport,
+    ApproachRequest,
     Artifact,
     ArtifactKind,
     AskAnswer,
@@ -23,6 +28,8 @@ from standardphysics_contracts import (
     CompleteRequest,
     CreateScanRequest,
     EvidenceStatus,
+    FrameEntry,
+    FrameListing,
     LayoutCheckRequest,
     LayoutCheckResult,
     LoopRequest,
@@ -41,10 +48,12 @@ from standardphysics_contracts import (
     SimulationStatus,
     graph_hash,
 )
+from standardphysics_contracts.textures import FRAME_ID_PATTERN
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import accounts
 from . import repository as repo
+from .approach import evaluate as evaluate_approach
 from .architecture_export import install_architecture_export_routes
 from .auth import install_auth, owner_of
 from .combine import SaveCombineRequest, save_combine
@@ -69,6 +78,7 @@ from .splats import install_splat_routes
 from .stages import Stages, preview_ledger
 from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId
 from .textures import install_texture_routes, maybe_queue_texture, validate_manifest
+from .usdz_validation import InvalidUsdz, validate_room_usdz
 from .worker import ASSESS, PROCESS, Worker
 
 log = logging.getLogger(__name__)
@@ -146,12 +156,12 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     _install_combine_routes(app, database, store, worker)
     _install_file_routes(app, database, store)
     _install_layout_routes(app, database, stages, worker)
-    _install_route_routes(app, database, worker)
+    _install_route_routes(app, database, stages, worker)
     _install_simulation_routes(app, database, stages, worker)
     install_replay_routes(app, database, store)
     install_texture_routes(app, database, store, worker)
     install_splat_routes(app, database, store)
-    _install_label_routes(app, database, worker)
+    _install_label_routes(app, database, store, worker)
 
     @app.get("/api/scans/{scan_id}/report", response_model=Report)
     def report(scan_id: uuid.UUID) -> Report:
@@ -260,6 +270,7 @@ def _finalize(database: Database, store: ArtifactStore, scan_id: uuid.UUID) -> t
 STAGED_VALIDATORS = {
     "lidar_mesh": (validate_lidar_mesh, InvalidLidarMesh, "invalid lidar mesh"),
     "photo_manifest": (validate_manifest, ValueError, "invalid photo manifest"),
+    "room_usdz": (validate_room_usdz, InvalidUsdz, "invalid usdz archive"),
 }
 """Artifact kinds whose bytes are checked before they are stored: the check, what it raises, and the 400 to send."""
 
@@ -340,6 +351,27 @@ def _file_or_404(path: str | pathlib.Path | None, media_type: str) -> FileRespon
     if path is None or not pathlib.Path(path).is_file():
         raise ApiProblem(404, "not ready")
     return FileResponse(path, media_type=media_type)
+
+
+def _jpeg_sensor_size(data: bytes) -> tuple[int, int]:
+    """The stored sensor pixel dimensions declared by the frame's own header."""
+    with PILImage.open(io.BytesIO(data)) as opened:
+        width, height = opened.size
+    return width, height
+
+
+def _frame_entry(store: ArtifactStore, scan_id: uuid.UUID, artifact: Artifact) -> FrameEntry | None:
+    """One listing entry, or None when the stored bytes are not a readable image."""
+    try:
+        width, height = _jpeg_sensor_size(store.artifact_path(scan_id, artifact.id).read_bytes())
+    except (OSError, ValueError):
+        return None
+    return FrameEntry(
+        frame_id=artifact.id,
+        width=width,
+        height=height,
+        image_url=f"/api/scans/{scan_id}/frames/{artifact.id}",
+    )
 
 
 def _install_workspace_routes(app: FastAPI, database: Database, store: ArtifactStore) -> None:
@@ -424,7 +456,7 @@ class ReviewOutletRequest(BaseModel):
     status: str
 
 
-def _install_label_routes(app: FastAPI, database: Database, worker: Worker) -> None:
+def _install_label_routes(app: FastAPI, database: Database, store: ArtifactStore, worker: Worker) -> None:
     counter_path = "/api/scans/{scan_id}/revisions/{base_revision}/counters/{node_id}"
 
     @app.put(counter_path, response_model=SceneGraph, status_code=201)
@@ -461,11 +493,11 @@ def _install_label_routes(app: FastAPI, database: Database, worker: Worker) -> N
         stored unlocalized on the graph, never given an invented position.
         """
         return mark_observation(
-            database, worker, scan_id, base_revision, body, owner_of(request).email
+            database, store, worker, scan_id, base_revision, body, owner_of(request).email
         )
 
 
-def _install_route_routes(app: FastAPI, database: Database, worker: Worker) -> None:
+def _install_route_routes(app: FastAPI, database: Database, stages: Stages, worker: Worker) -> None:
     @app.get("/api/scans/{scan_id}/scenario/suggestion", response_model=Scenario)
     def scenario_suggestion(scan_id: uuid.UUID) -> Scenario:
         return suggestion(database, scan_id)
@@ -473,6 +505,16 @@ def _install_route_routes(app: FastAPI, database: Database, worker: Worker) -> N
     @app.put("/api/scans/{scan_id}/scenario", response_model=Scenario)
     def confirm_scenario(scan_id: uuid.UUID, body: Scenario) -> Scenario:
         return confirm(database, worker, scan_id, body)
+
+    @app.post("/api/scans/{scan_id}/revisions/{base_revision}/approach",
+              response_model=ApproachReport)
+    def approach(scan_id: uuid.UUID, base_revision: int, body: ApproachRequest) -> ApproachReport:
+        """One measured journey to one target for the signed-in owner.
+
+        Wrap R's conservative evaluator: an unmeasured horizontal reach stays
+        needs_verification, never clear; a reach needs a named provenance.
+        """
+        return evaluate_approach(database, stages, scan_id, base_revision, body)
 
 
 def _install_file_routes(app: FastAPI, database: Database, store: ArtifactStore) -> None:
@@ -522,6 +564,44 @@ def _install_file_routes(app: FastAPI, database: Database, store: ArtifactStore)
             raise ApiProblem(404, "crop not found")
         media_type = "image/png" if filename.endswith(".png") else "image/jpeg"
         return FileResponse(crop_path, media_type=media_type)
+
+    @app.get("/api/scans/{scan_id}/frames", response_model=FrameListing)
+    def frames(scan_id: uuid.UUID) -> FrameListing:
+        """The stored source-resolution frames a photo review can open.
+
+        Authenticated by the same ownership middleware as every other scan
+        route. Each entry names one ACTUAL stored frame artifact; a scan with
+        no frames returns an empty list, never invented identities. A stored
+        artifact whose bytes are not a readable image is reported by id under
+        `unreadable` instead of failing the whole listing.
+        """
+        with database.connect() as connection:
+            _scan_or_404(connection, scan_id)
+            stored = repo.artifacts_of_kind(connection, scan_id, "frames")
+        entries: list[FrameEntry] = []
+        unreadable: list[str] = []
+        for artifact in stored:
+            entry = _frame_entry(store, scan_id, artifact)
+            if entry is None:
+                unreadable.append(artifact.id)
+            else:
+                entries.append(entry)
+        return FrameListing(frames=entries, unreadable=unreadable)
+
+    @app.get("/api/scans/{scan_id}/frames/{frame_id}")
+    def frame_bytes(scan_id: uuid.UUID, frame_id: str) -> Response:
+        """The original bytes of one stored frame, never a downscaled copy."""
+        if not re.fullmatch(FRAME_ID_PATTERN, frame_id):
+            raise ApiProblem(400, "invalid frame id")
+        with database.connect() as connection:
+            _scan_or_404(connection, scan_id)
+            artifact = repo.find_artifact(connection, scan_id, frame_id)
+        if artifact is None or artifact.kind != "frames":
+            raise ApiProblem(404, "frame not found")
+        return Response(
+            content=store.artifact_path(scan_id, artifact.id).read_bytes(),
+            media_type="image/jpeg",
+        )
 
 
 def _install_simulation_routes(app: FastAPI, database: Database, stages: Stages, worker: Worker) -> None:

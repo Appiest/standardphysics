@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { RefreshWhile } from "@/components/RefreshWhile";
 import { Workspace } from "@/components/workspace/Workspace";
-import { getAssessment, getCapturedSplats, getRooms, getScan, getScenario, getScenarioSuggestion, getScene, getTextureStatus, headSceneGlb, sceneGlbUrl } from "@/lib/api";
+import { getAssessment, getCapturedSplats, getEvidence, getRooms, getScan, getScenario, getScenarioSuggestion, getScene, getTextureStatus, headSceneGlb, sceneGlbUrl } from "@/lib/api";
 import { scanStatus } from "@/lib/scan-status";
 import type { Scan, SceneGraph } from "@/types/contracts";
 import type { RoomGroup } from "@/lib/room-groups";
@@ -60,6 +60,7 @@ export default async function ShopPage({ params }: PageProps<"/scans/[scanId]">)
     getTextureStatus(scanId, scene.revision),
     getCapturedSplats(scanId, scene.revision),
   ]);
+  const evidence = await getEvidence(scanId);
   const suggestedScenario = scenario ? null : await getScenarioSuggestion(scanId);
   const rooms = await roomsFor(scanId);
   return (
@@ -76,6 +77,7 @@ export default async function ShopPage({ params }: PageProps<"/scans/[scanId]">)
       suggestedScenario={suggestedScenario}
       lidarUrl={scan.artifacts.some((artifact) => artifact.kind === "lidar_mesh") ? `/api/scans/${scanId}/lidar-mesh` : null}
       rooms={rooms}
+      evidence={evidence}
     /></>
   );
 }

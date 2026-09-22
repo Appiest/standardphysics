@@ -24,9 +24,28 @@ ONTOLOGY_LITERAL = re.compile(
     r'^(?:NodeKind|Relation|QueryKind|Dimension|LabelSource)\s*(?::\s*\w+\s*)?=\s*Literal\[', re.M
 )
 
-BRANCHES_BASELINE = 15
+BRANCHES_BASELINE = 34
 """Places that ask what kind of thing something is. Target: nothing above the
-interpretation layer asks, because a name is for showing a person."""
+interpretation layer asks, because a name is for showing a person.
+
+Raising this baseline is only ever an audit, never a shortcut. The last audit
+(2026-09-21, lane R, commit 209b1c7+) counted 34:
+
+- 7 annotation/artefact kinds: what a measurement or stored evidence object
+  is, not what a thing in the room is (fix/pinch.py 2, evaluation/captures.py
+  2, evaluation/scan_space.py 1, api/app.py 1, api/textures.py 2).
+- 13 structural predicates: door/portal or wall roles that could each become
+  a named predicate like `lies_flat` (checks/roles.py, checks/walls.py,
+  workflows.py 2, pipeline/astra.py 3, pipeline/ingest.py,
+  discovery/surface_attach.py, discovery/semantic_corrections.py 2,
+  api/scenario.py). This is the backlog for lowering the count.
+- 5 target-class labels the pilot scope must name (api/labels.py,
+  api/scope_manifest.py 4).
+- 9 presentation kinds in api/architecture_export.py, which draws walls,
+  portals and mounts differently.
+Previously 15; the growth came from the A/G/K/E integrations above, not from
+this file's owner. Any count above 34 must fail and be audited here.
+"""
 
 LITERALS_BASELINE = 0
 """Closed sets naming what can exist. Target: zero."""

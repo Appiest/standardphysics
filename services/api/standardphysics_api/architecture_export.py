@@ -18,7 +18,7 @@ from typing import Any
 from xml.sax.saxutils import quoteattr
 
 from fastapi import FastAPI, Response
-from standardphysics_contracts import Assessment, SceneGraph, SceneNode, graph_hash
+from standardphysics_contracts import Assessment, EvidenceBundle, SceneGraph, SceneNode, graph_hash
 
 from . import repository as repo
 from .db import Database
@@ -210,6 +210,93 @@ def _display_reconstruction(node: SceneNode) -> dict[str, Any] | None:
     }
 
 
+def _scope_rows(scope) -> list[dict[str, Any]]:
+    """The complete outcome matrix, one explicit row per item x requirement."""
+    rows = []
+    for row in sorted(scope.rows, key=lambda item: (item.requirement_id, item.item.item_slug)):
+        rows.append({
+            "item": {
+                "item_id": str(row.item.item_id) if row.item.item_id else None,
+                "item_slug": row.item.item_slug,
+                "item_kind": row.item.item_kind,
+                "label": row.item.label,
+                "observed": row.item.observed,
+                "source": row.item.source,
+            },
+            "requirement_id": row.requirement_id,
+            "requested": row.requested,
+            "applicability": row.applicability,
+            "applicability_reason": row.applicability_reason,
+            "applicability_facts": row.applicability_facts,
+            "outcome": row.outcome,
+            "reason": row.reason,
+            "evidence_refs": row.evidence_refs,
+            "measurement": row.measurement,
+            "source_version": row.source_version,
+            "legal_review_status": row.legal_review_status,
+        })
+    return rows
+
+
+def _scope_block(scope) -> dict[str, Any]:
+    """The frozen scope manifest plus every row, so the export never hides a question."""
+    rows = _scope_rows(scope)
+    return {
+        "format": "standardphysics.scope-matrix.v1",
+        "manifest": {
+            "id": str(scope.id),
+            "version": scope.version,
+            "created_at": scope.created_at.isoformat(),
+            "graph_revision": scope.graph_revision,
+            "graph_hash": scope.graph_hash,
+            "rulepack_version": scope.rulepack_version,
+            "manifest_hash": scope.manifest_hash,
+        },
+        "surveyed_areas": scope.surveyed_areas,
+        "unobserved_areas": scope.unobserved_areas,
+        "route_endpoints": scope.route_endpoints,
+        "requested_classes": scope.requested_classes,
+        "requested_requirements": scope.requested_requirements,
+        "applicability_questions": scope.applicability_questions,
+        "unresolved_questions": scope.unresolved_questions,
+        "rows": rows,
+        "note": (
+            "Every requested requirement answers with one visible row. A row may be a violation, "
+            "unknown or unobserved item; absence of this block means no scope was frozen, never "
+            "that everything passed."
+        ),
+    }
+
+
+def _assessment_block(assessment: Assessment | None, current_hash: str, findings: list[dict[str, Any]]) -> dict[str, Any]:
+    """The assessment that belongs to this graph revision, never an older one.
+
+    A stale assessment is named stale and excluded rather than silently attached
+    to geometry it did not judge. Its scope matrix travels only with the graph
+    hash it was computed for.
+    """
+    included = assessment is not None and assessment.graph_hash == current_hash
+    data: dict[str, Any] = {
+        "included": included,
+        "revision": assessment.graph_revision if assessment is not None else None,
+        "pinned_graph_hash": assessment.graph_hash if assessment is not None else None,
+        "stale_for_current_graph": assessment is not None and assessment.graph_hash != current_hash,
+        "findings": findings if included else [],
+        "note": (
+            "A measurement result records what the assessment measured; "
+            "a legal requirement records a cited rule."
+        ),
+    }
+    if assessment is not None and not included:
+        data["stale_note"] = (
+            "The stored assessment was computed for a different graph revision. "
+            "It is not applied to this export; re-run the assessment for this revision."
+        )
+    if assessment is not None and included and assessment.scope is not None:
+        data["scope"] = _scope_block(assessment.scope)
+    return data
+
+
 def evidence_ledger(
     scan_id: uuid.UUID,
     scan_name: str,
@@ -217,6 +304,9 @@ def evidence_ledger(
     assessment: Assessment | None,
     source_capture: SceneGraph | None = None,
     source_capture_raw_graph: dict[str, Any] | None = None,
+    scenario_name: str | None = None,
+    scenario_version: int | None = None,
+    evidence_bundle: EvidenceBundle | None = None,
 ) -> dict[str, Any]:
     """Machine-readable evidence, with a firm line between observation and law."""
     current_hash = graph_hash(graph)
@@ -229,6 +319,7 @@ def evidence_ledger(
             "id": str(node.id),
             "kind": node.kind,
             "label": node.label,
+            "label_provenance": node.labeled_by,
             "raw_capture": _capture_facts(captured_by_id.get(node.id)),
             "current_revision_geometry": _current_revision_geometry(node, graph.revision),
             "original_placement_rationale": reasons.get(str(node.id), "unknown"),
@@ -278,7 +369,7 @@ def evidence_ledger(
                 finding_data["evidence_node_ids"] = [str(node_id) for node_id in finding.locus.node_ids]
             findings.append(finding_data)
     return {
-        "format": "standardphysics.architecture-evidence-ledger.v1",
+        "format": "standardphysics.architecture-evidence-ledger.v2",
         "scene": {
             "scan_id": str(scan_id),
             "scan_name": scan_name,
@@ -286,20 +377,27 @@ def evidence_ledger(
             "graph_hash": current_hash,
             "coordinate_system": {"units": "m", "up_axis": "Z", "transform_layout": "row_major_4x4"},
         },
+        "evidence_closure": {
+            "bundle_version": evidence_bundle.version if evidence_bundle is not None else None,
+            "evidence_manifest_hash": evidence_bundle.manifest_hash if evidence_bundle is not None else None,
+            "complete": evidence_bundle.complete if evidence_bundle is not None else None,
+            "note": (
+                "The artifact manifest this capture's evidence was sealed under. "
+                "A changed manifest warrants a new export."
+            ),
+        },
+        "scenario": {
+            "included": scenario_name is not None,
+            "pinned_version": scenario_version,
+            "name": scenario_name,
+            "note": "A role or route change replaces this pin and retires the export.",
+        },
         "measurement_notice": (
             "Only revision 0 facts are called raw capture. Current revision geometry can include owner layout changes. "
             "Neither display values nor capture quality certify exact centimetre measurements."
         ),
         "nodes": nodes,
-        "assessment": {
-            "included": assessment is not None and assessment.graph_hash == current_hash,
-            "revision": assessment.graph_revision if assessment is not None else None,
-            "findings": findings,
-            "note": (
-                "A measurement result records what the assessment measured; "
-                "a legal requirement records a cited rule."
-            )
-        },
+        "assessment": _assessment_block(assessment, current_hash, findings),
     }
 
 
@@ -444,10 +542,21 @@ def build_architecture_zip(
     assessment: Assessment | None = None,
     source_capture: SceneGraph | None = None,
     source_capture_raw_graph: dict[str, Any] | None = None,
+    scenario_name: str | None = None,
+    scenario_version: int | None = None,
+    evidence_bundle: EvidenceBundle | None = None,
 ) -> bytes:
     """Create a deterministic ZIP for one already-stored scene revision."""
     ledger = evidence_ledger(
-        scan_id, scan_name, graph, assessment, source_capture, source_capture_raw_graph
+        scan_id,
+        scan_name,
+        graph,
+        assessment,
+        source_capture,
+        source_capture_raw_graph,
+        scenario_name=scenario_name,
+        scenario_version=scenario_version,
+        evidence_bundle=evidence_bundle,
     )
     files = {
         "architecture-plan.svg": architecture_svg(graph, ledger).encode("utf-8"),
@@ -528,8 +637,19 @@ def install_architecture_export_routes(app: FastAPI, database: Database) -> None
             source_row = repo.get_revision(connection, scan_id, 0)
             source_capture = repo.graph_of(source_row) if source_row is not None else None
             source_capture_raw_graph = json.loads(source_row["graph_json"]) if source_row is not None else None
+            scenario = repo.get_scenario(connection, scan_id)
+            scenario_version = repo.scenario_version(connection, scan_id)
+            evidence_bundle = repo.latest_bundle(connection, scan_id)
         archive = build_architecture_zip(
-            scan_id, scan.name, graph, assessment, source_capture, source_capture_raw_graph
+            scan_id,
+            scan.name,
+            graph,
+            assessment,
+            source_capture,
+            source_capture_raw_graph,
+            scenario_name=scenario.name if scenario is not None else None,
+            scenario_version=scenario_version,
+            evidence_bundle=evidence_bundle,
         )
         filename = f"architecture-{scan_id}-r{graph.revision}.zip"
         return Response(
