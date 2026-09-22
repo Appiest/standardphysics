@@ -163,7 +163,7 @@ def test_the_manifest_hash_covers_rows(pack):
     )
     second = build_scope_manifest(
         graph, scenario, result.assessment, pack.enabled(book, max_tier=1), waiting,
-        reviews={"route_clear_width": "needs_review"},
+        reviews={"point_of_sale_height": "reviewer_supplied"},
     )
     assert first.manifest_hash != second.manifest_hash
 
@@ -396,3 +396,61 @@ class TestDossierItemRooting:
             if row.requirement_id in ("door_hardware", "entrance_threshold", "floor_surface"):
                 assert row.item.observed is False, row.requirement_id
                 assert row.item.source == "requested_not_observed", row.requirement_id
+
+
+class TestUnknownBoundsNeverConclude:
+    """Contract 4: a numeric finding with unknown bounds cannot become a
+    satisfied or violation row, and the raw legacy finding stays untouched."""
+
+    def test_every_measured_row_with_unknown_bounds_needs_verification(self, pack):
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        result = assess(graph, scenario, PipelineMeasurements(),
+                        rules=pack, ledger=book, max_tier=3)
+        waiting = {gap.rule_id: gap.waiting_on for gap in result.unevaluated}
+        manifest = build_scope_manifest(
+            graph, scenario, result.assessment,
+            pack.enabled(book, max_tier=3), waiting,
+        )
+        for row in manifest.rows:
+            if row.measurement is not None and row.measurement.get("bounds") == "unknown":
+                assert row.outcome == "needs_verification", (
+                    f"{row.requirement_id} concluded {row.outcome} on unknown bounds"
+                )
+                assert "no supported accuracy bound" in row.reason
+
+    def test_the_fixture_had_satisfied_candidates_that_now_wait(self, pack):
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        result = assess(graph, scenario, PipelineMeasurements(),
+                        rules=pack, ledger=book, max_tier=3)
+        satisfied_raw = {f.check_id for f in result.assessment.findings
+                         if f.outcome == "passes" and f.measured_inches is not None}
+        assert satisfied_raw, "the fixture keeps raw measured passes to guard against"
+        waiting = {gap.rule_id: gap.waiting_on for gap in result.unevaluated}
+        manifest = build_scope_manifest(
+            graph, scenario, result.assessment,
+            pack.enabled(book, max_tier=3), waiting,
+        )
+        rowed = {row.requirement_id: row.outcome for row in manifest.rows
+                 if row.measurement is not None}
+        for requirement, outcome in rowed.items():
+            assert outcome == "needs_verification", requirement
+
+    def test_raw_legacy_findings_are_untouched(self, pack):
+        graph = build_graph()
+        scenario = build_scenario()
+        book = load_ledger()
+        result = assess(graph, scenario, PipelineMeasurements(),
+                        rules=pack, ledger=book, max_tier=3)
+        raw = {f.check_id: f.outcome for f in result.assessment.findings}
+        assert raw.get("passing_space") == "passes"
+        assert raw.get("service_counter_height") == "problem"
+
+    def test_presence_style_rows_keep_their_satisfied(self, manifest):
+        row = next(r for r in manifest.rows
+                   if r.item.item_slug == "class:service_counter")
+        assert row.outcome == "satisfied"
+        assert row.measurement is None

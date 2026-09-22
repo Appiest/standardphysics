@@ -201,7 +201,14 @@ def _finding_row(
     check: Check, finding: Finding, index: int, total: int, graph: SceneGraph
 ) -> ScopeRow:
     item = _item_for(check, finding, index, total, graph)
-    outcome = _FINDING_OUTCOME.get(finding.outcome, "needs_verification")
+    outcome = _row_outcome(finding)
+    reason = finding.detail or finding.title
+    if outcome != _FINDING_OUTCOME.get(finding.outcome, "needs_verification"):
+        reason = (
+            f"{reason} The measured value carries no supported accuracy bound "
+            "(bounds unknown), and unknown bounds cannot produce a compliance "
+            "pass or violation, so this row needs verification."
+        )
     return ScopeRow(
         item=item,
         requirement_id=check.id,
@@ -212,7 +219,7 @@ def _finding_row(
             "is a calculation only and never a verified legal conclusion"
         ),
         outcome=outcome,
-        reason=finding.detail or finding.title,
+        reason=reason,
         evidence_refs=_evidence_refs(check, finding),
         measurement=_measurement_ref(finding),
         source_version=check.citation.edition if check.citation else None,
@@ -220,6 +227,22 @@ def _finding_row(
             "needs_review" if outcome == "needs_verification" else "unreviewed_preview"
         ),
     )
+
+
+def _row_outcome(finding: Finding) -> str:
+    """The row's outcome, under the conservative bounds rule of Contract 4.
+
+    A numeric threshold finding (it measured something) whose measurement
+    carries no supported bound cannot conclude satisfied or violation, however
+    far the estimate sits from the limit: unknown bounds never produce a
+    compliance conclusion. Only a finding with adequately supported bounds may
+    keep the raw passes/problem mapping. Presence-style rows (class coverage)
+    have no measurement and are unaffected.
+    """
+    outcome = _FINDING_OUTCOME.get(finding.outcome, "needs_verification")
+    if finding.measured_inches is not None and outcome in ("satisfied", "violation"):
+        return "needs_verification"
+    return outcome
 
 
 _SUBJECT_ROLE_FINDERS = {
