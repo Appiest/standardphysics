@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Starts Standard Physics from a clean clone: installs what's missing, then runs
-# the API on :8787 and the web workspace on :3000. Ctrl-C stops both.
+# the API on :8787 (or $SP_API_PORT) and the web workspace on :3000. Ctrl-C
+# stops both. SP_API_PORT moves the API and the web's proxy to it together.
 #
 #   ./start.sh          development server, reloads on save
 #   ./start.sh --prod   production build, for the demo
@@ -21,6 +22,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 MODE="dev"
+export SP_API_PORT="${SP_API_PORT:-8787}"
 case "${1:-}" in
   "") ;;
   --prod) MODE="prod" ;;
@@ -53,7 +55,7 @@ check_node() {
 
 check_port_free() {
   if command -v lsof >/dev/null && lsof -iTCP:"$1" -sTCP:LISTEN -t >/dev/null 2>&1; then
-    fail "Port $1 is already in use. Stop whatever is running there, then run ./start.sh again."
+    fail "Port $1 is already in use. Stop whatever is running there, or pick another port with SP_API_PORT=8788 ./start.sh."
   fi
 }
 
@@ -91,15 +93,15 @@ install_web() {
 
 wait_for_api() {
   for _ in $(seq 1 60); do
-    curl -fsS http://127.0.0.1:8787/health >/dev/null 2>&1 && return
+    curl -fsS "http://127.0.0.1:$SP_API_PORT/health" >/dev/null 2>&1 && return
     kill -0 "$API_PID" 2>/dev/null || fail "The API stopped while starting. Its log is above."
     sleep 1
   done
-  fail "The API did not answer on :8787 within 60 seconds."
+  fail "The API did not answer on :$SP_API_PORT within 60 seconds."
 }
 
 check_node
-check_port_free 8787
+check_port_free "$SP_API_PORT"
 check_port_free 3000
 install_python
 install_web
@@ -111,9 +113,9 @@ fi
 [ -f .env ] || echo "No .env yet. Scans are checked without one; copy .env.example to .env for model calls."
 
 # The web process rewrites /api to this origin. The default matches the API on
-# :8787 below. To let a phone on this LAN reach the API too, run
+# $SP_API_PORT below. To let a phone on this LAN reach the API too, run
 #   SP_API_ORIGIN=http://<this-mac-lan-ip>:8787 ./start.sh
-export SP_API_ORIGIN="${SP_API_ORIGIN:-http://127.0.0.1:8787}"
+export SP_API_ORIGIN="${SP_API_ORIGIN:-http://127.0.0.1:$SP_API_PORT}"
 
 .venv/bin/python -m standardphysics_api &
 API_PID=$!

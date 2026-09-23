@@ -33,6 +33,10 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
+      # Next bakes the /api rewrite into the build, so the web container has to
+      # be built knowing where the API container is.
+      args:
+        SP_API_ORIGIN: http://api:8787
     image: standardphysics:latest
     command: ["api"]
     restart: unless-stopped
@@ -46,6 +50,7 @@ services:
       # Secure flag. Trusting any hop is safe here because the API publishes no
       # port: nothing but Caddy can reach it.
       FORWARDED_ALLOW_IPS: "*"
+      SP_SECURE_COOKIES: "1"
     volumes:
       # create_host_path: false is the whole point of the long form here. The
       # short form lets Docker invent a missing directory, owned by root, which

@@ -63,6 +63,12 @@ class Settings:
     Generating it means the repository carries no password that works against
     every deployment of this server.
     """
+    secure_cookies: bool = False
+    """Mark the session cookie Secure even when the request arrived over http.
+
+    Behind Caddy and the workspace's rewrite the API only ever sees plain http,
+    so the scheme cannot tell it that the browser is on https. Production sets
+    SP_SECURE_COOKIES=1."""
     weave_project: str | None = None
     """Traces go to Weave when this is set, and nowhere when it is not. Only
     `from_environment` fills it in, so a server built in a test stays local."""
@@ -102,6 +108,7 @@ class Settings:
             data_dir=pathlib.Path(os.environ.get("SP_DATA_DIR", DEFAULT_DATA_DIR)),
             preview_unverified_rules=_flag("SP_PREVIEW_UNVERIFIED_RULES"),
             seed_sample_shop=_flag("SP_SEED_SAMPLE_SHOP"),
+            secure_cookies=_flag("SP_SECURE_COOKIES"),
             seed_owner_email=os.environ.get("SP_SEED_OWNER_EMAIL", "demo@standardphysics.app"),
             seed_owner_password=os.environ.get("SP_SEED_OWNER_PASSWORD") or secrets.token_urlsafe(12),
             weave_project=os.environ.get(PROJECT_ENV) or None,

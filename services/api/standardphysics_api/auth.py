@@ -125,7 +125,7 @@ def _owns_scan(database: Database, scan_id: uuid.UUID, owner: Owner) -> bool:
         return not repo.scan_exists(connection, scan_id)
 
 
-def install_auth(app: FastAPI, database: Database, store: ArtifactStore) -> None:
+def install_auth(app: FastAPI, database: Database, store: ArtifactStore, secure_cookies: bool) -> None:
     limiter = AttemptLimiter()
 
     class RequireOwner(BaseHTTPMiddleware):
@@ -142,7 +142,7 @@ def install_auth(app: FastAPI, database: Database, store: ArtifactStore) -> None
             return await call_next(request)
 
     app.add_middleware(RequireOwner)
-    _install_auth_routes(app, database, store, limiter)
+    _install_auth_routes(app, database, store, limiter, secure_cookies)
 
 
 def _problem(status: int, message: str) -> JSONResponse:
@@ -153,14 +153,14 @@ def _session_of(owner: Owner) -> Session:
     return Session(owner_id=owner.id, email=owner.email, shop_name=owner.shop_name)
 
 
-def _set_cookie(response: Response, request: Request, token: str) -> None:
+def _set_cookie(response: Response, request: Request, token: str, always_secure: bool) -> None:
     response.set_cookie(
         COOKIE_NAME,
         token,
         max_age=int(accounts.SESSION_LIFETIME.total_seconds()),
         httponly=True,
         samesite="lax",
-        secure=request.url.scheme == "https",
+        secure=always_secure or request.url.scheme == "https",
         path="/",
     )
 
@@ -214,18 +214,18 @@ def _erase_owner(database: Database, owner: Owner) -> list[uuid.UUID]:
 
 
 def _install_auth_routes(
-    app: FastAPI, database: Database, store: ArtifactStore, limiter: AttemptLimiter
+    app: FastAPI, database: Database, store: ArtifactStore, limiter: AttemptLimiter, secure_cookies: bool
 ) -> None:
     @app.post("/api/auth/sign-up", status_code=201, response_model=Session)
     def sign_up(body: SignUpRequest, request: Request, response: Response) -> Session:
         owner, token = _open(database, _register(database, body))
-        _set_cookie(response, request, token)
+        _set_cookie(response, request, token, secure_cookies)
         return _session_of(owner)
 
     @app.post("/api/auth/sign-in", response_model=Session)
     def sign_in(body: SignInRequest, request: Request, response: Response) -> Session:
         owner, token = _open(database, _authenticate(database, body, limiter))
-        _set_cookie(response, request, token)
+        _set_cookie(response, request, token, secure_cookies)
         return _session_of(owner)
 
     @app.post("/api/auth/sign-out", status_code=204)

@@ -147,7 +147,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     app = FastAPI(title="Standard Physics API", version="0.1.0", lifespan=lifespan)
     app.state.database, app.state.store, app.state.worker = database, store, worker
     _install_error_handlers(app)
-    install_auth(app, database, store)
+    install_auth(app, database, store, settings.secure_cookies)
     install_architecture_export_routes(app, database)
     _install_scan_routes(app, database, store)
     _install_upload_routes(app, database, store, worker, settings)

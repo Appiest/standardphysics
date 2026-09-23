@@ -22,7 +22,11 @@ services:
       start_period: 20s
 
   web:
-    build: .
+    build:
+      context: .
+      # Next bakes the /api rewrite into the build.
+      args:
+        SP_API_ORIGIN: http://api:8787
     command: ["web"]
     environment:
       PORT: "3000"
