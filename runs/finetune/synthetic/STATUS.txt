@@ -1,0 +1,76 @@
+Standard Physics synthetic-data overnight run — September 24, 2026
+
+Compute placement: all ceiling, ARKitScenes conversion, room generation, scrambling,
+target search, dataset building, and training run only in ~/sp-finetune/synthetic
+on compute-box, separate from ~/sp-finetune/repo. Six generation workers maximum.
+The first multiroom RL run was allowed to complete undisturbed. No Moffett data
+or local database was changed. No Fireworks deployment is requested.
+
+Free ceiling: the 65 real held-out variants were searched with limit 96 rather
+than 24, eight rounds rather than four, the existing placement combinations of
+two and three pieces, and owner put-back. All candidates use the unchanged hard
+constraints and gate. 36/65 had an accepted fix, 27/65 cleared all fixable
+findings. Among the remaining 29, 14 encountered the 60-inch travel cap or
+floor boundary; 15 exhausted this bounded search with no accepted route.
+This is an empirical lower bound, not a proof of absolute impossibility.
+Per-variant evidence is in ceiling.json.
+
+ARKitScenes data terms: the dataset README explicitly directs users to its
+LICENSE for dataset use (https://github.com/apple/ARKitScenes/blob/main/README.md).
+The LICENSE grants a personal, non-commercial, non-exclusive copyright license
+to use, reproduce, modify and redistribute the Apple Software. Its separate
+commercial grant applies when every month before August 2024 was below 700
+million monthly active users for the licensee and affiliates. At or above that
+threshold in any such month, Apple requires a separately requested license.
+Unmodified full redistributions must retain the notice and disclaimers. Apple's
+names and marks cannot imply endorsement without permission. No other rights,
+including patent rights, are granted; the work is supplied as-is without
+warranties. The LICENSE calls its subject Apple Software rather than expressly
+identifying annotation-data training rights. We therefore chose the safe option:
+annotation-only ARKitScenes conversion for evaluation, not commercial training.
+Source: https://github.com/apple/ARKitScenes/blob/main/LICENSE and DATA.md.
+No raw video, depth, image, point cloud or mesh is downloaded.
+
+The synthetic generator made 500 schema-valid, noncolliding shop graphs with
+floor-supported furniture. The five types are cafe, boba tea shop, bakery,
+boutique, and small office; each has rectangular and L-shaped variants. Core
+furniture dimensions come from standardphysics_fixtures.shop; the added wing
+shelf uses IKEA BILLY 80 x 28 x 202 cm (20522046). The dimension-source table
+is DIMENSION_SOURCES in scripts/finetune/synthetic_data.py. The real ravida and
+A-102 held-out prompts remain identical to run 1 and are never training rows.
+Scrambling produced 1,500 light variants; target search accepted 1,498. The
+assembled dataset has 1,498 SFT rows, 1,500 RL rows and 65 real held-out
+prompts. The training path was:
+
+  500 shop graphs -> 1,500 scrambles -> 1,498 targets -> SFT -> RL
+                                                    real rooms -> evaluation
+
+Run 1 completed before paid run 2 began. Run 2 loaded the saved run-1 RL state,
+completed one SFT epoch and 12 RL steps, and evaluated both checkpoints against
+the same 65 real variants (four attempts each). The separate fixture-classification
+worktree had uncommitted constraint changes at launch; no committed constraint
+or reward changes were incorporated. No Fireworks deployment was made.
+
+Cost: run 1 final pessimistic estimate $16.6550; its full-plan reserve $31.7345.
+Run 2 measured-token pessimistic preflight $29.2585; combined full-plan reserve
+$60.9930, below the $90 planning gate. Its $45 runtime cap kept combined
+conservative hard-stop exposure at $76.7345, below $97. Run 2 finished at a
+logged estimated $21.4969; the two logged estimates sum to $38.1519. Fireworks
+serverless training does not report the billed total; check billing for actual cost.
+
+On real held-out attempts, run-1 RL scored hard-rule pass 0.6923, gate acceptance
+0.3154, mean shortfall recovered 0.1888 and mean reward 0.2038. Run-2 SFT scored
+0.7192, 0.2923, 0.1347 and 0.1710 respectively; run-2 RL scored 0.7115,
+0.2808, 0.1082 and 0.1496. More hard-rule passes did not translate into better
+accepted fixes. Run-2 RL's variant best-of-four acceptance was 0.4923, but its
+fully cleared share was 0.1385, versus run-1 RL's 0.3846 and 0.1846. Ravida
+remained uncleared for every model; run-2 RL improved its per-attempt gate
+acceptance to 0.3889 from run-1 RL's 0.3333. Full U, logged Q, per-attempt,
+physical-room best-of-four and per-variant ceiling data are in results.json.
+
+All 300 ARKitScenes annotation-only scenes converted (3,295,122 downloaded
+annotation bytes; about 5.9 MB of derived graph files). They are excluded from
+training. Their object bounds do not establish observed doors, walls or routes,
+so model gate evaluation on them is blocked rather than fabricating ground truth.
+This is the remaining task limitation; the conversion is available for
+geometry-only inspection on compute-box.
