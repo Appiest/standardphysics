@@ -27,12 +27,17 @@ class PrecedentCompiler:
         """Return directives whose typology and required entities match the scan."""
         typology_str = typology.value if isinstance(typology, SpaceTypology) else str(typology)
         
-        # Collect lowercase labels and roles from scene graph nodes
+        # Collect lowercase tokens from scene graph nodes
         scene_tokens = set()
         for node in nodes:
             scene_tokens.add(node.label.lower())
+            scene_tokens.add(node.label.lower().replace(" ", "_"))
+            if hasattr(node, "raw_category") and node.raw_category:
+                scene_tokens.add(str(node.raw_category).lower())
+                scene_tokens.add(str(node.raw_category).lower().replace("_", " "))
             if hasattr(node, "role") and node.role:
                 scene_tokens.add(str(node.role).lower())
+                scene_tokens.add(str(node.role).lower().replace(" ", "_"))
 
         matched: list[PrecedentDirective] = []
         for directive in self.directives:
@@ -44,10 +49,12 @@ class PrecedentCompiler:
             if not typology_match:
                 continue
 
-            # 2. Check entity presence (at least one or all required entities present)
-            # A case activates if any of its primary target entities are in the scene
+            # 2. Check entity presence (case activates if any required entity is in the scene)
             entity_present = any(
-                any(req.lower() in token for token in scene_tokens)
+                any(
+                    req.lower() in token or req.lower().replace("_", " ") in token
+                    for token in scene_tokens
+                )
                 for req in directive.trigger.required_entities
             )
             if entity_present:
