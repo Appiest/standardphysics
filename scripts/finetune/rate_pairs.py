@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import pathlib
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -41,10 +42,14 @@ LEFT_SEED = "rate-pairs-left-assignment-v1"
 """Mixed into the pair id to pick which side is shown on the left. Fixed, so a
 rerun of the server reproduces the same layout instead of reshuffling it."""
 
-PANEL_PX = 560
-PADDING_PX = 36
+PANEL_PX = 640
+PADDING_PX = 44
 WALL_THICKNESS_M = 0.09
 DOOR_SWING_TERMS = ("wall", "pairs", "sight")
+LABEL_FONT_PX = 13
+LABEL_CHAR_WIDTH = 0.56
+"""Rough average glyph width as a fraction of font size, for deciding whether a
+label fits inside its footprint without ever measuring rendered text."""
 
 
 def _load_pairs() -> list[dict]:
@@ -127,13 +132,34 @@ def _bounds(points: list[tuple[float, float]]) -> tuple[float, float, float, flo
 
 
 def _room_points(graph: SceneGraph) -> list[tuple[float, float]]:
+    """Walls plus every object's footprint. The floor sheet itself is excluded:
+    it commonly extends well past the walls, and cropping to it would waste
+    most of the panel on empty margin."""
     points: list[tuple[float, float]] = []
     for node in graph.nodes:
         if node.kind == "floor":
-            points += floor_polygon(node)
-        else:
-            points += footprint(node)
+            continue
+        points += footprint(node)
     return points
+
+
+def _dominant_wall_rotation(graph: SceneGraph) -> tuple[float, float]:
+    """cos/sin of the turn that makes the longest wall axis-aligned.
+
+    RoomPlan scans rarely come back with a wall running exactly along X or Y,
+    so the plan reads as tilted even when the room itself is a rectangle. This
+    finds the longest wall's angle and rotates the whole scene by whatever
+    turn lands that angle on the nearest multiple of 90 degrees.
+    """
+    walls = [n for n in graph.nodes if n.kind == "wall"]
+    if not walls:
+        return 1.0, 0.0
+    longest = max(walls, key=lambda n: n.dimensions.x)
+    cos_t, sin_t = rotation_about_z(longest)
+    angle = math.degrees(math.atan2(sin_t, cos_t))
+    delta = round(angle / 90.0) * 90.0 - angle
+    radians = math.radians(delta)
+    return math.cos(radians), math.sin(radians)
 
 
 def _wall_endpoints(node: SceneNode) -> tuple[tuple[float, float], tuple[float, float]]:
@@ -148,10 +174,19 @@ def _wall_thickness(node: SceneNode) -> float:
 
 
 class Scale:
-    """Maps room-frame meters to panel pixels, shared by both sides of a pair."""
+    """Maps room-frame meters to panel pixels, shared by both sides of a pair.
 
-    def __init__(self, points: list[tuple[float, float]]):
-        min_x, min_y, max_x, max_y = _bounds(points) if points else (0.0, 0.0, 1.0, 1.0)
+    Rotation is folded into the same mapping: every point handed to `point()`
+    is first turned by (cos_d, sin_d) around the origin, so the dominant wall
+    lands axis-aligned, and every other piece of geometry (footprints, wall
+    endpoints, door swings) keeps working in the room's own original frame
+    without knowing rotation happens at all.
+    """
+
+    def __init__(self, points: list[tuple[float, float]], rotation: tuple[float, float] = (1.0, 0.0)):
+        self.cos_d, self.sin_d = rotation
+        rotated = [self._rotate(x, y) for x, y in points] if points else [(0.0, 0.0), (1.0, 1.0)]
+        min_x, min_y, max_x, max_y = _bounds(rotated)
         span_x, span_y = max(max_x - min_x, 0.5), max(max_y - min_y, 0.5)
         usable = PANEL_PX - 2 * PADDING_PX
         self.factor = usable / max(span_x, span_y)
@@ -159,10 +194,14 @@ class Scale:
         self.height_px = span_y * self.factor + 2 * PADDING_PX
         self.width_px = span_x * self.factor + 2 * PADDING_PX
 
+    def _rotate(self, x: float, y: float) -> tuple[float, float]:
+        return x * self.cos_d - y * self.sin_d, x * self.sin_d + y * self.cos_d
+
     def point(self, x: float, y: float) -> tuple[float, float]:
+        rx, ry = self._rotate(x, y)
         return (
-            PADDING_PX + (x - self.min_x) * self.factor,
-            self.height_px - PADDING_PX - (y - self.min_y) * self.factor,
+            PADDING_PX + (rx - self.min_x) * self.factor,
+            self.height_px - PADDING_PX - (ry - self.min_y) * self.factor,
         )
 
 
@@ -267,14 +306,27 @@ def _ghost_parts(layout: Layout, scale: Scale) -> list[str]:
     return parts
 
 
-def _object_parts(graph: SceneGraph, scale: Scale) -> list[str]:
+def _label_point(scale: Scale, node: SceneNode) -> tuple[float, float]:
+    """Centred inside the footprint when the label fits, else just above it."""
+    pixels = [scale.point(x, y) for x, y in footprint(node)]
+    min_y = min(y for _, y in pixels)
+    width_px = max(x for x, _ in pixels) - min(x for x, _ in pixels)
+    height_px = max(y for _, y in pixels) - min_y
+    cx, cy = scale.point(node.transform.position.x, node.transform.position.y)
+    label_width = len(node.label) * LABEL_FONT_PX * LABEL_CHAR_WIDTH
+    fits = label_width <= width_px - 4 and height_px >= LABEL_FONT_PX + 4
+    return (cx, cy) if fits else (cx, min_y - LABEL_FONT_PX / 2 - 4)
+
+
+def _object_parts(layout: Layout, scale: Scale) -> list[str]:
     parts = []
-    for node in graph.nodes:
+    for node in layout.graph.nodes:
         if node.kind in ("wall", "floor", "door", "opening", "window"):
             continue
-        parts.append(_svg_polygon(scale, footprint(node), **{"class": "object"}))
-        cx, cy = scale.point(node.transform.position.x, node.transform.position.y)
-        parts.append(f'<text x="{cx:.1f}" y="{cy:.1f}" class="object-label">{_escape(node.label)}</text>')
+        css_class = "object moved" if node.id in layout.moved_node_ids else "object"
+        parts.append(_svg_polygon(scale, footprint(node), **{"class": css_class}))
+        lx, ly = _label_point(scale, node)
+        parts.append(f'<text x="{lx:.1f}" y="{ly:.1f}" class="object-label">{_escape(node.label)}</text>')
     return parts
 
 
@@ -286,7 +338,7 @@ def _room_svg(layout: Layout, scale: Scale) -> str:
         + _wall_parts(graph, scale)
         + _portal_parts(graph, scale, floor_centroid)
         + _ghost_parts(layout, scale)
-        + _object_parts(graph, scale)
+        + _object_parts(layout, scale)
     )
     return (
         f'<svg viewBox="0 0 {scale.width_px:.0f} {scale.height_px:.0f}" '
@@ -305,7 +357,8 @@ def render_pair(pair: dict, base_graph_json: dict) -> dict:
     layout_a = _build_layout(pair["pair_id"], base_graph, pair["a"])
     layout_b = _build_layout(pair["pair_id"], base_graph, pair["b"])
     points = _room_points(layout_a.graph) + _room_points(layout_b.graph)
-    scale = Scale(points)
+    rotation = _dominant_wall_rotation(base_graph)
+    scale = Scale(points, rotation)
     left_a = left_is_a(pair["pair_id"])
     left_layout, right_layout = (layout_a, layout_b) if left_a else (layout_b, layout_a)
     return {
@@ -382,14 +435,17 @@ PAGE_TEMPLATE = """<!doctype html>
     --window-mark: #7fa6bd;
     --door-line: #a08a5f;
     --object-fill: #e4d9c2;
+    --object-fill-moved: #cbb98e;
     --object-stroke: #b7a67d;
     --ghost-fill: #d8d2c4;
+    --ghost-stroke: #8a8272;
     --accent: #c9622f;
     --control-bg: #eee8db;
     --control-bg-hover: #e4dcc9;
     --control-selected: #201d18;
   }
   * { box-sizing: border-box; }
+  html, body { overflow-x: hidden; }
   body {
     margin: 0;
     background: var(--surface);
@@ -399,18 +455,33 @@ PAGE_TEMPLATE = """<!doctype html>
     flex-direction: column;
     align-items: center;
     min-height: 100vh;
+    width: 100%;
     padding: 28px 20px 40px;
   }
+  .wide-only { display: inline; }
+  .narrow-only { display: none; }
   .top {
     width: 100%;
     max-width: 1180px;
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
     margin-bottom: 18px;
   }
-  h1 { font-size: 1.25rem; font-weight: 600; margin: 0; }
-  .progress { color: var(--ink-muted); font-size: 0.95rem; }
+  button.back {
+    background: transparent;
+    border: none;
+    color: var(--ink-muted);
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 10px 4px;
+    order: -1;
+  }
+  button.back:hover { color: var(--ink); }
+  button.back:disabled { opacity: 0.35; cursor: default; }
+  h1 { font-size: 1.15rem; font-weight: 600; margin: 0; flex: 1 1 200px; min-width: 0; }
+  .progress { color: var(--ink-muted); font-size: 0.95rem; white-space: nowrap; }
   .panels {
     display: flex;
     gap: 24px;
@@ -424,6 +495,7 @@ PAGE_TEMPLATE = """<!doctype html>
     box-shadow: 0 1px 2px rgba(32,29,24,0.08), 0 8px 24px rgba(32,29,24,0.06);
     padding: 16px;
     flex: 1;
+    min-width: 0;
     display: flex;
     justify-content: center;
     cursor: pointer;
@@ -439,20 +511,23 @@ PAGE_TEMPLATE = """<!doctype html>
   .door-leaf { stroke: var(--door-line); stroke-width: 1.5; }
   .door-arc { fill: none; stroke: var(--door-line); stroke-width: 1; stroke-dasharray: 3 3; }
   .object { fill: var(--object-fill); stroke: var(--object-stroke); stroke-width: 1; }
+  .object.moved { fill: var(--object-fill-moved); }
   .object-label {
-    font-size: 11px;
+    font-size: 13px;
     fill: var(--ink);
     text-anchor: middle;
     dominant-baseline: middle;
     pointer-events: none;
   }
-  .ghost { fill: none; stroke: var(--ink-muted); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.6; }
-  .ghost-trail { stroke: var(--ink-muted); stroke-width: 1; opacity: 0.5; }
-  .question { font-size: 1.05rem; font-weight: 500; margin: 26px 0 16px; text-align: center; }
+  .ghost { fill: var(--ghost-fill); fill-opacity: 0.5; stroke: var(--ghost-stroke); stroke-width: 1.5; stroke-dasharray: 5 4; }
+  .ghost-trail { stroke: var(--ghost-stroke); stroke-width: 2; opacity: 0.85; }
   .controls {
     display: flex;
     gap: 12px;
-    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 1180px;
+    margin-top: 22px;
   }
   button.choice {
     background: var(--control-bg);
@@ -460,24 +535,16 @@ PAGE_TEMPLATE = """<!doctype html>
     border-radius: 10px;
     padding: 12px 22px;
     font-size: 0.95rem;
+    line-height: 1.2;
     color: var(--ink);
     cursor: pointer;
     transition: background 150ms ease-out, box-shadow 150ms ease-out;
     box-shadow: 0 1px 2px rgba(32,29,24,0.06);
+    flex: 1 1 0;
   }
   button.choice:hover { background: var(--control-bg-hover); }
   button.choice:active { transform: scale(0.96); }
-  button.back {
-    background: transparent;
-    border: none;
-    color: var(--ink-muted);
-    font-size: 0.9rem;
-    cursor: pointer;
-    padding: 12px 10px;
-  }
-  button.back:hover { color: var(--ink); }
-  button.back:disabled { opacity: 0.35; cursor: default; }
-  .hint { color: var(--ink-muted); font-size: 0.82rem; margin-top: 10px; }
+  .hint { color: var(--ink-muted); font-size: 0.82rem; margin-top: 10px; text-align: center; }
   .summary {
     max-width: 480px;
     text-align: center;
@@ -485,6 +552,15 @@ PAGE_TEMPLATE = """<!doctype html>
   }
   .summary h2 { font-size: 1.4rem; margin-bottom: 10px; }
   .summary p { color: var(--ink-muted); line-height: 1.5; }
+
+  @media (max-width: 900px) {
+    body { padding: 20px 14px 32px; }
+    .wide-only { display: none; }
+    .narrow-only { display: inline; }
+    .panels { flex-direction: column; gap: 16px; }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    button.choice { padding: 12px 8px; font-size: 0.88rem; }
+  }
 </style>
 </head>
 <body>
@@ -516,6 +592,7 @@ function render() {
   if (!currentPair) return;
   app.innerHTML = `
     <div class="top">
+      <button class="back" id="back" ${state.index === 0 ? "disabled" : ""}>Back</button>
       <h1>Which rearrangement looks better?</h1>
       <div class="progress">${state.index + 1} of ${state.total}</div>
     </div>
@@ -524,12 +601,20 @@ function render() {
       <div class="panel" data-side="right">${currentPair.right_svg}</div>
     </div>
     <div class="controls">
-      <button class="back" id="back" ${state.index === 0 ? "disabled" : ""}>Back</button>
-      <button class="choice" data-pick="left">Left looks better</button>
-      <button class="choice" data-pick="right">Right looks better</button>
+      <button class="choice" data-pick="left">
+        <span class="wide-only">Left looks better</span>
+        <span class="narrow-only">Top looks better</span>
+      </button>
+      <button class="choice" data-pick="right">
+        <span class="wide-only">Right looks better</span>
+        <span class="narrow-only">Bottom looks better</span>
+      </button>
       <button class="choice" data-pick="tie">Can't tell</button>
     </div>
-    <div class="hint">Left/right arrows or 1/2 pick a side. Down arrow or 3 is can't tell.</div>
+    <div class="hint">
+      <span class="wide-only">Left/right arrows or 1/2 pick a side. Down arrow or 3 is can't tell.</span>
+      <span class="narrow-only">Up/down arrows or 1/2 pick a side. 3 is can't tell.</span>
+    </div>
   `;
   app.querySelector('[data-side="left"]').addEventListener("click", () => choose("left"));
   app.querySelector('[data-side="right"]').addEventListener("click", () => choose("right"));
@@ -569,9 +654,13 @@ function renderSummary() {
   `;
 }
 
+const stackedQuery = window.matchMedia("(max-width: 900px)");
+
 window.addEventListener("keydown", (event) => {
   if (state.done) return;
-  const map = { ArrowLeft: "left", "1": "left", ArrowRight: "right", "2": "right", ArrowDown: "tie", "3": "tie" };
+  const map = stackedQuery.matches
+    ? { ArrowUp: "left", "1": "left", ArrowDown: "right", "2": "right", "3": "tie" }
+    : { ArrowLeft: "left", "1": "left", ArrowRight: "right", "2": "right", ArrowDown: "tie", "3": "tie" };
   if (event.key in map) { choose(map[event.key]); return; }
   if (event.key === "Backspace") goBack();
 });
