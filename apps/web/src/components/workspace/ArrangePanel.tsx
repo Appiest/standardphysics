@@ -57,9 +57,9 @@ export function ArrangePanel({ arrangement, fallbackFindings, scope, scanId, rev
             {arrangement.saving ? "Saving" : "Save this layout"}
           </Button>
           {arrangement.hasMoves && (
-            <Button onClick={arrangement.reset}>
+            <Button onClick={arrangement.reset} disabled={arrangement.puttingBack}>
               <ArrowCounterClockwise size={16} weight="bold" aria-hidden />
-              Put everything back
+              {arrangement.puttingBack ? "Putting everything back" : "Put everything back"}
             </Button>
           )}
         </div>

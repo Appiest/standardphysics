@@ -96,9 +96,13 @@ class Settings:
     not changed for this long (or an explicit /complete arrives), one semantic
     job is queued. Zero keeps the immediate per-artifact behavior for tests.
     """
+    rearrange_provider: str = "openrouter"
     rearrange_model: str | None = None
-    """SP_REARRANGE_MODEL: the fine-tuned rearrangement model's id on Fireworks. Unset turns
-    "Suggest a rearrangement" off, and the page says so."""
+    """SP_REARRANGE_MODEL is the Fireworks model when that provider is selected."""
+    rearrange_openrouter_model: str = "anthropic/claude-opus-5.5"
+    rearrange_reasoning_effort: str = "low"
+    rearrange_token_cap: int = 4000
+    rearrange_cost_cap_dollars: float = 0.50
     rearrange_deployment: str | None = None
     """SP_REARRANGE_DEPLOYMENT: the on-demand deployment serving it, as accounts/<a>/deployments/<id>
     or a bare id. When set, a suggestion lets it run one replica and scales it back to zero after."""
@@ -108,6 +112,7 @@ class Settings:
     """SP_REARRANGE_FAKE_MODEL=1, development only: a local stand-in answers instead of Fireworks."""
     fireworks_api_key: str | None = field(default=None, repr=False)
     """FIREWORKS_API_KEY, from the repo-root .env."""
+    openrouter_api_key: str | None = field(default=None, repr=False)
 
     @property
     def database_path(self) -> pathlib.Path:
@@ -127,11 +132,17 @@ class Settings:
             weave_entity=os.environ.get(ENTITY_ENV) or None,
             auto_deep_simulation=_flag("SP_AUTO_DEEP_SIMULATION"),
             bake_in_own_process=not _flag("SP_BAKE_IN_PROCESS"),
+            rearrange_provider=os.environ.get("SP_REARRANGE_PROVIDER", "openrouter"),
             rearrange_model=os.environ.get("SP_REARRANGE_MODEL") or None,
+            rearrange_openrouter_model=os.environ.get("SP_REARRANGE_OPENROUTER_MODEL", "anthropic/claude-opus-5.5"),
+            rearrange_reasoning_effort=os.environ.get("SP_REARRANGE_REASONING_EFFORT", "low"),
+            rearrange_token_cap=_bounded_integer("SP_REARRANGE_TOKEN_CAP", 4000, 1024, 16000),
+            rearrange_cost_cap_dollars=float(os.environ.get("SP_REARRANGE_COST_CAP_DOLLARS", "0.50")),
             rearrange_deployment=os.environ.get("SP_REARRANGE_DEPLOYMENT") or None,
             rearrange_keep_warm_seconds=_bounded_integer("SP_REARRANGE_KEEP_WARM_SECONDS", 300, 0, 3600),
             rearrange_fake_model=_flag("SP_REARRANGE_FAKE_MODEL"),
             fireworks_api_key=os.environ.get("FIREWORKS_API_KEY") or None,
+            openrouter_api_key=os.environ.get("OPENROUTER_API_KEY") or None,
             evidence_settle_seconds=_bounded_integer(
                 "SP_EVIDENCE_SETTLE_SECONDS", 30, 0, 86_400
             ),

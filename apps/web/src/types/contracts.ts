@@ -1019,7 +1019,8 @@ export interface RearrangementStatus {
   available: boolean;
   base_revision: number;
   error: string | null;
-  phase: ("waiting" | "starting_model" | "asking_model" | "checking") | null;
+  phase: ("waiting" | "starting_model" | "asking_model" | "checking" | "trying_again") | null;
+  phase_reason: string | null;
   result: RearrangementSuggestion | null;
   state: "idle" | "queued" | "running" | "done" | "failed";
   unavailable_reason: string | null;
@@ -1032,6 +1033,9 @@ export interface RearrangementSuggestion {
   accepted: boolean;
   attempts: RearrangementAttempt[];
   base_revision: number;
+  budget_reached: boolean;
+  completion_tokens: number;
+  cost_dollars: number;
   findings_after: Finding[];
   findings_before: Finding[];
   /**
@@ -1042,12 +1046,18 @@ export interface RearrangementSuggestion {
    * One sentence for the owner: what the suggestion does, or why there is none.
    */
   message: string;
+  model: string | null;
   /**
-   * Requests sent to the model for this click, four answers each.
+   * Requests sent to the model for this click.
    */
   model_calls: number;
   moves: NodeMove[];
+  prompt_tokens: number;
+  provider: string | null;
   reward: RewardParts | null;
+  rounds: number;
+  snap_rescues: number;
+  suggestion_id: string | null;
   /**
    * Windows of a big scan asked about; 0 when the model saw it whole.
    */
@@ -1315,6 +1325,7 @@ export interface RulePack {
 export interface SaveLayoutRequest {
   base_revision: number;
   moves: NodeMove[];
+  suggestion_id: string | null;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema

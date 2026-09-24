@@ -1,4 +1,4 @@
-"""Suggest a rearrangement: the fine-tuned model proposes, the training checker decides.
+"""Suggest a rearrangement: a model proposes, the measured checker decides.
 
 A suggestion is a background job on its own worker lane, because a Fireworks
 deployment at zero replicas takes minutes to start and the page should poll
@@ -7,20 +7,17 @@ rather than hold a request open that long:
     POST /api/scans/{id}/rearrangement-suggestion   queue a job for the latest revision
     GET  /api/scans/{id}/rearrangement-suggestion?revision=N   poll it, and learn if the feature is on
 
-The job builds prompts exactly as training did (`rearrangement_search`: the
-whole scan when it is small, problem windows when it is not), asks for four
-answers per prompt at the training evaluation's settings, and scores each
-with `training.reward.score_completion`: the edits parser, `apply_moves`,
+The job builds prompts for the whole scan or problem windows, then asks up to
+four times with checker feedback after a rejected answer. It scores each with
+`training.reward.score_completion`: the edits parser, `apply_moves`,
 `violations` (fixture, keep-clear, travel and room-to-use rules included) and
 the gate with improvement required, as the fix agent uses it. That training
 checker only chooses. What the owner reads, the findings before and after and
 the sentence about them, comes from the production assessment the arrange
 panel runs, so the two always tell the same story. Nothing is saved.
 
-While the job runs the deployment may run one replica. Afterwards it stays
-warm for `keep_warm_seconds`, so a second click soon after pays no cold start,
-and then the rearrange lane scales it to zero. That step reads the database,
-not a timer, so it still happens after a failed job or a restart.
+The optional Fireworks path still manages its deployment lease. OpenRouter is
+the default and needs no GPU deployment.
 """
 
 from __future__ import annotations
@@ -53,6 +50,8 @@ from . import repository as repo
 from .dev_model import nudges_from_prompt
 from .errors import ApiProblem
 from .fireworks import FakeFireworks, FireworksModel, ModelFailed, ModelWarming, RearrangeModel, Sampling
+from .openrouter_rearrange import FakeOpenRouter, OpenRouterRearrange
+from .rearrangement_data import record_accepted
 from .rearrangement_search import Search, scan_plan, search, whole_checker
 from .scenario import suggest_scenario
 from .settings import Settings
@@ -107,8 +106,9 @@ REASON_CLAUSES = (
 @dataclass
 class Rearranger:
     model: RearrangeModel | None
+    provider: str = "fireworks"
     keep_warm_seconds: float = 300.0
-    sampling: Sampling = field(default_factory=Sampling)
+    sampling: Sampling = field(default_factory=lambda: Sampling(attempts=1))
     clock: Callable[[], float] = time.time
     sleep: Callable[[float], None] = time.sleep
 
@@ -118,13 +118,26 @@ class Rearranger:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> Rearranger:
-        return cls(model=model_from_settings(settings), keep_warm_seconds=settings.rearrange_keep_warm_seconds)
+        return cls(model=model_from_settings(settings), provider=settings.rearrange_provider,
+                   keep_warm_seconds=settings.rearrange_keep_warm_seconds)
 
 
 def model_from_settings(settings: Settings) -> RearrangeModel | None:
+    if settings.rearrange_provider not in {"openrouter", "fireworks"}:
+        raise ValueError("SP_REARRANGE_PROVIDER must be openrouter or fireworks")
     if settings.rearrange_fake_model:
-        log.warning("SP_REARRANGE_FAKE_MODEL is on: suggestions come from a local stand-in, not the trained model")
+        log.warning("SP_REARRANGE_FAKE_MODEL is on: suggestions come from a local stand-in")
+        if settings.rearrange_provider == "openrouter":
+            return FakeOpenRouter(answer=nudges_from_prompt, model=settings.rearrange_openrouter_model)
         return FakeFireworks(answer=nudges_from_prompt, warmups=1, controls_deployment=False)
+    if settings.rearrange_provider == "openrouter":
+        if not settings.openrouter_api_key:
+            return None
+        return OpenRouterRearrange(api_key=settings.openrouter_api_key,
+                                   model=settings.rearrange_openrouter_model,
+                                   reasoning_effort=settings.rearrange_reasoning_effort,
+                                   token_cap=settings.rearrange_token_cap,
+                                   cost_cap_dollars=settings.rearrange_cost_cap_dollars)
     if not settings.rearrange_model or not settings.fireworks_api_key:
         return None
     return FireworksModel(api_key=settings.fireworks_api_key, model=settings.rearrange_model,
@@ -161,7 +174,7 @@ def queue_suggestion(database, worker, rearranger: Rearranger, scan_id: uuid.UUI
         if not _active(connection, scan_id, body.base_revision):
             connection.execute(
                 "INSERT INTO rearrangements (scan_id, revision) VALUES (?, ?) ON CONFLICT(scan_id, revision)"
-                " DO UPDATE SET phase='waiting', result_json=NULL",
+                " DO UPDATE SET phase='waiting', phase_reason=NULL, result_json=NULL",
                 (str(scan_id), body.base_revision),
             )
             repo.queue_job_again(connection, scan_id, REARRANGE, body.base_revision)
@@ -174,7 +187,7 @@ def suggestion_status(database, rearranger: Rearranger, scan_id: uuid.UUID, revi
         if not repo.scan_exists(connection, scan_id):
             raise ApiProblem(404, "no scan")
         row = connection.execute(
-            "SELECT r.phase, r.result_json, j.state, j.error FROM rearrangements r JOIN jobs j"
+            "SELECT r.phase, r.phase_reason, r.result_json, j.state, j.error FROM rearrangements r JOIN jobs j"
             " ON r.scan_id=j.scan_id AND r.revision=j.revision AND j.kind=? WHERE r.scan_id=? AND r.revision=?",
             (REARRANGE, str(scan_id), revision),
         ).fetchone()
@@ -185,15 +198,16 @@ def suggestion_status(database, rearranger: Rearranger, scan_id: uuid.UUID, revi
         return RearrangementStatus(**common, state="idle")
     working = row["state"] in ("queued", "running")
     return RearrangementStatus(
-        **common, state=row["state"], phase=row["phase"] if working else None, error=row["error"],
+        **common, state=row["state"], phase=row["phase"] if working else None,
+        phase_reason=row["phase_reason"] if working else None, error=row["error"],
         result=RearrangementSuggestion.model_validate_json(row["result_json"]) if row["result_json"] else None,
     )
 
 
-def _set_phase(database, scan_id: uuid.UUID, revision: int, phase: str) -> None:
+def _set_phase(database, scan_id: uuid.UUID, revision: int, phase: str, reason: str | None = None) -> None:
     with database.transaction() as connection:
-        connection.execute("UPDATE rearrangements SET phase=? WHERE scan_id=? AND revision=?",
-                           (phase, str(scan_id), revision))
+        connection.execute("UPDATE rearrangements SET phase=?, phase_reason=? WHERE scan_id=? AND revision=?",
+                           (phase, reason, str(scan_id), revision))
 
 
 # --- the job -------------------------------------------------------------------
@@ -234,6 +248,8 @@ def ask_patiently(rearranger: Rearranger, messages: list[dict], on_warming: Call
 
 
 def run_suggestion(database, rearranger: Rearranger, stages, scan_id: uuid.UUID, revision: int) -> None:
+    if hasattr(rearranger.model, "reset_job"):
+        rearranger.model.reset_job()
     inputs = _inputs(database, scan_id, revision)
     plan = scan_plan(scan_id, inputs.graph, inputs.scenario)
     checker = whole_checker(plan)
@@ -243,12 +259,18 @@ def run_suggestion(database, rearranger: Rearranger, stages, scan_id: uuid.UUID,
         _set_phase(database, scan_id, revision, "asking_model")
         warming = lambda: _set_phase(database, scan_id, revision, "starting_model")  # noqa: E731
         with deployment_lease(database, rearranger):
-            found = search(plan, checker, problems, lambda messages: ask_patiently(rearranger, messages, warming))
+            found = search(plan, checker, problems,
+                           lambda messages: ask_patiently(rearranger, messages, warming),
+                           provider=rearranger.provider,
+                           progress=lambda phase, reason: _set_phase(database, scan_id, revision, phase, reason))
     _set_phase(database, scan_id, revision, "checking")
-    suggestion = describe(found, inputs, stages, revision, nothing_to_fix=not problems, small=plan.small)
+    suggestion = describe(found, inputs, stages, revision, nothing_to_fix=not problems, small=plan.small,
+                          rearranger=rearranger)
     with database.transaction() as connection:
         connection.execute("UPDATE rearrangements SET result_json=? WHERE scan_id=? AND revision=?",
                            (suggestion.model_dump_json(), str(scan_id), revision))
+        if suggestion.accepted:
+            record_accepted(connection, scan_id, revision, graph_hash(inputs.graph), suggestion, found.chains)
 
 
 # --- describing the result, in the panel's own numbers --------------------------
@@ -290,6 +312,8 @@ def accepted_message(pieces: int, before: list[Finding], after: list[Finding]) -
 
 
 def rejected_message(attempts: list[RearrangementAttempt]) -> str:
+    if not attempts:
+        return NO_ANSWER
     clause = Counter(attempt.reason for attempt in attempts).most_common(1)[0][0]
     if len(attempts) == 1:
         return f"The layout the model tried didn't pass our checks, because {clause}."
@@ -301,6 +325,8 @@ def _nothing_chosen_message(found: Search, attempts: list[RearrangementAttempt],
         return NOTHING_TO_FIX
     if found.parts == 0:
         return NO_WINDOWS
+    if found.budget_reached:
+        return "The cost limit stopped this suggestion before a layout passed the checks."
     if found.whole_scan_reason:
         return f"The model's layouts worked in their own parts of the floor but not together, because " \
                f"{reason_clause(found.whole_scan_reason)}."
@@ -314,11 +340,17 @@ def _reward_parts(verdict: Verdict) -> RewardParts:
 
 
 def describe(found: Search, inputs: Inputs, stages, revision: int, *, nothing_to_fix: bool,
-             small: bool) -> RearrangementSuggestion:
+             small: bool, rearranger: Rearranger) -> RearrangementSuggestion:
     """The chosen layout with production findings before and after, or why there is none."""
     attempts = [_attempt(verdict) for verdict in found.verdicts]
+    model = rearranger.model
     cost = {"base_revision": revision, "attempts": attempts, "model_calls": found.model_calls,
-            "windows": 0 if small else found.parts}
+            "windows": 0 if small else found.parts, "provider": rearranger.provider,
+            "model": getattr(model, "model", None), "rounds": sum(len(chain["rounds"]) for chain in found.chains),
+            "prompt_tokens": getattr(model, "prompt_tokens", 0),
+            "completion_tokens": getattr(model, "completion_tokens", 0),
+            "cost_dollars": getattr(model, "cost_dollars", 0.0),
+            "snap_rescues": found.snap_rescues, "budget_reached": found.budget_reached}
     if found.chosen is None:
         message = _nothing_chosen_message(found, attempts, nothing_to_fix)
         return RearrangementSuggestion(accepted=False, message=message, **cost)
@@ -326,8 +358,12 @@ def describe(found: Search, inputs: Inputs, stages, revision: int, *, nothing_to
     suggested = apply_moves(inputs.graph, moves)
     before = stages.assess(inputs.graph, inputs.stored_scenario, revision + 1).findings
     after = stages.assess(suggested, inputs.stored_scenario, revision + 1).findings
+    message = accepted_message(len(moves), before, after)
+    if found.chosen.snapped:
+        message += " A small adjustment cleared a collision."
     return RearrangementSuggestion(
-        accepted=True, message=accepted_message(len(moves), before, after), moves=moves,
+        suggestion_id=str(uuid.uuid4()), accepted=True,
+        message=message, moves=moves,
         graph_hash=graph_hash(suggested), findings_before=before, findings_after=after,
         reward=_reward_parts(found.chosen.verdict), **cost,
     )

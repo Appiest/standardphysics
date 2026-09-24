@@ -46,7 +46,7 @@ class ModelFailed(Exception):
 
 @dataclass(frozen=True)
 class Sampling:
-    """How the training evaluation sampled the model (`serverless_train.Plan`): four answers at 0.7."""
+    """Sampling settings; the feedback chain requests one answer per round."""
 
     attempts: int = 4
     temperature: float = 0.7

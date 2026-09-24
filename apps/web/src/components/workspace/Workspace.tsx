@@ -438,9 +438,9 @@ function useWorkspaceActions(findings: Finding[], scene: SceneGraph, arrangement
   }, [findings, scene, setSelected, setPicked]);
   const toggle = (finding: Finding) => setSelected((current) => current?.id === finding.id ? null : finding);
   const showView = (next: ViewMode) => { setSelected(null); setMode(next); };
-  const switchTask = (next: Task) => {
+  const switchTask = async (next: Task) => {
+    if (next === "findings" && !(await arrangement.reset())) return;
     clear();
-    if (next === "findings") arrangement.reset();
     if (next === "compare") setAmount(0);
     setTask(next);
   };

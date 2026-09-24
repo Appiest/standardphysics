@@ -32,7 +32,7 @@ def _pieces_to_move(room: dict) -> tuple[list[dict], list[float]] | None:
 
 
 def nudges_from_prompt(messages: list[dict]) -> list[str]:
-    room = json.loads(messages[-1]["content"])
+    room = json.loads(messages[1]["content"])
     found = _pieces_to_move(room)
     if found is None:
         return ['{"moves":[]}']

@@ -35,13 +35,13 @@ function usePolling(scanId: string, status: RearrangementStatus | null, setStatu
   }, [scanId, status, setStatus, setTrouble]);
 }
 
-function useDeliverMoves(status: RearrangementStatus | null, asked: boolean, onMoves: (moves: NodeMove[]) => void) {
+function useDeliverMoves(status: RearrangementStatus | null, asked: boolean, onMoves: (moves: NodeMove[], suggestionId: string) => void) {
   const delivered = useRef<string | null>(null);
   useEffect(() => {
     const result = status?.state === "done" ? status.result : null;
-    if (!asked || !result?.accepted || delivered.current === result.graph_hash) return;
+    if (!asked || !result?.accepted || !result.suggestion_id || delivered.current === result.graph_hash) return;
     delivered.current = result.graph_hash;
-    onMoves(result.moves);
+    onMoves(result.moves, result.suggestion_id);
   }, [status, asked, onMoves]);
   return useCallback(() => {
     delivered.current = null;
@@ -58,7 +58,7 @@ function outcome(status: RearrangementStatus | null, asked: boolean, trouble: st
 }
 
 /** One suggestion from the fine-tuned model for this revision: start it, poll it, hand accepted moves over once. */
-export function useRearrangementSuggestion(scanId: string, revision: number, onMoves: (moves: NodeMove[]) => void) {
+export function useRearrangementSuggestion(scanId: string, revision: number, onMoves: (moves: NodeMove[], suggestionId: string) => void) {
   const [status, setStatus] = useState<RearrangementStatus | null>(null);
   const [asked, setAsked] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);

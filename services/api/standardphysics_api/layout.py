@@ -23,6 +23,7 @@ from standardphysics_contracts import (
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
+from .rearrangement_data import record_outcome, suggested_hash
 from .stages import Stages
 from .worker import ASSESS, Worker
 
@@ -70,7 +71,17 @@ def save_layout(database: Database, worker: Worker, scan_id: uuid.UUID, body: Sa
         latest = repo.get_revision(connection, scan_id)["revision"]
         if latest != body.base_revision:
             raise ApiProblem(409, STALE_LAYOUT)
+        original_suggestion_hash = None
+        if body.suggestion_id:
+            original_suggestion_hash = suggested_hash(connection, scan_id, body.base_revision, body.suggestion_id)
+            if original_suggestion_hash is None:
+                raise ApiProblem(409, "that suggestion is no longer available")
         repo.save_revision(connection, saved, source="owner", base_revision=body.base_revision)
+        if body.suggestion_id:
+            recorded_hash = graph_hash(saved)
+            record_outcome(connection, scan_id, body.base_revision, body.suggestion_id, "saved",
+                           {"saved_graph_hash": recorded_hash,
+                            "modified": recorded_hash != original_suggestion_hash})
         repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
     worker.wake()
     return saved

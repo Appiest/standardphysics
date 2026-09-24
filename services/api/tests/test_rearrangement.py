@@ -1,14 +1,21 @@
 """Suggest a rearrangement: the job, its answers, and the deployment it starts and stops. No network."""
 
+import hashlib
 import json
+import math
 import uuid
 from types import SimpleNamespace
 
 import pytest
+from standardphysics_agents.fix import apply_moves, violations
+from standardphysics_agents.training.edits import node_moves, parse_edits
+from standardphysics_agents.training.prompt import openrouter_prompt_messages, prompt_messages
 from standardphysics_agents.training.reward import Verdict
 from standardphysics_agents.training.rooms import SMALL_SCAN_NODES
-from standardphysics_contracts import Finding, Mat4, NodeMove, Vec3, to_meters
+from standardphysics_agents.training.snap import snap_collisions
+from standardphysics_contracts import Finding, Mat4, NodeMove, Vec3, lies_flat, to_meters
 from standardphysics_fixtures import FIX_SHIFT_INCHES, build_lawsuit_graph, build_lawsuit_scenario, node_id
+from standardphysics_pipeline.footprints import distance_outside, floor_polygon
 
 from conftest import drain
 from standardphysics_api import rearrangement, rearrangement_search
@@ -21,7 +28,8 @@ from standardphysics_api.fireworks import (
     Sampling,
     deployment_name,
 )
-from standardphysics_api.rearrangement import Rearranger, scale_down_when_idle
+from standardphysics_api.openrouter_rearrange import FakeOpenRouter, OpenRouterRearrange
+from standardphysics_api.rearrangement import Rearranger, model_from_settings, scale_down_when_idle
 from standardphysics_api.rearrangement_search import (
     MAX_WINDOWS_PER_SUGGESTION,
     Answer,
@@ -29,6 +37,7 @@ from standardphysics_api.rearrangement_search import (
     whole_checker,
     window_seeds,
 )
+from standardphysics_api.settings import Settings
 
 CASE_EAST = str(node_id("case_east"))
 PATH = "/api/scans/{}/rearrangement-suggestion"
@@ -57,7 +66,15 @@ class Clock:
 
 
 def _rearranger(answers: list[str], clock: Clock, **fake) -> Rearranger:
-    model = FakeFireworks(answer=lambda messages: answers, **fake)
+    index = 0
+
+    def next_answer(messages):
+        nonlocal index
+        answer = answers[min(index, len(answers) - 1)]
+        index += 1
+        return [answer]
+
+    model = FakeFireworks(answer=next_answer, **fake)
     return Rearranger(model=model, keep_warm_seconds=300, clock=clock, sleep=clock.sleep)
 
 
@@ -98,14 +115,13 @@ def test_the_best_accepted_answer_comes_back_as_moves_and_nothing_is_saved(make_
     assert result["graph_hash"]
     assert _problems(result["findings_after"]) < _problems(result["findings_before"])
     assert result["message"] == ("Moving 1 piece clears 1 of the 4 problems furniture can fix here.")
-    assert (result["model_calls"], result["windows"]) == (1, 0)
+    assert (result["model_calls"], result["windows"]) == (2, 0)
     reward = result["reward"]
     assert 0 < reward["reward"] <= 1 and 0 < reward["recovered"] <= 1 and reward["usability"] == 1.0
     assert reward["all_clear"] is False and reward["disruption_meters"] > 0
-    assert [attempt["accepted"] for attempt in result["attempts"]] == [False, True, False, False]
+    assert [attempt["accepted"] for attempt in result["attempts"]] == [False, True]
     assert [attempt["reason"] for attempt in result["attempts"]] == [
         "its answer wasn't a list of moves we could read", "",
-        "it changed things by less than we can measure", "it pushed a piece past the edge of the room",
     ]
     assert client.get(f"/api/scans/{scan_id}/scene").json()["revision"] == 0
 
@@ -321,7 +337,7 @@ def _floor_of_shops(copies: int, step: float = 12.0):
 
 
 def _only_the_case_east(messages):
-    return [FIX] if CASE_EAST in messages[-1]["content"] else [GARBAGE]
+    return [FIX] if CASE_EAST in messages[1]["content"] else [GARBAGE]
 
 
 def test_a_big_scan_is_asked_about_window_by_window_and_the_moves_land_in_the_whole_scan(make_client):
@@ -335,7 +351,7 @@ def test_a_big_scan_is_asked_about_window_by_window_and_the_moves_land_in_the_wh
                            (big.model_dump_json(), scan_id))
     result = _suggest(client, scan_id)["result"]
 
-    assert result["windows"] >= 2 and result["model_calls"] == result["windows"]
+    assert result["windows"] >= 2 and result["windows"] <= result["model_calls"] <= result["windows"] * 4
     assert model.calls.count("complete") == result["model_calls"]
     assert result["accepted"] is True
     assert [move["node_id"] for move in result["moves"]] == [CASE_EAST]
@@ -363,8 +379,11 @@ def test_when_the_windows_fail_together_the_best_single_window_is_used(monkeypat
     first, second = str(uuid.uuid4()), str(uuid.uuid4())
     answers = iter([_answer_in(0.4, first), _answer_in(0.6, second)])
     monkeypatch.setattr(rearrangement_search, "parts_to_ask", lambda plan, checker, problems: [SimpleNamespace(graph=None, checker=None)] * 2)
-    monkeypatch.setattr(rearrangement_search, "prompt_messages", lambda graph, checker: [])
-    monkeypatch.setattr(rearrangement_search, "_best_answer", lambda part, completions, found: next(answers))
+    def accepted_part(part, ask, found, provider, progress, index):
+        found.model_calls += 1
+        return next(answers)
+
+    monkeypatch.setattr(rearrangement_search, "_ask_part", accepted_part)
 
     def whole_scan(plan, checker, moves):
         together = len(moves) > 1
@@ -376,3 +395,165 @@ def test_when_the_windows_fail_together_the_best_single_window_is_used(monkeypat
     found = rearrangement_search.search(plan, None, [], lambda messages: [FIX])
     assert found.model_calls == 2 and found.whole_scan_reason == "collided"
     assert [str(move.node_id) for move in found.chosen.moves] == [second]
+
+
+def test_openrouter_round_three_uses_collision_and_new_problem_feedback(make_client, monkeypatch):
+    west = str(node_id("case_west"))
+    collision, new_problem = _answer(-0.2, west), _answer(0.4, west)
+    answers = iter([collision, new_problem, FIX])
+    conversations = []
+
+    def answer(messages):
+        conversations.append(messages)
+        return [next(answers)]
+
+    monkeypatch.setattr(rearrangement_search, "snap_collisions", lambda room, moves, checker: None)
+    client, scan_id = _shop(make_client, Rearranger(FakeOpenRouter(answer), provider="openrouter"))
+    result = _suggest(client, scan_id)["result"]
+    assert result["accepted"] is True and result["rounds"] == 3
+    assert [attempt["reason"] for attempt in result["attempts"]] == [
+        "it pushed a piece into something else", "it caused a new problem", "",
+    ]
+    assert west in conversations[1][3]["content"]
+    assert "Display case" in conversations[1][3]["content"]
+    assert "New problem:" in conversations[2][5]["content"]
+    assert conversations[2][4] == {"role": "assistant", "content": new_problem}
+
+
+def test_collision_snap_accepts_without_another_model_call(make_client):
+    west = str(node_id("case_west"))
+    client, scan_id = _shop(make_client, _rearranger([_answer(-0.2, west)], Clock()))
+    result = _suggest(client, scan_id)["result"]
+    assert result["accepted"] is True
+    assert result["model_calls"] == result["rounds"] == result["snap_rescues"] == 1
+    assert result["moves"][0]["delta_translation"]["x"] == pytest.approx(-0.15)
+
+
+def test_four_refused_rounds_stop_and_keep_the_original_room(make_client):
+    client, scan_id = _shop(make_client, _rearranger([GARBAGE], Clock()))
+    result = _suggest(client, scan_id)["result"]
+    assert result["accepted"] is False and result["rounds"] == result["model_calls"] == 4
+    assert len(result["attempts"]) == 4 and all(not row["accepted"] for row in result["attempts"])
+    assert client.get(f"/api/scans/{scan_id}/scene").json()["revision"] == 0
+
+
+def test_budget_limit_stops_before_a_billable_request(make_client):
+    model = OpenRouterRearrange(api_key="test", model="anthropic/claude-opus-5.5",
+                                reasoning_effort="low", token_cap=4000, cost_cap_dollars=0.001,
+                                price=lambda name: (0.000001, 0.000001))
+    client, scan_id = _shop(make_client, Rearranger(model, provider="openrouter"))
+    result = _suggest(client, scan_id)["result"]
+    assert result["accepted"] is False and result["budget_reached"] is True
+    assert result["model_calls"] == result["cost_dollars"] == 0
+    assert "cost limit" in result["message"]
+
+
+def test_openrouter_estimates_usage_when_the_provider_omits_it():
+    model = OpenRouterRearrange(api_key="test", model="anthropic/claude-opus-5.5",
+                                reasoning_effort="low", token_cap=4000, cost_cap_dollars=0.50,
+                                price=lambda name: (0.01, 0.02))
+    response = SimpleNamespace(usage=SimpleNamespace(prompt_tokens=0, completion_tokens=0, cost="unknown"),
+                               choices=[SimpleNamespace(message=SimpleNamespace(content="é"))])
+    model._record(response, [{"role": "user", "content": "é"}])
+    assert (model.prompt_tokens, model.completion_tokens) == (2, 2)
+    assert model.cost_dollars == pytest.approx(0.06)
+
+
+def test_provider_setting_selects_both_paths_without_network():
+    assert isinstance(model_from_settings(Settings(rearrange_fake_model=True)), FakeOpenRouter)
+    assert isinstance(model_from_settings(Settings(rearrange_provider="fireworks", rearrange_fake_model=True)),
+                      FakeFireworks)
+    assert isinstance(model_from_settings(Settings(openrouter_api_key="test")), OpenRouterRearrange)
+    assert isinstance(model_from_settings(Settings(rearrange_provider="fireworks", rearrange_model="accounts/a/models/m",
+                                                fireworks_api_key="test")), FireworksModel)
+
+
+def test_teacher_record_and_saved_outcome_are_local_and_append_only(make_client):
+    client, scan_id = _shop(make_client, _rearranger([FIX], Clock()))
+    result = _suggest(client, scan_id)["result"]
+    database = client.app.state.database
+    with database.connect() as connection:
+        accepted = connection.execute("SELECT payload_json FROM rearrangement_teacher_events WHERE kind='accepted'").fetchone()
+    payload = json.loads(accepted["payload_json"])
+    assert payload["source_graph_hash"] and payload["chains"][0]["rounds"][0]["proposal"] == FIX
+    assert payload["accepted_moves"] == result["moves"] and payload["provider"] == "fireworks"
+    saved = client.post(f"/api/scans/{scan_id}/revisions", json={
+        "base_revision": 0, "moves": result["moves"], "suggestion_id": result["suggestion_id"],
+    })
+    assert saved.status_code == 201, saved.text
+    with database.connect() as connection:
+        kinds = [row["kind"] for row in connection.execute("SELECT kind FROM rearrangement_teacher_events ORDER BY id")]
+    assert kinds == ["accepted", "saved"]
+
+
+def test_put_back_records_a_separate_outcome(make_client):
+    client, scan_id = _shop(make_client, _rearranger([FIX], Clock()))
+    result = _suggest(client, scan_id)["result"]
+    url = f"{PATH.format(scan_id)}/{result['suggestion_id']}/put-back?revision=0"
+    assert client.post(url, json={}).status_code == 200
+    with client.app.state.database.connect() as connection:
+        kinds = [row["kind"] for row in connection.execute("SELECT kind FROM rearrangement_teacher_events ORDER BY id")]
+    assert kinds == ["accepted", "put_back"]
+
+
+def test_fireworks_prompt_stays_byte_for_byte_as_trained():
+    plan = scan_plan(uuid.UUID(int=1), build_lawsuit_graph(), build_lawsuit_scenario())
+    messages = prompt_messages(plan.graph, whole_checker(plan))
+    encoded = json.dumps(messages, separators=(",", ":")).encode()
+    assert hashlib.sha256(encoded).hexdigest() == "9813fa7dc82d26948cfe8c32f436d9dfa1e0931901e4c8271607ffe285b8f25b"
+    openrouter = openrouter_prompt_messages(plan.graph, whole_checker(plan))
+    assert "floor_inside_walls" in messages[1]["content"]
+    assert "floor_polygon" in openrouter[1]["content"] and "floor_inside_walls" not in openrouter[1]["content"]
+
+
+def test_snap_does_not_move_a_pinned_piece():
+    plan = scan_plan(uuid.uuid4(), build_lawsuit_graph(), build_lawsuit_scenario())
+    checker = whole_checker(plan)
+    west = node_id("case_west")
+    checker.pinned = frozenset({west})
+    moves = node_moves(parse_edits(_answer(-0.2, str(west))))
+    assert snap_collisions(plan.graph, moves, checker) is None
+
+
+def test_snap_refuses_other_hard_constraints():
+    plan = scan_plan(uuid.uuid4(), build_lawsuit_graph(), build_lawsuit_scenario())
+    checker = whole_checker(plan)
+    west = str(node_id("case_west"))
+    moves = node_moves(parse_edits(_answer(-0.2, west)))
+    assert snap_collisions(plan.graph, moves, checker) is not None
+    far = node_moves(parse_edits(_answer(-1.6, west)))
+    assert {item.kind for item in violations(plan.graph, apply_moves(plan.graph, far))} & {"moved_too_far", "left_the_floor"}
+    assert snap_collisions(plan.graph, far, checker) is None
+
+
+def test_snap_refuses_a_keep_clear_zone():
+    plan = scan_plan(uuid.uuid4(), build_lawsuit_graph(), build_lawsuit_scenario())
+    west = next(node for node in plan.graph.nodes if node.id == node_id("case_west"))
+    ramp = west.model_copy(update={
+        "id": uuid.uuid4(), "kind": "ramp", "label": "Ramp", "movable": False,
+        "dimensions": Vec3(x=0.2, y=0.8, z=0.1), "transform": Mat4.translation(-2.9, 0, 0.05),
+    })
+    room = plan.graph.model_copy(update={"nodes": [*plan.graph.nodes, ramp]})
+    moves = node_moves(parse_edits(_answer(-0.2, str(west.id))))
+    assert "blocked_keep_clear" in {item.kind for item in violations(room, apply_moves(room, moves))}
+    assert snap_collisions(room, moves, whole_checker(plan)) is None
+
+
+def test_openrouter_floor_polygon_matches_the_checker_on_a_rotated_floor():
+    shop = build_lawsuit_graph()
+    floor = next(node for node in shop.nodes if lies_flat(node))
+    case = next(node for node in shop.nodes if node.id == node_id("case_east"))
+    sine = math.sqrt(0.5)
+    floor = floor.model_copy(update={"transform": Mat4(m=[
+        sine, -sine, 0, 0, sine, sine, 0, 0, 0, 0, 1, floor.transform.position.z, 0, 0, 0, 1,
+    ])})
+    case = case.model_copy(update={"transform": Mat4.translation(0, 0, case.transform.position.z)})
+    room = shop.model_copy(update={"nodes": [floor, case]})
+    checker = rearrangement_search.TrainingChecker(build_lawsuit_scenario())
+    view = json.loads(openrouter_prompt_messages(room, checker)[1]["content"])
+    polygon = floor_polygon(floor)
+    assert view["floor_polygon"] == [list(point) for point in polygon]
+    moves = node_moves(parse_edits(_answer(0.1, str(case.id))))
+    assert "left_the_floor" not in {item.kind for item in violations(room, apply_moves(room, moves))}
+    assert distance_outside(polygon, (4, 4), 0.01) > 0
+    assert 4 < max(x for x, _ in polygon) and 4 < max(y for _, y in polygon)

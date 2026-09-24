@@ -80,9 +80,21 @@ CREATE TABLE IF NOT EXISTS rearrangements (
     scan_id TEXT NOT NULL REFERENCES scans(id),
     revision INTEGER NOT NULL,
     phase TEXT NOT NULL DEFAULT 'waiting',
+    phase_reason TEXT,
     result_json TEXT,
     PRIMARY KEY (scan_id, revision)
 );
+CREATE TABLE IF NOT EXISTS rearrangement_teacher_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    suggestion_id TEXT NOT NULL,
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    revision INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS one_rearrangement_outcome
+    ON rearrangement_teacher_events(suggestion_id) WHERE kind IN ('saved', 'put_back');
 CREATE TABLE IF NOT EXISTS rearrange_deployments (
     name TEXT PRIMARY KEY,
     may_run INTEGER NOT NULL DEFAULT 0,
@@ -162,6 +174,7 @@ ADDED_COLUMNS = {
     ),
     "scenarios": (("version", "INTEGER NOT NULL DEFAULT 0"),),
     "assessments": (("scenario_version", "INTEGER"),),
+    "rearrangements": (("phase_reason", "TEXT"),),
 }
 """Columns that arrived after a table shipped, by the table they belong to.
 

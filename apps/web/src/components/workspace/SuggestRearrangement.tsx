@@ -10,13 +10,13 @@ import { type RearrangementSuggestion, useRearrangementSuggestion } from "./useR
 
 const LABEL = "Suggest a rearrangement";
 
-type Props = { scanId: string; revision: number; showingSuggestion: boolean; onSuggested: (moves: NodeMove[]) => void };
+type Props = { scanId: string; revision: number; showingSuggestion: boolean; onSuggested: (moves: NodeMove[], suggestionId: string) => void };
 
-function Working({ phase }: { phase: RearrangementStatus["phase"] }) {
+function Working({ phase, reason }: { phase: RearrangementStatus["phase"]; reason: string | null }) {
   return (
     <p className="flex items-start gap-2 font-medium" role="status">
       <CircleNotch size={18} className="mt-0.5 shrink-0 animate-spin text-ink-muted motion-reduce:animate-none" aria-hidden />
-      {phaseSentence(phase)}
+      {phaseSentence(phase, reason)}
     </p>
   );
 }
@@ -73,6 +73,6 @@ export function SuggestRearrangement({ scanId, revision, showingSuggestion, onSu
   const { status } = suggestion;
   if (status === null) return null;
   if (!status.available) return <Unavailable reason={status.unavailable_reason ?? ""} />;
-  if (suggestion.working) return <Working phase={status.phase} />;
+  if (suggestion.working) return <Working phase={status.phase} reason={status.phase_reason} />;
   return <Settled suggestion={suggestion} showingSuggestion={showingSuggestion} />;
 }

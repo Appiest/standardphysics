@@ -39,6 +39,7 @@ class RearrangementAttempt(BaseModel):
 
 class RearrangementSuggestion(BaseModel):
     base_revision: int
+    suggestion_id: str | None = None
     accepted: bool
     message: str = Field(description="One sentence for the owner: what the suggestion does, or why there is none.")
     moves: list[NodeMove] = Field(default_factory=list)
@@ -49,8 +50,16 @@ class RearrangementSuggestion(BaseModel):
     """The production assessment of the suggested layout, as the arrange panel shows it once loaded."""
     reward: RewardParts | None = None
     attempts: list[RearrangementAttempt] = Field(default_factory=list)
-    model_calls: int = Field(default=0, description="Requests sent to the model for this click, four answers each.")
+    model_calls: int = Field(default=0, description="Requests sent to the model for this click.")
     windows: int = Field(default=0, description="Windows of a big scan asked about; 0 when the model saw it whole.")
+    provider: str | None = None
+    model: str | None = None
+    rounds: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cost_dollars: float = 0.0
+    snap_rescues: int = 0
+    budget_reached: bool = False
 
 
 class RearrangementStatus(BaseModel):
@@ -58,7 +67,8 @@ class RearrangementStatus(BaseModel):
     available: bool
     unavailable_reason: str | None = None
     state: Literal["idle", "queued", "running", "done", "failed"]
-    phase: Literal["waiting", "starting_model", "asking_model", "checking"] | None = None
+    phase: Literal["waiting", "starting_model", "asking_model", "checking", "trying_again"] | None = None
+    phase_reason: str | None = None
     """While running: waiting for the worker, starting a cold model, asking it, or checking its answers."""
     error: str | None = None
     result: RearrangementSuggestion | None = None

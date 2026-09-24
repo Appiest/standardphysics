@@ -70,6 +70,7 @@ from .loop_run import stream as stream_loop_on
 from .proposals import propose
 from .questions import answer_question
 from .rearrangement import Rearranger, queue_suggestion, suggestion_status
+from .rearrangement_data import record_outcome
 from .replays import install_replay_routes
 from .report import build_report
 from .route import confirm, suggestion
@@ -671,13 +672,20 @@ def _install_rearrangement_routes(app: FastAPI, database: Database, worker: Work
 
     @app.post(path, response_model=RearrangementStatus, status_code=202)
     def suggest_rearrangement(scan_id: uuid.UUID, body: RearrangementRequest) -> RearrangementStatus:
-        """Queue the fine-tuned model's suggestion; 503 when no model is set up. Never saves a layout."""
+        """Queue a model suggestion. Never save a layout automatically."""
         return queue_suggestion(database, worker, worker.rearranger, scan_id, body)
 
     @app.get(path, response_model=RearrangementStatus)
     def rearrangement_suggestion(scan_id: uuid.UUID, revision: int) -> RearrangementStatus:
         """Whether suggestions are available, and the latest one for this revision."""
         return suggestion_status(database, worker.rearranger, scan_id, revision)
+
+    @app.post(path + "/{suggestion_id}/put-back")
+    def put_back_suggestion(scan_id: uuid.UUID, suggestion_id: str, revision: int) -> dict:
+        with database.transaction() as connection:
+            if not record_outcome(connection, scan_id, revision, suggestion_id, "put_back"):
+                raise ApiProblem(404, "no such suggestion")
+        return {}
 
 
 def _install_simulation_routes(app: FastAPI, database: Database, stages: Stages, worker: Worker) -> None:

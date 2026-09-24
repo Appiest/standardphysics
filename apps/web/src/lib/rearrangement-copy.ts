@@ -7,10 +7,22 @@ const PHASE_SENTENCE: Record<Phase, string> = {
   waiting: "Asking the model for a layout",
   asking_model: "Asking the model for a layout",
   starting_model: "Starting the model. This can take a few minutes on the first request.",
-  checking: "Checking the model's layouts against every rule",
+  checking: "Checking the layout against every rule",
+  trying_again: "The last idea did not pass the checks, so the model is trying again.",
 };
 
-export function phaseSentence(phase: RearrangementStatus["phase"]): string {
+const RETRY_SENTENCE: Record<string, string> = {
+  collided: "The last idea bumped one piece into another, so the model is trying again.",
+  new_problem: "The last idea caused a new problem, so the model is trying again.",
+  noise: "The last idea changed too little to measure, so the model is trying again.",
+  nothing_changed: "The last idea did not improve a problem, so the model is trying again.",
+  left_the_floor: "The last idea pushed a piece off the floor, so the model is trying again.",
+  pinned: "The last idea moved an uncertain piece, so the model is trying again.",
+  blocked_keep_clear: "The last idea blocked a clear space, so the model is trying again.",
+};
+
+export function phaseSentence(phase: RearrangementStatus["phase"], reason: string | null = null): string {
+  if (phase === "trying_again" && reason) return RETRY_SENTENCE[reason] ?? PHASE_SENTENCE.trying_again;
   return PHASE_SENTENCE[phase ?? "waiting"];
 }
 

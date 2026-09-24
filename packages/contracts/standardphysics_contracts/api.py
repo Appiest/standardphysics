@@ -138,6 +138,7 @@ class LayoutCheckResult(BaseModel):
 class SaveLayoutRequest(BaseModel):
     base_revision: int
     moves: list[NodeMove]
+    suggestion_id: str | None = None
 
 
 class ReviewedRule(BaseModel):

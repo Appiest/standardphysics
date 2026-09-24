@@ -5,7 +5,7 @@ as it was in training. A bigger scan is cut the way training cut it
 (`training.rooms.build_window`): a window of `WINDOW_RADIUS_METERS` around a
 furniture-fixable problem, with its own local route. At most
 `MAX_WINDOWS_PER_SUGGESTION` windows are asked about per click, the problems
-with the largest shortfall first, and each window gets the full four answers.
+with the largest shortfall first, and each window gets up to four rounds.
 
 Every window's best accepted answer is carried back into the whole scan and
 the combination is scored there, with the whole scan's hard constraints and
@@ -23,14 +23,20 @@ from standardphysics_agents.evaluation.gate import UNMEASURED_SHORTFALL_INCHES
 from standardphysics_agents.redesign import FurnitureMove, RoomEdits
 from standardphysics_agents.training import TrainingChecker, edits_json, parse_edits, prompt_messages
 from standardphysics_agents.training.edits import node_moves
+from standardphysics_agents.training.feedback import diagnose, feedback_message
 from standardphysics_agents.training.phantoms import phantoms, pin, scan_errors, without_nodes, without_unmeasured
+from standardphysics_agents.training.prompt import openrouter_prompt_messages
 from standardphysics_agents.training.reward import Verdict, score_completion
 from standardphysics_agents.training.rooms import ScanPlan, build_window, movable_named
+from standardphysics_agents.training.snap import snap_collisions
 from standardphysics_agents.training.windows import WINDOW_RADIUS_METERS, summarize_problem
-from standardphysics_contracts import Finding, NodeMove, Scenario, SceneGraph
+from standardphysics_contracts import Finding, NodeMove, Scenario, SceneGraph, graph_hash
+
+from .openrouter_rearrange import BudgetReached
 
 MAX_WINDOWS_PER_SUGGESTION = 5
-"""Windows asked about per click on a big scan; each costs one model request of four answers."""
+MAX_ROUNDS = 4
+"""Each window gets one conversation of at most four proposals."""
 
 SEPARATE_WINDOWS_METERS = WINDOW_RADIUS_METERS / 2
 """Problems closer than this share a window, as they did in training."""
@@ -50,6 +56,7 @@ class Part:
 class Answer:
     verdict: Verdict
     moves: list[NodeMove]
+    snapped: bool = False
 
 
 @dataclass
@@ -62,6 +69,9 @@ class Search:
     chosen: Answer | None = None
     whole_scan_reason: str | None = None
     """Why the combined windows failed on the whole scan, when they did."""
+    chains: list[dict] = field(default_factory=list)
+    snap_rescues: int = 0
+    budget_reached: bool = False
 
 
 def scan_plan(scan_id: uuid.UUID, graph: SceneGraph, scenario: Scenario) -> ScanPlan:
@@ -115,14 +125,53 @@ def parts_to_ask(plan: ScanPlan, checker: TrainingChecker, problems: list[Findin
     return [part for part in parts if part is not None]
 
 
-def _best_answer(part: Part, completions: list[str], search: Search) -> Answer | None:
-    best = None
-    for text in completions:
-        verdict = score_completion(text, part.graph, part.checker)
-        search.verdicts.append(verdict)
-        if verdict.gate_accepts and (best is None or verdict.reward > best.verdict.reward):
-            best = Answer(verdict, node_moves(parse_edits(text)))
-    return best
+def _try_snap(part: Part, text: str) -> Answer | None:
+    edits = parse_edits(text)
+    if edits is None:
+        return None
+    moves = snap_collisions(part.graph, node_moves(edits), part.checker)
+    if moves is None:
+        return None
+    verdict = score_completion(_as_completion(moves), part.graph, part.checker)
+    return Answer(verdict, moves, snapped=True)
+
+
+def _ask_part(part: Part, ask: Ask, result: Search, provider: str,
+              progress: Callable[[str, str | None], None], index: int) -> Answer | None:
+    prompt = openrouter_prompt_messages if provider == "openrouter" else prompt_messages
+    messages = prompt(part.graph, part.checker)
+    chain = {"window": index, "window_graph_hash": graph_hash(part.graph),
+             "prompt_messages": messages, "rounds": []}
+    result.chains.append(chain)
+    for round_index in range(1, MAX_ROUNDS + 1):
+        if round_index == 1:
+            progress("asking_model", None)
+        try:
+            completions = ask(messages)
+        except BudgetReached:
+            result.budget_reached = True
+            return None
+        result.model_calls += 1
+        text = completions[0] if completions else ""
+        progress("checking", None)
+        attempt = diagnose(text, part.graph, part.checker)
+        result.verdicts.append(attempt.verdict)
+        answer = Answer(attempt.verdict, node_moves(parse_edits(text))) if attempt.accepted else None
+        if answer is None and attempt.category == "collided":
+            answer = _try_snap(part, text)
+        if answer is not None and answer.snapped:
+            result.snap_rescues += 1
+        feedback = None if answer is not None or round_index == MAX_ROUNDS else feedback_message(attempt)
+        chain["rounds"].append({"round": round_index, "proposal": text, "category": attempt.category,
+                                "notes": list(attempt.notes), "feedback": feedback,
+                                "verdict": attempt.verdict.as_dict(), "snapped": bool(answer and answer.snapped)})
+        if answer is not None:
+            return answer
+        if feedback:
+            progress("trying_again", attempt.category)
+            messages = [*messages, {"role": "assistant", "content": text},
+                        {"role": "user", "content": feedback}]
+    return None
 
 
 def _as_completion(moves: list[NodeMove]) -> str:
@@ -149,6 +198,7 @@ def on_whole_scan(plan: ScanPlan, checker: TrainingChecker, moves: list[NodeMove
 def _whole_scan_choice(plan: ScanPlan, checker: TrainingChecker, answers: list[Answer], search: Search) -> None:
     combined = on_whole_scan(plan, checker, combined_moves(answers))
     if combined.verdict.gate_accepts:
+        combined.snapped = any(answer.snapped for answer in answers)
         search.chosen = combined
         return
     search.whole_scan_reason = combined.verdict.reason
@@ -157,22 +207,25 @@ def _whole_scan_choice(plan: ScanPlan, checker: TrainingChecker, answers: list[A
     for answer in sorted(answers, key=lambda a: a.verdict.reward, reverse=True):
         alone = on_whole_scan(plan, checker, answer.moves)
         if alone.verdict.gate_accepts:
+            alone.snapped = answer.snapped
             search.chosen = alone
             return
 
 
-def search(plan: ScanPlan, checker: TrainingChecker, problems: list[Finding], ask: Ask) -> Search:
-    """Ask about every part, keep each part's best accepted answer, and settle on one layout for the scan."""
+def search(plan: ScanPlan, checker: TrainingChecker, problems: list[Finding], ask: Ask,
+           provider: str = "fireworks", progress: Callable[[str, str | None], None] | None = None) -> Search:
+    """Ask each window in a feedback chain, then validate the joined layout on the whole scan."""
     result = Search()
     parts = parts_to_ask(plan, checker, problems)
     result.parts = len(parts)
     answers = []
-    for part in parts:
-        completions = ask(prompt_messages(part.graph, part.checker))
-        result.model_calls += 1
-        best = _best_answer(part, completions, result)
-        if best is not None:
-            answers.append(best)
+    report = progress or (lambda phase, reason: None)
+    for index, part in enumerate(parts):
+        answer = _ask_part(part, ask, result, provider, report, index)
+        if answer is not None:
+            answers.append(answer)
+        if result.budget_reached:
+            break
     if not answers:
         return result
     if plan.small:

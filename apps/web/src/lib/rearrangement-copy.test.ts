@@ -4,7 +4,8 @@ import { isWorking, phaseSentence, refusalSentence } from "@/lib/rearrangement-c
 import type { RearrangementStatus } from "@/types/contracts";
 
 function status(state: RearrangementStatus["state"]): RearrangementStatus {
-  return { base_revision: 0, available: true, unavailable_reason: null, state, phase: null, error: null, result: null };
+  return { base_revision: 0, available: true, unavailable_reason: null, state, phase: null,
+    phase_reason: null, error: null, result: null };
 }
 
 describe("rearrangement copy", () => {
@@ -12,6 +13,7 @@ describe("rearrangement copy", () => {
     expect(phaseSentence("starting_model")).toContain("few minutes");
     expect(phaseSentence("asking_model")).toBe("Asking the model for a layout");
     expect(phaseSentence(null)).toBe("Asking the model for a layout");
+    expect(phaseSentence("trying_again", "collided")).toContain("bumped one piece into another");
   });
 
   it("polls only while a job is queued or running", () => {
