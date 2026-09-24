@@ -13,4 +13,16 @@ describe("blockedSentence", () => {
       "The ordering counter stays where it is.",
     );
   });
+
+  it("says how far a piece may travel", () => {
+    expect(blockedSentence({ node_id: "a", reason: "moved_too_far", detail: "Display case" })).toBe(
+      "The display case can move up to 5 feet from where it was scanned.",
+    );
+  });
+
+  it("says a table needs room to pull up to", () => {
+    expect(blockedSentence({ node_id: "a", reason: "no_room_to_use", detail: "Table" })).toBe(
+      "The table needs open floor on one side so someone can pull up to it.",
+    );
+  });
 });

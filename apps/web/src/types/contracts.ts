@@ -1104,6 +1104,7 @@ export interface SceneNode {
   kind: string;
   label: string;
   labeled_by: string;
+  measured_position?: Vec3 | null;
   movable: boolean;
   parent_id: string | null;
   quality: "measured" | "needs_another_look" | "confirmed";

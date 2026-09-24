@@ -7,6 +7,8 @@ lives here once rather than as a string comparison inside each check.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room, lies_flat
 
 SERVICE_COUNTER_LABELS = frozenset(
@@ -19,6 +21,11 @@ SERVICE_COUNTER_LABELS = frozenset(
 ENTRANCE_LABELS = frozenset({"front door", "entrance", "entry door", "main door"})
 
 DINING_SURFACE_LABELS = frozenset({"table", "dining table", "cafe table", "bar table"})
+
+WORK_SURFACE_LABELS = frozenset({"desk", "work table", "work surface", "workbench"})
+
+SEATING_LABELS = frozenset({"chair", "stool", "bar stool", "bench", "seat"})
+"""Seats get pulled out to use a table, so they are never what stops someone using it."""
 
 LOWERED_SECTION_LABELS = frozenset(
     {
@@ -93,6 +100,32 @@ def point_of_sale(graph: SceneGraph) -> list[SceneNode]:
         for node in graph.nodes
         if not bounds_the_room(node) and _normalized(node.label) in POINT_OF_SALE_LABELS
     ]
+
+
+UsedFromTheFloor = Literal["surface", "counter"]
+"""surface: a dining or work surface, which 902.2 has a person pull up to face-on.
+counter: a service counter, which 904.4 lets a person pull up to side-on or face-on.
+"""
+
+
+def used_from_the_floor(node: SceneNode) -> UsedFromTheFloor | None:
+    """How a person uses this piece from where they sit or stand, if they do.
+
+    None for everything else: a display case is looked into, a shelf reached
+    past, and neither needs a patch of floor kept clear in front of it.
+    """
+    if bounds_the_room(node):
+        return None
+    label = _normalized(node.label)
+    if label in DINING_SURFACE_LABELS or label in WORK_SURFACE_LABELS:
+        return "surface"
+    if label in SERVICE_COUNTER_LABELS:
+        return "counter"
+    return None
+
+
+def is_seating(node: SceneNode) -> bool:
+    return _normalized(node.label) in SEATING_LABELS or _normalized(node.raw_category) in SEATING_LABELS
 
 
 def floors(graph: SceneGraph) -> list[SceneNode]:
