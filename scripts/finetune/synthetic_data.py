@@ -19,13 +19,14 @@ from multiroom_data import (
     run_targets,
     target_quality,
 )
-from standardphysics_agents.fix import violations
+from standardphysics_agents.fix.constraints import _overlapping
 from standardphysics_agents.training import scramble
 from standardphysics_agents.training.scramble import LIGHT
 from standardphysics_agents.training.windows import Window
 from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3
-from standardphysics_fixtures.shop import CARD_READER_SIZE, build_graph, build_scenario
-from standardphysics_pipeline import footprint, gap_between
+from standardphysics_fixtures.shop import CARD_READER_SIZE, COUNTER_HEIGHT, build_graph, build_scenario
+from standardphysics_pipeline import footprint
+from standardphysics_pipeline.footprints import contains_point, floor_polygon
 
 NAMESPACE = uuid.UUID("ac88fb4c-5365-4c90-9851-70b998249886")
 ROOM_TYPES = ("cafe", "boba tea shop", "bakery", "boutique", "small office")
@@ -35,7 +36,7 @@ DIMENSION_SOURCES = {
     "display": "standardphysics_fixtures.shop._display_cases: 0.60 m deep, 0.90 m high",
     "counter": "standardphysics_fixtures.shop.COUNTER_LENGTH and COUNTER_HEIGHT",
     "point_of_sale": "standardphysics_fixtures.shop.CARD_READER_SIZE: 0.20 x 0.16 x 0.08 m",
-    "wing_shelf": "IKEA BILLY 80 x 28 x 202 cm; https://www.ikea.com/us/en/p/billy-bookcase-white-00263850/",
+    "wing_shelf": "IKEA BILLY 80 x 28 x 202 cm; https://www.ikea.com/us/en/p/billy-bookcase-white-20522046/",
 }
 
 
@@ -84,20 +85,22 @@ def _shop_nodes(room_name: str, room_type: str, rng: random.Random, l_shape: boo
         nodes.extend(_wing(room_name))
     if room_type != "small office":
         nodes.append(_new_node(room_name, "pos", "object", "Point of sale", "storage",
-                               (0, 3.6, template.by_id(next(n.id for n in template.nodes
-                                                              if n.label == "Ordering counter")).dimensions.z
-                                + CARD_READER_SIZE[2] / 2), CARD_READER_SIZE))
+                               (0, 3.6, COUNTER_HEIGHT + CARD_READER_SIZE[2] / 2), CARD_READER_SIZE))
     return nodes, id_map
 
 
 def _furniture_valid(graph: SceneGraph) -> bool:
-    pieces = [node for node in graph.nodes if node.movable]
-    if violations(graph, graph):
-        return False
-    if any(abs(node.transform.position.z - node.dimensions.z / 2) > 0.02 for node in pieces):
-        return False
-    return all(gap_between(footprint(left), footprint(right)) > 0
-               for index, left in enumerate(pieces) for right in pieces[index + 1:])
+    furniture = [node for node in graph.nodes if node.kind == "object"]
+    floors = [floor_polygon(node) for node in graph.nodes if node.kind == "floor"]
+    walls = [node for node in graph.nodes if node.kind == "wall"]
+    for index, node in enumerate(furniture):
+        underside = node.transform.position.z - node.dimensions.z / 2
+        if underside <= 0.02 and any(not any(contains_point(floor, corner, 0.01) for floor in floors)
+                                     for corner in footprint(node)):
+            return False
+        if any(_overlapping(node, other) for other in [*walls, *furniture[index + 1:]]):
+            return False
+    return True
 
 
 def make_room(index: int) -> Window:

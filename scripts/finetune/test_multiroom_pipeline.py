@@ -58,6 +58,17 @@ def test_failed_sft_promotion_does_not_block_rl_resume(tmp_path):
     assert trainer.promote.call_count == 2
 
 
+def test_sft_starts_from_initial_state_when_no_local_checkpoint(tmp_path):
+    progress = Progress(tmp_path / "progress.json")
+    trainer = SimpleNamespace(progress=progress, plan=Plan(initial_state="account/run/rl-state"),
+                              connect=Mock(), evaluate=Mock(), sft=Mock(), promote=Mock(return_value="model"))
+
+    run_sft_phase(trainer)
+
+    trainer.connect.assert_called_once_with("account/run/rl-state", with_optimizer=False)
+    trainer.sft.assert_called_once_with()
+
+
 def test_optional_promotion_records_success(tmp_path):
     progress = Progress(tmp_path / "progress.json")
     trainer = SimpleNamespace(progress=progress, promote=Mock(return_value="account/model"))

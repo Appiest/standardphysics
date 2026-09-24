@@ -79,6 +79,7 @@ class Plan:
     budget_dollars: float = 25.0
     sft_model_id: str = "room6-qwen3p8-27b-sft"
     rl_model_id: str = "room6-qwen3p8-27b-rl"
+    initial_state: str | None = None
 
 
 def expected_cost(plan: Plan, data: Room6Data, prompt_tokens: int, sft_tokens: int) -> dict:
@@ -345,7 +346,7 @@ def run_sft_phase(trainer: Trainer) -> None:
         trainer.client.save_weights_for_sampler("sft-final").result()
     else:
         checkpoint = progress.get("sft").get("state_ref")
-        trainer.connect(checkpoint, with_optimizer=bool(checkpoint))
+        trainer.connect(checkpoint or trainer.plan.initial_state, with_optimizer=bool(checkpoint))
         trainer.evaluate("base")
         trainer.sft()
     trainer.evaluate("sft")
