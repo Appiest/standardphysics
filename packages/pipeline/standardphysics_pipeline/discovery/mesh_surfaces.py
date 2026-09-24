@@ -12,7 +12,16 @@ from uuid import UUID
 
 import numpy as np
 from scipy import ndimage
-from standardphysics_contracts import Mat4, SceneGraph, SceneNode, SurfaceHeight, Vec3, bounds_the_room, lies_flat
+from standardphysics_contracts import (
+    Mat4,
+    SceneGraph,
+    SceneNode,
+    SurfaceHeight,
+    Vec3,
+    bounds_the_room,
+    lies_flat,
+    stands_upright,
+)
 
 from .boxes import claimed_by_any, inside, to_local
 
@@ -86,11 +95,15 @@ def _floor_level(centres: np.ndarray, area: np.ndarray, vertical: np.ndarray, gr
     return None
 
 
+def _has_ceiling(graph: SceneGraph, walls: list[SceneNode]) -> bool:
+    """A flat sheet above the middle of the walls is a ceiling already in the scan."""
+    middle = max(node.transform.position.z for node in walls)
+    return any(lies_flat(node) and node.transform.position.z > middle for node in graph.nodes)
+
+
 def _ceiling(centres: np.ndarray, area: np.ndarray, vertical: np.ndarray, graph: SceneGraph) -> SceneNode | None:
-    if any(node.kind == "ceiling" for node in graph.nodes):
-        return None
-    walls = [node for node in graph.nodes if node.kind == "wall"]
-    if not walls:
+    walls = [node for node in graph.nodes if stands_upright(node)]
+    if not walls or _has_ceiling(graph, walls):
         return None
     tops = [node.transform.position.z + node.dimensions.z / 2 for node in walls]
     mask = (vertical >= 0.8) & (centres[:, 2] >= max(tops) - 0.5) & (centres[:, 2] <= max(tops) + 0.5)

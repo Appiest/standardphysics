@@ -102,3 +102,15 @@ def test_sloped_lidar_patch_needs_a_photo_before_it_is_called_a_ramp():
     assert any(node.raw_category == "lidar_candidate" and node.quality == "needs_another_look"
                for node in result.nodes)
     assert not any(node.label == "Ramp" for node in result.nodes)
+
+
+def test_a_scan_that_already_has_a_ceiling_does_not_get_a_second_one():
+    graph = _graph()
+    wall = _node("Wall", (2, 0, 1.2), (0.05, 4, 2.4)).model_copy(update={"kind": "wall"})
+    scanned = np.concatenate([_plane(-1.5, 1.5, 0), _plane(-1.5, 1.5, 2.4)])
+    inferred = segment_surfaces(scanned, graph.model_copy(update={"nodes": [*graph.nodes, wall]}))
+    assert sum(node.kind == "ceiling" for node in inferred.nodes) == 1
+    ceiling = _node("Ceiling", (0, 0, 2.4), (4, 4, 0.02)).model_copy(update={"kind": "ceiling"})
+    scanned_with_ceiling = graph.model_copy(update={"nodes": [*graph.nodes, wall, ceiling]})
+    result = segment_surfaces(scanned, scanned_with_ceiling)
+    assert sum(node.kind == "ceiling" for node in result.nodes) == 1
