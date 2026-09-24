@@ -80,7 +80,7 @@ def run(source: pathlib.Path, destination: pathlib.Path, workers: int) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     output = destination / "ceiling.jsonl"
     completed = {row["variant_id"] for row in _rows(output)}
-    heldout = {row["variant_id"] for row in _rows(source / "dataset/heldout.jsonl")}
+    heldout = {row["variant"] for row in _rows(source / "dataset/heldout.jsonl")}
     windows = {row["window_id"]: row for row in _rows(source / "windows.jsonl")}
     tasks = [(row, windows[row["window_id"]]) for row in _rows(source / "variants.jsonl")
              if row["variant_id"] in heldout and row["variant_id"] not in completed]
