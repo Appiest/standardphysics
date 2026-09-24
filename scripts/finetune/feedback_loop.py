@@ -145,7 +145,7 @@ def _finding_note(finding, names: Names) -> str:
     locus = finding.locus
     where = "" if locus is None or locus.point is None else f" at {[_r(locus.point.x), _r(locus.point.y)]}"
     involved = [] if locus is None else [names.node(node_id) for node_id in locus.node_ids]
-    pieces = ", ".join(names.piece(node) for node in involved if node is not None)
+    pieces = ", ".join(dict.fromkeys(names.piece(node) for node in involved if node is not None))
     measured = ("" if finding.measured_inches is None or finding.required_inches is None
                 else f" ({finding.measured_inches:.1f} in where {finding.required_inches:.0f} in is needed)")
     return f"{finding.title}{where}{measured}" + (f", between {pieces}" if pieces else "")

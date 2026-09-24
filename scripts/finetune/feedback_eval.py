@@ -22,6 +22,7 @@ import argparse
 import json
 import os
 import pathlib
+import threading
 import time
 import zlib
 from concurrent.futures import ThreadPoolExecutor
@@ -43,6 +44,8 @@ FIREWORKS_LIMIT = 6.0
 OPENROUTER_LIMIT = 10.0
 FIREWORKS_RATES = {"prefill": 1.86, "sample": 5.595}
 SUBSET_SIZE = 30
+OPENROUTER_MAX_TOKENS = 4000
+OPENROUTER_REASONING = {"effort": "low"}
 ESTIMATE_EXIT_CODE = 4
 
 
@@ -67,6 +70,10 @@ ARMS = {
     "E": ArmSpec("fireworks", model="base"),
     "D_B": ArmSpec("openrouter", model="openrouter", rooms="subset"),
     "D_C": ArmSpec("openrouter", model="openrouter", hint=True, rooms="subset"),
+    "B_repeat": ArmSpec("fireworks"),
+    "C_repeat": ArmSpec("fireworks", hint=True),
+    "D_B_rest": ArmSpec("openrouter", model="openrouter", rooms="rest"),
+    "D_C_rest": ArmSpec("openrouter", model="openrouter", hint=True, rooms="rest"),
 }
 
 
@@ -74,21 +81,47 @@ ARMS = {
 
 
 class Ledger:
-    """Running spend per provider, rewritten after every call."""
+    """Running spend, one file per provider, reread before every change so two queues never overwrite each other.
 
-    def __init__(self, path: pathlib.Path):
-        self.path = path
-        self.state = json.loads(path.read_text()) if path.exists() else {"fireworks": {}, "openrouter": {}, "arms": {}}
+    The lock covers the threads of one queue; the file per provider covers the two queues.
+    """
+
+    def __init__(self, directory: pathlib.Path):
+        self.directory = directory
+        self.lock = threading.Lock()
+
+    def path(self, provider: str) -> pathlib.Path:
+        return self.directory / f"spend_{provider}.json"
+
+    def load(self, provider: str) -> dict:
+        path = self.path(provider)
+        return json.loads(path.read_text()) if path.exists() else {"arms": {}}
 
     def dollars(self, provider: str) -> float:
-        return self.state[provider].get("dollars", 0.0)
+        return self.load(provider).get("dollars", 0.0)
+
+    def arm(self, provider: str, arm: str) -> dict:
+        return self.load(provider)["arms"].get(arm, {})
 
     def add(self, provider: str, arm: str, **amounts) -> None:
-        for bucket in (self.state[provider], self.state["arms"].setdefault(arm, {})):
-            for key, value in amounts.items():
-                bucket[key] = round(bucket.get(key, 0) + value, 6)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self.state, indent=2) + "\n")
+        with self.lock:
+            state = self.load(provider)
+            for bucket in (state, state["arms"].setdefault(arm, {})):
+                for key, value in amounts.items():
+                    bucket[key] = round(bucket.get(key, 0) + value, 6)
+            self.save(provider, state)
+
+    def note(self, provider: str, arm: str, **fields) -> None:
+        with self.lock:
+            state = self.load(provider)
+            state["arms"].setdefault(arm, {}).update(fields)
+            self.save(provider, state)
+
+    def save(self, provider: str, state: dict) -> None:
+        self.directory.mkdir(parents=True, exist_ok=True)
+        temporary = self.path(provider).with_suffix(".tmp")
+        temporary.write_text(json.dumps(state, indent=2) + "\n")
+        os.replace(temporary, self.path(provider))
 
 
 def fireworks_dollars(prefill: int, sample: int) -> float:
@@ -191,14 +224,16 @@ class OpenRouterProposer:
 
     def worst_case(self, messages: list[dict]) -> float:
         characters = sum(len(message["content"]) for message in messages)
-        return characters / 2.5 * self.price["prompt"] + 1024 * self.price["completion"]
+        return characters / 2.5 * self.price["prompt"] + OPENROUTER_MAX_TOKENS * self.price["completion"]
 
     def one(self, messages: list[dict]) -> str:
         for attempt in range(3):
             try:
                 response = self.router.client().chat.completions.create(
-                    model=self.router.model, messages=messages, temperature=TEMPERATURE, max_tokens=1024,
-                    extra_body={"provider": self.routing(self.router.model), "usage": {"include": True}})
+                    model=self.router.model, messages=messages, temperature=TEMPERATURE,
+                    max_tokens=OPENROUTER_MAX_TOKENS, extra_body={"provider": self.routing(self.router.model),
+                                                                  "usage": {"include": True},
+                                                                  "reasoning": OPENROUTER_REASONING})
             except Exception as error:  # a flaky provider costs a retry, then an unparseable answer
                 print(f"openrouter error {type(error).__name__}: {error}", flush=True)
                 time.sleep(5 * (attempt + 1))
@@ -243,12 +278,15 @@ class Experiment:
         self.data = load(args.data)
         self.ceiling = load_ceiling(args.ceiling)
         self.rows = {row["variant"]: row for row in self.data.heldout}
-        self.ledger = Ledger(self.out / "spend.json")
+        self.ledger = Ledger(self.out)
 
     def rooms(self, spec: ArmSpec) -> list[str]:
         variants = sorted(self.rows)
-        if spec.rooms == "subset" or self.args.subset:
-            variants = stratified_subset(variants, {v: bool(self.ceiling.get(v, {}).get("fixable")) for v in variants})
+        subset = stratified_subset(variants, {v: bool(self.ceiling.get(v, {}).get("fixable")) for v in variants})
+        if spec.rooms == "rest":
+            variants = [variant for variant in variants if variant not in subset]
+        elif spec.rooms == "subset" or self.args.subset:
+            variants = subset
         return variants[: self.args.limit] if self.args.limit else variants
 
     def judge(self, completion: str, variant: str):
@@ -260,7 +298,7 @@ class Experiment:
         return with_open_floor(messages, self.data.graph(variant)) if hint else messages
 
     def write(self, arm: str, records: list[dict]) -> pathlib.Path:
-        path = self.out / "transcripts" / f"{arm}{self.args.tag}.jsonl"
+        path = self.out / "transcripts" / f"{arm}.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("".join(json.dumps(record) + "\n" for record in records))
         return path
@@ -288,20 +326,20 @@ class Experiment:
 
     def estimate(self, proposer, spec: ArmSpec, variants: list[str]) -> float:
         if spec.backend != "fireworks":
-            return sum(proposer.worst_case(self.first_prompt(v, spec.hint)) for v in variants) * ROUNDS * 1.6
+            return sum(proposer.worst_case(self.first_prompt(v, spec.hint)) for v in variants) * ROUNDS * 1.3
         tokens = [proposer.prompt_tokens(self.first_prompt(v, spec.hint)) for v in variants]
         if spec.independent:
             return fireworks_dollars(sum(tokens) * ROUNDS, len(tokens) * ROUNDS * MAX_SAMPLE_TOKENS)
         return fireworks_dollars(*chain_worst_case_tokens(tokens))
 
     def run(self, arm: str) -> None:
-        spec, variants = ARMS[arm], self.rooms(ARMS[arm])
+        spec, variants, label = ARMS[arm], self.rooms(ARMS[arm]), arm + self.args.tag
         if spec.backend == "rescore":
-            print(f"wrote {self.write(arm, self.rescore(arm, variants))}", flush=True)
+            print(f"wrote {self.write(label, self.rescore(label, variants))}", flush=True)
             return
-        proposer = self.proposer(spec, arm)
+        proposer = self.proposer(spec, label)
         try:
-            self.run_with(proposer, arm, spec, variants)
+            self.run_with(proposer, label, spec, variants)
         finally:
             proposer.close()
 
@@ -311,7 +349,7 @@ class Experiment:
         worst, spent = self.estimate(proposer, spec, variants), self.ledger.dollars(provider)
         print(f"{arm}: {len(variants)} rooms, worst case ${worst:.2f}, {provider} spent ${spent:.2f} of ${limit}",
               flush=True)
-        self.ledger.state["arms"].setdefault(arm, {})["worst_case_estimate"] = round(worst, 4)
+        self.ledger.note(provider, arm, worst_case_estimate=round(worst, 4))
         if spent + worst > limit and not self.args.allow_over_estimate:
             raise SystemExit(ESTIMATE_EXIT_CODE)
         if spec.independent:
@@ -323,6 +361,7 @@ class Experiment:
 
     def run_chain_arm(self, proposer, arm: str, spec: ArmSpec, variants: list[str]) -> list[dict]:
         chains = [Chain(variant, self.first_prompt(variant, spec.hint)) for variant in variants]
+        provider = "openrouter" if spec.backend == "openrouter" else "fireworks"
 
         def propose(conversations):
             return [group[0] for group in proposer(conversations)]
@@ -330,7 +369,7 @@ class Experiment:
         def report(round_index):
             left = sum(1 for chain in chains if chain.open)
             print(f"{arm} round {round_index}: {len(chains) - left} accepted, {left} open, "
-                  f"spend {json.dumps(self.ledger.state['arms'].get(arm, {}))}", flush=True)
+                  f"spend {json.dumps(self.ledger.arm(provider, arm))}", flush=True)
 
         run_chains(chains, propose, self.judge, ROUNDS, after_round=report)
         return [room_record(arm, chain.variant, self.ceiling, chain.rounds, chain.messages) for chain in chains]
@@ -339,24 +378,37 @@ class Experiment:
 # --- results ------------------------------------------------------------------
 
 
-def build_results(out: pathlib.Path, ceiling: dict[str, dict]) -> dict:
-    arms = {}
+REST = "_rest"
+
+
+def _transcripts(out: pathlib.Path) -> dict[str, list[dict]]:
+    """Every arm's rooms, with a `_rest` arm folded into the arm it completes."""
+    arms: dict[str, list[dict]] = {}
     for path in sorted((out / "transcripts").glob("*.jsonl")):
+        if path.stem not in ARMS:
+            continue
         records = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
-        arms[path.stem] = records
-    ledger = Ledger(out / "spend.json").state
+        arms.setdefault(path.stem.removesuffix(REST), []).extend(records)
+    return arms
+
+
+def _arm_cost(ledger: Ledger, name: str) -> dict:
+    parts = [ledger.arm(provider, arm) for provider in ("fireworks", "openrouter") for arm in (name, name + REST)]
+    return {"dollars": round(sum(part.get("dollars", 0.0) for part in parts), 4), "parts": [p for p in parts if p]}
+
+
+def build_results(out: pathlib.Path, ceiling: dict[str, dict]) -> dict:
+    ledger = Ledger(out)
     subset = stratified_subset(sorted(ceiling), {variant: bool(row["fixable"]) for variant, row in ceiling.items()})
     results = {"rounds_per_room": ROUNDS, "temperature": TEMPERATURE,
                "ceiling": {"rooms": len(ceiling), "fixable": sum(1 for row in ceiling.values() if row["fixable"]),
                            "all_clear": sum(1 for row in ceiling.values() if row["all_clear"])},
-               "spend": {"fireworks": ledger["fireworks"], "openrouter": ledger["openrouter"]},
+               "spend": {provider: {k: v for k, v in ledger.load(provider).items() if k != "arms"}
+                         for provider in ("fireworks", "openrouter")},
                "subset": subset, "arms": {}, "arms_on_subset": {}}
-    for name, records in arms.items():
-        cost = ledger["arms"].get(name, {})
-        results["arms"][name] = {**arm_metrics(records), "cost": cost}
-        if subset:
-            on_subset = [record for record in records if record["variant"] in subset]
-            results["arms_on_subset"][name] = arm_metrics(on_subset)
+    for name, records in _transcripts(out).items():
+        results["arms"][name] = {**arm_metrics(records), "cost": _arm_cost(ledger, name)}
+        results["arms_on_subset"][name] = arm_metrics([record for record in records if record["variant"] in subset])
     return results
 
 

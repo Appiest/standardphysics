@@ -43,6 +43,35 @@ def rejections_by_round(records: list[dict]) -> dict[str, dict[str, int]]:
     return {round_index: dict(counts.most_common()) for round_index, counts in sorted(table.items())}
 
 
+def until_accepted(record: dict) -> list[dict]:
+    """The calls a room makes up to and including its first accepted one, as a chain would stop."""
+    first = first_accepted_round(record)
+    return [attempt for attempt in record["rounds"] if first is None or attempt["round"] <= first]
+
+
+def open_room_rounds(records: list[dict]) -> dict[str, dict]:
+    """Per round, among rooms with nothing accepted yet: how many called, and what share of each outcome."""
+    table: dict[str, Counter] = {}
+    for record in records:
+        for attempt in until_accepted(record):
+            table.setdefault(str(attempt["round"]), Counter())[attempt["category"]] += 1
+    return {round_index: {"open_rooms": sum(counts.values()),
+                          **{category: _share(count, sum(counts.values())) for category, count in counts.most_common()}}
+            for round_index, counts in sorted(table.items())}
+
+
+def next_outcome_after(records: list[dict]) -> dict[str, dict]:
+    """For each kind of refusal, what the room's next call did: the effect of hearing that reason."""
+    table: dict[str, Counter] = {}
+    for record in records:
+        calls = until_accepted(record)
+        for previous, following in zip(calls, calls[1:]):
+            table.setdefault(previous["category"], Counter())[following["category"]] += 1
+    return {category: {"calls": sum(counts.values()), **{k: _share(v, sum(counts.values()))
+                                                          for k, v in counts.most_common()}}
+            for category, counts in sorted(table.items(), key=lambda item: -sum(item[1].values()))}
+
+
 def _verdict(attempt: dict) -> Verdict:
     fields = Verdict.__dataclass_fields__
     return Verdict(**{key: value for key, value in attempt.items() if key in fields})
@@ -64,6 +93,9 @@ def arm_metrics(records: list[dict]) -> dict:
         "accepted_of_ceiling": _share(accepted_count, fixable),
         "accepted_where_search_failed": sum(1 for record, pick in zip(records, picks)
                                             if pick is not None and not record["ceiling_fixable"]),
+        "accepted_where_search_succeeded": sum(1 for record, pick in zip(records, picks)
+                                               if pick is not None and record["ceiling_fixable"]),
+        "cleared_where_search_cleared": sum(1 for record in records if record["ceiling_all_clear"] and cleared(record)),
         "cleared_rooms": cleared_count,
         "cleared_share": _share(cleared_count, rooms),
         "cleared_of_ceiling": _share(cleared_count, clearable),
@@ -76,4 +108,6 @@ def arm_metrics(records: list[dict]) -> dict:
         "mean_room_reward": _mean([pick["reward"] if pick else 0.0 for pick in picks]),
         "per_call": summarize([_verdict(attempt) for record in records for attempt in record["rounds"]]),
         "rejections_by_round": rejections_by_round(records),
+        "open_rooms_by_round": open_room_rounds(records),
+        "next_outcome_after": next_outcome_after(records),
     }

@@ -136,6 +136,10 @@ class TestLoop:
         assert metrics["cleared_rooms"] == 1 and metrics["mean_rounds_to_accept"] == 2
         assert metrics["mean_recovered_among_accepted"] == 0.9 and metrics["mean_room_reward"] == 0.45
         assert metrics["rejections_by_round"]["1"] == {"collided": 2}
+        assert metrics["open_rooms_by_round"]["3"] == {"open_rooms": 1, "collided": 1.0}
+        assert metrics["open_rooms_by_round"]["2"] == {"open_rooms": 2, "accepted": 0.5, "collided": 0.5}
+        assert metrics["next_outcome_after"]["collided"] == {"calls": 4, "collided": 0.75, "accepted": 0.25}
+        assert metrics["accepted_where_search_succeeded"] == 1 and metrics["cleared_where_search_cleared"] == 1
 
 
 def test_the_worst_case_counts_every_round_growing():
