@@ -52,9 +52,11 @@ LABEL_CHAR_WIDTH = 0.56
 """Rough average glyph width as a fraction of font size, for deciding whether a
 label fits inside its footprint without ever measuring rendered text."""
 
-FACING_WORDS = ("chair", "sofa", "bench", "stool", "table", "desk", "counter", "shelf", "display")
-"""What gets a front marker. Matched the same way `training/quality.py` finds
-seats and tables: a case-insensitive substring of the label or raw category."""
+FACING_WORDS = ("chair", "sofa", "bench", "stool", "shelf", "display")
+"""What gets a front marker: pieces with one side you use them from. Tables, desks
+and counters are used from any open side, so a bar on one edge would claim a
+front they do not have. Matched as a case-insensitive substring of the label or
+raw category."""
 
 
 def _load_pairs() -> list[dict]:

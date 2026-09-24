@@ -84,11 +84,13 @@ def _node(label: str, raw_category: str, x: float = 1.0, y: float = 2.0, degrees
     )
 
 
-def test_has_a_facing_matches_the_words_quality_py_uses_for_seats_and_tables():
+def test_only_pieces_with_a_single_front_get_a_front_marker():
     assert rate_pairs._has_a_facing(_node("Chair", "chair"))
     assert rate_pairs._has_a_facing(_node("Reading Bench", "bench"))
     assert not rate_pairs._has_a_facing(_node("Wall", "wall"))
     assert not rate_pairs._has_a_facing(_node("Backpack", "backpack"))
+    assert not rate_pairs._has_a_facing(_node("Table", "table"))
+    assert not rate_pairs._has_a_facing(_node("Ordering counter", "storage"))
 
 
 def test_front_edge_sits_on_the_front_heading_degrees_side_of_the_footprint():
