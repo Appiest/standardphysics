@@ -139,9 +139,17 @@ def precedent_rejection_for(
 ) -> Callable[[SceneGraph, SceneGraph], str | None]:
     """Create a CandidateRejection callback for propose_fix in fix.search."""
     def _reject(base: SceneGraph, candidate: SceneGraph) -> str | None:
-        violations = check_precedent_constraints(base, candidate, directives)
-        if violations:
-            return f"precedent_violation:{violations[0].rule_broken}"
+        cand_viols = check_precedent_constraints(base, candidate, directives)
+        # 1. Strictly forbid moves of protected fixtures
+        for v in cand_viols:
+            if v.rule_broken == "forbidden_move":
+                return f"precedent_violation:{v.rule_broken}"
+
+        # 2. Reject candidates that worsen precedent violations
+        base_viols = check_precedent_constraints(base, base, directives)
+        if len(cand_viols) > len(base_viols):
+            return f"precedent_violation:worsened_{cand_viols[-1].rule_broken}"
+
         return None
 
     return _reject

@@ -73,6 +73,8 @@
         ],
         "required_entities": [
           "service_counter",
+          "ordering_counter",
+          "counter",
           "queue",
           "stanchion",
           "point_of_sale",
@@ -127,7 +129,8 @@
         "space_typologies": [
           "commercial.retail.mercantile",
           "commercial.restaurant.dining",
-          "civic.library.reading_room"
+          "civic.library.reading_room",
+          "commercial.beverage.boba"
         ],
         "required_entities": [
           "merchandise_display",
