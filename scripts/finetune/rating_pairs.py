@@ -12,7 +12,8 @@ is varied further:
     turned                      one moved piece turned 30 degrees (rotation only)
 
 Only layouts that pass every hard constraint and the gate enter the pool. Two
-layouts of one variant make a pair when their Q differs by at least MIN_Q_GAP.
+layouts of one variant make a pair when their Q differs by at least MIN_Q_GAP
+and they differ in exactly one piece (`differs_by`).
 `select` then picks PAIR_COUNT pairs: as many windows as possible, at most a
 third rotation-only, quotas for tables at walls, chairs and held-out rooms, and
 Q gaps spread across small, middle and large.
@@ -197,17 +198,42 @@ def _final_places(variant: SceneGraph, edits: str) -> dict:
     return {node.id: (node.transform.position.x, node.transform.position.y) for node in placed.nodes}
 
 
-def differs_by(variant: SceneGraph, first: dict, second: dict) -> str:
-    """What separates two layouts of one variant, as a rater would see it."""
-    a, b = _final_places(variant, first["edits"]), _final_places(variant, second["edits"])
-    if all(math.dist(a[key], b[key]) <= SAME_PLACE_METERS for key in a):
-        return "turned" if "chair" not in second["family"] + first["family"] else "chair turned from its table"
-    varied = [x["family"] for x in (first, second) if x["family"] in QUOTAS or x["family"] == "different destination"]
-    if varied:
-        return varied[0]
-    moved_a = {m.node_id for m in RoomEdits.model_validate_json(first["edits"]).moves}
-    moved_b = {m.node_id for m in RoomEdits.model_validate_json(second["edits"]).moves}
-    return "different pieces moved" if moved_a != moved_b else "different destination"
+BASE_FAMILIES = frozenset({"put everything back", "put one piece back", "search answer"})
+
+
+def _moves(layout: dict) -> dict:
+    return {move.node_id: move for move in RoomEdits.model_validate_json(layout["edits"]).moves}
+
+
+def _changed_pieces(first: dict, second: dict) -> set:
+    a, b = _moves(first), _moves(second)
+    return {key for key in a.keys() | b.keys() if a.get(key) != b.get(key)}
+
+
+def _kind_of_change(variant: SceneGraph, first: dict, second: dict, piece) -> str:
+    families = {first["family"], second["family"]}
+    places = (_final_places(variant, first["edits"])[piece], _final_places(variant, second["edits"])[piece])
+    if math.dist(*places) <= SAME_PLACE_METERS:
+        return "chair turned from its table" if "chair turned from its table" in families else "turned"
+    for family in ("table pushed toward a wall", "chair moved from its table"):
+        if family in families:
+            return family
+    return "different destination"
+
+
+def differs_by(variant: SceneGraph, first: dict, second: dict) -> str | None:
+    """The one thing separating two layouts of a variant, or None when they differ in more than one piece.
+
+    Two starting layouts (the search answer, or pieces put back) may differ in
+    which pieces moved at all; any other pair has to differ in exactly one piece
+    so a rater's choice says something about that one change.
+    """
+    changed = _changed_pieces(first, second)
+    if {first["family"], second["family"]} <= BASE_FAMILIES:
+        return "different pieces moved" if changed else None
+    if len(changed) != 1:
+        return None
+    return _kind_of_change(variant, first, second, next(iter(changed)))
 
 
 def candidate_pairs(pool: dict, variant: SceneGraph, split: str) -> list[dict]:
@@ -215,9 +241,10 @@ def candidate_pairs(pool: dict, variant: SceneGraph, split: str) -> list[dict]:
     for i, first in enumerate(layouts):
         for second in layouts[i + 1:]:
             gap = abs(first["verdict"]["quality"]["q"] - second["verdict"]["quality"]["q"])
-            if gap >= MIN_Q_GAP:
+            kind = differs_by(variant, first, second) if gap >= MIN_Q_GAP else None
+            if kind is not None:
                 found.append({"window_id": pool["window_id"], "variant_id": pool["variant_id"], "split": split,
-                              "gap": round(gap, 4), "differs_by": differs_by(variant, first, second),
+                              "gap": round(gap, 4), "differs_by": kind,
                               "first": first, "second": second})
     return found
 
