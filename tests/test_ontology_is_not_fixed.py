@@ -24,7 +24,7 @@ ONTOLOGY_LITERAL = re.compile(
     r'^(?:NodeKind|Relation|QueryKind|Dimension|LabelSource)\s*(?::\s*\w+\s*)?=\s*Literal\[', re.M
 )
 
-BRANCHES_BASELINE = 24
+BRANCHES_BASELINE = 27
 """Places that ask what kind of thing something is. Target: nothing above the
 interpretation layer asks, because a name is for showing a person.
 
@@ -45,6 +45,15 @@ Raising this baseline is only ever an audit, never a shortcut. The last audit
   portals and mounts differently.
 Previously 15; the growth came from the A/G/K/E integrations above, not from
 this file's owner. Any count above 34 must fail and be audited here.
+
+Audit of 2026-09-24 (merging finetune/multiroom-data), 24 to 27:
+
+- 2 in training/prompt.py, which lists walls and doors by kind. That JSON is
+  the exact input the fine-tuned rearrangement model was trained on, and the
+  web's suggestion endpoint must send it unchanged, so these two stay until
+  the model is retrained on a prompt built from predicates.
+- 1 in training/quality.py, the wall term of Q, which is logged beside the
+  reward and never paid. It can become `stands_upright` with the prompt.
 """
 
 LITERALS_BASELINE = 0

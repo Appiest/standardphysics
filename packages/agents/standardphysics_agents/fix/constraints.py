@@ -6,10 +6,17 @@ themselves. The checks are enforced by re-running them. Everything else is
 enforced here, before a candidate is measured at all, because a candidate that
 puts a display case inside a wall has an excellent clear width and is not a
 rearrangement anybody can carry out.
+
+Two more keep a candidate honest about what it is for. A piece may not travel
+far from where the scan found it, and a table or counter has to keep room for
+somebody to pull up to it. Without them a table shoved flush into a corner
+widens the aisle beside it, the checks see an improvement, and nobody can sit
+at the table.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, to_meters
@@ -29,7 +36,8 @@ from ..checks.rectangles import rectangle
 from ..checks.walls import upright_walls
 from ..hashing import inventory
 from ..rules import load_pack
-from .moves import floor_height, rests_on_something, top_of, underside
+from .moves import floor_height, measured_position, rests_on_something, top_of, underside
+from .use_space import Room, has_room_to_use, reach
 
 FLOOR_MARGIN = 0.01
 """A centimetre of slack at the floor edge, for arithmetic rather than for room."""
@@ -49,6 +57,21 @@ VERTICAL_TOLERANCE = 0.02
 """How far a piece may sink into the one under it and still count as resting on it."""
 
 SWING_KINDS = frozenset({"door"})
+
+MAX_TRAVEL_METERS = to_meters(60.0)
+"""How far a piece may end up from where the scan found it: 60 inches.
+
+60 inches is the largest clear space any rule a rearrangement can fix asks
+for: the turning circle of ADA 2010 304.3.1 and the passing space of 403.5.3.
+Getting a piece out of such a space never needs it to travel further than the
+space is wide. A piece carried further than that has been relocated to another
+part of the room, which is a redesign for the owner to choose rather than a
+fix, and it lands on floor the scan only ever saw around something else.
+
+It is measured from `SceneNode.measured_position`, which every move carries
+forward, so a run of small moves across rounds or saved revisions adds up
+against it exactly as one long move would.
+"""
 
 
 def is_fixture(node: SceneNode) -> bool:
@@ -308,6 +331,62 @@ def _blocked_keep_clear(base: SceneGraph, candidate: SceneGraph, moved: list[Sce
     return found
 
 
+def _travelled_too_far(base: SceneGraph, moved: list[SceneNode]) -> list[Violation]:
+    """Pieces that ended up more than `MAX_TRAVEL_METERS` from where they were measured.
+
+    The starting point comes from the base layout, not the candidate, so a
+    candidate cannot move the goalposts by rewriting its own record.
+    """
+    before = {node.id: node for node in base.nodes}
+    found = []
+    for node in moved:
+        origin, now = measured_position(before[node.id]), node.transform.position
+        travelled = math.hypot(now.x - origin.x, now.y - origin.y)
+        if travelled > MAX_TRAVEL_METERS:
+            found.append(Violation("moved_too_far", str(node.id), node.label))
+    return found
+
+
+def _near_a_move(node: SceneNode, role: roles.UsedFromTheFloor, checked: list[SceneNode]) -> bool:
+    shape, within = footprint(node), reach(role)
+    return any(
+        other.id == node.id or gap_between(shape, footprint(other)) < within for other in checked
+    )
+
+
+def _could_lose_room(candidate: SceneGraph, checked: list[SceneNode]) -> list[tuple[SceneNode, roles.UsedFromTheFloor]]:
+    """Pieces used from the floor that moved, or that something moved next to."""
+    found = []
+    for node in candidate.nodes:
+        role = roles.used_from_the_floor(node)
+        if role is not None and _near_a_move(node, role, checked):
+            found.append((node, role))
+    return found
+
+
+def _lost_room_to_use(base: SceneGraph, candidate: SceneGraph, checked: list[SceneNode]) -> list[Violation]:
+    """Tables and counters a move leaves nobody room to pull up to.
+
+    Like a collision, only a loss the move caused counts. A table the scan
+    found wedged in already may still be moved, because the move takes no room
+    from it that it had. A piece that is new has to arrive with room.
+    """
+    at_risk = _could_lose_room(candidate, checked)
+    if not at_risk:
+        return []
+    before = {node.id: node for node in base.nodes}
+    room_before, room_after = Room.of(base), Room.of(candidate)
+    return [
+        Violation("no_room_to_use", str(node.id), node.label)
+        for node, role in at_risk
+        if _had_room(room_before, before.get(node.id), role) and not has_room_to_use(room_after, node, role)
+    ]
+
+
+def _had_room(room: Room, node: SceneNode | None, role: roles.UsedFromTheFloor) -> bool:
+    return node is None or has_room_to_use(room, node, role)
+
+
 def violations(
     base: SceneGraph, candidate: SceneGraph, added: frozenset = frozenset()
 ) -> list[Violation]:
@@ -318,10 +397,8 @@ def violations(
     they are checked for collisions and floor bounds exactly like a piece that
     moved: a candidate nobody tested for collisions fits everywhere.
     """
-    checked = [
-        *_moved_nodes(base, candidate),
-        *[node for node in candidate.nodes if node.id in added],
-    ]
+    moved = _moved_nodes(base, candidate)
+    checked = [*moved, *[node for node in candidate.nodes if node.id in added]]
     return [
         *_locked_moves(base, candidate),
         *_resizes(base, candidate),
@@ -329,6 +406,8 @@ def violations(
         *_off_the_floor(base, candidate, checked),
         *_collisions(base, candidate, checked),
         *_blocked_keep_clear(base, candidate, checked),
+        *_travelled_too_far(base, moved),
+        *_lost_room_to_use(base, candidate, checked),
     ]
 
 

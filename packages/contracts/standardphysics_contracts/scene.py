@@ -230,6 +230,15 @@ class SceneNode(BaseModel):
     reconstruction: DisplayReconstruction | None = Field(default=None, exclude_if=lambda value: value is None)
     attachment: SurfaceAttachment | None = Field(default=None, exclude_if=lambda value: value is None)
     top_surface: SurfaceHeight | None = Field(default=None, exclude_if=lambda value: value is None)
+    measured_position: Vec3 | None = Field(default=None, exclude_if=lambda value: value is None)
+    """Where the scan found this piece, kept once a rearrangement has moved it.
+
+    Null means nothing has moved it, so its transform is still where it was
+    measured. The first move copies the untouched position in and every later
+    move carries it along unchanged, so how far a piece has travelled is
+    always measured from the scan, however many small moves or saved
+    revisions it took to get there.
+    """
 
     @model_validator(mode="before")
     @classmethod

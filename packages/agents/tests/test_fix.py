@@ -556,9 +556,9 @@ class TestMovingThingsThatShareFloorSpace:
 
     def test_a_pillow_carried_onto_another_table_lands_on_its_top(self):
         pillow = _node("share_pillow", "object", "Pillow", (0.0, 0.0, 0.85), (0.4, 0.4, 0.2), True)
-        high_table = _node("share_high", "object", "Table", (2.0, 0.0, 0.5), (1.0, 1.0, 1.0), False)
+        high_table = _node("share_high", "object", "Table", (1.4, 0.0, 0.5), (1.0, 1.0, 1.0), False)
         graph = self._room(self._table(), high_table, pillow)
-        carried = self._slide(graph, pillow, 2.0)
+        carried = self._slide(graph, pillow, 1.4)
         assert carried.by_id(pillow.id).transform.position.z == pytest.approx(1.1)
         assert violations(graph, carried) == []
 
@@ -572,3 +572,86 @@ class TestMovingThingsThatShareFloorSpace:
         graph = self._room(lamp)
         assert "left_the_floor" not in _kinds(graph, self._slide(graph, lamp, 0.0, 0.5))
         assert "left_the_floor" in _kinds(graph, self._slide(graph, lamp, 0.5))
+
+
+class TestStillUsableAfterAMove:
+    """A move may not win a wider aisle by leaving a table nobody can use."""
+
+    TABLE = node_id("corner_cafe_table")
+
+    def _slide(self, graph, dx, dy=0.0):
+        return apply_moves(graph, [NodeMove(node_id=self.TABLE, delta_translation=Vec3(x=dx, y=dy, z=0.0))])
+
+    def test_a_table_shoved_flush_into_a_corner_has_nowhere_to_pull_up(self, corner_cafe):
+        graph, _ = corner_cafe
+        shoved = self._slide(graph, -0.713, 1.1)
+        assert [(v.kind, v.node_id) for v in violations(graph, shoved)] == [("no_room_to_use", str(self.TABLE))]
+
+    def test_a_small_slide_that_keeps_room_in_front_is_allowed(self, corner_cafe):
+        graph, _ = corner_cafe
+        assert violations(graph, self._slide(graph, -to_meters(5.0))) == []
+
+    def test_a_chair_pulled_up_to_the_table_does_not_count_against_it(self, corner_cafe):
+        graph, _ = corner_cafe
+        chair = _node("corner_cafe_chair", "chair", "Chair", (0.3, -1.5, 0.45), (0.45, 0.45, 0.9), True)
+        seated = graph.model_copy(update={"nodes": [*graph.nodes, chair]})
+        pulled_up = apply_moves(seated, [NodeMove(node_id=chair.id, delta_translation=Vec3(x=-0.7, y=0.9, z=0.0))])
+        assert violations(seated, pulled_up) == []
+
+    def test_a_cabinet_parked_in_front_of_the_table_takes_its_room(self, corner_cafe):
+        graph, _ = corner_cafe
+        cabinet = _node("corner_cafe_cabinet", "object", "Cabinet", (0.3, -1.5, 0.45), (0.45, 0.45, 0.9), True)
+        furnished = graph.model_copy(update={"nodes": [*graph.nodes, cabinet]})
+        parked = apply_moves(furnished, [NodeMove(node_id=cabinet.id, delta_translation=Vec3(x=-0.7, y=0.9, z=0.0))])
+        assert ("no_room_to_use", str(self.TABLE)) in [(v.kind, v.node_id) for v in violations(furnished, parked)]
+
+    def test_a_table_the_scan_found_wedged_in_may_still_move(self, corner_cafe):
+        graph, _ = corner_cafe
+        wedged = self._slide(graph, -0.713, 1.1)
+        nudged = self._slide(wedged, 0.0, -0.02)
+        assert "no_room_to_use" not in _kinds(wedged, nudged)
+
+
+class TestDistanceFromWhereItWasMeasured:
+    """A piece may be rearranged, not carried off to another part of the room."""
+
+    CASE = node_id("travel_case")
+
+    def _room(self):
+        floor = _node("travel_floor", "floor", "Floor", (0.0, 0.0, 0.0), (8.0, 8.0, 0.01), False)
+        case = _node("travel_case", "object", "Display case", (-2.5, 0.0, 0.45), (0.6, 0.6, 0.9), True)
+        return SceneGraph(scan_id=node_id("travel_room"), nodes=[floor, case])
+
+    def _slide(self, graph, dx):
+        return apply_moves(graph, [NodeMove(node_id=self.CASE, delta_translation=Vec3(x=dx, y=0.0, z=0.0))])
+
+    def test_one_long_move_is_too_far(self):
+        graph = self._room()
+        assert "moved_too_far" in _kinds(graph, self._slide(graph, 2.0))
+
+    def test_a_move_within_reach_is_allowed(self):
+        graph = self._room()
+        assert violations(graph, self._slide(graph, 1.0)) == []
+
+    def test_small_moves_add_up_across_rounds(self):
+        graph = self._room()
+        first = self._slide(graph, 1.0)
+        assert violations(graph, first) == []
+        assert "moved_too_far" in _kinds(first, self._slide(first, 1.0))
+
+    def test_small_moves_add_up_across_saved_revisions(self):
+        saved = SceneGraph.model_validate_json(self._slide(self._room(), 1.0).model_dump_json())
+        assert "moved_too_far" in _kinds(saved, self._slide(saved, 1.0))
+
+    def test_moving_back_toward_where_it_was_measured_is_allowed(self):
+        first = self._slide(self._room(), 1.0)
+        assert violations(first, self._slide(first, -1.5)) == []
+
+    def test_a_candidate_cannot_rewrite_where_it_was_measured(self):
+        first = self._slide(self._room(), 1.0)
+        moved = self._slide(first, 1.0)
+        forged = moved.model_copy(update={"nodes": [
+            node.model_copy(update={"measured_position": node.transform.position}) if node.id == self.CASE else node
+            for node in moved.nodes
+        ]})
+        assert "moved_too_far" in _kinds(first, forged)

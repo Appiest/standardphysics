@@ -157,6 +157,7 @@ export interface Finding {
   outcome: "passes" | "problem" | "question";
   required_inches: number | null;
   title: string;
+  uncertainty_inches?: number | null;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -575,7 +576,9 @@ export interface FrameListing {
 export interface HeightResult {
   inches: number;
   measured_at: Vec3;
+  needs_measurement: boolean;
   node_id: string;
+  uncertainty_inches: number | null;
 }
 /**
  * Every move so far against one saved revision, never just the latest drag.
@@ -1104,6 +1107,7 @@ export interface SceneNode {
   kind: string;
   label: string;
   labeled_by: string;
+  measured_position?: Vec3 | null;
   movable: boolean;
   parent_id: string | null;
   quality: "measured" | "needs_another_look" | "confirmed";
@@ -1111,6 +1115,7 @@ export interface SceneNode {
   reconstruction?: DisplayReconstruction | null;
   relation?: string | null;
   texts?: SurfaceText[];
+  top_surface?: SurfaceHeight | null;
   transform: Mat4;
 }
 /**
@@ -1162,6 +1167,17 @@ export interface SurfaceText {
   evidence_frame_ids: [string, ...string[]];
   face: ("top" | "front" | "back" | "left" | "right" | "bottom") | null;
   text: string;
+}
+/**
+ * Measured top above the scanned floor, or an explicitly unmeasured top.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "SurfaceHeight".
+ */
+export interface SurfaceHeight {
+  height_m: number | null;
+  support_area_m2: number;
+  uncertainty_m: number | null;
 }
 /**
  * A real thing photographed where no reliable measured surface places it.
