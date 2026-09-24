@@ -62,6 +62,7 @@ def to_finding(
         detail=text.detail,
         fix=text.fix if outcome == "problem" else None,
         measured_inches=observation.measured_inches,
+        uncertainty_inches=observation.facts.get("uncertainty_inches"),
         required_inches=observation.required_inches,
         citation=rule.citation,
         locus=observation.locus,
