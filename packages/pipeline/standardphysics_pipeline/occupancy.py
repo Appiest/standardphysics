@@ -163,13 +163,25 @@ def blocks_floor(node: SceneNode) -> bool:
     whose underside is a metre up has a high top and blocks nothing on the
     floor; ADA 2010 307 handles it as a protruding object instead. A floor mat
     has a low top and blocks nothing either.
+
+    A node that measured nothing blocks nothing: it says where something was
+    seen, not how much floor it takes up.
     """
-    if node.kind in PASSABLE_KINDS:
+    if node.kind in PASSABLE_KINDS or measured_nothing(node):
         return False
     centre = node.transform.position.z
     top = centre + node.dimensions.z / 2
     bottom = centre - node.dimensions.z / 2
     return top > BLOCKING_HEIGHT and bottom < CANE_DETECTABLE
+
+
+def measured_nothing(node: SceneNode) -> bool:
+    """Whether the node has no size in any direction.
+
+    A wall is allowed to have no thickness and a floor no height, but nothing
+    real has no extent at all.
+    """
+    return max(node.dimensions.as_tuple()) <= 0
 
 
 def _rotation_2d(node: SceneNode) -> tuple[float, float]:
@@ -201,7 +213,7 @@ def _bounds(graph: SceneGraph) -> tuple[float, float, float, float]:
 
 def build_grid(graph: SceneGraph, cell_size: float = CELL_SIZE) -> Grid:
     min_x, min_y, max_x, max_y = _bounds(graph)
-    if _measures_nothing(graph):
+    if _shell_measures_nothing(graph):
         return _all_blocked(min_x, min_y, max_x, max_y, cell_size)
     cols = max(int(np.ceil((max_x - min_x) / cell_size)), 1)
     rows = max(int(np.ceil((max_y - min_y) / cell_size)), 1)
@@ -230,16 +242,20 @@ def build_grid(graph: SceneGraph, cell_size: float = CELL_SIZE) -> Grid:
     )
 
 
-def _measures_nothing(graph: SceneGraph) -> bool:
-    """Whether the capture handed back a region with no size in any direction.
+def _shell_measures_nothing(graph: SceneGraph) -> bool:
+    """Whether part of the room itself came back with no size in any direction.
 
-    A wall is allowed to have no thickness and a floor no height, but nothing
-    real has no extent at all. One of those in the graph means the capture did
-    not measure what it claims to describe, and a room whose shape is unknown
-    has no walkable ground in it until somebody scans it again.
+    That means the capture did not measure what it claims to describe, and a
+    room whose shape is unknown has no walkable ground in it until somebody
+    scans it again.
+
+    A fitting found in photos is not part of the room. It carries an attachment
+    recording what was seen, and discovery gives it no size when no measured
+    surface stood behind the sighting. That is a thing awaiting review, not a
+    room of unknown shape, so it must not close every route on the floor.
     """
     return any(
-        max(node.dimensions.as_tuple()) <= 0 for node in graph.nodes
+        measured_nothing(node) and node.attachment is None for node in graph.nodes
     )
 
 
