@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import multiprocessing
 import pathlib
 from collections import Counter
