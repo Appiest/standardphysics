@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Menu, MENU_ITEM } from "@/components/ui/Menu";
 import { overviewPose, poseAtPoint, poseFromLocus, topDownPose, type ViewerPose } from "@/lib/camera";
 import { nodePosition } from "@/lib/review-targets";
+import { pendingLabels } from "@/lib/arrangement-source";
 import { interpolateLayout } from "@/lib/compare";
 import { type FindingGroups, findingForNode, type Focus, focusOnLocus, groupFindings } from "@/lib/findings";
 import { AskBox } from "./AskBox";
@@ -96,7 +97,7 @@ function comparisonFor(arrangement: Arrangement, scene: SceneGraph, findings: Fi
   if (arrangement.hasMoves && arrangement.check) {
     return {
       before: scene, after: arrangement.shown, beforeFindings: findings, afterFindings: arrangement.check.findings,
-      beforeLabel: "Now", afterLabel: "With your moves",
+      ...pendingLabels(arrangement.source),
     };
   }
   if (!previous || previous.assessment === null) return null;

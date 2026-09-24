@@ -50,7 +50,7 @@ export function ArrangePanel({ arrangement, fallbackFindings, scope, scanId, rev
         ))}
         {arrangement.problem && <p className="mt-2 text-problem">{arrangement.problem}</p>}
         <div className="mt-4">
-          <SuggestRearrangement key={revision} scanId={scanId} revision={revision} hasMoves={arrangement.hasMoves} onSuggested={arrangement.load} />
+          <SuggestRearrangement key={revision} scanId={scanId} revision={revision} showingSuggestion={arrangement.source === "suggestion"} onSuggested={arrangement.loadSuggestion} />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="primary" onClick={arrangement.save} disabled={!arrangement.canSave} className="disabled:opacity-40">

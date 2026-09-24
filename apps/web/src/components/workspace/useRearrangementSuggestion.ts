@@ -68,11 +68,13 @@ export function useRearrangementSuggestion(scanId: string, revision: number, onM
   const forgetDelivered = useDeliverMoves(status, asked, onMoves);
 
   const ask = useCallback(async () => {
-    setAsked(true);
     setTrouble(null);
     forgetDelivered();
     try {
-      setStatus(await startRearrangement(scanId, revision));
+      const started = await startRearrangement(scanId, revision);
+      // Asked flips only with the new job's status: flipping it first would deliver the last job's moves.
+      setStatus(started);
+      setAsked(true);
     } catch (error) {
       setTrouble(refusalSentence(error));
     }

@@ -1,13 +1,17 @@
 """Suggest a rearrangement: the job, its answers, and the deployment it starts and stops. No network."""
 
 import json
+import uuid
+from types import SimpleNamespace
 
 import pytest
-from standardphysics_contracts import to_meters
-from standardphysics_fixtures import FIX_SHIFT_INCHES, node_id
+from standardphysics_agents.training.reward import Verdict
+from standardphysics_agents.training.rooms import SMALL_SCAN_NODES
+from standardphysics_contracts import Finding, Mat4, NodeMove, Vec3, to_meters
+from standardphysics_fixtures import FIX_SHIFT_INCHES, build_lawsuit_graph, build_lawsuit_scenario, node_id
 
 from conftest import drain
-from standardphysics_api import rearrangement
+from standardphysics_api import rearrangement, rearrangement_search
 from standardphysics_api.fireworks import (
     SCALING_UP,
     FakeFireworks,
@@ -18,6 +22,13 @@ from standardphysics_api.fireworks import (
     deployment_name,
 )
 from standardphysics_api.rearrangement import Rearranger, scale_down_when_idle
+from standardphysics_api.rearrangement_search import (
+    MAX_WINDOWS_PER_SUGGESTION,
+    Answer,
+    scan_plan,
+    whole_checker,
+    window_seeds,
+)
 
 CASE_EAST = str(node_id("case_east"))
 PATH = "/api/scans/{}/rearrangement-suggestion"
@@ -85,8 +96,9 @@ def test_the_best_accepted_answer_comes_back_as_moves_and_nothing_is_saved(make_
     assert [move["node_id"] for move in result["moves"]] == [CASE_EAST]
     assert result["moves"][0]["delta_translation"]["x"] == pytest.approx(to_meters(FIX_SHIFT_INCHES), abs=1e-3)
     assert result["graph_hash"]
-    assert len(result["findings_after"]) < len(result["findings_before"])
-    assert result["message"].startswith("Moving 1 piece clears 1 of the 3 problems")
+    assert _problems(result["findings_after"]) < _problems(result["findings_before"])
+    assert result["message"] == ("Moving 1 piece clears 1 of the 4 problems furniture can fix here.")
+    assert (result["model_calls"], result["windows"]) == (1, 0)
     reward = result["reward"]
     assert 0 < reward["reward"] <= 1 and 0 < reward["recovered"] <= 1 and reward["usability"] == 1.0
     assert reward["all_clear"] is False and reward["disruption_meters"] > 0
@@ -96,6 +108,28 @@ def test_the_best_accepted_answer_comes_back_as_moves_and_nothing_is_saved(make_
         "it changed things by less than we can measure", "it pushed a piece past the edge of the room",
     ]
     assert client.get(f"/api/scans/{scan_id}/scene").json()["revision"] == 0
+
+
+def _findings(rows: list[dict]) -> list[Finding]:
+    return [Finding.model_validate(row) for row in rows]
+
+
+def _problems(findings: list[dict]) -> int:
+    return sum(1 for finding in findings if finding["outcome"] == "problem")
+
+
+def test_the_sentence_and_the_panel_count_the_same_problems(make_client):
+    client, scan_id = _shop(make_client, _rearranger([FIX], Clock()))
+    before = client.get(f"/api/scans/{scan_id}/assessment").json()["findings"]
+    result = _suggest(client, scan_id)["result"]
+    panel = client.post(f"/api/scans/{scan_id}/layout-checks",
+                        json={"base_revision": 0, "sequence": 1, "moves": result["moves"]}).json()
+    now, suggested = _problems(before), _problems(panel["findings"])
+    assert (_problems(result["findings_before"]), _problems(result["findings_after"])) == (now, suggested)
+    fixable = rearrangement.furniture_can_fix
+    assert fixable(_findings(before)) == fixable(_findings(result["findings_before"])) == now == 4
+    cleared = now - suggested
+    assert result["message"] == f"Moving 1 piece clears {cleared} of the {now} problems furniture can fix here."
 
 
 def test_when_nothing_passes_the_most_common_reason_is_the_message(make_client):
@@ -266,3 +300,79 @@ def test_the_deployment_is_bounded_between_zero_and_one_replica():
         ("PATCH", url, {"minReplicaCount": 0, "maxReplicaCount": 0}),
     ]
     assert deployment_name("accounts/other/deployments/x", "accounts/team/models/m") == "accounts/other/deployments/x"
+
+
+# --- big scans: problem windows ------------------------------------------------
+
+
+def _floor_of_shops(copies: int, step: float = 12.0):
+    """The sample shop repeated along x, far past the 80 nodes of one room; copy 0 keeps the fixture's ids."""
+    shop = build_lawsuit_graph()
+    nodes = list(shop.nodes)
+    for copy in range(1, copies):
+        ids = {node.id: uuid.uuid5(node.id, f"copy {copy}") for node in shop.nodes}
+        for node in shop.nodes:
+            m = list(node.transform.m)
+            m[3] += copy * step
+            nodes.append(node.model_copy(update={
+                "id": ids[node.id], "parent_id": ids.get(node.parent_id), "transform": Mat4(m=m),
+            }))
+    return shop.model_copy(update={"nodes": nodes})
+
+
+def _only_the_case_east(messages):
+    return [FIX] if CASE_EAST in messages[-1]["content"] else [GARBAGE]
+
+
+def test_a_big_scan_is_asked_about_window_by_window_and_the_moves_land_in_the_whole_scan(make_client):
+    clock = Clock()
+    model = FakeFireworks(answer=_only_the_case_east)
+    client, scan_id = _shop(make_client, Rearranger(model=model, clock=clock, sleep=clock.sleep))
+    big = _floor_of_shops(4)
+    assert len(big.nodes) > SMALL_SCAN_NODES
+    with client.app.state.database.transaction() as connection:
+        connection.execute("UPDATE revisions SET graph_json=? WHERE scan_id=? AND revision=0",
+                           (big.model_dump_json(), scan_id))
+    result = _suggest(client, scan_id)["result"]
+
+    assert result["windows"] >= 2 and result["model_calls"] == result["windows"]
+    assert model.calls.count("complete") == result["model_calls"]
+    assert result["accepted"] is True
+    assert [move["node_id"] for move in result["moves"]] == [CASE_EAST]
+    assert _problems(result["findings_after"]) < _problems(result["findings_before"])
+
+
+def test_windows_go_largest_shortfall_first_and_stop_at_the_cap():
+    shops = _floor_of_shops(6)
+    plan = scan_plan(uuid.uuid4(), shops, build_lawsuit_scenario())
+    checker = whole_checker(plan)
+    problems = checker.fixable_problems(checker.assess(plan.graph))
+    seeds = window_seeds(plan, problems)
+    assert len(seeds) == MAX_WINDOWS_PER_SUGGESTION < len(problems)
+    shortfall = {(f.check_id, round(f.locus.point.x, 3)): abs(f.required_inches - f.measured_inches) for f in problems}
+    ranked = [shortfall[(seed["check"], round(seed["at"][0], 3))] for seed in seeds]
+    assert ranked == sorted(ranked, reverse=True)
+
+
+def _answer_in(reward: float, node: str) -> Answer:
+    move = NodeMove(node_id=node, delta_translation=Vec3(x=0.1, y=0, z=0), delta_rotation_z_degrees=0)
+    return Answer(Verdict(reward, parsed=True, hard_constraints_pass=True, gate_accepts=True), [move])
+
+
+def test_when_the_windows_fail_together_the_best_single_window_is_used(monkeypatch):
+    first, second = str(uuid.uuid4()), str(uuid.uuid4())
+    answers = iter([_answer_in(0.4, first), _answer_in(0.6, second)])
+    monkeypatch.setattr(rearrangement_search, "parts_to_ask", lambda plan, checker, problems: [SimpleNamespace(graph=None, checker=None)] * 2)
+    monkeypatch.setattr(rearrangement_search, "prompt_messages", lambda graph, checker: [])
+    monkeypatch.setattr(rearrangement_search, "_best_answer", lambda part, completions, found: next(answers))
+
+    def whole_scan(plan, checker, moves):
+        together = len(moves) > 1
+        verdict = Verdict(0.0 if together else 0.5, gate_accepts=not together, reason="collided" if together else "")
+        return Answer(verdict, moves)
+
+    monkeypatch.setattr(rearrangement_search, "on_whole_scan", whole_scan)
+    plan = SimpleNamespace(small=False)
+    found = rearrangement_search.search(plan, None, [], lambda messages: [FIX])
+    assert found.model_calls == 2 and found.whole_scan_reason == "collided"
+    assert [str(move.node_id) for move in found.chosen.moves] == [second]

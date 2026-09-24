@@ -10,7 +10,7 @@ import { type RearrangementSuggestion, useRearrangementSuggestion } from "./useR
 
 const LABEL = "Suggest a rearrangement";
 
-type Props = { scanId: string; revision: number; hasMoves: boolean; onSuggested: (moves: NodeMove[]) => void };
+type Props = { scanId: string; revision: number; showingSuggestion: boolean; onSuggested: (moves: NodeMove[]) => void };
 
 function Working({ phase }: { phase: RearrangementStatus["phase"] }) {
   return (
@@ -56,9 +56,9 @@ function Note({ suggestion }: { suggestion: RearrangementSuggestion }) {
   return null;
 }
 
-function Settled({ suggestion, hasMoves }: { suggestion: RearrangementSuggestion; hasMoves: boolean }) {
+function Settled({ suggestion, showingSuggestion }: { suggestion: RearrangementSuggestion; showingSuggestion: boolean }) {
   const { answered } = suggestion;
-  if (answered?.accepted && hasMoves) return <p className="font-medium" role="status">{answered.message}</p>;
+  if (answered?.accepted && showingSuggestion) return <p className="font-medium" role="status">{answered.message}</p>;
   return (
     <div className="flex flex-col items-start gap-2">
       <Note suggestion={suggestion} />
@@ -68,11 +68,11 @@ function Settled({ suggestion, hasMoves }: { suggestion: RearrangementSuggestion
 }
 
 /** Asks the fine-tuned model for a layout and loads the moves it gets back as the pending arrangement. */
-export function SuggestRearrangement({ scanId, revision, hasMoves, onSuggested }: Props) {
+export function SuggestRearrangement({ scanId, revision, showingSuggestion, onSuggested }: Props) {
   const suggestion = useRearrangementSuggestion(scanId, revision, onSuggested);
   const { status } = suggestion;
   if (status === null) return null;
   if (!status.available) return <Unavailable reason={status.unavailable_reason ?? ""} />;
   if (suggestion.working) return <Working phase={status.phase} />;
-  return <Settled suggestion={suggestion} hasMoves={hasMoves} />;
+  return <Settled suggestion={suggestion} showingSuggestion={showingSuggestion} />;
 }

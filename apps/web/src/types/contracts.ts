@@ -1042,8 +1042,16 @@ export interface RearrangementSuggestion {
    * One sentence for the owner: what the suggestion does, or why there is none.
    */
   message: string;
+  /**
+   * Requests sent to the model for this click, four answers each.
+   */
+  model_calls: number;
   moves: NodeMove[];
   reward: RewardParts | null;
+  /**
+   * Windows of a big scan asked about; 0 when the model saw it whole.
+   */
+  windows: number;
 }
 /**
  * The training reward for the chosen attempt, and the terms it is made of.

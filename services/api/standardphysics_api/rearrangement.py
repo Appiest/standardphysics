@@ -7,13 +7,15 @@ rather than hold a request open that long:
     POST /api/scans/{id}/rearrangement-suggestion   queue a job for the latest revision
     GET  /api/scans/{id}/rearrangement-suggestion?revision=N   poll it, and learn if the feature is on
 
-The job builds the prompt exactly as training did (`training.prompt_messages`
-on the scan with its phantoms pinned, as `training.rooms.plan_scan` pins
-them), asks for four answers at the training evaluation's settings, and
-scores each with `training.reward.score_completion`: the edits parser,
-`apply_moves`, `violations` (fixture, keep-clear, travel and room-to-use
-rules included) and the gate with improvement required, as the fix agent
-uses it. The best accepted answer comes back as moves; nothing is saved.
+The job builds prompts exactly as training did (`rearrangement_search`: the
+whole scan when it is small, problem windows when it is not), asks for four
+answers per prompt at the training evaluation's settings, and scores each
+with `training.reward.score_completion`: the edits parser, `apply_moves`,
+`violations` (fixture, keep-clear, travel and room-to-use rules included) and
+the gate with improvement required, as the fix agent uses it. That training
+checker only chooses. What the owner reads, the findings before and after and
+the sentence about them, comes from the production assessment the arrange
+panel runs, so the two always tell the same story. Nothing is saved.
 
 While the job runs the deployment may run one replica. Afterwards it stays
 warm for `keep_warm_seconds`, so a second click soon after pays no cold start,
@@ -32,11 +34,9 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Callable
 
+from standardphysics_agents import load_pack
 from standardphysics_agents.fix import apply_moves
-from standardphysics_agents.training import TrainingChecker, parse_edits, prompt_messages
-from standardphysics_agents.training.edits import node_moves
-from standardphysics_agents.training.phantoms import phantoms, pin, scan_errors, without_nodes, without_unmeasured
-from standardphysics_agents.training.reward import MOVED_PINNED, Verdict, score_completion
+from standardphysics_agents.training.reward import MOVED_PINNED, Verdict
 from standardphysics_contracts import (
     Finding,
     RearrangementAttempt,
@@ -53,6 +53,7 @@ from . import repository as repo
 from .dev_model import nudges_from_prompt
 from .errors import ApiProblem
 from .fireworks import FakeFireworks, FireworksModel, ModelFailed, ModelWarming, RearrangeModel, Sampling
+from .rearrangement_search import Search, scan_plan, search, whole_checker
 from .scenario import suggest_scenario
 from .settings import Settings
 
@@ -73,6 +74,8 @@ STILL_STARTING = "The model is still starting after 10 minutes. Try again in a f
 NO_ANSWER = "The model didn't send back any layouts. Try again."
 INTERRUPTED = "The server restarted while it was suggesting a layout. Ask again."
 BROKE = "Something went wrong while we checked the model's layouts. Try again."
+NOTHING_TO_FIX = "Nothing here is something moving furniture can fix, so we didn't ask the model."
+NO_WINDOWS = "We couldn't cut out a part of this floor around its problems for the model to work on."
 
 REASON_CLAUSES = (
     ("unparseable", "its answer wasn't a list of moves we could read"),
@@ -196,24 +199,24 @@ def _set_phase(database, scan_id: uuid.UUID, revision: int, phase: str) -> None:
 # --- the job -------------------------------------------------------------------
 
 
-def training_room(graph: SceneGraph, scenario: Scenario) -> tuple[SceneGraph, TrainingChecker]:
-    """The scan as training saw it: unmeasured boxes and floating scan errors out, phantoms pinned."""
-    measured = without_unmeasured(graph)
-    pinned = phantoms(measured)
-    removed = {node.id for node in scan_errors(measured, pinned)}
-    room = pin(without_nodes(measured, removed), pinned)
-    checker = TrainingChecker(scenario, pinned=frozenset(item.node_id for item in pinned), owner_layout=room)
-    return room, checker
+@dataclass(frozen=True)
+class Inputs:
+    graph: SceneGraph
+    stored_scenario: Scenario | None
+    """The route the owner confirmed, or None; production checks read it exactly as the panel does."""
+
+    @property
+    def scenario(self) -> Scenario:
+        return self.stored_scenario or suggest_scenario(self.graph)
 
 
-def _inputs(database, scan_id: uuid.UUID, revision: int) -> tuple[SceneGraph, Scenario]:
+def _inputs(database, scan_id: uuid.UUID, revision: int) -> Inputs:
     with database.connect() as connection:
         row = repo.get_revision(connection, scan_id, revision)
         scenario = repo.get_scenario(connection, scan_id)
     if row is None:
         raise ModelFailed("That layout isn't there any more. Reload the page and ask again.")
-    graph = repo.graph_of(row)
-    return graph, scenario or suggest_scenario(graph)
+    return Inputs(repo.graph_of(row), scenario)
 
 
 def ask_patiently(rearranger: Rearranger, messages: list[dict], on_warming: Callable[[], None]) -> list[str]:
@@ -230,25 +233,25 @@ def ask_patiently(rearranger: Rearranger, messages: list[dict], on_warming: Call
             delay = min(delay * RETRY_GROWTH, LONGEST_RETRY_SECONDS)
 
 
-def run_suggestion(database, rearranger: Rearranger, scan_id: uuid.UUID, revision: int) -> None:
-    graph, scenario = _inputs(database, scan_id, revision)
-    room, checker = training_room(graph, scenario)
-    messages = prompt_messages(room, checker)
-    _set_phase(database, scan_id, revision, "asking_model")
-    with deployment_lease(database, rearranger):
-        completions = ask_patiently(
-            rearranger, messages, lambda: _set_phase(database, scan_id, revision, "starting_model")
-        )
-    if not completions:
-        raise ModelFailed(NO_ANSWER)
+def run_suggestion(database, rearranger: Rearranger, stages, scan_id: uuid.UUID, revision: int) -> None:
+    inputs = _inputs(database, scan_id, revision)
+    plan = scan_plan(scan_id, inputs.graph, inputs.scenario)
+    checker = whole_checker(plan)
+    problems = checker.fixable_problems(checker.assess(plan.graph))
+    found = Search()
+    if problems:
+        _set_phase(database, scan_id, revision, "asking_model")
+        warming = lambda: _set_phase(database, scan_id, revision, "starting_model")  # noqa: E731
+        with deployment_lease(database, rearranger):
+            found = search(plan, checker, problems, lambda messages: ask_patiently(rearranger, messages, warming))
     _set_phase(database, scan_id, revision, "checking")
-    suggestion = judge(graph, room, checker, completions, revision)
+    suggestion = describe(found, inputs, stages, revision, nothing_to_fix=not problems, small=plan.small)
     with database.transaction() as connection:
         connection.execute("UPDATE rearrangements SET result_json=? WHERE scan_id=? AND revision=?",
                            (suggestion.model_dump_json(), str(scan_id), revision))
 
 
-# --- judging the answers -------------------------------------------------------
+# --- describing the result, in the panel's own numbers --------------------------
 
 
 def reason_clause(reason: str) -> str:
@@ -265,12 +268,24 @@ def _pieces(count: int) -> str:
     return "1 piece" if count == 1 else f"{count} pieces"
 
 
+def problems_in(findings: list[Finding]) -> list[Finding]:
+    """What the panel counts as things to fix."""
+    return [finding for finding in findings if finding.outcome == "problem"]
+
+
+def furniture_can_fix(findings: list[Finding]) -> int:
+    pack = load_pack()
+    return sum(1 for finding in problems_in(findings) if pack.by_id(finding.check_id).rearrangeable)
+
+
 def accepted_message(pieces: int, before: list[Finding], after: list[Finding]) -> str:
-    if not after:
-        return f"Moving {_pieces(pieces)} clears every problem furniture can fix here."
-    cleared = len(before) - len(after)
+    """The change in the same production findings the panel shows, so the two never disagree.
+
+    What is left is not repeated: the panel's own "N things still to fix" sits directly above.
+    """
+    fixable, cleared = furniture_can_fix(before), furniture_can_fix(before) - furniture_can_fix(after)
     if cleared > 0:
-        return f"Moving {_pieces(pieces)} clears {cleared} of the {len(before)} problems furniture can fix here."
+        return f"Moving {_pieces(pieces)} clears {cleared} of the {fixable} problems furniture can fix here."
     return f"Moving {_pieces(pieces)} gives the tightest spots measurably more room."
 
 
@@ -281,29 +296,40 @@ def rejected_message(attempts: list[RearrangementAttempt]) -> str:
     return f"None of the {len(attempts)} layouts the model tried passed our checks, mostly because {clause}."
 
 
+def _nothing_chosen_message(found: Search, attempts: list[RearrangementAttempt], nothing_to_fix: bool) -> str:
+    if nothing_to_fix:
+        return NOTHING_TO_FIX
+    if found.parts == 0:
+        return NO_WINDOWS
+    if found.whole_scan_reason:
+        return f"The model's layouts worked in their own parts of the floor but not together, because " \
+               f"{reason_clause(found.whole_scan_reason)}."
+    return rejected_message(attempts)
+
+
 def _reward_parts(verdict: Verdict) -> RewardParts:
     return RewardParts(reward=verdict.reward, recovered=round(verdict.shortfall_recovered, 4),
                        all_clear=verdict.fixable_left == 0, usability=verdict.usability or 0.0,
                        disruption_meters=round(verdict.disruption_meters, 4))
 
 
-def judge(graph: SceneGraph, room: SceneGraph, checker: TrainingChecker, completions: list[str],
-          revision: int) -> RearrangementSuggestion:
-    """Score every answer as training did, and keep the best one the gate accepts."""
-    verdicts = [score_completion(text, room, checker) for text in completions]
-    attempts = [_attempt(verdict) for verdict in verdicts]
-    accepted = [(verdict, text) for verdict, text in zip(verdicts, completions) if verdict.gate_accepts]
-    if not accepted:
-        return RearrangementSuggestion(base_revision=revision, accepted=False, message=rejected_message(attempts),
-                                       attempts=attempts)
-    verdict, text = max(accepted, key=lambda pair: pair[0].reward)
-    moves = node_moves(parse_edits(text))
-    before = checker.fixable_problems(checker.assess(room))
-    after = checker.fixable_problems(checker.assess(apply_moves(room, moves)))
+def describe(found: Search, inputs: Inputs, stages, revision: int, *, nothing_to_fix: bool,
+             small: bool) -> RearrangementSuggestion:
+    """The chosen layout with production findings before and after, or why there is none."""
+    attempts = [_attempt(verdict) for verdict in found.verdicts]
+    cost = {"base_revision": revision, "attempts": attempts, "model_calls": found.model_calls,
+            "windows": 0 if small else found.parts}
+    if found.chosen is None:
+        message = _nothing_chosen_message(found, attempts, nothing_to_fix)
+        return RearrangementSuggestion(accepted=False, message=message, **cost)
+    moves = found.chosen.moves
+    suggested = apply_moves(inputs.graph, moves)
+    before = stages.assess(inputs.graph, inputs.stored_scenario, revision + 1).findings
+    after = stages.assess(suggested, inputs.stored_scenario, revision + 1).findings
     return RearrangementSuggestion(
-        base_revision=revision, accepted=True, message=accepted_message(len(moves), before, after), moves=moves,
-        graph_hash=graph_hash(apply_moves(graph, moves)), findings_before=before, findings_after=after,
-        reward=_reward_parts(verdict), attempts=attempts,
+        accepted=True, message=accepted_message(len(moves), before, after), moves=moves,
+        graph_hash=graph_hash(suggested), findings_before=before, findings_after=after,
+        reward=_reward_parts(found.chosen.verdict), **cost,
     )
 
 

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ApiRefusal, checkLayout, saveLayout } from "@/lib/layout-client";
+import { type ArrangementEvent, type MovesSource, sourceAfter } from "@/lib/arrangement-source";
 import { applyMoves, type MoveSet, withMove } from "@/lib/moves";
 import type { LayoutCheckResult, NodeMove, SceneGraph } from "@/types/contracts";
 
@@ -18,6 +19,7 @@ export function useArrangement(scanId: string, scene: SceneGraph) {
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [source, setSource] = useState<MovesSource>(null);
   const latestSequence = useRef(0);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const movesRef = useRef<MoveSet>({});
@@ -39,13 +41,14 @@ export function useArrangement(scanId: string, scene: SceneGraph) {
     }
   }, [scanId, scene.revision]);
 
-  const update = useCallback((next: MoveSet) => {
+  const update = useCallback((next: MoveSet, event: ArrangementEvent) => {
     movesRef.current = next;
     setMoves(next);
+    setSource(sourceAfter(event));
   }, []);
 
   const drag = useCallback(
-    (nodeId: string, dx: number, dy: number) => update(withMove(movesRef.current, nodeId, dx, dy, 0)),
+    (nodeId: string, dx: number, dy: number) => update(withMove(movesRef.current, nodeId, dx, dy, 0), "moved"),
     [update],
   );
 
@@ -57,24 +60,26 @@ export function useArrangement(scanId: string, scene: SceneGraph) {
   const nudge = useCallback(
     (dx: number, dy: number, degrees: number) => {
       if (!activeId) return;
-      update(withMove(movesRef.current, activeId, dx, dy, degrees));
+      update(withMove(movesRef.current, activeId, dx, dy, degrees), "moved");
       settle();
     },
     [activeId, update, settle],
   );
 
-  const load = useCallback(
-    (proposed: NodeMove[]) => {
-      update(Object.fromEntries(proposed.map((move) => [move.node_id, move])));
+  const loadFrom = useCallback(
+    (proposed: NodeMove[], event: ArrangementEvent) => {
+      update(Object.fromEntries(proposed.map((move) => [move.node_id, move])), event);
       setActiveId(proposed[0]?.node_id ?? null);
       runCheck();
     },
     [update, runCheck],
   );
+  const load = useCallback((proposed: NodeMove[]) => loadFrom(proposed, "loaded"), [loadFrom]);
+  const loadSuggestion = useCallback((proposed: NodeMove[]) => loadFrom(proposed, "suggested"), [loadFrom]);
 
   const preview = useCallback((proposed: NodeMove[]) => {
     latestSequence.current += 1;
-    update(Object.fromEntries(proposed.map((move) => [move.node_id, move])));
+    update(Object.fromEntries(proposed.map((move) => [move.node_id, move])), "loaded");
     setCheck(null);
     setChecking(false);
     setProblem(null);
@@ -82,7 +87,7 @@ export function useArrangement(scanId: string, scene: SceneGraph) {
 
   const reset = useCallback(() => {
     latestSequence.current += 1;
-    update({});
+    update({}, "cleared");
     setCheck(null);
     setChecking(false);
     setProblem(null);
@@ -117,7 +122,7 @@ export function useArrangement(scanId: string, scene: SceneGraph) {
   const canSave = hasMoves && !checking && !saving && check !== null && check.blocked.length === 0;
 
   return {
-    shown, moves, check, checking, saving, problem, activeId, hasMoves, blockedIds, canSave,
-    setActiveId, drag, drop: runCheck, nudge, reset, save, load, preview,
+    shown, moves, source, check, checking, saving, problem, activeId, hasMoves, blockedIds, canSave,
+    setActiveId, drag, drop: runCheck, nudge, reset, save, load, loadSuggestion, preview,
   };
 }

@@ -211,7 +211,7 @@ class Worker:
             return _JobOutcome(error=_failure_text(job["kind"], exc))
 
     def _rearrange(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
-        run_suggestion(self.database, self.rearranger, scan_id, revision)
+        run_suggestion(self.database, self.rearranger, self.stages, scan_id, revision)
         return False
 
     def _texture(self, scan_id, build_id, job=None) -> bool:

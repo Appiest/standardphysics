@@ -44,9 +44,13 @@ class RearrangementSuggestion(BaseModel):
     moves: list[NodeMove] = Field(default_factory=list)
     graph_hash: str | None = Field(default=None, description="Hash of the layout the moves produce.")
     findings_before: list[Finding] = Field(default_factory=list)
+    """The production assessment of the saved layout, as the arrange panel shows it."""
     findings_after: list[Finding] = Field(default_factory=list)
+    """The production assessment of the suggested layout, as the arrange panel shows it once loaded."""
     reward: RewardParts | None = None
     attempts: list[RearrangementAttempt] = Field(default_factory=list)
+    model_calls: int = Field(default=0, description="Requests sent to the model for this click, four answers each.")
+    windows: int = Field(default=0, description="Windows of a big scan asked about; 0 when the model saw it whole.")
 
 
 class RearrangementStatus(BaseModel):
