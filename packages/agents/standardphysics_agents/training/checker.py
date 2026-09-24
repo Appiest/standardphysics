@@ -10,6 +10,7 @@ and nowhere in the production path.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from uuid import UUID
 
 from standardphysics_contracts import Finding, MeasurementProvider, Scenario, SceneGraph
 from standardphysics_contracts.rules import Tier
@@ -41,6 +42,10 @@ class TrainingChecker:
     ledger: VerificationLedger = field(default_factory=load_ledger)
     measure: MeasurementProvider = field(default_factory=PipelineMeasurements)
     max_tier: Tier = 1
+    pinned: frozenset[UUID] = frozenset()
+    """Pieces the phantom filter holds still; moving one scores zero."""
+    owner_layout: SceneGraph | None = None
+    """The room as its owner has it, before any scramble, for judging how a layout looks."""
 
     def assess(self, graph: SceneGraph) -> Pass:
         return assess(
