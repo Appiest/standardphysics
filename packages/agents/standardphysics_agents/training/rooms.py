@@ -11,10 +11,10 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from standardphysics_contracts import Scenario, SceneGraph
+from standardphysics_contracts import Scenario, SceneGraph, bounds_the_room
 
 from .checker import TrainingChecker
-from .phantoms import phantoms, pin, unmeasured, without_unmeasured
+from .phantoms import phantoms, pin, scan_errors, unmeasured, without_nodes, without_unmeasured
 from .scramble import floor_furniture
 from .windows import (
     COVERED_FRACTION,
@@ -25,6 +25,7 @@ from .windows import (
     crossing_routes,
     cut,
     floor_under,
+    reaches,
     reproduction,
     summarize_problem,
     with_one_floor,
@@ -32,6 +33,13 @@ from .windows import (
 
 MAX_ROUTES_TRIED = 3
 """Routes tried per window before it is dropped; each costs a whole-scan assessment."""
+
+MAX_PHANTOM_SHARE = 0.5
+"""A window is dropped when pinned or removed phantoms make up more than half of its
+furniture: the room left for a model to rearrange is mostly boxes nobody can move,
+many of them floating, and what it learns there is how to work around scan errors.
+On A-102 the share runs from 25 to 78 per cent across window centres; 0.4 would
+keep only a dozen windows, so the line sits at a majority."""
 
 SMALL_SCAN_NODES = 80
 """A scan with at most this many nodes is one room, and one window."""
@@ -45,6 +53,8 @@ class ScanPlan:
     scenario: Scenario
     pinned: list = field(default_factory=list)
     unmeasured: list[dict] = field(default_factory=list)
+    removed: list = field(default_factory=list)
+    """Floating furniture taken out of the scan as scan errors (`phantoms.scan_errors`)."""
     seeds: list[dict] = field(default_factory=list)
     skipped_seeds: list[dict] = field(default_factory=list)
     clusters: list[tuple[float, float]] = field(default_factory=list)
@@ -104,7 +114,9 @@ def plan_scan(scan_id: str, graph: SceneGraph, scenario: Scenario, radius: float
     dropped = [{"node_id": str(node.id), "kind": node.kind, "label": node.label} for node in unmeasured(graph)]
     measured = without_unmeasured(graph)
     pinned = phantoms(measured)
-    plan = ScanPlan(scan_id, pin(measured, pinned), scenario, pinned, dropped)
+    removed = scan_errors(measured, pinned)
+    cleaned = without_nodes(measured, {node.id for node in removed})
+    plan = ScanPlan(scan_id, pin(cleaned, pinned), scenario, pinned, dropped, removed)
     if plan.small:
         return plan
     plan.seeds, plan.skipped_seeds = seed_problems(plan.graph, TrainingChecker(scenario), radius)
@@ -117,9 +129,32 @@ def _pinned_in(plan: ScanPlan, graph: SceneGraph) -> list[str]:
     return [str(item.node_id) for item in plan.pinned if item.node_id in present]
 
 
-def whole_scan(plan: ScanPlan) -> Window:
-    return Window(f"{plan.scan_id}:whole", plan.scan_id, None, plan.graph, plan.scenario, "scan",
-                  pinned=_pinned_in(plan, plan.graph))
+def phantom_share(plan: ScanPlan, graph: SceneGraph, centre=None, radius: float = WINDOW_RADIUS_METERS) -> float:
+    """Pinned and removed phantoms as a share of the furniture a window started with."""
+    pinned = len(_pinned_in(plan, graph))
+    removed = sum(1 for node in plan.removed if centre is None or reaches(node, centre, radius))
+    movable = sum(1 for node in graph.nodes if node.movable and not bounds_the_room(node))
+    total = pinned + removed + movable
+    return (pinned + removed) / total if total else 0.0
+
+
+def _too_phantom(share: float, log: dict) -> dict | None:
+    if share <= MAX_PHANTOM_SHARE:
+        return None
+    return {**log, "kept": False, "why": f"phantoms are {share:.0%} of the furniture", "phantom_share": round(share, 3)}
+
+
+def whole_scan(plan: ScanPlan) -> tuple[Window | None, dict]:
+    window_id = f"{plan.scan_id}:whole"
+    share = phantom_share(plan, plan.graph)
+    log = {"window_id": window_id, "phantom_share": round(share, 3)}
+    dropped = _too_phantom(share, log)
+    if dropped:
+        return None, dropped
+    window = Window(window_id, plan.scan_id, None, plan.graph, plan.scenario, "scan",
+                    pinned=_pinned_in(plan, plan.graph))
+    return window, {**log, "kept": True, "route": "scan", "objects": window.object_count(),
+                    "movable": window.movable_count()}
 
 
 def candidate_routes(plan: ScanPlan, reference: SceneGraph, window: SceneGraph, centre,
@@ -148,6 +183,11 @@ def build_window(plan: ScanPlan, centre: tuple[float, float], seed: dict | None,
     graph = cut(plan.graph, centre, radius)
     if graph is None:
         return None, {**log, "kept": False, "why": "no floor under the centre"}
+    share = phantom_share(plan, graph, centre, radius)
+    log["phantom_share"] = round(share, 3)
+    dropped = _too_phantom(share, log)
+    if dropped:
+        return None, dropped
     reference = with_one_floor(plan.graph, floor_under(plan.graph, centre))
     attempts = []
     for route in candidate_routes(plan, reference, graph, centre, radius)[:MAX_ROUTES_TRIED]:

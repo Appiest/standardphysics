@@ -32,6 +32,7 @@ from standardphysics_agents.training import TrainingChecker, edits_between, edit
 from standardphysics_agents.training.reward import score_completion
 from standardphysics_agents.training.rooms import build_window, plan_scan, whole_scan
 from standardphysics_agents.training.scans import export_scan, load_export, read_only, write_export
+from standardphysics_agents.training.scramble import LIGHT
 from standardphysics_agents.training.split import (
     DROPPED,
     HELDOUT,
@@ -178,6 +179,7 @@ def _window_tasks(plan) -> list[tuple]:
 def _plan_summary(plan, name: str) -> dict:
     return {"name": name, "small": plan.small, "nodes": len(plan.graph.nodes),
             "pinned": [item.as_dict() for item in plan.pinned], "unmeasured_dropped": plan.unmeasured,
+            "removed_scan_errors": [{"node_id": str(n.id), "label": n.label} for n in plan.removed],
             "seeds": plan.seeds, "skipped_seeds": plan.skipped_seeds,
             "clusters": [[round(x, 3), round(y, 3)] for x, y in plan.clusters]}
 
@@ -197,12 +199,12 @@ def run_windows(run: pathlib.Path, workers: int, progress: Progress) -> None:
     _write_json(run / "plans.json", {"skipped_scans": skipped,
                                     "plans": {sid: _plan_summary(plan, names[sid]) for sid, plan in _PLANS.items()}})
     done = {row["window_id"] for row in _rows(run / "windows_log.jsonl")}
-    small = [whole_scan(plan) for plan in _PLANS.values() if plan.small]
-    for window in small:
-        if window.window_id not in done:
+    for window, entry in (whole_scan(plan) for plan in _PLANS.values() if plan.small):
+        if entry["window_id"] in done:
+            continue
+        if window is not None:
             _append(run / "windows.jsonl", window.as_dict())
-            _append(run / "windows_log.jsonl", {"window_id": window.window_id, "kept": True, "route": "scan",
-                                                "objects": window.object_count(), "movable": window.movable_count()})
+        _append(run / "windows_log.jsonl", entry)
     tasks = [task for plan in _PLANS.values() if not plan.small for task in _window_tasks(plan) if task[3] not in done]
     progress.stage("windows", len(tasks) + len(done), len(done))
     with _pool(workers, run) as pool:
@@ -228,7 +230,7 @@ def _variant_task(row: dict) -> list[dict]:
     fixable = checker.fixable_problems(checker.assess(window.graph))
     if fixable:
         rows.append(_variant_row(window, "owner", window.graph, sorted({f.check_id for f in fixable})))
-    for variant in scramble(window.graph, checker, VARIANTS_PER_WINDOW, seed=seed):
+    for variant in scramble(window.graph, checker, VARIANTS_PER_WINDOW, seed=seed, how=LIGHT):
         rows.append(_variant_row(window, variant.name, variant.graph, list(variant.fixable)))
     return rows or [{"window_id": window.window_id, "variant_id": None}]
 
@@ -271,12 +273,31 @@ def search_record(variant: SceneGraph, checker: TrainingChecker) -> dict:
             "why": None if accepted else f"search answer rejected: {verdict.reason}"}
 
 
+def put_back_record(variant: SceneGraph, owner: SceneGraph, checker: TrainingChecker) -> dict | None:
+    """Every scrambled piece returned to where the owner has it, scored like any answer."""
+    edits = edits_between(variant, owner)
+    if not edits.moves:
+        return None
+    return {"edits": edits_json(edits), "verdict": score_completion(edits_json(edits), variant, checker).as_dict()}
+
+
+def chosen_target(put_back: dict | None, search: dict) -> dict:
+    """Putting things back when the owner's layout passes the constraints and the gate, else the search's fix."""
+    if put_back and put_back["verdict"]["gate_accepts"]:
+        return {"target": put_back["edits"], "source": "put_back", "verdict": put_back["verdict"], "why": None}
+    if search["target"]:
+        return {"target": search["target"], "source": "search", "verdict": search["verdict"], "why": None}
+    return {"target": None, "source": None, "verdict": search["verdict"], "why": search["why"]}
+
+
 def _target_task(row: dict) -> dict:
     started = time.time()
-    checker = checker_for(_WINDOWS[row["window_id"]])
-    record = search_record(SceneGraph.model_validate(row["graph"]), checker)
-    return {"variant_id": row["variant_id"], "window_id": row["window_id"], **record,
-            "seconds": round(time.time() - started, 1)}
+    window = _WINDOWS[row["window_id"]]
+    checker, variant = checker_for(window), SceneGraph.model_validate(row["graph"])
+    search = search_record(variant, checker)
+    put_back = put_back_record(variant, window.graph, checker)
+    return {"variant_id": row["variant_id"], "window_id": row["window_id"], **chosen_target(put_back, search),
+            "search": search, "put_back": put_back, "seconds": round(time.time() - started, 1)}
 
 
 def run_targets(run: pathlib.Path, workers: int, progress: Progress) -> None:
@@ -325,6 +346,8 @@ def target_quality(targets: list[dict]) -> dict:
         "share_clearing_every_fixable": round(sum(1 for v in accepted if v["fixable_left"] == 0) / count, 4)
         if count else None,
         "why_no_target": dict(Counter((row["why"] or "").split(":")[0] for row in targets if not row["target"])),
+        "target_source": dict(Counter(row.get("source") for row in targets if row["target"])),
+        "mean_usability_over_targets": _mean([v["usability"] for v in accepted if v.get("usability") is not None]),
     }
 
 
@@ -392,6 +415,8 @@ def _report(run, windows, splits, held, names, skipped, rooms) -> dict:
                                                                        for r in variants))},
         "targets": {"all": target_quality(targets), **{s: target_quality(rows) for s, rows in by_split.items()}},
         "dropped_windows": sorted(w for w, s in splits.items() if s == DROPPED),
+        "windows_dropped_for_phantoms": [row for row in _rows(run / "windows_log.jsonl")
+                                         if str(row.get("why", "")).startswith("phantoms are")],
     }
 
 

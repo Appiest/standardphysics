@@ -187,7 +187,22 @@ def unmeasured(graph: SceneGraph) -> list[SceneNode]:
 
 
 def without_unmeasured(graph: SceneGraph) -> SceneGraph:
-    dropped = {node.id for node in unmeasured(graph)}
+    return without_nodes(graph, {node.id for node in unmeasured(graph)})
+
+
+def scan_errors(graph: SceneGraph, pinned: list[Pinned]) -> list[SceneNode]:
+    """Pinned furniture that floats with nothing under it, which is a scan error rather than a piece.
+
+    A chair or table hanging half a metre in the air is not somewhere a person
+    could put it back to, and leaving it in the room teaches a model to stack
+    furniture on it. Only pieces with a furniture label (`size_category`) count;
+    a floating television or artwork is plausibly mounted and stays.
+    """
+    floating = {item.node_id for item in pinned if "floating" in item.reasons}
+    return [node for node in graph.nodes if node.id in floating and size_category(node) is not None]
+
+
+def without_nodes(graph: SceneGraph, dropped: set) -> SceneGraph:
     kept = [node for node in graph.nodes if node.id not in dropped]
     return graph.model_copy(update={"nodes": [
         node.model_copy(update={"parent_id": None, "relation": None}) if node.parent_id in dropped else node

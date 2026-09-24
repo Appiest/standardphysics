@@ -4,9 +4,10 @@ import sqlite3
 
 import pytest
 from standardphysics_agents.training import TrainingChecker, score_completion, scramble, search_target, shaped_reward
-from standardphysics_agents.training.phantoms import phantoms, pin, without_unmeasured
+from standardphysics_agents.training.phantoms import phantoms, pin, scan_errors, without_unmeasured
 from standardphysics_agents.training.quality import (
     SIGHT_BLOCKING_HEIGHT_METERS,
+    front_heading_degrees,
     layout_quality,
     pair_term,
     relation_score,
@@ -14,10 +15,11 @@ from standardphysics_agents.training.quality import (
     viewpoint,
     wall_term,
 )
-from standardphysics_agents.training.reward import MOVED_PINNED, QUALITY_WEIGHT
+from standardphysics_agents.training.reward import MOVED_PINNED, USABILITY_WEIGHT
 from standardphysics_agents.training.rooms import ScanPlan, build_window
 from standardphysics_agents.training.scans import export_scan, read_only
 from standardphysics_agents.training.split import DROPPED, HELDOUT, TRAIN, HoldOut, RoomRecord, assign, pick_floor
+from standardphysics_agents.training.usability import usability
 from standardphysics_agents.training.windows import cut, reproduction, summarize_problem
 from standardphysics_contracts import Mat4, Scenario, SceneGraph, SceneNode, Stop, Vec3, lies_flat
 from standardphysics_fixtures import node_id
@@ -228,15 +230,64 @@ def test_moving_a_pinned_piece_scores_zero(graph, scenario, pipeline, pack, ledg
     assert verdict.reward == 0.0 and verdict.reason == MOVED_PINNED
 
 
-def test_quality_only_moves_accepted_rewards_and_by_at_most_its_weight(graph, scenario, pipeline, pack, ledger):
-    assert shaped_reward(0.5, False, 1.0, 1.0) - shaped_reward(0.5, False, 1.0, 0.0) == pytest.approx(QUALITY_WEIGHT)
+def test_usability_is_paid_and_quality_is_only_logged(graph, scenario, pipeline, pack, ledger):
+    assert shaped_reward(0.5, False, 1.0, 1.0) - shaped_reward(0.5, False, 1.0, 0.0) == pytest.approx(USABILITY_WEIGHT)
     assert shaped_reward(0.5, False, 1.0, 5.0) == shaped_reward(0.5, False, 1.0, 1.0)
     checker = TrainingChecker(scenario, rules=pack, ledger=ledger, measure=pipeline, owner_layout=graph)
     variant = scramble(graph, checker, 1, seed=1)[0].graph
     target = search_target(variant, checker)
-    assert target is not None and target.verdict.quality is not None
-    verdict, q = target.verdict, target.verdict.quality["q"]
+    assert target is not None and target.verdict.quality is not None and target.verdict.usability is not None
+    verdict = target.verdict
     assert verdict.reward == shaped_reward(verdict.shortfall_recovered, verdict.fixable_left == 0,
-                                           verdict.disruption_meters, q)
-    assert 0.0 <= q <= 1.0 and layout_quality(variant, variant, graph, pipeline).q == pytest.approx(1.0)
-    assert score_completion("nonsense", variant, checker).quality is None
+                                           verdict.disruption_meters, verdict.usability)
+    assert layout_quality(variant, variant, graph, pipeline).q == pytest.approx(1.0)
+    assert score_completion("nonsense", variant, checker).usability is None
+
+
+def cafe(table_at) -> SceneGraph:
+    """A 6 by 6 m room with one 0.9 m table, and a route from the west wall to the east."""
+    return SceneGraph(scan_id=node_id("multiroom_cafe"), nodes=[
+        piece("cafe_floor", "Floor", (0.0, 0.0, 0.0), (6.0, 6.0, 0.0), False, "floor"),
+        piece("cafe_west", "Wall", (-3.0, 0.0, 1.25), (0.02, 6.0, 2.5), False, "wall"),
+        piece("cafe_east", "Wall", (3.0, 0.0, 1.25), (0.02, 6.0, 2.5), False, "wall"),
+        piece("cafe_south", "Wall", (0.0, -3.0, 1.25), (6.0, 0.02, 2.5), False, "wall"),
+        piece("cafe_north", "Wall", (0.0, 3.0, 1.25), (6.0, 0.02, 2.5), False, "wall"),
+        piece("cafe_table", "Table", (*table_at, 0.375), (0.9, 0.9, 0.75)),
+    ])
+
+
+CAFE_ROUTE = Scenario(name="Walk", stops=[Stop(name="West", position=Vec3(x=-2.5, y=0.0, z=0.0)),
+                                         Stop(name="East", position=Vec3(x=2.5, y=0.0, z=0.0))])
+
+
+def test_a_table_pushed_into_a_corner_keeps_half_its_sides():
+    middle, corner = cafe((0.0, 0.0)), cafe((-2.54, -2.54))
+    assert usability(middle, corner, middle, CAFE_ROUTE) == pytest.approx(0.5)
+    assert usability(middle, middle, middle, CAFE_ROUTE) == 1.0
+
+
+def test_an_unaffected_room_scores_one():
+    room = cafe((0.0, 0.0))
+    stool = piece("far_stool", "Stool", (2.5, 2.5, 0.3), (0.35, 0.35, 0.6))
+    before = room.model_copy(update={"nodes": [*room.nodes, stool]})
+    after = replaced(before, turned(stool, 0.0, dx=-0.1))
+    assert usability(before, after, before, CAFE_ROUTE) == 1.0
+
+
+def test_a_chair_turned_away_from_its_table_is_no_longer_usable():
+    room = cafe((0.0, 0.0))
+    chair = piece("cafe_chair", "Chair", (0.0, -0.75, 0.45), (0.45, 0.45, 0.9))
+    facing = turned(chair, 180.0)
+    owner = room.model_copy(update={"nodes": [*room.nodes, facing]})
+    assert front_heading_degrees(facing) % 360 == pytest.approx(90.0)
+    assert usability(owner, owner, owner, CAFE_ROUTE) == 1.0
+    turned_away = replaced(owner, turned(chair, 0.0))
+    assert usability(owner, turned_away, owner, CAFE_ROUTE) < 1.0
+
+
+def test_only_floating_furniture_counts_as_a_scan_error():
+    room = library()
+    floating_sofa = piece("err_sofa", "Sofa", (8.0, 0.0, 0.9), (1.8, 0.8, 0.8))
+    floating_box = piece("err_box", "Box", (9.0, 0.0, 0.9), (0.4, 0.4, 0.4))
+    room = room.model_copy(update={"nodes": [*room.nodes, floating_sofa, floating_box]})
+    assert [node.label for node in scan_errors(room, phantoms(room))] == ["Sofa"]

@@ -5,11 +5,13 @@ parse, edits that move a piece the phantom filter holds still, edits that name
 the wrong furniture, a layout that breaks a hard constraint, or one the gate
 rejects. An accepted layout earns
 
-    clamp(0.15 + 0.55 * recovered + 0.15 * all_clear + 0.15 * Q - min(0.15, 0.03 * moved), 0.05, 1)
+    clamp(0.15 + 0.55 * recovered + 0.10 * all_clear + 0.20 * U - min(0.15, 0.03 * moved), 0.05, 1)
 
-where Q (`quality.layout_quality`) is how the layout looks against the
-owner's own, so it can move an accepted layout's reward by at most 0.15 and
-never makes a refused one worth anything.
+where U (`usability.usability`) is how many sides and seats of the tables,
+desks and counters the edits touched are still usable, against the owner's
+layout. Q (`quality.layout_quality`) is still measured and logged on every
+accepted layout, and no longer paid for: it agreed with a person's choice in
+12 of 24 rated pairs.
 """
 
 from __future__ import annotations
@@ -25,11 +27,12 @@ from ..fix.strategies import TURN_DISRUPTION_METERS
 from .checker import TrainingChecker
 from .edits import edit_complaint, node_moves, parse_edits
 from .quality import layout_quality
+from .usability import usability
 
 ACCEPTED_FLOOR = 0.15
 RECOVERY_WEIGHT = 0.55
-ALL_CLEAR_BONUS = 0.15
-QUALITY_WEIGHT = 0.15
+ALL_CLEAR_BONUS = 0.10
+USABILITY_WEIGHT = 0.20
 MOVED_PINNED = "moved_unconfirmed_object"
 DISRUPTION_PENALTY_PER_METER = 0.03
 MAX_DISRUPTION_PENALTY = 0.15
@@ -48,7 +51,9 @@ class Verdict:
     disruption_meters: float = 0.0
     reason: str = ""
     quality: dict | None = None
-    """Q and its wall, pairs and sight terms, for gate-accepted layouts only."""
+    """Q and its wall, pairs and sight terms, logged for gate-accepted layouts; not part of the reward."""
+    usability: float | None = None
+    """U, for gate-accepted layouts."""
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -60,10 +65,10 @@ def disruption_meters(moves) -> float:
     return slid + turns * TURN_DISRUPTION_METERS
 
 
-def shaped_reward(recovered: float, all_clear: bool, disruption: float, quality: float = 1.0) -> float:
+def shaped_reward(recovered: float, all_clear: bool, disruption: float, usable: float = 1.0) -> float:
     penalty = min(MAX_DISRUPTION_PENALTY, DISRUPTION_PENALTY_PER_METER * disruption)
     earned = (ACCEPTED_FLOOR + RECOVERY_WEIGHT * recovered + (ALL_CLEAR_BONUS if all_clear else 0.0)
-              + QUALITY_WEIGHT * max(0.0, min(1.0, quality)))
+              + USABILITY_WEIGHT * max(0.0, min(1.0, usable)))
     return round(max(MIN_ACCEPTED_REWARD, min(1.0, earned - penalty)), 6)
 
 
@@ -109,7 +114,13 @@ def summarize(verdicts: list[Verdict]) -> dict:
         "mean_shortfall_recovered": round(
             sum(verdict.shortfall_recovered for verdict in verdicts if verdict.gate_accepts) / count, 4
         ),
+        "mean_usability_accepted": _mean_of([v.usability for v in verdicts if v.gate_accepts]),
+        "mean_quality_accepted": _mean_of([v.quality["q"] for v in verdicts if v.gate_accepts and v.quality]),
     }
+
+
+def _mean_of(values: list) -> float | None:
+    return round(sum(values) / len(values), 4) if values else None
 
 
 def _gated(room: SceneGraph, candidate: SceneGraph, checker: TrainingChecker, disruption: float) -> Verdict:
@@ -120,9 +131,11 @@ def _gated(room: SceneGraph, candidate: SceneGraph, checker: TrainingChecker, di
     if not gate:
         return Verdict(0.0, parsed=True, hard_constraints_pass=True, shortfall_recovered=recovered,
                        fixable_left=left, disruption_meters=disruption, reason="; ".join(gate.reasons))
-    quality = layout_quality(room, candidate, checker.owner_layout or room, checker.measure)
+    owner = checker.owner_layout or room
+    quality = layout_quality(room, candidate, owner, checker.measure)
+    usable = usability(room, candidate, owner, checker.scenario)
     return Verdict(
-        shaped_reward(recovered, left == 0, disruption, quality.q), parsed=True, hard_constraints_pass=True,
+        shaped_reward(recovered, left == 0, disruption, usable), parsed=True, hard_constraints_pass=True,
         gate_accepts=True, shortfall_recovered=recovered, fixable_left=left, disruption_meters=disruption,
-        quality=quality.as_dict(),
+        quality=quality.as_dict(), usability=usable,
     )
