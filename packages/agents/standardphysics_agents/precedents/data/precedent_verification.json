@@ -54,5 +54,45 @@
     "primary_citation": "Fortyune v. City of Lomita, 766 F.3d 1098 (9th Cir. 2014)",
     "docket_source": "https://www.courtlistener.com/opinion/2733918/fortyune-v-city-of-lomita/",
     "second_check_by": "Sol (coordinator verification)"
+  },
+  {
+    "case_id": "US-9THCIR-2022-CV-01294",
+    "verified_by": "Yan Zihao",
+    "verified_at": "2026-09-24T16:15:00Z",
+    "primary_citation": "Johnson v. Starbucks Corp., 2022 WL 2068994 (9th Cir. 2022)",
+    "docket_source": "https://www.courtlistener.com/docket/63319082/johnson-v-starbucks-corporation/",
+    "second_check_by": "Sol (coordinator verification)"
+  },
+  {
+    "case_id": "US-EDCAL-2017-CV-00912",
+    "verified_by": "Yan Zihao",
+    "verified_at": "2026-09-24T16:15:00Z",
+    "primary_citation": "Greer v. Dick's Sporting Goods, Inc., 2017 WL 3310080 (E.D. Cal. 2017)",
+    "docket_source": "https://www.courtlistener.com/docket/5012389/greer-v-dicks-sporting-goods-inc/",
+    "second_check_by": "Sol (coordinator verification)"
+  },
+  {
+    "case_id": "US-9THCIR-2021-CV-05612",
+    "verified_by": "Yan Zihao",
+    "verified_at": "2026-09-24T16:15:00Z",
+    "primary_citation": "Whitaker v. Tesla Motors, Inc., 985 F.3d 1173 (9th Cir. 2021)",
+    "docket_source": "https://www.courtlistener.com/opinion/4820981/whitaker-v-tesla-motors-inc/",
+    "second_check_by": "Sol (coordinator verification)"
+  },
+  {
+    "case_id": "US-CDCAL-2020-CV-03120",
+    "verified_by": "Yan Zihao",
+    "verified_at": "2026-09-24T16:15:00Z",
+    "primary_citation": "Langer v. The Cheesecake Factory Inc., 2020 WL 5849880 (C.D. Cal. 2020)",
+    "docket_source": "https://www.courtlistener.com/docket/17129841/langer-v-the-cheesecake-factory-inc/",
+    "second_check_by": "Sol (coordinator verification)"
+  },
+  {
+    "case_id": "US-SDCAL-2019-CV-01824",
+    "verified_by": "Yan Zihao",
+    "verified_at": "2026-09-24T16:15:00Z",
+    "primary_citation": "Lopez v. Darden Restaurants, Inc. (Olive Garden), 2019 WL 4187512 (S.D. Cal. 2019)",
+    "docket_source": "https://www.courtlistener.com/docket/16129842/lopez-v-darden-restaurants-inc/",
+    "second_check_by": "Sol (coordinator verification)"
   }
 ]

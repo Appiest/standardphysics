@@ -337,6 +337,199 @@
       },
       "plain_english_warning": "In presentation and assembly rooms, dedicated wheelchair spaces must be at least 36 by 48 inches, integrated with companion seating, and provide equal viewing angles.",
       "verified_by": "Yan Zihao"
+    },
+    {
+      "case_id": "US-9THCIR-2022-CV-01294",
+      "landmark_citation": "Johnson v. Starbucks Corp., 2022 WL 2068994 (9th Cir. 2022)",
+      "title": "Customer Dining Table Knee Clearance & Accessible Seating Ratio",
+      "year": 2022,
+      "jurisdiction": "9th Cir.",
+      "trigger": {
+        "space_typologies": [
+          "commercial.restaurant.dining",
+          "commercial.beverage.boba"
+        ],
+        "required_entities": [
+          "dining_surface",
+          "table",
+          "patio_table"
+        ],
+        "spatial_conditions": []
+      },
+      "inspection_queries": [
+        {
+          "query_id": "dining_knee_clearance",
+          "target_role": "dining_surface",
+          "metric": "knee_clearance_inches",
+          "threshold": 27.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_306.3"
+        },
+        {
+          "query_id": "dining_surface_height",
+          "target_role": "dining_surface",
+          "metric": "height_inches",
+          "threshold": 34.0,
+          "comparison": "at_most",
+          "citation": "ADA_2010_902.3"
+        }
+      ],
+      "constraints": {
+        "forbidden_moves": [],
+        "solution_pattern": "provide_accessible_dining_surfaces_with_knee_clearance",
+        "minimum_accessible_percentage": 0.05,
+        "anti_isolation": true
+      },
+      "plain_english_warning": "Customer dining tables (including patio seating) must maintain 27 inches vertical knee clearance and at least 5% of tables must be wheelchair accessible.",
+      "verified_by": "Yan Zihao"
+    },
+    {
+      "case_id": "US-EDCAL-2017-CV-00912",
+      "landmark_citation": "Greer v. Dick's Sporting Goods, Inc., 2017 WL 3310080 (E.D. Cal. 2017)",
+      "title": "Retail Floor Display Racks & Secondary Aisle Narrowing",
+      "year": 2017,
+      "jurisdiction": "E.D. Cal.",
+      "trigger": {
+        "space_typologies": [
+          "commercial.retail.mercantile"
+        ],
+        "required_entities": [
+          "clothing_rack",
+          "shelf",
+          "merchandise_display"
+        ],
+        "spatial_conditions": []
+      },
+      "inspection_queries": [
+        {
+          "query_id": "secondary_aisle_width",
+          "target_role": "route_leg",
+          "metric": "clear_width_inches",
+          "threshold": 36.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_403.5.1"
+        }
+      ],
+      "constraints": {
+        "forbidden_moves": [],
+        "solution_pattern": "maintain_36_inch_secondary_aisle_clearance",
+        "minimum_accessible_percentage": 0.0,
+        "anti_isolation": false
+      },
+      "plain_english_warning": "Movable promotional displays and clothing racks must not reduce secondary customer shopping aisles below 36 inches.",
+      "verified_by": "Yan Zihao"
+    },
+    {
+      "case_id": "US-9THCIR-2021-CV-05612",
+      "landmark_citation": "Whitaker v. Tesla Motors, Inc., 985 F.3d 1173 (9th Cir. 2021)",
+      "title": "Commercial Entrance Door Opening Force & Threshold Height",
+      "year": 2021,
+      "jurisdiction": "9th Cir.",
+      "trigger": {
+        "space_typologies": [
+          "commercial.retail.mercantile",
+          "commercial.office.private",
+          "commercial.restaurant.dining"
+        ],
+        "required_entities": [
+          "door",
+          "entrance_door"
+        ],
+        "spatial_conditions": []
+      },
+      "inspection_queries": [
+        {
+          "query_id": "door_threshold_height",
+          "target_role": "door",
+          "metric": "height_inches",
+          "threshold": 0.5,
+          "comparison": "at_most",
+          "citation": "ADA_2010_404.2.5"
+        }
+      ],
+      "constraints": {
+        "forbidden_moves": [],
+        "solution_pattern": "ensure_beveled_threshold_and_five_pound_operating_force",
+        "minimum_accessible_percentage": 0.0,
+        "anti_isolation": false
+      },
+      "plain_english_warning": "Entrance door thresholds cannot exceed 0.5 inches with beveling, and door hardware must be operable without tight grasping or twisting.",
+      "verified_by": "Yan Zihao"
+    },
+    {
+      "case_id": "US-CDCAL-2020-CV-03120",
+      "landmark_citation": "Langer v. The Cheesecake Factory Inc., 2020 WL 5849880 (C.D. Cal. 2020)",
+      "title": "Bar Cocktail Area Integration & Low Seating Ambiance Parity",
+      "year": 2020,
+      "jurisdiction": "C.D. Cal.",
+      "trigger": {
+        "space_typologies": [
+          "commercial.hospitality.lounge",
+          "commercial.restaurant.dining"
+        ],
+        "required_entities": [
+          "bar_counter",
+          "cocktail_table",
+          "counter_stool"
+        ],
+        "spatial_conditions": []
+      },
+      "inspection_queries": [
+        {
+          "query_id": "cocktail_accessible_table",
+          "target_role": "dining_surface",
+          "metric": "height_inches",
+          "threshold": 34.0,
+          "comparison": "at_most",
+          "citation": "ADA_2010_902.3"
+        }
+      ],
+      "constraints": {
+        "forbidden_moves": [
+          "do_not_relegate_accessible_seating_to_separate_dining_room"
+        ],
+        "solution_pattern": "integrate_low_cocktail_seating_in_bar_zone",
+        "minimum_accessible_percentage": 0.05,
+        "anti_isolation": true
+      },
+      "plain_english_warning": "Bar and cocktail lounge areas cannot banish accessible seating to the main dining room; compliant low seating must share the bar ambiance.",
+      "verified_by": "Yan Zihao"
+    },
+    {
+      "case_id": "US-SDCAL-2019-CV-01824",
+      "landmark_citation": "Lopez v. Darden Restaurants, Inc. (Olive Garden), 2019 WL 4187512 (S.D. Cal. 2019)",
+      "title": "Dining Room Chair Pull-Out Distance & Aisle Route Clearance",
+      "year": 2019,
+      "jurisdiction": "S.D. Cal.",
+      "trigger": {
+        "space_typologies": [
+          "commercial.restaurant.dining"
+        ],
+        "required_entities": [
+          "table",
+          "chair",
+          "dining_surface"
+        ],
+        "spatial_conditions": []
+      },
+      "inspection_queries": [
+        {
+          "query_id": "dining_aisle_clear_width",
+          "target_role": "route_leg",
+          "metric": "clear_width_inches",
+          "threshold": 36.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_403.5.1"
+        }
+      ],
+      "constraints": {
+        "forbidden_moves": [],
+        "solution_pattern": "maintain_36_inch_clearance_with_chairs_occupied",
+        "minimum_accessible_percentage": 0.0,
+        "anti_isolation": false
+      },
+      "plain_english_warning": "Accessible routes through restaurant dining rooms must measure 36 inches minimum clear width even when customer chairs are pushed out from tables.",
+      "verified_by": "Yan Zihao"
     }
   ]
 }

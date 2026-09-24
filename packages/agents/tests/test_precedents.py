@@ -47,12 +47,12 @@ def _make_node(
 class TestPrecedentCorpusAndLedger:
     def test_precedents_load_and_validate(self):
         directives = load_precedents(allow_unverified=True)
-        assert len(directives) >= 7
+        assert len(directives) >= 12
         assert all(isinstance(d, PrecedentDirective) for d in directives)
 
     def test_precedent_ledger_verification(self):
         ledger = load_precedent_ledger()
-        assert len(ledger) >= 7
+        assert len(ledger) >= 12
         for v in ledger:
             assert v.verified_by
             assert v.primary_citation
@@ -62,7 +62,7 @@ class TestPrecedentCorpusAndLedger:
         monkeypatch.delenv("SP_PREVIEW_UNVERIFIED_PRECEDENTS", raising=False)
         directives = load_precedents()
         # All shipped cases are verified by human reviewer in the ledger
-        assert len(directives) >= 7
+        assert len(directives) >= 12
 
 
 class TestPrecedentCompiler:

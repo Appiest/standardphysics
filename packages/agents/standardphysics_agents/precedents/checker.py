@@ -8,6 +8,7 @@ counter clearances) before a layout can pass the evaluation gate.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 from standardphysics_contracts import SceneGraph, SceneNode, to_inches
 from standardphysics_contracts.precedents import PrecedentDirective, PrecedentViolation
@@ -131,3 +132,16 @@ def check_precedent_constraints(
                 violations.extend(_check_anti_isolation(directive, dining_surfaces, accessible))
 
     return violations
+
+
+def precedent_rejection_for(
+    directives: list[PrecedentDirective],
+) -> Callable[[SceneGraph, SceneGraph], str | None]:
+    """Create a CandidateRejection callback for propose_fix in fix.search."""
+    def _reject(base: SceneGraph, candidate: SceneGraph) -> str | None:
+        violations = check_precedent_constraints(base, candidate, directives)
+        if violations:
+            return f"precedent_violation:{violations[0].rule_broken}"
+        return None
+
+    return _reject

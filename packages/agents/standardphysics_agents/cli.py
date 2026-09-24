@@ -203,6 +203,48 @@ def _second_check(args) -> int:
     return 0
 
 
+def _precedents_list(args) -> int:
+    from .precedents import load_precedent_ledger, load_precedents
+
+    directives = load_precedents(allow_unverified=True)
+    ledger = load_precedent_ledger()
+    for d in directives:
+        status = "verified" if ledger.is_verified(d.case_id) else "unverified"
+        print(f"{d.case_id:24} {d.jurisdiction:<10} {d.year:<6} {status:<10} {d.title}")
+    return 0
+
+
+def _precedents_show(args) -> int:
+    from .precedents import load_precedents
+
+    directives = load_precedents(allow_unverified=True)
+    matched = [d for d in directives if d.case_id == args.case_id]
+    if not matched:
+        print(f"Unknown precedent case ID: {args.case_id}", file=sys.stderr)
+        return 1
+    d = matched[0]
+    print(f"{d.case_id}: {d.title}\n")
+    print(f"  Landmark Citation: {d.landmark_citation}")
+    print(f"  Jurisdiction:      {d.jurisdiction} ({d.year})")
+    print(f"  Typologies:        {', '.join(t.value for t in d.trigger.space_typologies)}")
+    print(f"  Required Objects:  {', '.join(d.trigger.required_entities)}")
+    print(f"\n  Plain Warning:\n  {d.plain_english_warning}\n")
+    print("  Inspection Queries:")
+    for q in d.inspection_queries:
+        print(f"    • [{q.query_id}] {q.target_role}: {q.metric} {q.comparison} {q.threshold:g} ({q.citation})")
+    print(f"\n  Remedy Pattern:    {d.constraints.solution_pattern}")
+    print(f"  Anti-Isolation:    {d.constraints.anti_isolation}")
+    return 0
+
+
+def _precedents_benchmark(args) -> int:
+    import subprocess
+
+    benchmark_script = Path(__file__).resolve().parent.parent.parent.parent / "scripts/benchmark_precedent_constraints.py"
+    cmd = [sys.executable, str(benchmark_script)]
+    return subprocess.run(cmd).returncode
+
+
 def _check(args) -> int:
     graph, scenario = _fixture_shop()
     result = assess(graph, scenario, _measurements(args.provider), max_tier=args.tier)
@@ -631,6 +673,9 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "ask": _ask,
     "held-out": _held_out,
     "count": _count_on_surfaces,
+    "precedents.list": _precedents_list,
+    "precedents.show": _precedents_show,
+    "precedents.benchmark": _precedents_benchmark,
 }
 
 
@@ -664,10 +709,23 @@ def _add_rule_commands(parent) -> None:
     second.add_argument("--by", required=True)
 
 
+def _add_precedent_commands(parent) -> None:
+    precedents = parent.add_parser("precedents", help="actionable landmark ADA case precedents")
+    sub = precedents.add_subparsers(dest="precedents_command", required=True)
+
+    sub.add_parser("list", help="list all case directives and verification status")
+
+    show = sub.add_parser("show", help="show one landmark case directive in full")
+    show.add_argument("case_id")
+
+    sub.add_parser("benchmark", help="run the precedent constraint benchmark")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="standardphysics-agents")
     commands = parser.add_subparsers(dest="command", required=True)
     _add_rule_commands(commands)
+    _add_precedent_commands(commands)
 
     check = commands.add_parser("check", help="run the checks on the fixture shop")
     check.add_argument("--provider", choices=PROVIDERS, default="pipeline")
@@ -795,11 +853,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     init_tracing()
-    key = (
-        f"{args.command}.{args.rules_command}"
-        if args.command == "rules"
-        else args.command
-    )
+    if args.command == "rules":
+        key = f"{args.command}.{args.rules_command}"
+    elif args.command == "precedents":
+        key = f"{args.command}.{args.precedents_command}"
+    else:
+        key = args.command
     return HANDLERS[key](args)
 
 
