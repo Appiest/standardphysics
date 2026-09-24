@@ -8,6 +8,7 @@ import type { Finding } from "@/types/contracts";
 import { Button } from "@/components/ui/Button";
 import type { Arrangement } from "./useArrangement";
 import { FindingsList } from "./FindingsList";
+import { SuggestRearrangement } from "./SuggestRearrangement";
 
 function Status({ arrangement, problems, scope }: { arrangement: Arrangement; problems: number; scope: CheckScope }) {
   if (arrangement.checking) {
@@ -31,7 +32,9 @@ function Status({ arrangement, problems, scope }: { arrangement: Arrangement; pr
   );
 }
 
-export function ArrangePanel({ arrangement, fallbackFindings, scope }: { arrangement: Arrangement; fallbackFindings: Finding[]; scope: CheckScope }) {
+type Props = { arrangement: Arrangement; fallbackFindings: Finding[]; scope: CheckScope; scanId: string; revision: number };
+
+export function ArrangePanel({ arrangement, fallbackFindings, scope, scanId, revision }: Props) {
   const findings = arrangement.check?.findings ?? fallbackFindings;
   const groups = groupFindings(findings);
 
@@ -46,6 +49,9 @@ export function ArrangePanel({ arrangement, fallbackFindings, scope }: { arrange
           </p>
         ))}
         {arrangement.problem && <p className="mt-2 text-problem">{arrangement.problem}</p>}
+        <div className="mt-4">
+          <SuggestRearrangement key={revision} scanId={scanId} revision={revision} hasMoves={arrangement.hasMoves} onSuggested={arrangement.load} />
+        </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="primary" onClick={arrangement.save} disabled={!arrangement.canSave} className="disabled:opacity-40">
             {arrangement.saving ? "Saving" : "Save this layout"}

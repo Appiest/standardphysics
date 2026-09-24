@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import pathlib
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from standardphysics_agents.tracing import ENTITY_ENV, PROJECT_ENV
 
@@ -96,6 +96,18 @@ class Settings:
     not changed for this long (or an explicit /complete arrives), one semantic
     job is queued. Zero keeps the immediate per-artifact behavior for tests.
     """
+    rearrange_model: str | None = None
+    """SP_REARRANGE_MODEL: the fine-tuned rearrangement model's id on Fireworks. Unset turns
+    "Suggest a rearrangement" off, and the page says so."""
+    rearrange_deployment: str | None = None
+    """SP_REARRANGE_DEPLOYMENT: the on-demand deployment serving it, as accounts/<a>/deployments/<id>
+    or a bare id. When set, a suggestion lets it run one replica and scales it back to zero after."""
+    rearrange_keep_warm_seconds: int = 300
+    """SP_REARRANGE_KEEP_WARM_SECONDS: how long the deployment stays up after a suggestion."""
+    rearrange_fake_model: bool = False
+    """SP_REARRANGE_FAKE_MODEL=1, development only: a local stand-in answers instead of Fireworks."""
+    fireworks_api_key: str | None = field(default=None, repr=False)
+    """FIREWORKS_API_KEY, from the repo-root .env."""
 
     @property
     def database_path(self) -> pathlib.Path:
@@ -115,6 +127,11 @@ class Settings:
             weave_entity=os.environ.get(ENTITY_ENV) or None,
             auto_deep_simulation=_flag("SP_AUTO_DEEP_SIMULATION"),
             bake_in_own_process=not _flag("SP_BAKE_IN_PROCESS"),
+            rearrange_model=os.environ.get("SP_REARRANGE_MODEL") or None,
+            rearrange_deployment=os.environ.get("SP_REARRANGE_DEPLOYMENT") or None,
+            rearrange_keep_warm_seconds=_bounded_integer("SP_REARRANGE_KEEP_WARM_SECONDS", 300, 0, 3600),
+            rearrange_fake_model=_flag("SP_REARRANGE_FAKE_MODEL"),
+            fireworks_api_key=os.environ.get("FIREWORKS_API_KEY") or None,
             evidence_settle_seconds=_bounded_integer(
                 "SP_EVIDENCE_SETTLE_SECONDS", 30, 0, 86_400
             ),

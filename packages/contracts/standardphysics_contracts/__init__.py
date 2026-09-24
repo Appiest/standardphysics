@@ -47,6 +47,13 @@ from .primitives import (
     TextSet,
     Truth,
 )
+from .rearrangement import (
+    RearrangementAttempt,
+    RearrangementRequest,
+    RearrangementStatus,
+    RearrangementSuggestion,
+    RewardParts,
+)
 from .rules import Authority, Check, Citation, RulePack, Tier
 from .scan import (
     GEOMETRY_REQUIRED_ARTIFACT_KINDS,
@@ -212,10 +219,15 @@ __all__ = [
     "ProposalResult",
     "Quality",
     "ReachReport",
+    "RearrangementAttempt",
+    "RearrangementRequest",
+    "RearrangementStatus",
+    "RearrangementSuggestion",
     "RebuildRequest",
     "ReplayChapter",
     "Report",
     "ReviewedRule",
+    "RewardParts",
     "RouterAction",
     "RulePack",
     "SaveLayoutRequest",

@@ -68,6 +68,7 @@ def make_client(tmp_path):
         seed: bool = False,
         stages: Stages | None = None,
         sign_in_as_owner: bool = True,
+        rearranger=None,
         **settings_overrides,
     ) -> TestClient:
         settings = Settings(
@@ -77,7 +78,8 @@ def make_client(tmp_path):
             seed_owner_password=SEED_OWNER_PASSWORD,
             **settings_overrides,
         )
-        test_client = TestClient(create_app(settings, stages or no_blender_stages(), run_worker=False))
+        app = create_app(settings, stages or no_blender_stages(), run_worker=False, rearranger=rearranger)
+        test_client = TestClient(app)
         if not sign_in_as_owner:
             return test_client
         with test_client:

@@ -100,8 +100,8 @@ def scan_exists(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
 
 
 CHILD_TABLES = (
-    "texture_builds", "simulations", "assessments", "evidence_bundles", "scenarios", "revisions",
-    "job_attempts", "jobs", "artifacts",
+    "texture_builds", "simulations", "rearrangements", "assessments", "evidence_bundles", "scenarios",
+    "revisions", "job_attempts", "jobs", "artifacts",
 )
 """Everything that references a scan, deepest first.
 
@@ -370,13 +370,31 @@ def queue_job_again(connection: sqlite3.Connection, scan_id: uuid.UUID, kind: st
     )
 
 
-def claim_job(connection: sqlite3.Connection, texture_only: bool | None = None) -> sqlite3.Row | None:
+LANED_KINDS = ("texture", "rearrange")
+"""Job kinds that run on a worker thread of their own, never the main one."""
+
+
+def _lane_filter(texture_only: bool | None, kind: str | None) -> tuple[str, tuple]:
+    if kind is not None:
+        return "kind = ?", (kind,)
+    if texture_only:
+        return "kind = ?", ("texture",)
+    if texture_only is False:
+        return "kind NOT IN (" + ", ".join("?" for _ in LANED_KINDS) + ")", LANED_KINDS
+    return "1=1", ()
+
+
+def claim_job(
+    connection: sqlite3.Connection, texture_only: bool | None = None, *, kind: str | None = None
+) -> sqlite3.Row | None:
+    """The oldest queued job on a lane: textures, one kind, everything but the laned kinds, or anything."""
+    lane, parameters = _lane_filter(texture_only, kind)
     return connection.execute(
         "UPDATE jobs SET state = 'running', attempts = attempts + 1"
         " WHERE id = (SELECT id FROM jobs WHERE state = 'queued'"
-        " AND (? IS NULL OR (kind='texture')=?) ORDER BY id LIMIT 1)"
+        f" AND {lane} ORDER BY id LIMIT 1)"
         " RETURNING id, scan_id, kind, revision, attempts",
-        (texture_only, texture_only),
+        parameters,
     ).fetchone()
 
 
@@ -391,7 +409,7 @@ def retry_failed_jobs(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Non
         row["kind"]
         for row in connection.execute(
             "SELECT kind FROM jobs WHERE scan_id = ? AND state = 'failed'"
-            " AND kind NOT IN ('display', 'simulate', 'texture')",
+            " AND kind NOT IN ('display', 'simulate', 'texture', 'rearrange')",
             (str(scan_id),),
         )
     }
@@ -401,7 +419,7 @@ def retry_failed_jobs(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Non
     connection.execute("UPDATE scans SET state = ? WHERE id = ?", (state, str(scan_id)))
     connection.execute(
         "UPDATE jobs SET state = 'queued', error = NULL WHERE scan_id = ? AND state = 'failed'"
-        " AND kind NOT IN ('display', 'simulate', 'texture')",
+        " AND kind NOT IN ('display', 'simulate', 'texture', 'rearrange')",
         (str(scan_id),),
     )
 

@@ -1,5 +1,14 @@
 import { readLines } from "@/lib/ndjson";
-import type { AskAnswer, LayoutCheckResult, LoopEvent, NodeMove, ProposalResult, Scenario, SceneGraph } from "@/types/contracts";
+import type {
+  AskAnswer,
+  LayoutCheckResult,
+  LoopEvent,
+  NodeMove,
+  ProposalResult,
+  RearrangementStatus,
+  Scenario,
+  SceneGraph,
+} from "@/types/contracts";
 
 export class ApiRefusal extends Error {
   constructor(readonly status: number, readonly error: string) {
@@ -21,6 +30,20 @@ async function sendJson<T>(url: string, body: unknown, method = "POST"): Promise
   });
   if (!response.ok) throw await refusal(response);
   return (await response.json()) as T;
+}
+
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw await refusal(response);
+  return (await response.json()) as T;
+}
+
+export function startRearrangement(scanId: string, baseRevision: number) {
+  return sendJson<RearrangementStatus>(`/api/scans/${scanId}/rearrangement-suggestion`, { base_revision: baseRevision });
+}
+
+export function rearrangementStatus(scanId: string, revision: number) {
+  return getJson<RearrangementStatus>(`/api/scans/${scanId}/rearrangement-suggestion?revision=${revision}`);
 }
 
 export function checkLayout(scanId: string, baseRevision: number, sequence: number, moves: NodeMove[]) {

@@ -316,9 +316,9 @@ function compareTaskPanel(props: SidePanelProps): ReactNode {
 }
 
 function arrangeTaskPanel(props: SidePanelProps): ReactNode {
-  const { findings, arrangement, assessment, route } = props;
+  const { findings, arrangement, assessment, route, scan, scene } = props;
   const scope: CheckScope = { rulesChecked: assessment?.rules_checked ?? null, routeConfirmed: route.confirmed };
-  return <ArrangePanel arrangement={arrangement} fallbackFindings={findings} scope={scope} />;
+  return <ArrangePanel arrangement={arrangement} fallbackFindings={findings} scope={scope} scanId={scan.id} revision={scene.revision} />;
 }
 
 function combineTaskPanel(props: SidePanelProps): ReactNode {

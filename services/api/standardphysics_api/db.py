@@ -76,6 +76,18 @@ CREATE TABLE IF NOT EXISTS simulations (
     result_json TEXT,
     PRIMARY KEY (scan_id, revision)
 );
+CREATE TABLE IF NOT EXISTS rearrangements (
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    revision INTEGER NOT NULL,
+    phase TEXT NOT NULL DEFAULT 'waiting',
+    result_json TEXT,
+    PRIMARY KEY (scan_id, revision)
+);
+CREATE TABLE IF NOT EXISTS rearrange_deployments (
+    name TEXT PRIMARY KEY,
+    may_run INTEGER NOT NULL DEFAULT 0,
+    scale_down_after REAL
+);
 CREATE TABLE IF NOT EXISTS texture_builds (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     scan_id TEXT NOT NULL REFERENCES scans(id),

@@ -994,6 +994,84 @@ export interface ProposalResult {
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "RearrangementAttempt".
+ */
+export interface RearrangementAttempt {
+  accepted: boolean;
+  /**
+   * Why the attempt was turned down, in plain words; empty when accepted.
+   */
+  reason: string;
+  reward: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "RearrangementRequest".
+ */
+export interface RearrangementRequest {
+  base_revision: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "RearrangementStatus".
+ */
+export interface RearrangementStatus {
+  available: boolean;
+  base_revision: number;
+  error: string | null;
+  phase: ("waiting" | "starting_model" | "asking_model" | "checking") | null;
+  result: RearrangementSuggestion | null;
+  state: "idle" | "queued" | "running" | "done" | "failed";
+  unavailable_reason: string | null;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "RearrangementSuggestion".
+ */
+export interface RearrangementSuggestion {
+  accepted: boolean;
+  attempts: RearrangementAttempt[];
+  base_revision: number;
+  findings_after: Finding[];
+  findings_before: Finding[];
+  /**
+   * Hash of the layout the moves produce.
+   */
+  graph_hash: string | null;
+  /**
+   * One sentence for the owner: what the suggestion does, or why there is none.
+   */
+  message: string;
+  moves: NodeMove[];
+  reward: RewardParts | null;
+}
+/**
+ * The training reward for the chosen attempt, and the terms it is made of.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "RewardParts".
+ */
+export interface RewardParts {
+  /**
+   * Whether every problem furniture can fix is gone.
+   */
+  all_clear: boolean;
+  /**
+   * Metres slid plus a fixed cost per turn.
+   */
+  disruption_meters: number;
+  /**
+   * Share of the measured shortfall the moves recover, 0 to 1.
+   */
+  recovered: number;
+  reward: number;
+  /**
+   * U: how usable the touched tables, desks and counters stay, 0 to 1.
+   */
+  usability: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "RebuildRequest".
  */
 export interface RebuildRequest {
