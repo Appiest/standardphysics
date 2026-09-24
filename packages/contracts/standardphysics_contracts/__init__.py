@@ -37,6 +37,14 @@ from .measurement import (
     MeasurementProvider,
     WidthResult,
 )
+from .precedents import (
+    PrecedentConstraintSpec,
+    PrecedentDirective,
+    PrecedentQuerySpec,
+    PrecedentTrigger,
+    PrecedentViolation,
+    SpaceTypology,
+)
 from .primitives import (
     Evidence,
     NodeSet,
@@ -206,6 +214,11 @@ __all__ = [
     "PhysicsObservation",
     "PhysicsRoute",
     "PoseRecord",
+    "PrecedentConstraintSpec",
+    "PrecedentDirective",
+    "PrecedentQuerySpec",
+    "PrecedentTrigger",
+    "PrecedentViolation",
     "Proposal",
     "ProposalRequest",
     "ProposalResult",
@@ -230,6 +243,7 @@ __all__ = [
     "SimulationResult",
     "SimulationStatus",
     "SocketTarget",
+    "SpaceTypology",
     "Stop",
     "SurfaceAttachment",
     "SurfaceCoverage",

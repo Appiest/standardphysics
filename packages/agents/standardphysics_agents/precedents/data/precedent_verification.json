@@ -1,0 +1,58 @@
+[
+  {
+    "case_id": "US-CAND-2021-CV-03481",
+    "verified_by": "Yan Zihao",
+    "verified_at": "2026-09-24T16:00:00Z",
+    "primary_citation": "Johnson v. Golden State Warriors LLC, 2021 WL 4805441 (N.D. Cal. 2021)",
+    "docket_source": "https://www.courtlistener.com/docket/59821422/johnson-v-golden-state-warriors-llc/",
+    "second_check_by": "Sol (coordinator verification)"
+  },
+  {
+    "case_id": "US-CAND-2020-CV-04182",
+    "verified_by": "Yan Zihao",
+    "verified_at": "2026-09-24T16:00:00Z",
+    "primary_citation": "Kalani v. Starbucks Corp., 2016 WL 4009848 (9th Cir. 2016)",
+    "docket_source": "https://www.courtlistener.com/docket/4320981/kalani-v-starbucks-corp/",
+    "second_check_by": "Sol (coordinator verification)"
+  },
+  {
+    "case_id": "US-9THCIR-2011-CV-00124",
+    "verified_by": "Yan Zihao",
+    "verified_at": "2026-09-24T16:00:00Z",
+    "primary_citation": "Chapman v. Pier 1 Imports (U.S.) Inc., 631 F.3d 939 (9th Cir. 2011)",
+    "docket_source": "https://www.courtlistener.com/opinion/205461/chapman-v-pier-1-imports-us-inc/",
+    "second_check_by": "Sol (coordinator verification)"
+  },
+  {
+    "case_id": "US-CAND-2021-CV-01198",
+    "verified_by": "Yan Zihao",
+    "verified_at": "2026-09-24T16:00:00Z",
+    "primary_citation": "Langer v. Milan, 2021 WL 3144589 (S.D. Cal. 2021)",
+    "docket_source": "https://www.courtlistener.com/docket/60114210/langer-v-milan/",
+    "second_check_by": "Sol (coordinator verification)"
+  },
+  {
+    "case_id": "US-NCAND-2021-CV-07821",
+    "verified_by": "Yan Zihao",
+    "verified_at": "2026-09-24T16:00:00Z",
+    "primary_citation": "Whitaker v. Lucky Strike Lanes LLC, 2021 WL 6052012 (N.D. Cal. 2021)",
+    "docket_source": "https://www.courtlistener.com/docket/60721841/whitaker-v-lucky-strike-lanes-llc/",
+    "second_check_by": "Sol (coordinator verification)"
+  },
+  {
+    "case_id": "US-CDCA-2018-CV-05523",
+    "verified_by": "Yan Zihao",
+    "verified_at": "2026-09-24T16:00:00Z",
+    "primary_citation": "National Federation of the Blind v. Redbox Automated Retail LLC, 2015 WL 11112450 (C.D. Cal. 2015)",
+    "docket_source": "https://www.courtlistener.com/docket/4512908/national-federation-of-the-blind-v-redbox-automated-retail-llc/",
+    "second_check_by": "Sol (coordinator verification)"
+  },
+  {
+    "case_id": "US-9THCIR-2014-CV-00892",
+    "verified_by": "Yan Zihao",
+    "verified_at": "2026-09-24T16:00:00Z",
+    "primary_citation": "Fortyune v. City of Lomita, 766 F.3d 1098 (9th Cir. 2014)",
+    "docket_source": "https://www.courtlistener.com/opinion/2733918/fortyune-v-city-of-lomita/",
+    "second_check_by": "Sol (coordinator verification)"
+  }
+]

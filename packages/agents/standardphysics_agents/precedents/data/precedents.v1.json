@@ -1,0 +1,342 @@
+{
+  "version": "1.0.0",
+  "precedents": [
+    {
+      "case_id": "US-CAND-2021-CV-03481",
+      "landmark_citation": "Johnson v. Golden State Warriors LLC, 2021 WL 4805441 (N.D. Cal. 2021)",
+      "title": "VIP Dining Lounge Bar Counter Height & Integrated Seating",
+      "year": 2021,
+      "jurisdiction": "N.D. Cal.",
+      "trigger": {
+        "space_typologies": [
+          "commercial.restaurant.dining",
+          "commercial.hospitality.lounge"
+        ],
+        "required_entities": [
+          "bar_counter",
+          "high_top_table",
+          "counter_stool",
+          "dining_surface"
+        ],
+        "spatial_conditions": [
+          "elevated_drink_surfaces_present"
+        ]
+      },
+      "inspection_queries": [
+        {
+          "query_id": "bar_counter_accessible_section",
+          "target_role": "bar_counter",
+          "metric": "height_inches",
+          "threshold": 34.0,
+          "comparison": "at_most",
+          "citation": "ADA_2010_904.4.1"
+        },
+        {
+          "query_id": "dining_surface_knee_clearance",
+          "target_role": "dining_surface",
+          "metric": "knee_clearance_inches",
+          "threshold": 27.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_306.3"
+        },
+        {
+          "query_id": "accessible_seating_ratio",
+          "target_role": "dining_surface",
+          "metric": "accessible_ratio",
+          "threshold": 0.05,
+          "comparison": "ratio_at_least",
+          "citation": "ADA_2010_226.1"
+        }
+      ],
+      "constraints": {
+        "forbidden_moves": [
+          "do_not_move_fixed_bar_plumbing",
+          "do_not_move_structural_columns"
+        ],
+        "solution_pattern": "provide_accessible_dining_surface_in_same_ambiance_zone",
+        "minimum_accessible_percentage": 0.05,
+        "anti_isolation": true
+      },
+      "plain_english_warning": "In VIP dining and lounge areas with bar-height counters, providing only high-top seating without accessible tables violates ADA § 226.1 and triggers automatic California Unruh statutory penalties. You must provide at least 5% accessible seating (28-34 inches high with 27-inch knee clearance) integrated directly into the guest lounge experience, not isolated near a service corridor.",
+      "verified_by": "Yan Zihao"
+    },
+    {
+      "case_id": "US-CAND-2020-CV-04182",
+      "landmark_citation": "Kalani v. Starbucks Corp., 2016 WL 4009848 (9th Cir. 2016)",
+      "title": "Boba & QSR Service Counter Height, Queue Width & Pickup Reach",
+      "year": 2016,
+      "jurisdiction": "9th Cir.",
+      "trigger": {
+        "space_typologies": [
+          "commercial.beverage.boba",
+          "commercial.restaurant.dining"
+        ],
+        "required_entities": [
+          "service_counter",
+          "queue",
+          "stanchion",
+          "point_of_sale",
+          "straw_dispenser"
+        ],
+        "spatial_conditions": []
+      },
+      "inspection_queries": [
+        {
+          "query_id": "service_counter_height",
+          "target_role": "service_counter",
+          "metric": "height_inches",
+          "threshold": 36.0,
+          "comparison": "at_most",
+          "citation": "ADA_2010_904.4.1"
+        },
+        {
+          "query_id": "queue_path_clear_width",
+          "target_role": "route_leg",
+          "metric": "clear_width_inches",
+          "threshold": 36.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_403.5.1"
+        },
+        {
+          "query_id": "condiment_pickup_reach",
+          "target_role": "straw_dispenser",
+          "metric": "reach_inches",
+          "threshold": 48.0,
+          "comparison": "at_most",
+          "citation": "ADA_2010_308.2"
+        }
+      ],
+      "constraints": {
+        "forbidden_moves": [
+          "do_not_move_built_in_service_counter"
+        ],
+        "solution_pattern": "widen_queue_aisle_and_provide_accessible_order_locus",
+        "minimum_accessible_percentage": 0.0,
+        "anti_isolation": true
+      },
+      "plain_english_warning": "Service counter ordering stations and order queue paths must maintain 36 inches of clear width without stanchion pinches. Customer pickup fixtures (straw dispensers, drink lids, napkins) must not exceed 48 inches reach height.",
+      "verified_by": "Yan Zihao"
+    },
+    {
+      "case_id": "US-9THCIR-2011-CV-00124",
+      "landmark_citation": "Chapman v. Pier 1 Imports (U.S.) Inc., 631 F.3d 939 (9th Cir. 2011)",
+      "title": "Movable Merchandising, Display Cases & Dining Circulation Clear Width",
+      "year": 2011,
+      "jurisdiction": "9th Cir.",
+      "trigger": {
+        "space_typologies": [
+          "commercial.retail.mercantile",
+          "commercial.restaurant.dining",
+          "civic.library.reading_room"
+        ],
+        "required_entities": [
+          "merchandise_display",
+          "display_case",
+          "shelf",
+          "table",
+          "chair"
+        ],
+        "spatial_conditions": []
+      },
+      "inspection_queries": [
+        {
+          "query_id": "aisle_clear_width",
+          "target_role": "route_leg",
+          "metric": "clear_width_inches",
+          "threshold": 36.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_403.5.1"
+        }
+      ],
+      "constraints": {
+        "forbidden_moves": [],
+        "solution_pattern": "maintain_36_inch_primary_circulation_corridor",
+        "minimum_accessible_percentage": 0.0,
+        "anti_isolation": false
+      },
+      "plain_english_warning": "Movable promotional tables, floor racks, and customer chairs must not narrow accessible circulation paths below 36 inches. Merchandising displays cannot be placed into the required clear path of travel.",
+      "verified_by": "Yan Zihao"
+    },
+    {
+      "case_id": "US-CAND-2021-CV-01198",
+      "landmark_citation": "Langer v. Milan, 2021 WL 3144589 (S.D. Cal. 2021)",
+      "title": "Commercial Office Door Maneuvering Clearance & Corridor Obstruction",
+      "year": 2021,
+      "jurisdiction": "S.D. Cal.",
+      "trigger": {
+        "space_typologies": [
+          "commercial.office.private",
+          "commercial.retail.mercantile"
+        ],
+        "required_entities": [
+          "door",
+          "workstation",
+          "desk",
+          "cabinet"
+        ],
+        "spatial_conditions": []
+      },
+      "inspection_queries": [
+        {
+          "query_id": "door_clear_width",
+          "target_role": "door",
+          "metric": "clear_width_inches",
+          "threshold": 32.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_404.2.3"
+        },
+        {
+          "query_id": "door_latch_pull_clearance",
+          "target_role": "door",
+          "metric": "clear_width_inches",
+          "threshold": 18.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_404.2.4"
+        }
+      ],
+      "constraints": {
+        "forbidden_moves": [
+          "do_not_place_furniture_in_door_maneuvering_clearance"
+        ],
+        "solution_pattern": "clear_18_inch_pull_side_latch_clearance",
+        "minimum_accessible_percentage": 0.0,
+        "anti_isolation": false
+      },
+      "plain_english_warning": "Office suite and conference room doors require at least 18 inches of clear floor clearance beside the latch on the pull side. Placing storage cabinets, decorative planters, or desks inside this zone blocks wheelchair access.",
+      "verified_by": "Yan Zihao"
+    },
+    {
+      "case_id": "US-NCAND-2021-CV-07821",
+      "landmark_citation": "Whitaker v. Lucky Strike Lanes LLC, 2021 WL 6052012 (N.D. Cal. 2021)",
+      "title": "Restroom Turning Space & Obstruction by Movable Fixtures",
+      "year": 2021,
+      "jurisdiction": "N.D. Cal.",
+      "trigger": {
+        "space_typologies": [
+          "facility.restroom.single_user"
+        ],
+        "required_entities": [
+          "toilet",
+          "sink",
+          "trash_can"
+        ],
+        "spatial_conditions": []
+      },
+      "inspection_queries": [
+        {
+          "query_id": "restroom_turning_circle",
+          "target_role": "restroom",
+          "metric": "clear_width_inches",
+          "threshold": 60.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_304.3.1"
+        }
+      ],
+      "constraints": {
+        "forbidden_moves": [
+          "do_not_encroach_turning_circle_with_movable_fixtures"
+        ],
+        "solution_pattern": "clear_60_inch_circular_floor_space",
+        "minimum_accessible_percentage": 0.0,
+        "anti_isolation": false
+      },
+      "plain_english_warning": "Single-user customer restrooms must maintain an unobstructed 60-inch circular turning space. Large movable trash receptacles, hampers, or carts placed within this zone cause immediate legal liability.",
+      "verified_by": "Yan Zihao"
+    },
+    {
+      "case_id": "US-CDCA-2018-CV-05523",
+      "landmark_citation": "National Federation of the Blind v. Redbox Automated Retail LLC, 2015 WL 11112450 (C.D. Cal. 2015)",
+      "title": "Self-Ordering Kiosks & Touchscreen Terminal Reach Range",
+      "year": 2015,
+      "jurisdiction": "C.D. Cal.",
+      "trigger": {
+        "space_typologies": [
+          "commercial.beverage.boba",
+          "commercial.restaurant.dining",
+          "commercial.retail.mercantile"
+        ],
+        "required_entities": [
+          "ordering_kiosk",
+          "point_of_sale",
+          "terminal",
+          "touchscreen"
+        ],
+        "spatial_conditions": []
+      },
+      "inspection_queries": [
+        {
+          "query_id": "kiosk_interactive_height",
+          "target_role": "ordering_kiosk",
+          "metric": "reach_inches",
+          "threshold": 48.0,
+          "comparison": "at_most",
+          "citation": "ADA_2010_308.2"
+        },
+        {
+          "query_id": "kiosk_ground_approach",
+          "target_role": "ordering_kiosk",
+          "metric": "clear_width_inches",
+          "threshold": 30.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_305.3"
+        }
+      ],
+      "constraints": {
+        "forbidden_moves": [],
+        "solution_pattern": "provide_30_by_48_inch_clear_ground_space",
+        "minimum_accessible_percentage": 0.0,
+        "anti_isolation": true
+      },
+      "plain_english_warning": "Self-ordering kiosks and ordering touchscreens must have screen controls and card readers at or below 48 inches height, with a 30 by 48 inch clear floor area.",
+      "verified_by": "Yan Zihao"
+    },
+    {
+      "case_id": "US-9THCIR-2014-CV-00892",
+      "landmark_citation": "Fortyune v. City of Lomita, 766 F.3d 1098 (9th Cir. 2014)",
+      "title": "Assembly & Presentation Room Wheelchair Location Dispersion",
+      "year": 2014,
+      "jurisdiction": "9th Cir.",
+      "trigger": {
+        "space_typologies": [
+          "assembly.presentation_room",
+          "civic.library.reading_room"
+        ],
+        "required_entities": [
+          "presentation_seating",
+          "auditorium_row",
+          "podium",
+          "table"
+        ],
+        "spatial_conditions": []
+      },
+      "inspection_queries": [
+        {
+          "query_id": "wheelchair_space_width",
+          "target_role": "presentation_seating",
+          "metric": "clear_width_inches",
+          "threshold": 36.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_802.1.2"
+        },
+        {
+          "query_id": "wheelchair_space_depth",
+          "target_role": "presentation_seating",
+          "metric": "clear_width_inches",
+          "threshold": 48.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_802.1.3"
+        }
+      ],
+      "constraints": {
+        "forbidden_moves": [
+          "do_not_cluster_wheelchair_spaces_only_at_back"
+        ],
+        "solution_pattern": "disperse_wheelchair_locations_with_companion_seats",
+        "minimum_accessible_percentage": 0.05,
+        "anti_isolation": true
+      },
+      "plain_english_warning": "In presentation and assembly rooms, dedicated wheelchair spaces must be at least 36 by 48 inches, integrated with companion seating, and provide equal viewing angles.",
+      "verified_by": "Yan Zihao"
+    }
+  ]
+}
