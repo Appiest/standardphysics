@@ -1,9 +1,13 @@
 """Dragging furniture: re-checks while moving, and saving a layout."""
 
-from standardphysics_contracts import to_meters
+import uuid
+
+from standardphysics_agents.fix import apply_moves
+from standardphysics_contracts import NodeMove, Vec3, to_meters
 from standardphysics_fixtures import FIX_SHIFT_INCHES, node_id
 
 from conftest import drain
+from standardphysics_api import repository as repo
 
 CASE_EAST = str(node_id("case_east"))
 COUNTER = str(node_id("counter"))
@@ -101,3 +105,40 @@ def test_small_saved_moves_add_up_against_where_the_scan_found_a_piece(make_clie
         f"/api/scans/{scan_id}/layout-checks", json={"base_revision": 1, "sequence": 1, "moves": [step]}
     ).json()
     assert "moved_too_far" in {b["reason"] for b in body["blocked"]}
+
+
+def _save_as_before_origins_were_recorded(client, scan_id: str, step: dict) -> Vec3:
+    """Save revision 1 with the move and no `measured_position`, as layouts were saved before it existed.
+
+    Returns where the scan found the moved piece.
+    """
+    with client.app.state.database.transaction() as connection:
+        scanned = repo.graph_of(repo.get_revision(connection, uuid.UUID(scan_id), 0))
+        moved = apply_moves(scanned, [NodeMove.model_validate(step)])
+        unrecorded = moved.model_copy(update={
+            "revision": 1,
+            "nodes": [node.model_copy(update={"measured_position": None}) for node in moved.nodes],
+        })
+        repo.save_revision(connection, unrecorded, source="owner", base_revision=0)
+        return scanned.by_id(uuid.UUID(step["node_id"])).transform.position
+
+
+def test_a_move_saved_before_origins_were_recorded_still_counts_against_the_cap(make_client):
+    client, scan_id = _sample(make_client)
+    step = _move(CASE_EAST, dy=-0.8)
+    _save_as_before_origins_were_recorded(client, scan_id, step)
+    body = client.post(
+        f"/api/scans/{scan_id}/layout-checks", json={"base_revision": 1, "sequence": 1, "moves": [step]}
+    ).json()
+    assert "moved_too_far" in {b["reason"] for b in body["blocked"]}
+
+
+def test_saving_from_an_unrecorded_revision_writes_the_recovered_origin(make_client):
+    client, scan_id = _sample(make_client)
+    found = _save_as_before_origins_were_recorded(client, scan_id, _move(CASE_EAST, dy=-0.8))
+    saved = client.post(
+        f"/api/scans/{scan_id}/revisions", json={"base_revision": 1, "moves": [_move(CASE_EAST, dy=0.1)]}
+    )
+    assert saved.status_code == 201, saved.text
+    case = next(node for node in saved.json()["nodes"] if node["id"] == CASE_EAST)
+    assert (case["measured_position"]["x"], case["measured_position"]["y"]) == (found.x, found.y)
