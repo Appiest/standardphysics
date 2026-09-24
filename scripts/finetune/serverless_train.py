@@ -3,7 +3,7 @@
 One pooled serverless session does everything: a baseline evaluation of the
 untrained adapter, LoRA SFT on the search's rearrangements, an evaluation, RL
 with our measured checker as the reward (computed here, in this process), a
-final evaluation, and promotion of both adapters to account models. Nothing is
+final evaluation, and optional promotion of both adapters to account models. Nothing is
 deployed. Every step records itself in PROGRESS_FINETUNE.json, and a rerun
 skips what already finished.
 
@@ -322,6 +322,20 @@ def rl_rows_for_step(rows: list[dict], step: int, prompts_per_step: int) -> list
     return picked
 
 
+def promote_optional(trainer: Trainer, step: str, checkpoint_prefix: str, output_model_id: str) -> None:
+    progress = trainer.progress
+    if progress.get(step).get("status") in ("done", "failed"):
+        return
+    progress.record(step, status="running", started_at=progress.get(step).get("started_at", time.time()))
+    try:
+        model = trainer.promote(checkpoint_prefix, output_model_id)
+    except Exception as error:
+        progress.record(step, status="failed", error=str(error), finished_at=time.time())
+        print(f"optional {step} failed: {error}", flush=True)
+        return
+    progress.record(step, status="done", model=model, finished_at=time.time())
+
+
 def run_sft_phase(trainer: Trainer) -> None:
     progress = trainer.progress
     if progress.done("promote_sft"):
@@ -335,9 +349,7 @@ def run_sft_phase(trainer: Trainer) -> None:
         trainer.evaluate("base")
         trainer.sft()
     trainer.evaluate("sft")
-    progress.record("promote_sft", status="running", started_at=time.time())
-    model = trainer.promote("sft-final", trainer.plan.sft_model_id)
-    progress.record("promote_sft", status="done", model=model, finished_at=time.time())
+    promote_optional(trainer, "promote_sft", "sft-final", trainer.plan.sft_model_id)
 
 
 def run_rl_phase(trainer: Trainer) -> None:
@@ -352,9 +364,7 @@ def run_rl_phase(trainer: Trainer) -> None:
         trainer.rl(first_step=rl.get("completed_steps", 0) if rl.get("state_ref") else 0)
     trainer.client.save_weights_for_sampler("rl-final").result()
     trainer.evaluate("rl")
-    progress.record("promote_rl", status="running", started_at=time.time())
-    model = trainer.promote("rl-final", trainer.plan.rl_model_id)
-    progress.record("promote_rl", status="done", model=model, finished_at=time.time())
+    promote_optional(trainer, "promote_rl", "rl-final", trainer.plan.rl_model_id)
 
 
 def measured_tokens(data, plan: Plan) -> tuple[int, int]:

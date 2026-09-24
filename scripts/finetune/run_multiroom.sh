@@ -20,7 +20,7 @@ export PYTHONUNBUFFERED=1
 DATA=runs/finetune/multiroom/v2
 RUN_DIR="$DATA/qwen3p8-27b"
 PROGRESS="$DATA/PROGRESS_MULTIROOM.json"
-PLAN="${MULTIROOM_PLAN:-{\"sft_epochs\":3,\"rl_steps\":24,\"budget_dollars\":40}}"
+PLAN="${MULTIROOM_PLAN:-{\"sft_epochs\":3,\"rl_steps\":24,\"budget_dollars\":40,\"sft_model_id\":\"multiroom-qwen3p8-27b-sft\",\"rl_model_id\":\"multiroom-qwen3p8-27b-rl\"}}"
 MAX_ATTEMPTS=8
 STATUS="$DATA/OVERNIGHT_STATUS.txt"
 
