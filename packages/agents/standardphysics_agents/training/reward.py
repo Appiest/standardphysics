@@ -1,10 +1,15 @@
 """Reward for a proposed rearrangement, decided by the measured checker.
 
 Zero for anything the application would refuse: an answer that does not
-parse, edits that name the wrong furniture, a layout that breaks a hard
-constraint, or one the gate rejects. An accepted layout earns a floor for
-being accepted, more for each inch of shortfall it recovers, a bonus when no
-furniture-fixable problem is left, and loses a little for every metre moved.
+parse, edits that move a piece the phantom filter holds still, edits that name
+the wrong furniture, a layout that breaks a hard constraint, or one the gate
+rejects. An accepted layout earns
+
+    clamp(0.15 + 0.55 * recovered + 0.15 * all_clear + 0.15 * Q - min(0.15, 0.03 * moved), 0.05, 1)
+
+where Q (`quality.layout_quality`) is how the layout looks against the
+owner's own, so it can move an accepted layout's reward by at most 0.15 and
+never makes a refused one worth anything.
 """
 
 from __future__ import annotations
@@ -19,10 +24,13 @@ from ..fix import apply_moves, violations
 from ..fix.strategies import TURN_DISRUPTION_METERS
 from .checker import TrainingChecker
 from .edits import edit_complaint, node_moves, parse_edits
+from .quality import layout_quality
 
-ACCEPTED_FLOOR = 0.2
-RECOVERY_WEIGHT = 0.6
-ALL_CLEAR_BONUS = 0.2
+ACCEPTED_FLOOR = 0.15
+RECOVERY_WEIGHT = 0.55
+ALL_CLEAR_BONUS = 0.15
+QUALITY_WEIGHT = 0.15
+MOVED_PINNED = "moved_unconfirmed_object"
 DISRUPTION_PENALTY_PER_METER = 0.03
 MAX_DISRUPTION_PENALTY = 0.15
 MIN_ACCEPTED_REWARD = 0.05
@@ -39,6 +47,8 @@ class Verdict:
     fixable_left: int | None = None
     disruption_meters: float = 0.0
     reason: str = ""
+    quality: dict | None = None
+    """Q and its wall, pairs and sight terms, for gate-accepted layouts only."""
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -50,9 +60,10 @@ def disruption_meters(moves) -> float:
     return slid + turns * TURN_DISRUPTION_METERS
 
 
-def shaped_reward(recovered: float, all_clear: bool, disruption: float) -> float:
+def shaped_reward(recovered: float, all_clear: bool, disruption: float, quality: float = 1.0) -> float:
     penalty = min(MAX_DISRUPTION_PENALTY, DISRUPTION_PENALTY_PER_METER * disruption)
-    earned = ACCEPTED_FLOOR + RECOVERY_WEIGHT * recovered + (ALL_CLEAR_BONUS if all_clear else 0.0)
+    earned = (ACCEPTED_FLOOR + RECOVERY_WEIGHT * recovered + (ALL_CLEAR_BONUS if all_clear else 0.0)
+              + QUALITY_WEIGHT * max(0.0, min(1.0, quality)))
     return round(max(MIN_ACCEPTED_REWARD, min(1.0, earned - penalty)), 6)
 
 
@@ -66,6 +77,8 @@ def score_completion(completion: str, room: SceneGraph, checker: TrainingChecker
     edits = parse_edits(completion)
     if edits is None:
         return Verdict(0.0, reason="unparseable")
+    if any(move.node_id in checker.pinned for move in edits.moves):
+        return Verdict(0.0, parsed=True, reason=MOVED_PINNED)
     complaint = edit_complaint(room, edits)
     if complaint:
         return Verdict(0.0, parsed=True, reason=complaint)
@@ -107,7 +120,9 @@ def _gated(room: SceneGraph, candidate: SceneGraph, checker: TrainingChecker, di
     if not gate:
         return Verdict(0.0, parsed=True, hard_constraints_pass=True, shortfall_recovered=recovered,
                        fixable_left=left, disruption_meters=disruption, reason="; ".join(gate.reasons))
+    quality = layout_quality(room, candidate, checker.owner_layout or room, checker.measure)
     return Verdict(
-        shaped_reward(recovered, left == 0, disruption), parsed=True, hard_constraints_pass=True,
+        shaped_reward(recovered, left == 0, disruption, quality.q), parsed=True, hard_constraints_pass=True,
         gate_accepts=True, shortfall_recovered=recovered, fixable_left=left, disruption_meters=disruption,
+        quality=quality.as_dict(),
     )
