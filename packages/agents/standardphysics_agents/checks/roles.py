@@ -12,7 +12,7 @@ from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room, li
 SERVICE_COUNTER_LABELS = frozenset(
     {
         "ordering counter", "service counter", "counter", "checkout counter",
-        "cash wrap", "register counter", "sales counter", "bar",
+        "cash wrap", "register counter", "sales counter", "bar", "pos counter", "payment counter",
     }
 )
 
@@ -37,7 +37,7 @@ POINT_OF_SALE_LABELS = frozenset(
         "cash register",
         "point of sale",
         "payment terminal",
-        "card machine",
+        "card machine", "cash drawer", "pos terminal",
     }
 )
 

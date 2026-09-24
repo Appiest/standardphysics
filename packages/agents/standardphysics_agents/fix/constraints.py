@@ -12,13 +12,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat
+from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, to_meters
 from standardphysics_pipeline import footprint, gap_between
-from standardphysics_pipeline.footprints import Polygon, distance_outside, floor_polygon, polygon_bounds
+from standardphysics_pipeline.discovery.taxonomy import is_fixture_name
+from standardphysics_pipeline.footprints import (
+    Polygon,
+    distance_outside,
+    floor_polygon,
+    polygon_bounds,
+    rotation_about_z,
+)
 from standardphysics_pipeline.occupancy import blocks_floor
 
+from ..checks import roles
+from ..checks.rectangles import rectangle
 from ..checks.walls import upright_walls
 from ..hashing import inventory
+from ..rules import load_pack
 from .moves import floor_height, rests_on_something, top_of, underside
 
 FLOOR_MARGIN = 0.01
@@ -39,6 +49,10 @@ VERTICAL_TOLERANCE = 0.02
 """How far a piece may sink into the one under it and still count as resting on it."""
 
 SWING_KINDS = frozenset({"door"})
+
+
+def is_fixture(node: SceneNode) -> bool:
+    return is_fixture_name(node.kind) or is_fixture_name(node.label)
 
 
 @dataclass(frozen=True)
@@ -64,7 +78,7 @@ def _locked_moves(base: SceneGraph, candidate: SceneGraph) -> list[Violation]:
     return [
         Violation("moved_something_fixed", str(node.id), node.label)
         for node in _moved_nodes(base, candidate)
-        if not before[node.id].movable
+        if not before[node.id].movable or is_fixture(before[node.id])
     ]
 
 
@@ -250,6 +264,50 @@ def _overlaps(node: SceneNode, obstacles, swings, scene: _Scene) -> list[Violati
     return []
 
 
+def _pos_space(counter: SceneNode) -> Polygon:
+    rule = load_pack().by_id("service_counter_approach")
+    width = to_meters(rule.parameter("clear_width_min_inches"))
+    depth = to_meters(rule.parameter("clear_depth_min_inches"))
+    cos_t, sin_t = rotation_about_z(counter)
+    origin = counter.transform.position
+    centre = Vec3(
+        x=origin.x + sin_t * (counter.dimensions.y + depth) / 2,
+        y=origin.y - cos_t * (counter.dimensions.y + depth) / 2,
+        z=0.0,
+    )
+    return rectangle(centre, width - OVERLAP_TOLERANCE, depth - OVERLAP_TOLERANCE, (cos_t, sin_t))
+
+
+def _keep_clear_zones(graph: SceneGraph) -> list[tuple[str, Polygon]]:
+    zones = [(node.label, footprint(node)) for node in graph.nodes
+             if node.kind.casefold() in {"ramp", "landing", "ramp_landing"}
+             or node.label.strip().casefold() in {"ramp", "ramp landing", "accessible ramp", "landing"}]
+    surfaces = roles.service_counters(graph) + roles.lowered_sections(graph)
+    for reader in roles.point_of_sale(graph):
+        for surface in surfaces:
+            if (reader.parent_id == surface.id
+                    or gap_between(footprint(reader), footprint(surface)) == 0.0):
+                zones.append((f"{surface.label} payment approach", _pos_space(surface)))
+                break
+    return zones
+
+
+def _blocked_keep_clear(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode]) -> list[Violation]:
+    original = {node.id: node for node in base.nodes}
+    zones = _keep_clear_zones(base)
+    floor_z = floor_height(base)
+    found = []
+    for node in moved:
+        if rests_on_something(node, floor_z) or is_fixture(node):
+            continue
+        for title, region in zones:
+            now = gap_between(collision_shape(node), region) == 0.0
+            was = node.id in original and gap_between(collision_shape(original[node.id]), region) == 0.0
+            if now and not was:
+                found.append(Violation("blocked_keep_clear", str(node.id), f"{node.label} into {title}", blocker=title))
+    return found
+
+
 def violations(
     base: SceneGraph, candidate: SceneGraph, added: frozenset = frozenset()
 ) -> list[Violation]:
@@ -270,6 +328,7 @@ def violations(
         *_inventory_changes(base, candidate, added),
         *_off_the_floor(base, candidate, checked),
         *_collisions(base, candidate, checked),
+        *_blocked_keep_clear(base, candidate, checked),
     ]
 
 

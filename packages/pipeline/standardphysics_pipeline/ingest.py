@@ -19,6 +19,7 @@ from typing import Any
 from standardphysics_contracts import Mat4, SceneGraph, SceneNode, lies_flat
 
 from .coords import capture_to_room, dimensions_to_z_up, transform_from_arkit
+from .discovery.taxonomy import is_fixture_name
 
 SURFACE_KINDS = {
     "walls": "wall",
@@ -134,7 +135,7 @@ def _is_movable(kind: str, category: str) -> bool:
     """
     if kind != "object":
         return False
-    return category not in FIXED_CATEGORIES
+    return category not in FIXED_CATEGORIES and not is_fixture_name(category)
 
 
 def parse_room_json(payload: dict, scan_id: uuid.UUID | None = None) -> SceneGraph:

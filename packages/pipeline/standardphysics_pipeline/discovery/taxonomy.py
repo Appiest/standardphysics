@@ -33,6 +33,18 @@ RESTROOM_ENTRANCE = "restroom_entrance"
 SWITCH = "switch"
 SIGN = "sign"
 
+FIXTURE_NAMES: FrozenSet[str] = frozenset({
+    "counter", "service counter", "ordering counter", "checkout counter", "sales counter",
+    "cash drawer", "cash register", "register counter", "point of sale",
+    "payment terminal", "payment counter", "pos counter", "pos terminal", "ramp", "ramp landing",
+    "accessible ramp", "landing", "lowered counter section", "accessible counter",
+    "lowered section", "accessible section", "low counter", "cash wrap", "bar",
+})
+
+
+def is_fixture_name(value: str) -> bool:
+    return value.strip().replace("_", " ").casefold() in FIXTURE_NAMES
+
 TARGET_CLASSES: FrozenSet[str] = frozenset({OUTLET, TELEVISION, SERVICE_COUNTER, RESTROOM_ENTRANCE})
 """The four classes the pilot must locate or honestly leave unobserved."""
 

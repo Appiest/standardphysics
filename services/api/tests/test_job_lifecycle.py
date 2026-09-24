@@ -9,11 +9,42 @@ graph here is produced by the worker running the uploaded bytes.
 import json
 import threading
 import time
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
-from standardphysics_pipeline.discovery import DiscoveryResult
+from standardphysics_contracts import Mat4, SurfaceHeight
+from standardphysics_fixtures import build_graph
+from standardphysics_pipeline.discovery import DiscoveryError, DiscoveryResult
 
 from conftest import create_scan, drain, put_artifact, usdz_fixture
+from standardphysics_api.stages import Stages
+
+
+def test_lidar_heights_survive_a_failed_photo_discovery(tmp_path, monkeypatch):
+    graph = build_graph().model_copy(update={"capture_to_room": Mat4.translation(0, 0, 0)})
+    counter = next(node for node in graph.nodes if node.label == "Ordering counter")
+    updated = counter.model_copy(update={"top_surface": SurfaceHeight(
+        height_m=1.016, uncertainty_m=0.02, support_area_m2=0.3,
+    )})
+    mesh = tmp_path / "lidar-mesh"
+    mesh.touch()
+    pose = tmp_path / "poses"
+    pose.touch()
+    photo = tmp_path / "frame"
+    photo.touch()
+    monkeypatch.setattr("standardphysics_api.stages.room_faces", lambda *_: [])
+    monkeypatch.setattr("standardphysics_api.stages.segment_surfaces", lambda *_: SimpleNamespace(
+        nodes=[updated if node.id == counter.id else node for node in graph.nodes]
+    ))
+
+    def failed_discovery(_inputs):
+        raise DiscoveryError("photo unavailable")
+
+    result, outcome = Stages(discover=failed_discovery).discover_scan_with_report(
+        graph, frame_paths=[photo], poses_path=pose, lidar_mesh_path=mesh,
+    )
+    assert outcome.failures
+    assert result.by_id(counter.id).top_surface.height_m == 1.016
 
 
 def _identity() -> list[float]:
