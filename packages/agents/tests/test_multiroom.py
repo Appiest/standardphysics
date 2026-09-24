@@ -186,6 +186,30 @@ def test_turning_a_chair_away_from_its_table_lowers_pairs():
     assert pair_term(owner, replaced(owner, turned(chair, 180.0)), {chair.id}) < 0.7
 
 
+def test_pair_scores_are_unchanged_by_which_local_axis_facing_reads():
+    """`_facing_off` switched from `yaw_degrees` (local +X) to `front_heading_degrees`
+    (local -Y) because that is the axis a chair actually faces, but `pair_term`
+    only ever compares two headings of the *same* seat, so a constant 90 degree
+    shift on both sides cancels. These are the exact scores the old `yaw_degrees`
+    convention produced, captured before the switch, as a regression check that
+    the fix changed the seat's stated meaning, not the numbers it produces."""
+    table = piece("pair_table", "Table", (5.0, 0.0, 0.375), (1.0, 1.0, 0.75))
+    chair = piece("pair_chair", "Chair", (4.2, 0.0, 0.45), (0.5, 0.5, 0.9))
+    owner = library().model_copy(update={"nodes": [*library().nodes, table, chair]})
+    expected = {
+        0.0: 1.0,
+        20.0: 0.8518518518518519,
+        45.0: 0.6666666666666667,
+        90.0: 0.33333333333333337,
+        135.0: 0.33333333333333337,
+        180.0: 0.33333333333333337,
+        -60.0: 0.5555555555555556,
+    }
+    for degrees, score in expected.items():
+        after = replaced(owner, turned(chair, degrees))
+        assert pair_term(owner, after, {chair.id}) == pytest.approx(score, abs=1e-9)
+
+
 def test_a_tall_shelf_in_front_of_the_counter_lowers_sight(graph, pipeline):
     eye = viewpoint(graph, pipeline)
     shelf = piece("shelf", "Shelf", (eye[0], eye[1] - 0.8, 0.9), (1.2, 0.3, 1.8))

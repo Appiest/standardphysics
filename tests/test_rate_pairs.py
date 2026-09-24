@@ -91,16 +91,18 @@ def test_has_a_facing_matches_the_words_quality_py_uses_for_seats_and_tables():
     assert not rate_pairs._has_a_facing(_node("Backpack", "backpack"))
 
 
-def test_front_edge_sits_on_the_yaw_degrees_heading_side_of_the_footprint():
+def test_front_edge_sits_on_the_front_heading_degrees_side_of_the_footprint():
+    """At yaw 0 the front heading (yaw - 90) points along -Y, so the front edge
+    sits `dimensions.y / 2` below centre and spans `dimensions.x` wide."""
     node = _node("Chair", "chair", x=1.0, y=2.0, degrees=0.0)
     start, end = rate_pairs._front_edge(node)
-    assert start[0] == pytest.approx(1.25)
-    assert end[0] == pytest.approx(1.25)
-    assert {round(start[1], 2), round(end[1], 2)} == {1.8, 2.2}
+    assert start[1] == pytest.approx(1.8)
+    assert end[1] == pytest.approx(1.8)
+    assert {round(start[0], 2), round(end[0], 2)} == {0.75, 1.25}
 
 
-def test_front_edge_turns_with_yaw_degrees():
+def test_front_edge_turns_with_front_heading_degrees():
     node = _node("Chair", "chair", x=0.0, y=0.0, degrees=90.0)
     start, end = rate_pairs._front_edge(node)
-    assert start[1] == pytest.approx(0.25, abs=1e-6)
-    assert end[1] == pytest.approx(0.25, abs=1e-6)
+    assert start[0] == pytest.approx(0.2, abs=1e-6)
+    assert end[0] == pytest.approx(0.2, abs=1e-6)

@@ -148,11 +148,26 @@ def seat_table_pairs(owner: SceneGraph) -> list[tuple]:
     return pairs
 
 
+def front_heading_degrees(node: SceneNode) -> float:
+    """The direction the object visibly faces, in degrees.
+
+    `yaw_degrees` reads the node's local +X axis, but a chair's front is its
+    local -Y edge: `measure.py`'s `_front_face_centre` and `locus.py`'s
+    `_front_face` already read `dimensions.y` as the depth axis, never
+    `dimensions.x`. Checking every scan in the local database confirms it
+    geometrically too: for chairs within 1.2 m of their nearest table,
+    `yaw_degrees(seat) - bearing(seat, table)` peaks hard at +90 degrees (100
+    of about 250 chairs), not at 0, so local +X is a seat's side and local -Y
+    is what actually points at the table.
+    """
+    return yaw_degrees(node) - 90.0
+
+
 def _facing_off(seat: SceneNode, table: SceneNode) -> float:
     """How far the seat's heading turns from the table, in degrees."""
     (sx, sy), (tx, ty) = _xy(seat), _xy(table)
     bearing = math.degrees(math.atan2(ty - sy, tx - sx))
-    return yaw_degrees(seat) - bearing
+    return front_heading_degrees(seat) - bearing
 
 
 def pair_term(owner: SceneGraph, after: SceneGraph, moved: set) -> float:

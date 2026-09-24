@@ -25,7 +25,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 from standardphysics_agents.fix import apply_moves
-from standardphysics_agents.training.edits import node_moves, parse_edits, yaw_degrees
+from standardphysics_agents.training.edits import node_moves, parse_edits
+from standardphysics_agents.training.quality import front_heading_degrees
 from standardphysics_contracts import SceneGraph, SceneNode
 from standardphysics_pipeline.footprints import floor_polygon, footprint, rotation_about_z
 
@@ -318,18 +319,18 @@ def _has_a_facing(node: SceneNode) -> bool:
 
 
 def _front_edge(node: SceneNode) -> tuple[tuple[float, float], tuple[float, float]]:
-    """The two corners of the footprint on the node's `yaw_degrees` heading side.
+    """The two corners of the footprint on the node's `front_heading_degrees` side.
 
-    Same heading `training/quality.py` scores a seat's facing against
-    (`yaw_degrees`, the node's local +X axis turned into the room frame), so
-    the marker drawn here is showing exactly what Q measured, not a separate
-    guess at which way the piece faces.
+    Same heading `training/quality.py`'s `_facing_off` scores a seat's facing
+    against, which is the local -Y edge (`dimensions.y` is the depth a chair
+    or table faces along; `dimensions.x` is its width), so the marker drawn
+    here is showing exactly what Q measures, not a separate guess.
     """
     cx, cy = node.transform.position.x, node.transform.position.y
-    heading = math.radians(yaw_degrees(node))
+    heading = math.radians(front_heading_degrees(node))
     forward = (math.cos(heading), math.sin(heading))
     sideways = (-forward[1], forward[0])
-    half_forward, half_side = node.dimensions.x / 2, node.dimensions.y / 2
+    half_forward, half_side = node.dimensions.y / 2, node.dimensions.x / 2
     front_centre = (cx + forward[0] * half_forward, cy + forward[1] * half_forward)
     return (
         (front_centre[0] - sideways[0] * half_side, front_centre[1] - sideways[1] * half_side),
