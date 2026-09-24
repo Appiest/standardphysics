@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 from standardphysics_agents.fix import apply_moves
-from standardphysics_agents.training.edits import node_moves, parse_edits
+from standardphysics_agents.training.edits import node_moves, parse_edits, yaw_degrees
 from standardphysics_contracts import SceneGraph, SceneNode
 from standardphysics_pipeline.footprints import floor_polygon, footprint, rotation_about_z
 
@@ -50,6 +50,10 @@ LABEL_FONT_PX = 13
 LABEL_CHAR_WIDTH = 0.56
 """Rough average glyph width as a fraction of font size, for deciding whether a
 label fits inside its footprint without ever measuring rendered text."""
+
+FACING_WORDS = ("chair", "sofa", "bench", "stool", "table", "desk", "counter", "shelf", "display")
+"""What gets a front marker. Matched the same way `training/quality.py` finds
+seats and tables: a case-insensitive substring of the label or raw category."""
 
 
 def _load_pairs() -> list[dict]:
@@ -300,10 +304,42 @@ def _ghost_parts(layout: Layout, scale: Scale) -> list[str]:
         if original is None or current is None:
             continue
         parts.append(_svg_polygon(scale, footprint(original), **{"class": "ghost"}))
+        if _has_a_facing(original):
+            parts.append(_front_marker(scale, original, "front-marker ghost"))
         ox, oy = original.transform.position.x, original.transform.position.y
         cx, cy = current.transform.position.x, current.transform.position.y
         parts.append(_svg_line(scale, (ox, oy), (cx, cy), **{"class": "ghost-trail"}))
     return parts
+
+
+def _has_a_facing(node: SceneNode) -> bool:
+    text = f"{node.label} {node.raw_category}".casefold()
+    return any(word in text for word in FACING_WORDS)
+
+
+def _front_edge(node: SceneNode) -> tuple[tuple[float, float], tuple[float, float]]:
+    """The two corners of the footprint on the node's `yaw_degrees` heading side.
+
+    Same heading `training/quality.py` scores a seat's facing against
+    (`yaw_degrees`, the node's local +X axis turned into the room frame), so
+    the marker drawn here is showing exactly what Q measured, not a separate
+    guess at which way the piece faces.
+    """
+    cx, cy = node.transform.position.x, node.transform.position.y
+    heading = math.radians(yaw_degrees(node))
+    forward = (math.cos(heading), math.sin(heading))
+    sideways = (-forward[1], forward[0])
+    half_forward, half_side = node.dimensions.x / 2, node.dimensions.y / 2
+    front_centre = (cx + forward[0] * half_forward, cy + forward[1] * half_forward)
+    return (
+        (front_centre[0] - sideways[0] * half_side, front_centre[1] - sideways[1] * half_side),
+        (front_centre[0] + sideways[0] * half_side, front_centre[1] + sideways[1] * half_side),
+    )
+
+
+def _front_marker(scale: Scale, node: SceneNode, css_class: str) -> str:
+    start, end = _front_edge(node)
+    return _svg_line(scale, start, end, **{"class": css_class})
 
 
 def _label_point(scale: Scale, node: SceneNode) -> tuple[float, float]:
@@ -325,6 +361,8 @@ def _object_parts(layout: Layout, scale: Scale) -> list[str]:
             continue
         css_class = "object moved" if node.id in layout.moved_node_ids else "object"
         parts.append(_svg_polygon(scale, footprint(node), **{"class": css_class}))
+        if _has_a_facing(node):
+            parts.append(_front_marker(scale, node, "front-marker"))
         lx, ly = _label_point(scale, node)
         parts.append(f'<text x="{lx:.1f}" y="{ly:.1f}" class="object-label">{_escape(node.label)}</text>')
     return parts
@@ -521,6 +559,8 @@ PAGE_TEMPLATE = """<!doctype html>
   }
   .ghost { fill: var(--ghost-fill); fill-opacity: 0.5; stroke: var(--ghost-stroke); stroke-width: 1.5; stroke-dasharray: 5 4; }
   .ghost-trail { stroke: var(--ghost-stroke); stroke-width: 2; opacity: 0.85; }
+  .front-marker { stroke: var(--accent); stroke-width: 4; stroke-linecap: round; }
+  .front-marker.ghost { stroke: var(--ghost-stroke); stroke-width: 3; }
   .controls {
     display: flex;
     gap: 12px;
