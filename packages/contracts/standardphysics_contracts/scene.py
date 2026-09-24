@@ -363,6 +363,36 @@ def _refuse_cycles(parents: dict[UUID, UUID]) -> None:
         settled.update(walked)
 
 
+class FloorCoverage(BaseModel):
+    """Which floor under one floor sheet the LiDAR actually saw, cell by cell.
+
+    A cell is observed when the mesh has a floor-level face lying down over
+    it, or when it lies under something the scan measured standing there,
+    because floor hidden under furniture that was really there was seen as
+    floor with furniture on it. Everything else is floor the scan never looked
+    at, which is not the same as empty floor.
+
+    The grid is laid in the room frame the floor had when the mesh was read.
+    `anchor` keeps that floor's transform, so placing the room somewhere else
+    moves the floor and the grid goes with it without being rewritten.
+    """
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    floor_id: UUID
+    anchor: Mat4
+    origin_x: float
+    origin_y: float
+    cell_size: float = Field(gt=0)
+    columns: int = Field(ge=1)
+    rows: int = Field(ge=1)
+    observed: str
+    """Row-major, one bit per cell, 1 where observed: numpy `packbits`, zlib, base64."""
+    mesh_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    """The LiDAR artifact the grid was read from, so it can never outlive that scan."""
+    method: int = Field(ge=1)
+    """Which version of the measuring rules drew it, so a changed rule can be told apart."""
+
+
 class SceneGraph(BaseModel):
     scan_id: UUID
     revision: int = 0
@@ -382,6 +412,15 @@ class SceneGraph(BaseModel):
 
     Kept on the graph so a role confirmation, an assessment and an export all
     see the same unresolved evidence instead of it living in a UI side channel.
+    """
+
+    floor_coverage: list[FloorCoverage] = Field(default_factory=list, exclude_if=lambda value: not value)
+    """Which floor the scan saw, one grid per floor sheet, measured once at ingest.
+
+    Empty for a scan without a LiDAR mesh and for graphs saved before it was
+    measured. It rides on the graph rather than beside it because every layout
+    that is checked for a rearrangement is a graph, and a revision copied from
+    this one carries it along unchanged.
     """
 
     @model_validator(mode="after")

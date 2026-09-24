@@ -12,6 +12,10 @@ far from where the scan found it, and a table or counter has to keep room for
 somebody to pull up to it. Without them a table shoved flush into a corner
 widens the aisle beside it, the checks see an improvement, and nobody can sit
 at the table.
+
+A piece also may not be set down on floor the scan never saw. The floor
+outline RoomPlan reports runs into corners the phone never pointed at, and a
+layout that parks a case there has been checked against floor nobody measured.
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ from dataclasses import dataclass
 
 from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, to_meters
 from standardphysics_pipeline import footprint, gap_between
+from standardphysics_pipeline.floor_coverage import ObservedFloor
 from standardphysics_pipeline.footprints import Polygon, distance_outside, floor_polygon, polygon_bounds
 from standardphysics_pipeline.occupancy import blocks_floor
 
@@ -62,6 +67,33 @@ fix, and it lands on floor the scan only ever saw around something else.
 It is measured from `SceneNode.measured_position`, which every move carries
 forward, so a run of small moves across rounds or saved revisions adds up
 against it exactly as one long move would.
+"""
+
+UNSEEN_FLOOR_TOLERANCE = 0.10
+"""The share of a piece's footprint that may land on floor the scan never saw.
+
+The LiDAR mesh is not watertight. It leaves holes of a few centimetres where a
+reflection or a fast sweep dropped points, and it rounds the join between
+floor and wall so the last centimetre or two before a wall is often missing.
+A chair set flush against a wall loses a 25 mm strip along one side, about 6
+percent of a 450 mm seat. Holding to zero would forbid that and most other
+honest moves, so a tenth of the footprint is let through. A piece carried
+onto a patch the phone never pointed at lands with far more than a tenth of
+itself there.
+"""
+
+NO_FLOOR_MAP = "Moves were not checked against unscanned floor: this scan has no floor coverage map."
+"""What a layout checked without a coverage map says about it.
+
+A graph without `floor_coverage` comes from a scan with no LiDAR mesh, a
+synthetic fixture, or a revision saved before coverage was measured. There
+the unseen-floor check does not run, rather than failing every move: nothing
+in such a graph says which floor was seen, so refusing everything would stop
+all rearranging of every older scan while telling nobody anything new. This
+is not a compliance outcome, so the rule that an unknown never becomes a pass
+does not reach it. The checks still measure the layout that comes out, the
+floor outline and `MAX_TRAVEL_METERS` still bound where a piece can go, and a
+simulation says so in its limitations.
 """
 
 
@@ -290,6 +322,34 @@ def _travelled_too_far(base: SceneGraph, moved: list[SceneNode]) -> list[Violati
     return found
 
 
+def floor_map_missing(graph: SceneGraph) -> bool:
+    """Whether a layout built from this graph goes unchecked for unseen floor; see `NO_FLOOR_MAP`."""
+    return ObservedFloor.of(graph) is None
+
+
+def _onto_unseen_floor(base: SceneGraph, candidate: SceneGraph, checked: list[SceneNode]) -> list[Violation]:
+    """Pieces a move sets down on floor the scan never saw.
+
+    The grid is read from the base layout, so a candidate cannot vouch for its
+    own floor. A piece resting on another is judged by what it rests on. Like
+    the floor edge, only what the move adds counts: a piece already standing
+    partly on unseen floor may move so long as it ends up no further onto it.
+    """
+    seen = ObservedFloor.of(base)
+    if seen is None:
+        return []
+    before = {node.id: node for node in base.nodes}
+    floor_z = floor_height(base)
+    found = []
+    for node in checked:
+        if rests_on_something(node, floor_z):
+            continue
+        was = seen.unseen_share(before[node.id]) if node.id in before else 0.0
+        if seen.unseen_share(node) > max(UNSEEN_FLOOR_TOLERANCE, was):
+            found.append(Violation("onto_unseen_floor", str(node.id), node.label))
+    return found
+
+
 def _near_a_move(node: SceneNode, role: roles.UsedFromTheFloor, checked: list[SceneNode]) -> bool:
     shape, within = footprint(node), reach(role)
     return any(
@@ -349,6 +409,7 @@ def violations(
         *_off_the_floor(base, candidate, checked),
         *_collisions(base, candidate, checked),
         *_travelled_too_far(base, moved),
+        *_onto_unseen_floor(base, candidate, checked),
         *_lost_room_to_use(base, candidate, checked),
     ]
 

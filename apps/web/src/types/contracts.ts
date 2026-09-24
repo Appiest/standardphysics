@@ -545,6 +545,65 @@ export interface EvidenceStatus {
     "not_started" | "blocked_incomplete_evidence" | "settling" | "queued" | "running" | "complete" | "failed";
 }
 /**
+ * Which floor under one floor sheet the LiDAR actually saw, cell by cell.
+ *
+ * A cell is observed when the mesh has a floor-level face lying down over
+ * it, or when it lies under something the scan measured standing there,
+ * because floor hidden under furniture that was really there was seen as
+ * floor with furniture on it. Everything else is floor the scan never looked
+ * at, which is not the same as empty floor.
+ *
+ * The grid is laid in the room frame the floor had when the mesh was read.
+ * `anchor` keeps that floor's transform, so placing the room somewhere else
+ * moves the floor and the grid goes with it without being rewritten.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "FloorCoverage".
+ */
+export interface FloorCoverage {
+  anchor: Mat4;
+  cell_size: number;
+  columns: number;
+  floor_id: string;
+  mesh_sha256: string;
+  method: number;
+  observed: string;
+  origin_x: number;
+  origin_y: number;
+  rows: number;
+}
+/**
+ * Row-major 4x4 transform.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "Mat4".
+ */
+export interface Mat4 {
+  /**
+   * @minItems 16
+   * @maxItems 16
+   */
+  m: [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    ...number[]
+  ];
+}
+/**
  * One stored source-resolution frame a photo review can open.
  *
  * `width` and `height` are the stored sensor pixels this frame was captured
@@ -758,37 +817,6 @@ export interface ManualMarkRequest {
     | "whiteboard"
     | "monitor"
     | "other";
-}
-/**
- * Row-major 4x4 transform.
- *
- * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
- * via the `definition` "Mat4".
- */
-export interface Mat4 {
-  /**
-   * @minItems 16
-   * @maxItems 16
-   */
-  m: [
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    ...number[]
-  ];
 }
 /**
  * Nodes the primitive selected, such as everything standing on a desk.
@@ -1087,6 +1115,7 @@ export interface Stop {
 export interface SceneGraph {
   base_hash: string | null;
   capture_to_room?: Mat4 | null;
+  floor_coverage?: FloorCoverage[];
   nodes: SceneNode[];
   revision: number;
   scan_id: string;

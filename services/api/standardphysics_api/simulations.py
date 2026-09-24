@@ -18,6 +18,7 @@ from standardphysics_agents import (
 from standardphysics_agents.adaptive_redesign import route_trial_evidence
 from standardphysics_agents.evaluation.scan_campaign import run_campaign
 from standardphysics_agents.evaluation.scan_tasks import choose_task, propose_tasks
+from standardphysics_agents.fix import NO_FLOOR_MAP, floor_map_missing
 from standardphysics_agents.mesh_collision import MeshCollisionIndex
 from standardphysics_agents.router import LocalPolicyRouter, TypeSafeRouter
 from standardphysics_agents.simulation_report import simulation_result
@@ -43,6 +44,7 @@ from standardphysics_pipeline import PipelineMeasurements
 
 from . import repository as repo
 from .errors import ApiProblem
+from .rearrangement_base import rearrangement_base
 from .scenario import suggest_scenario
 
 SIMULATE = "simulate"
@@ -84,7 +86,7 @@ def queue_simulation(database, stages, worker, scan_id: UUID, body: SimulationRe
         scenario = repo.get_scenario(connection, scan_id)
         if latest is None:
             raise ApiProblem(409, "the shop is still being measured")
-        graph = repo.graph_of(latest)
+        graph = rearrangement_base(connection, latest)
         if scenario is None:
             scenario = suggest_scenario(graph)
         if latest["revision"] != body.base_revision:
@@ -102,7 +104,7 @@ def queue_simulation(database, stages, worker, scan_id: UUID, body: SimulationRe
             " request_json=excluded.request_json, graph_json=excluded.graph_json, scenario_json=excluded.scenario_json,"
             " mesh_artifact_id=excluded.mesh_artifact_id, completed=0, cycle=0,"
             " candidate_graph_json=NULL, result_json=NULL",
-            (str(scan_id), body.base_revision, body.model_dump_json(), latest["graph_json"],
+            (str(scan_id), body.base_revision, body.model_dump_json(), graph.model_dump_json(),
              scenario.model_dump_json(), mesh.id if mesh else None),
         )
         repo.queue_job_again(connection, scan_id, SIMULATE, body.base_revision)
@@ -295,6 +297,11 @@ def _run_accessibility_loop(
     )
 
 
+def _rearranging_limitations(graph: SceneGraph, stop_reason: str | None) -> list[str]:
+    """What the redesign loop could not do or check for this layout."""
+    return [reason for reason in (stop_reason, NO_FLOOR_MAP if floor_map_missing(graph) else None) if reason]
+
+
 def run_simulation(database, store, stages, scan_id: UUID, revision: int) -> None:
     with database.connect() as connection:
         row = connection.execute(
@@ -393,9 +400,7 @@ def run_simulation(database, store, stages, scan_id: UUID, revision: int) -> Non
     result = simulation_result(batch, rules, ledger, mesh)
     typesafe_calls = workflow_budget.used if workflow_budget is not None else 0
     astra_calls = loop_outcome.astra_calls
-    limitations = list(result.limitations)
-    if loop_outcome.stop_reason:
-        limitations.append(loop_outcome.stop_reason)
+    limitations = [*result.limitations, *_rearranging_limitations(graph, loop_outcome.stop_reason)]
     physics = analyze_environment_physics(
         graph, scenario, PipelineMeasurements(), mesh=mesh
     )

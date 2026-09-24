@@ -7,9 +7,11 @@ from .approach import (
     target_height_inches,
 )
 from .constraints import (
+    NO_FLOOR_MAP,
     Violation,
     collision_shape,
     door_keep_clear,
+    floor_map_missing,
     interior_bounds,
     is_allowed,
     violations,
@@ -40,7 +42,7 @@ from .strategies import Candidate, candidates
 
 __all__ = [
     "CANDIDATE_LIMIT", "Candidate", "FixOutcome", "Pinch", "Relaxation",
-    "Violation", "apply_moves", "candidates", "collision_shape",
+    "NO_FLOOR_MAP", "Violation", "apply_moves", "candidates", "collision_shape", "floor_map_missing",
     "door_keep_clear", "interior_bounds", "is_allowed", "move_node",
     "pinch_from", "proposal_id", "propose_fix", "unlocked", "violations",
     "without",
