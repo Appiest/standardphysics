@@ -2,11 +2,20 @@
 
 import json
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from multiroom_results import build, composition, metrics, search_records
 from multiroom_train_data import MultiroomData
-from progress import Spend
-from serverless_train import Plan, expected_cost, rl_rows_for_step
+from progress import Progress, Spend
+from serverless_train import (
+    Plan,
+    Trainer,
+    expected_cost,
+    promote_optional,
+    rl_rows_for_step,
+    run_rl_phase,
+    run_sft_phase,
+)
 
 
 def write_rows(path, rows):
@@ -33,6 +42,50 @@ def test_rl_batches_cover_each_room_before_repeating():
     rows = [{"window": f"room-{index}", "variant": f"variant-{index}"} for index in range(19)]
     picked = [row for step in range(4) for row in rl_rows_for_step(rows, step, 6)]
     assert {row["window"] for row in picked} == {row["window"] for row in rows}
+
+
+def test_failed_sft_promotion_does_not_block_rl_resume(tmp_path):
+    progress = Progress(tmp_path / "progress.json")
+    progress.record("sft", status="done", state_ref="account/run/sft-state")
+    progress.record("eval_sft", status="done", summary={})
+    progress.record("promote_sft", status="running")
+    client = SimpleNamespace(save_weights_for_sampler=Mock(return_value=SimpleNamespace(result=Mock())))
+    trainer = SimpleNamespace(progress=progress, plan=Plan(), client=None, connect=Mock(),
+                              evaluate=Mock(), promote=Mock(side_effect=RuntimeError("HTTP 409: model already exists")),
+                              rl=Mock())
+    trainer.connect.side_effect = lambda *args, **kwargs: setattr(trainer, "client", client)
+
+    run_sft_phase(trainer)
+    run_rl_phase(trainer)
+
+    assert progress.get("promote_sft")["status"] == "failed"
+    assert "HTTP 409" in progress.get("promote_sft")["error"]
+    trainer.rl.assert_called_once_with(first_step=0)
+    assert progress.get("promote_rl")["status"] == "failed"
+    run_sft_phase(trainer)
+    assert trainer.promote.call_count == 2
+
+
+def test_optional_promotion_records_success(tmp_path):
+    progress = Progress(tmp_path / "progress.json")
+    trainer = SimpleNamespace(progress=progress, promote=Mock(return_value="account/model"))
+    promote_optional(trainer, "promote_rl", "rl-final", "multiroom-rl")
+    assert progress.get("promote_rl")["model"] == "account/model"
+    assert progress.done("promote_rl")
+
+
+def test_promotion_uses_run_specific_model_id():
+    trainer = object.__new__(Trainer)
+    trainer.api_key = "unused"
+    trainer.service = SimpleNamespace(training_session_name="accounts/team/trainingSessions/session")
+    trainer.session = {"session": trainer.service.training_session_name, "run_id": "run-abc"}
+    with patch("serverless_train.FireworksClient") as control_type:
+        control = control_type.return_value
+        control.list_training_session_checkpoints.return_value = [
+            {"name": "accounts/team/trainingSessions/session/checkpoints/run-abc-sft-final-ckpt", "promotable": True}]
+        control.promote_session_checkpoint.return_value = {"name": "accounts/team/models/model"}
+        assert trainer.promote("sft-final", "multiroom-sft") == "accounts/team/models/model"
+        assert control.promote_session_checkpoint.call_args.kwargs["output_model_id"] == "multiroom-sft-run-abc"
 
 
 def test_metrics_count_rejected_samples_and_log_u_and_q_only_when_accepted():
