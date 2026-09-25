@@ -1,7 +1,8 @@
-"""Verification ledger and gate for ADA case precedents.
+"""Verification ledger and gate for ADA layout directives.
 
-Following Standard Physics' core principle: an agent may not enable a legal precedent
-on its own. A human records that they reviewed the court docket and verified the primary citation.
+An agent may not enable a directive on its own. A person records that they read
+the ADA sections a directive cites and confirmed its thresholds against them.
+Case references carry their own sign-off inside the corpus.
 """
 
 from __future__ import annotations
@@ -23,15 +24,13 @@ PREVIEW_REVIEWER = "unverified preview (development only)"
 
 
 class PrecedentVerification(BaseModel):
-    """One person, one case, one verified docket record."""
+    """One person confirming one directive against the sections it cites."""
 
     model_config = ConfigDict(extra="forbid")
 
-    case_id: str
+    directive_id: str
     verified_by: str
     verified_at: datetime
-    primary_citation: str
-    docket_source: str
     second_check_by: str | None = None
 
     @property
@@ -43,16 +42,16 @@ class PrecedentLedger:
     def __init__(self, verifications: dict[str, PrecedentVerification]):
         self._entries = dict(verifications)
 
-    def is_verified(self, case_id: str, allow_preview: bool = False) -> bool:
-        entry = self._entries.get(case_id)
+    def is_verified(self, directive_id: str, allow_preview: bool = False) -> bool:
+        entry = self._entries.get(directive_id)
         if entry is None:
             return False
         if entry.is_preview and not allow_preview:
             return False
         return True
 
-    def get(self, case_id: str) -> PrecedentVerification | None:
-        return self._entries.get(case_id)
+    def get(self, directive_id: str) -> PrecedentVerification | None:
+        return self._entries.get(directive_id)
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -69,7 +68,7 @@ def load_precedent_ledger(path: Path | None = None) -> PrecedentLedger:
     entries = {}
     for item in raw:
         v = PrecedentVerification.model_validate(item)
-        entries[v.case_id] = v
+        entries[v.directive_id] = v
     return PrecedentLedger(entries)
 
 
@@ -78,13 +77,13 @@ def load_precedents(
     ledger: PrecedentLedger | None = None,
     allow_unverified: bool = False,
 ) -> list[PrecedentDirective]:
-    """Load precedent directives, filtering out unverified cases unless preview enabled."""
+    """Load directives, dropping any no person has verified unless preview is enabled."""
     target = path or PRECEDENTS_FILE
     raw = json.loads(target.read_text(encoding="utf-8"))
     directives = [PrecedentDirective.model_validate(p) for p in raw.get("precedents", [])]
-    
+
     if allow_unverified or os.environ.get("SP_PREVIEW_UNVERIFIED_PRECEDENTS") == "1":
         return directives
-    
+
     active_ledger = ledger or load_precedent_ledger()
-    return [d for d in directives if active_ledger.is_verified(d.case_id)]
+    return [d for d in directives if active_ledger.is_verified(d.directive_id)]

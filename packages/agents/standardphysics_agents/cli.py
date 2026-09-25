@@ -209,8 +209,9 @@ def _precedents_list(args) -> int:
     directives = load_precedents(allow_unverified=True)
     ledger = load_precedent_ledger()
     for d in directives:
-        status = "verified" if ledger.is_verified(d.case_id) else "unverified"
-        print(f"{d.case_id:24} {d.jurisdiction:<10} {d.year:<6} {status:<10} {d.title}")
+        status = "verified" if ledger.is_verified(d.directive_id) else "unverified"
+        cases = f"{len(d.verified_cases)}/{len(d.case_references)} cases"
+        print(f"{d.directive_id:28} {status:<10} {cases:<9} {d.title}")
     return 0
 
 
@@ -218,22 +219,25 @@ def _precedents_show(args) -> int:
     from .precedents import load_precedents
 
     directives = load_precedents(allow_unverified=True)
-    matched = [d for d in directives if d.case_id == args.case_id]
+    matched = [d for d in directives if d.directive_id == args.directive_id]
     if not matched:
-        print(f"Unknown precedent case ID: {args.case_id}", file=sys.stderr)
+        print(f"Unknown directive: {args.directive_id}", file=sys.stderr)
         return 1
     d = matched[0]
-    print(f"{d.case_id}: {d.title}\n")
-    print(f"  Landmark Citation: {d.landmark_citation}")
-    print(f"  Jurisdiction:      {d.jurisdiction} ({d.year})")
+    print(f"{d.directive_id}: {d.title}\n")
+    print(f"  Authority:         {', '.join(d.authority)}")
     print(f"  Typologies:        {', '.join(t.value for t in d.trigger.space_typologies)}")
-    print(f"  Required Objects:  {', '.join(d.trigger.required_entities)}")
-    print(f"\n  Plain Warning:\n  {d.plain_english_warning}\n")
-    print("  Inspection Queries:")
+    print(f"  Required objects:  {', '.join(d.trigger.required_entities)}")
+    print(f"\n  Requirement:\n  {d.plain_english_warning}\n")
+    print("  Inspection queries:")
     for q in d.inspection_queries:
-        print(f"    • [{q.query_id}] {q.target_role}: {q.metric} {q.comparison} {q.threshold:g} ({q.citation})")
-    print(f"\n  Remedy Pattern:    {d.constraints.solution_pattern}")
-    print(f"  Anti-Isolation:    {d.constraints.anti_isolation}")
+        measured_by = q.rule_id or "not measured yet"
+        print(f"    [{q.query_id}] {q.target_role}: {q.metric} {q.comparison} {q.threshold:g} ({q.citation}; {measured_by})")
+    print(f"\n  Remedy pattern:    {d.constraints.solution_pattern}")
+    print(f"  Fixed roles:       {', '.join(d.constraints.fixed_roles) or 'none'}")
+    for case in d.case_references:
+        signed = case.verified_by or "unverified"
+        print(f"\n  Case ({signed}): {case.case_name}, {case.citation}\n    {case.holding}")
     return 0
 
 
@@ -710,13 +714,13 @@ def _add_rule_commands(parent) -> None:
 
 
 def _add_precedent_commands(parent) -> None:
-    precedents = parent.add_parser("precedents", help="actionable landmark ADA case precedents")
+    precedents = parent.add_parser("precedents", help="ADA layout directives and their case references")
     sub = precedents.add_subparsers(dest="precedents_command", required=True)
 
-    sub.add_parser("list", help="list all case directives and verification status")
+    sub.add_parser("list", help="list all directives and verification status")
 
-    show = sub.add_parser("show", help="show one landmark case directive in full")
-    show.add_argument("case_id")
+    show = sub.add_parser("show", help="show one directive in full")
+    show.add_argument("directive_id")
 
     sub.add_parser("benchmark", help="run the precedent constraint benchmark")
 

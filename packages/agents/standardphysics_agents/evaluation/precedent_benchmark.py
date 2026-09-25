@@ -1,7 +1,7 @@
 """Benchmark evaluating spatial layout proposals against both hard constraints and precedent constraints.
 
 This module evaluates layouts (from baseline, search, or fine-tuned neural models)
-against the Standard Physics constraint suite and the newly introduced ADA Case Precedent Corpus.
+against the Standard Physics constraint suite and the ADA layout directive corpus.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ class PrecedentBenchmarkSummary:
     hard_constraint_passes: int = 0
     precedent_constraint_passes: int = 0
     dual_constraint_passes: int = 0
-    precedent_violations_by_case: dict[str, int] = field(default_factory=dict)
+    precedent_violations_by_directive: dict[str, int] = field(default_factory=dict)
     precedent_violations_by_rule: dict[str, int] = field(default_factory=dict)
 
     @property
@@ -50,7 +50,7 @@ class PrecedentBenchmarkSummary:
             "hard_constraint_pass_rate": self.hard_constraint_pass_rate,
             "precedent_constraint_pass_rate": self.precedent_constraint_pass_rate,
             "dual_constraint_pass_rate": self.dual_constraint_pass_rate,
-            "precedent_violations_by_case": self.precedent_violations_by_case,
+            "precedent_violations_by_directive": self.precedent_violations_by_directive,
             "precedent_violations_by_rule": self.precedent_violations_by_rule,
         }
 
@@ -113,8 +113,8 @@ def evaluate_precedent_benchmark(
 
         # Record specific precedent violation frequencies
         for pv in precedent_violations:
-            summary.precedent_violations_by_case[pv.landmark_citation] = (
-                summary.precedent_violations_by_case.get(pv.landmark_citation, 0) + 1
+            summary.precedent_violations_by_directive[pv.directive_id] = (
+                summary.precedent_violations_by_directive.get(pv.directive_id, 0) + 1
             )
             summary.precedent_violations_by_rule[pv.rule_broken] = (
                 summary.precedent_violations_by_rule.get(pv.rule_broken, 0) + 1

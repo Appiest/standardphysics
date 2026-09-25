@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Run constraint benchmark across Standard Physics neural network variants and landmark precedent suites.
+"""Run the constraint benchmark across synthetic rooms and neural network proposals.
 
 Evaluates proposals against:
 1. Hard Physical Constraints (walls, doors, floors, collisions, travel distances).
-2. Actionable Precedent Constraints (accessible seating ratios, anti-isolation, clearance vectors).
+2. ADA layout directives (fixed roles, 226.1 accessible dining share, 226.2 dispersion).
 """
 
 from __future__ import annotations
@@ -32,14 +32,14 @@ def build_synthetic_scenarios() -> list[dict]:
     """Build representative benchmark scenarios across room typologies."""
     cases = []
 
-    # 1. VIP Dining Lounge (Johnson v. Golden State Warriors LLC)
+    # 1. Lounge with a fixed bar and only bar-height tables
     bar_node = SceneNode(
         id=uuid4(),
         kind="object",
-        label="Plumbed_bar_counter",
+        label="Bar",
         raw_category="counter",
         dimensions=Vec3(x=3.5, y=0.8, z=1.15),
-        transform=Mat4.translation(0.0, 2.0, 0.0),
+        transform=Mat4.translation(0.0, 2.0, 0.575),
         quality="measured",
         movable=False,
         labeled_by="test",
@@ -47,10 +47,10 @@ def build_synthetic_scenarios() -> list[dict]:
     stool_1 = SceneNode(
         id=uuid4(),
         kind="object",
-        label="High_top_table_1",
+        label="Bar table",
         raw_category="table",
         dimensions=Vec3(x=0.8, y=0.8, z=1.05),
-        transform=Mat4.translation(-1.0, 0.0, 0.0),
+        transform=Mat4.translation(-1.0, 0.0, 0.525),
         quality="measured",
         movable=True,
         labeled_by="test",
@@ -58,17 +58,17 @@ def build_synthetic_scenarios() -> list[dict]:
     stool_2 = SceneNode(
         id=uuid4(),
         kind="object",
-        label="High_top_table_2",
+        label="Bar table",
         raw_category="table",
         dimensions=Vec3(x=0.8, y=0.8, z=1.05),
-        transform=Mat4.translation(1.0, 0.0, 0.0),
+        transform=Mat4.translation(1.0, 0.0, 0.525),
         quality="measured",
         movable=True,
         labeled_by="test",
     )
     lounge_base = SceneGraph(scan_id=uuid4(), revision=1, nodes=[bar_node, stool_1, stool_2])
 
-    # 1a: Baseline (fails: 0% accessible tables)
+    # 1a: Baseline (fails 226.1: no table between 28 and 34 inches)
     cases.append({
         "name": "VIP_Lounge_Base_HighTopOnly",
         "typology": SpaceTypology.HOSPITALITY_LOUNGE,
@@ -76,7 +76,7 @@ def build_synthetic_scenarios() -> list[dict]:
         "moves": [],
     })
 
-    # 1b: Uninformed NN Move (moves high top table slightly, still 0% accessible)
+    # 1b: A move that changes nothing about the tables (still fails 226.1)
     cases.append({
         "name": "VIP_Lounge_NN_Uninformed_Rearrangement",
         "typology": SpaceTypology.HOSPITALITY_LOUNGE,
@@ -84,14 +84,14 @@ def build_synthetic_scenarios() -> list[dict]:
         "moves": [{"node_id": stool_1.id, "dx": 0.2, "dy": -0.2}],
     })
 
-    # 1c: Precedent-Informed Fix (adds/substitutes compliant accessible table)
+    # 1c: Adds a 30 inch dining table among the others (passes)
     acc_table = SceneNode(
         id=uuid4(),
         kind="object",
-        label="Accessible_dining_table",
+        label="Dining table",
         raw_category="table",
         dimensions=Vec3(x=0.9, y=0.9, z=0.76),
-        transform=Mat4.translation(0.0, 0.0, 0.0),
+        transform=Mat4.translation(0.0, 0.0, 0.38),
         quality="measured",
         movable=True,
         labeled_by="test",
@@ -106,14 +106,14 @@ def build_synthetic_scenarios() -> list[dict]:
         "moves": [],
     })
 
-    # 2. Boba Shop & QSR (Kalani v. Starbucks Corp. / Johnson v. SF Bay Boba LLC)
+    # 2. Boba shop counter with a queue stanchion
     counter = SceneNode(
         id=uuid4(),
         kind="object",
-        label="Service_counter",
+        label="Service counter",
         raw_category="counter",
         dimensions=Vec3(x=2.8, y=0.7, z=0.9),
-        transform=Mat4.translation(0.0, 1.5, 0.0),
+        transform=Mat4.translation(0.0, 1.5, 0.45),
         quality="measured",
         movable=False,
         labeled_by="test",
@@ -143,7 +143,7 @@ def build_synthetic_scenarios() -> list[dict]:
         "moves": [{"node_id": stanchion.id, "dx": -0.4, "dy": 0.0}],
     })
 
-    # 3. Commercial Private Office (Langer v. Milan / Lopez v. Catalina)
+    # 3. Private office with a cabinet beside the door latch
     door = SceneNode(
         id=uuid4(),
         kind="door",
@@ -220,11 +220,11 @@ def load_neural_network_room6_cases() -> list[dict]:
 
 def main():
     print("=" * 78)
-    print(" STANDARD PHYSICS: PRECEDENT-GROUNDED CONSTRAINT BENCHMARK")
+    print(" STANDARD PHYSICS: ADA LAYOUT DIRECTIVE BENCHMARK")
     print("=" * 78)
 
     precedents = load_precedents(allow_unverified=True)
-    print(f"Loaded {len(precedents)} verified landmark case directives from corpus.")
+    print(f"Loaded {len(precedents)} ADA layout directives (verified or not).")
 
     all_cases = []
     synthetic_cases = build_synthetic_scenarios()
@@ -245,15 +245,15 @@ def main():
     print(f"Total Evaluations:               {summary.total_evaluations}")
     print(f"Parsed Proposals:                {summary.parsed_moves_count}")
     print(f"Hard Constraint Pass Rate:       {summary.hard_constraint_pass_rate * 100:.1f}% ({summary.hard_constraint_passes}/{summary.total_evaluations})")
-    print(f"Precedent Constraint Pass Rate:   {summary.precedent_constraint_pass_rate * 100:.1f}% ({summary.precedent_constraint_passes}/{summary.total_evaluations})")
+    print(f"Directive Pass Rate:             {summary.precedent_constraint_pass_rate * 100:.1f}% ({summary.precedent_constraint_passes}/{summary.total_evaluations})")
     print(f"Dual-Constraint Pass Rate:       {summary.dual_constraint_pass_rate * 100:.1f}% ({summary.dual_constraint_passes}/{summary.total_evaluations})")
-    print("\nPRECEDENT VIOLATIONS DETECTED BY CASE PRECEDENT:")
-    for citation, count in summary.precedent_violations_by_case.items():
-        print(f"  • {citation}: {count} violation(s)")
+    print("\nVIOLATIONS BY DIRECTIVE:")
+    for directive_id, count in summary.precedent_violations_by_directive.items():
+        print(f"  {directive_id}: {count} violation(s)")
 
-    print("\nPRECEDENT VIOLATIONS DETECTED BY RULE TYPE:")
+    print("\nVIOLATIONS BY RULE:")
     for rule, count in summary.precedent_violations_by_rule.items():
-        print(f"  • {rule}: {count} instance(s)")
+        print(f"  {rule}: {count} instance(s)")
 
     # Save artifact
     out_dir = REPO_ROOT / "runs"

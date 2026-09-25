@@ -1,8 +1,9 @@
-"""Precedent Compiler: binds room typology and scene nodes to actionable case law.
+"""Directive compiler: binds room typology and scene nodes to ADA layout directives.
 
-Matches active scan entities against the precedent corpus, generating both
-deterministic inspection tasks for MeasurementProvider and strict prompt/constraint
-specifications for the neural layout model (Qwen 3.8 27B).
+Matches scan entities against the directive corpus and produces two things: the
+measurements a MeasurementProvider has to take, and the constraint section of
+the layout model's prompt. Only case references a person has verified reach the
+prompt.
 """
 
 from __future__ import annotations
@@ -65,7 +66,7 @@ class PrecedentCompiler:
     def compile_inspection_manifest(
         self, matched: list[PrecedentDirective]
     ) -> list[PrecedentQuerySpec]:
-        """Compile a deduplicated manifest of geometric checks to execute."""
+        """Every measurement the matched directives need, once each."""
         seen = set()
         queries = []
         for d in matched:
@@ -78,24 +79,32 @@ class PrecedentCompiler:
     def format_qwen_precedent_prompt(
         self, matched: list[PrecedentDirective]
     ) -> str:
-        """Format executable spatial constraints to inject into Qwen 3.8's prompt."""
+        """Format the matched directives as layout constraints for the model's prompt."""
         if not matched:
             return ""
-
         sections = [
-            "\n[ACTIONABLE ADA CASE PRECEDENT CONSTRAINTS]",
-            "The room layout must strictly adhere to the following litigation precedent rules:",
+            "\n[ADA LAYOUT CONSTRAINTS]",
+            "The room layout must satisfy these 2010 ADA Standards requirements:",
         ]
-        for d in matched:
-            sections.append(f"• Precedent Case: {d.title} ({d.landmark_citation})")
-            sections.append(f"  Warning: {d.plain_english_warning}")
-            if d.constraints.forbidden_moves:
-                sections.append(f"  Forbidden Moves: {', '.join(d.constraints.forbidden_moves)}")
-            sections.append(f"  Required Pattern: {d.constraints.solution_pattern}")
-            if d.constraints.minimum_accessible_percentage > 0:
-                pct = int(d.constraints.minimum_accessible_percentage * 100)
-                sections.append(f"  Mandatory Ratio: At least {pct}% of dining/work surfaces must be accessible (28-34 in high, 27 in knee clearance).")
-            if d.constraints.anti_isolation:
-                sections.append("  Anti-Isolation Rule: Accessible elements MUST be integrated into the main customer seating zone, not isolated near doors or utility areas.")
-        
+        for directive in matched:
+            sections.extend(_directive_lines(directive))
         return "\n".join(sections)
+
+
+def _section_list(authority: list[str]) -> str:
+    return ", ".join(section.removeprefix("ADA_2010_") for section in authority)
+
+
+def _directive_lines(directive: PrecedentDirective) -> list[str]:
+    lines = [
+        f"- {directive.title} (ADA 2010 {_section_list(directive.authority)})",
+        f"  Requirement: {directive.plain_english_warning}",
+        f"  Required pattern: {directive.constraints.solution_pattern}",
+    ]
+    if directive.constraints.fixed_roles:
+        lines.append(f"  Do not move: {', '.join(directive.constraints.fixed_roles)}")
+    lines.extend(
+        f"  Enforced in: {case.case_name}, {case.citation}: {case.holding}"
+        for case in directive.verified_cases
+    )
+    return lines

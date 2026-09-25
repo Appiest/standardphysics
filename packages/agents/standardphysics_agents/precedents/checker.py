@@ -1,102 +1,126 @@
-"""Precedent Constraint Checker.
+"""Directive constraint checker.
 
-Evaluates proposed scene graph rearrangements against matched case precedents,
-enforcing court-mandated remedies (e.g. accessible seating ratios, anti-isolation,
-counter clearances) before a layout can pass the evaluation gate.
+Checks the parts of a directive that the rulepack's physical checks do not:
+roles a proposal may not move, 226.1's share of accessible dining surfaces, and
+226.2's dispersion of those surfaces. Thresholds like counter height and route
+width are measured by the rulepack checks, which the fix search already re-runs
+on every candidate.
+
+Dining surfaces are judged on height alone (902.3, 28 to 34 inches). Knee
+clearance under a table is not visible in a bounding box, so it stays a
+measurement request in the inspection manifest rather than a guess here.
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from functools import cache
 
-from standardphysics_contracts import SceneGraph, SceneNode, to_inches
+from standardphysics_contracts import SceneGraph, SceneNode
 from standardphysics_contracts.precedents import PrecedentDirective, PrecedentViolation
 
+from ..checks import roles
+from ..checks.dining import RULE_ID as DINING_RULE_ID
+from ..checks.dining import required_count, surface_height_inches, within_range
+from ..rules import RuleSpec, load_pack
 
-def _is_accessible_dining_surface(node: SceneNode) -> bool:
-    """Check if a table or counter surface conforms to ADA 2010 §§ 902.1 / 306.3."""
-    height_in = to_inches(node.dimensions.z)
-    if not (26.0 <= height_in <= 35.0):
-        return False
-    width_in = to_inches(max(node.dimensions.x, node.dimensions.y))
-    return width_in >= 28.0
+FIXED_ROLE_FINDERS: dict[str, Callable[[SceneGraph], list[SceneNode]]] = {
+    "service_counter": roles.service_counters,
+    "point_of_sale": roles.point_of_sale,
+}
+
+DISPERSION_RADIUS_METERS = 5.0
+"""How far an accessible surface may sit from the middle of the other seating.
+
+226.2 asks for dispersion without a distance. Five metres is this checker's
+stand-in for "set apart from everyone else", not a number from the standard.
+"""
 
 
-def _check_forbidden_moves(
-    directive: PrecedentDirective,
-    moved_nodes: list[SceneNode],
+@cache
+def _dining_rule() -> RuleSpec:
+    return load_pack().by_id(DINING_RULE_ID)
+
+
+def _moved_ids(base: SceneGraph, candidate: SceneGraph) -> set:
+    before = {node.id: node.transform.m for node in base.nodes}
+    return {
+        node.id
+        for node in candidate.nodes
+        if node.id in before and node.transform.m != before[node.id]
+    }
+
+
+def _check_fixed_roles(
+    directive: PrecedentDirective, base: SceneGraph, candidate: SceneGraph
 ) -> list[PrecedentViolation]:
-    """Flag attempts to move fixtures barred by case injunctions."""
-    violations: list[PrecedentViolation] = []
-    if "do_not_move_fixed_bar_plumbing" in directive.constraints.forbidden_moves:
-        for node in moved_nodes:
-            if "bar" in node.label.lower() or "plumb" in node.label.lower():
-                violations.append(
-                    PrecedentViolation(
-                        case_id=directive.case_id,
-                        landmark_citation=directive.landmark_citation,
-                        rule_broken="forbidden_move",
-                        detail=f"Plumbed bar fixture {node.label} cannot be moved to resolve seating ratio.",
-                        target_node_id=str(node.id),
-                    )
+    moved = _moved_ids(base, candidate)
+    return [
+        PrecedentViolation(
+            directive_id=directive.directive_id,
+            authority=directive.authority[0],
+            rule_broken="moved_fixed_role",
+            detail=f"{node.label} is a {role} and has to stay where it is.",
+            target_node_id=str(node.id),
+        )
+        for role in directive.constraints.fixed_roles
+        for node in FIXED_ROLE_FINDERS[role](base)
+        if node.id in moved
+    ]
+
+
+def _check_accessible_share(
+    directive: PrecedentDirective, surfaces: list[SceneNode], accessible: list[SceneNode]
+) -> list[PrecedentViolation]:
+    needed = required_count(len(surfaces), _dining_rule())
+    if len(accessible) >= needed:
+        return []
+    return [
+        PrecedentViolation(
+            directive_id=directive.directive_id,
+            authority="ADA_2010_226.1",
+            rule_broken="too_few_accessible_dining_surfaces",
+            detail=(
+                f"{len(accessible)} of {len(surfaces)} dining surfaces are 28 to 34 inches high; "
+                f"226.1 needs at least {needed}."
+            ),
+        )
+    ]
+
+
+def _check_dispersion(
+    directive: PrecedentDirective, surfaces: list[SceneNode], accessible: list[SceneNode]
+) -> list[PrecedentViolation]:
+    general = [node for node in surfaces if node not in accessible]
+    if not general or not accessible:
+        return []
+    centre_x = sum(node.transform.position.x for node in general) / len(general)
+    centre_y = sum(node.transform.position.y for node in general) / len(general)
+    violations = []
+    for node in accessible:
+        distance = math.hypot(node.transform.position.x - centre_x, node.transform.position.y - centre_y)
+        if distance > DISPERSION_RADIUS_METERS:
+            violations.append(
+                PrecedentViolation(
+                    directive_id=directive.directive_id,
+                    authority="ADA_2010_226.2",
+                    rule_broken="accessible_dining_set_apart",
+                    detail=f"{node.label} sits {distance:.1f} m from the rest of the seating.",
+                    target_node_id=str(node.id),
                 )
+            )
     return violations
 
 
-def _check_seating_ratio(
-    directive: PrecedentDirective,
-    dining_surfaces: list[SceneNode],
-) -> tuple[list[PrecedentViolation], list[SceneNode]]:
-    """Verify accessible dining surface percentage meets court mandate."""
-    violations: list[PrecedentViolation] = []
-    accessible = [s for s in dining_surfaces if _is_accessible_dining_surface(s)]
-    ratio = len(accessible) / len(dining_surfaces)
-    min_ratio = directive.constraints.minimum_accessible_percentage
-    if ratio < min_ratio:
-        violations.append(
-            PrecedentViolation(
-                case_id=directive.case_id,
-                landmark_citation=directive.landmark_citation,
-                rule_broken="insufficient_accessible_seating_ratio",
-                detail=(
-                    f"Accessible seating ratio is {ratio:.1%} ({len(accessible)} of {len(dining_surfaces)}), "
-                    f"below mandatory {min_ratio:.0%} required by {directive.landmark_citation}."
-                ),
-            )
-        )
-    return violations, accessible
-
-
-def _check_anti_isolation(
-    directive: PrecedentDirective,
-    dining_surfaces: list[SceneNode],
-    accessible: list[SceneNode],
-) -> list[PrecedentViolation]:
-    """Ensure accessible tables remain integrated in primary customer area."""
-    violations: list[PrecedentViolation] = []
-    general = [s for s in dining_surfaces if s not in accessible]
-    if not general or not accessible:
-        return violations
-
-    gx = sum(n.transform.position.x for n in general) / len(general)
-    gy = sum(n.transform.position.y for n in general) / len(general)
-    for acc in accessible:
-        ax, ay = acc.transform.position.x, acc.transform.position.y
-        dist = math.hypot(ax - gx, ay - gy)
-        if dist > 5.0:
-            violations.append(
-                PrecedentViolation(
-                    case_id=directive.case_id,
-                    landmark_citation=directive.landmark_citation,
-                    rule_broken="anti_isolation_violation",
-                    detail=(
-                        f"Accessible dining surface {acc.label} is placed {dist:.1f}m away "
-                        f"from general seating area, violating integration mandate in {directive.landmark_citation}."
-                    ),
-                    target_node_id=str(acc.id),
-                )
-            )
+def _check_dining(directive: PrecedentDirective, candidate: SceneGraph) -> list[PrecedentViolation]:
+    surfaces = roles.dining_surfaces(candidate)
+    if not directive.constraints.requires_accessible_dining or not surfaces:
+        return []
+    accessible = [node for node in surfaces if within_range(surface_height_inches(node), _dining_rule())]
+    violations = _check_accessible_share(directive, surfaces, accessible)
+    if directive.constraints.dispersed:
+        violations.extend(_check_dispersion(directive, surfaces, accessible))
     return violations
 
 
@@ -105,51 +129,33 @@ def check_precedent_constraints(
     candidate: SceneGraph,
     directives: list[PrecedentDirective],
 ) -> list[PrecedentViolation]:
-    """Return any violations of matched case law precedents in the candidate layout."""
+    """Return every directive violation in the candidate layout."""
     violations: list[PrecedentViolation] = []
-    base_by_id = {n.id: n for n in base.nodes}
-    cand_by_id = {n.id: n for n in candidate.nodes}
-
-    moved_nodes = [
-        cand_by_id[nid]
-        for nid in cand_by_id
-        if nid in base_by_id and cand_by_id[nid].transform.m != base_by_id[nid].transform.m
-    ]
-
-    dining_surfaces = [
-        n for n in candidate.nodes
-        if any(k in n.label.lower() for k in ("table", "dining", "counter_table", "desk"))
-    ]
-
     for directive in directives:
-        violations.extend(_check_forbidden_moves(directive, moved_nodes))
-
-        if directive.constraints.minimum_accessible_percentage > 0 and dining_surfaces:
-            ratio_viols, accessible = _check_seating_ratio(directive, dining_surfaces)
-            violations.extend(ratio_viols)
-
-            if directive.constraints.anti_isolation and len(dining_surfaces) > 1:
-                violations.extend(_check_anti_isolation(directive, dining_surfaces, accessible))
-
+        violations.extend(_check_fixed_roles(directive, base, candidate))
+        violations.extend(_check_dining(directive, candidate))
     return violations
+
+
+def _violation_key(violation: PrecedentViolation) -> tuple[str, str, str | None]:
+    return (violation.directive_id, violation.rule_broken, violation.target_node_id)
 
 
 def precedent_rejection_for(
     directives: list[PrecedentDirective],
 ) -> Callable[[SceneGraph, SceneGraph], str | None]:
-    """Create a CandidateRejection callback for propose_fix in fix.search."""
+    """A CandidateRejection for propose_fix: refuse any candidate that adds a violation.
+
+    Violations the base layout already has are allowed to remain, since a
+    rearrangement is not always able to fix them. Swapping one violation for a
+    different one is still a new violation and is refused.
+    """
+
     def _reject(base: SceneGraph, candidate: SceneGraph) -> str | None:
-        cand_viols = check_precedent_constraints(base, candidate, directives)
-        # 1. Strictly forbid moves of protected fixtures
-        for v in cand_viols:
-            if v.rule_broken == "forbidden_move":
-                return f"precedent_violation:{v.rule_broken}"
-
-        # 2. Reject candidates that worsen precedent violations
-        base_viols = check_precedent_constraints(base, base, directives)
-        if len(cand_viols) > len(base_viols):
-            return f"precedent_violation:worsened_{cand_viols[-1].rule_broken}"
-
+        existing = {_violation_key(v) for v in check_precedent_constraints(base, base, directives)}
+        for violation in check_precedent_constraints(base, candidate, directives):
+            if _violation_key(violation) not in existing:
+                return f"precedent_violation:{violation.rule_broken}"
         return None
 
     return _reject

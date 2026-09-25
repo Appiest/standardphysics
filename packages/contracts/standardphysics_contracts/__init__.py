@@ -38,6 +38,7 @@ from .measurement import (
     WidthResult,
 )
 from .precedents import (
+    CaseReference,
     PrecedentConstraintSpec,
     PrecedentDirective,
     PrecedentQuerySpec,
@@ -175,6 +176,7 @@ __all__ = [
     "Authority",
     "Blocked",
     "CameraPose",
+    "CaseReference",
     "Check",
     "Citation",
     "ClearFloorResult",
