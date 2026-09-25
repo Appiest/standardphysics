@@ -6,8 +6,6 @@ import argparse
 import json
 import multiprocessing
 import pathlib
-import random
-import uuid
 
 from multiroom_data import (
     Progress,
@@ -19,106 +17,17 @@ from multiroom_data import (
     run_targets,
     target_quality,
 )
-from standardphysics_agents.fix.constraints import _overlapping
+from shop_generator import generate
 from standardphysics_agents.training import scramble
 from standardphysics_agents.training.scramble import LIGHT
 from standardphysics_agents.training.windows import Window
-from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3
-from standardphysics_fixtures.shop import CARD_READER_SIZE, COUNTER_HEIGHT, build_graph, build_scenario
-from standardphysics_pipeline import footprint
-from standardphysics_pipeline.footprints import contains_point, floor_polygon
-
-NAMESPACE = uuid.UUID("ac88fb4c-5365-4c90-9851-70b998249886")
-ROOM_TYPES = ("cafe", "boba tea shop", "bakery", "boutique", "small office")
-DIMENSION_SOURCES = {
-    "table": "standardphysics_fixtures.shop._furniture: 0.60 x 0.60 x 0.75 m",
-    "chair": "standardphysics_fixtures.shop._furniture: 0.45 x 0.45 x 0.90 m",
-    "display": "standardphysics_fixtures.shop._display_cases: 0.60 m deep, 0.90 m high",
-    "counter": "standardphysics_fixtures.shop.COUNTER_LENGTH and COUNTER_HEIGHT",
-    "point_of_sale": "standardphysics_fixtures.shop.CARD_READER_SIZE: 0.20 x 0.16 x 0.08 m",
-    "wing_shelf": "IKEA BILLY 80 x 28 x 202 cm; https://www.ikea.com/us/en/p/billy-bookcase-white-20522046/",
-}
-
-
-def _position(node: SceneNode, x: float, y: float) -> SceneNode:
-    z = node.transform.position.z
-    return node.model_copy(update={"transform": Mat4.translation(x, y, z)})
-
-
-def _new_node(room_name: str, name: str, kind: str, label: str, category: str,
-              center: tuple[float, float, float], dimensions: tuple[float, float, float], movable=False) -> SceneNode:
-    return SceneNode(id=uuid.uuid5(NAMESPACE, f"{room_name}:{name}"), kind=kind, label=label,
-                     raw_category=category, dimensions=Vec3(x=dimensions[0], y=dimensions[1], z=dimensions[2]),
-                     transform=Mat4.translation(*center), movable=movable)
-
-
-def _wing(room_name: str) -> list[SceneNode]:
-    return [
-        _new_node(room_name, "wing_floor", "floor", "Floor", "floor", (4, 2, 0), (2, 4, 0.01)),
-        _new_node(room_name, "wing_east", "wall", "Wall", "wall", (5, 2, 1.5), (0.1, 4, 3)),
-        _new_node(room_name, "wing_north", "wall", "Wall", "wall", (4, 4, 1.5), (2, 0.1, 3)),
-        _new_node(room_name, "wing_south", "wall", "Wall", "wall", (4, 0, 1.5), (2, 0.1, 3)),
-        _new_node(room_name, "wing_shelf", "object", "Bookcase", "storage", (4.15, 2, 1.01),
-                  (0.8, 0.28, 2.02)),
-    ]
-
-
-def _shop_nodes(room_name: str, room_type: str, rng: random.Random, l_shape: bool) -> tuple[list[SceneNode], dict]:
-    template = build_graph()
-    id_map = {node.id: uuid.uuid5(NAMESPACE, f"{room_name}:{node.id}") for node in template.nodes}
-    nodes = []
-    for node in template.nodes:
-        if l_shape and node.label == "Wall" and node.transform.position.x == 3:
-            node = node.model_copy(update={"dimensions": Vec3(x=0.1, y=4, z=3)})
-            node = _position(node, 3, -2)
-        if node.raw_category in ("table", "chair"):
-            node = _position(node, node.transform.position.x + rng.uniform(-0.04, 0.04),
-                             node.transform.position.y + rng.uniform(-0.04, 0.04))
-        label = node.label
-        if label == "Ordering counter" and room_type == "small office":
-            label = "Reception desk"
-        if label == "Display case" and room_type in ("boutique", "small office"):
-            label = "Display shelf"
-        nodes.append(node.model_copy(update={"id": id_map[node.id], "label": label,
-                                     "parent_id": id_map.get(node.parent_id)}))
-    if l_shape:
-        nodes.extend(_wing(room_name))
-    if room_type != "small office":
-        nodes.append(_new_node(room_name, "pos", "object", "Point of sale", "storage",
-                               (0, 3.6, COUNTER_HEIGHT + CARD_READER_SIZE[2] / 2), CARD_READER_SIZE))
-    return nodes, id_map
-
-
-def _furniture_valid(graph: SceneGraph) -> bool:
-    furniture = [node for node in graph.nodes if node.kind == "object"]
-    floors = [floor_polygon(node) for node in graph.nodes if node.kind == "floor"]
-    walls = [node for node in graph.nodes if node.kind == "wall"]
-    for index, node in enumerate(furniture):
-        underside = node.transform.position.z - node.dimensions.z / 2
-        if underside <= 0.02 and any(not any(contains_point(floor, corner, 0.01) for floor in floors)
-                                     for corner in footprint(node)):
-            return False
-        if any(_overlapping(node, other) for other in [*walls, *furniture[index + 1:]]):
-            return False
-    return True
 
 
 def make_room(index: int) -> Window:
+    graph, scenario, _ = generate(index)
     room_name = f"synthetic-{index:04d}"
-    room_type = ROOM_TYPES[index % len(ROOM_TYPES)]
-    l_shape = index % 2 == 1
-    for attempt in range(40):
-        nodes, id_map = _shop_nodes(room_name, room_type, random.Random(index * 101 + attempt), l_shape)
-        graph = SceneGraph(scan_id=uuid.uuid5(NAMESPACE, room_name), nodes=nodes)
-        if not _furniture_valid(graph):
-            continue
-        scenario = build_scenario()
-        stops = [stop.model_copy(update={"anchor_node_id": id_map.get(stop.anchor_node_id)})
-                 for stop in scenario.stops]
-        scenario = scenario.model_copy(update={"name": f"Visit a {room_type}", "stops": stops})
-        return Window(window_id=f"{room_name}:whole", scan_id=str(graph.scan_id), centre=None, graph=graph,
-                      scenario=scenario, route="scan")
-    raise RuntimeError(f"could not generate a collision-free room for {room_name}")
+    return Window(window_id=f"{room_name}:whole", scan_id=str(graph.scan_id), centre=None, graph=graph,
+                  scenario=scenario, route="scan")
 
 
 def run_rooms(run: pathlib.Path, count: int) -> None:
