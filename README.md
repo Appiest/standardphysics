@@ -87,6 +87,25 @@ ipconfig getifaddr en0     # the address to type on the phone
 Then `http://<that address>:3000` in Safari. For the whole thing, API included,
 `start.sh` says how at the top of the file.
 
+### Without opening Xcode
+
+```bash
+scripts/run-ios.sh              # the connected phone, or the simulator
+scripts/run-ios.sh --simulator  # always the simulator
+```
+
+The simulator has no LiDAR, so it cannot scan, and the run sets
+`SIMULATOR_CAPTURE_DEMO=1` to get past the unsupported-device screen. Every
+screen but the scan itself can be worked on there, which is most of them.
+
+```bash
+scripts/ship-ios.sh
+```
+
+Bumps the build number, archives, and uploads to TestFlight. It needs an App
+Store Connect API key, which is what lets xcodebuild make the distribution
+certificate on its own; the script says how to get one and where to put it.
+
 ### Deploying
 
 ```bash

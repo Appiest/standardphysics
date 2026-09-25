@@ -33,6 +33,7 @@ from standardphysics_pipeline.textures import (
     texture_build_key,
 )
 from standardphysics_pipeline.textures.scan_colour import paint_the_scan
+from standardphysics_pipeline.textures.stages import timed
 from standardphysics_pipeline.textures.surface_materials import materials_digest
 
 from . import repository as repo
@@ -379,8 +380,10 @@ def _new_build(database, store, stages, scan_id, row, destination: pathlib.Path)
     temporary = staged_build_dir(store, scan_id)
     try:
         boxes = _reused_boxes(database, store, scan_id, box_key, temporary)
-        boxes = boxes or _baked_boxes(store, stages, scan_id, graph, inputs, temporary)
-        scan_glb = _paint_the_scan(store, scan_id, graph, inputs, temporary)
+        with timed("box model"):
+            boxes = boxes or _baked_boxes(store, stages, scan_id, graph, inputs, temporary)
+        with timed("painted scan"):
+            scan_glb = _paint_the_scan(store, scan_id, graph, inputs, temporary)
         prefix = build_prefix(scan_id, row["build_key"])
         result = TextureBuild(
             build_id=row["build_key"], glb_url=prefix + "/scene.glb",

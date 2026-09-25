@@ -19,6 +19,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var savedScans = CaptureLibrary.all()
     @Published var deletionMessage: String?
     @Published var accountDeletionMessage: String?
+    @Published var developerMode = DeveloperMode.isOn {
+        didSet { DeveloperMode.isOn = developerMode }
+    }
     @Published private(set) var captureSessionID = UUID()
     @Published private(set) var recoveryDirectories: [URL] = []
     @Published private(set) var recoveryMessage: String?
@@ -425,6 +428,10 @@ private struct AccountRow: View {
                 }
                 Button("Sign out") { model.signOut() }
                     .buttonStyle(AppButtonStyle(.secondary))
+                Toggle("Developer mode", isOn: $model.developerMode)
+                    .font(AppTheme.Typography.secondary)
+                    .foregroundStyle(AppTheme.mutedInk)
+                    .tint(AppTheme.accent)
                 Button("Delete account") { confirmingDeletion = true }
                     .buttonStyle(AppButtonStyle(.destructive))
                 if let message = model.accountDeletionMessage {

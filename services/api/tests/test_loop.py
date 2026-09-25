@@ -3,7 +3,7 @@ import uuid
 
 from standardphysics_agents import LocalPolicyRouter
 from standardphysics_contracts import NodeMove, Vec3
-from standardphysics_fixtures import node_id
+from standardphysics_fixtures import build_lawsuit_graph, node_id
 
 from conftest import drain, no_blender_stages
 from standardphysics_api.loop_run import combine_moves
@@ -24,7 +24,17 @@ def test_the_loop_moves_the_display_cases_and_the_gate_keeps_it(make_client):
     assert first["kept"] is True
     assert first["inches_short_after"] < first["inches_short_before"]
     moved = {move["node_id"] for move in result["moves"]}
-    assert moved and moved <= {str(node_id("case_east")), str(node_id("case_west"))}
+    assert moved, "the loop cleared the aisle without reporting what it moved"
+    # Whatever it moved is furniture. A loop that widens an aisle by shifting a
+    # wall, the floor or the ordering counter has not fixed this shop, it has
+    # described a different one, so that is the line the test holds. It used to
+    # name the two display cases exactly, which failed the moment the loop got
+    # better at its job and started moving a table and a chair out of the way
+    # as well.
+    movable = {str(node.id) for node in build_lawsuit_graph().nodes if node.movable}
+    assert moved <= movable
+    # And it moved the things that were actually in the way.
+    assert moved & {str(node_id("case_east")), str(node_id("case_west"))}
     assert len(result["passes"]) <= 6
 
 

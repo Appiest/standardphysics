@@ -32,13 +32,16 @@ from ..lidar import load_mesh
 from .camera import PhotoCamera, load_cameras
 from .project import (
     MAX_EXPOSURE_POINTS,
+    PointBlocks,
     TopViews,
     bilinear,
     depth_buffer,
     exposure_gains,
+    in_parallel,
     to_linear,
     to_srgb,
 )
+from .stages import timed
 
 MAX_PHOTOS = 60
 """Photos read for colour. More photos raise coverage; this is where the gain flattens."""
@@ -358,6 +361,27 @@ class DisplayGeometry:
     """For a vertex reflected in to complete an object, the vertex it mirrors; -1 otherwise."""
 
 
+def _people_on(vertices: np.ndarray, graph: SceneGraph, cameras: list[PhotoCamera], people: dict) -> np.ndarray:
+    """The vertices that are mostly people.
+
+    Each photo is asked only about the part of the scan inside its frame, and
+    its depth buffer is made as the vote reaches it and let go after. A merged
+    floor has thousands of photos: projecting the whole floor through each one
+    took minutes, and holding every buffer at once was over half a gigabyte.
+    """
+    from ..discovery.people import mostly_people
+
+    blocks = PointBlocks(vertices)
+    views = ((camera, people.get(camera.frame_id, []), depth_buffer(camera, vertices[blocks.seen_by(camera)])) for camera in cameras)
+    return mostly_people(vertices, graph, views, visible_to=blocks.seen_by)
+
+
+def _depth_buffers(vertices: np.ndarray, cameras: list[PhotoCamera]) -> list[np.ndarray]:
+    """Each camera's depth buffer of the scan, built from only the part of it inside the frame."""
+    blocks = PointBlocks(vertices)
+    return list(in_parallel(lambda camera: depth_buffer(camera, vertices[blocks.seen_by(camera)]), cameras))
+
+
 def _display_geometry(
     vertices: np.ndarray, triangles: np.ndarray, graph: SceneGraph,
     cameras: list[PhotoCamera], people: dict | None,
@@ -367,19 +391,22 @@ def _display_geometry(
     People out, the holes they leave in furniture closed, half-seen furniture
     completed from its other half, and walls and floor made whole, in that order.
     """
-    from ..discovery.people import mostly_people
     from .hole_patches import with_holes_patched
     from .object_holes import closed_object_holes, without_vertices
     from .symmetry import mirrored_completion, seen_through_by
 
     if people:
-        views = [(camera, people.get(camera.frame_id, []), depth_buffer(camera, vertices)) for camera in cameras]
-        vertices, triangles = without_vertices(vertices, triangles, mostly_people(vertices, graph, views))
-    capped = closed_object_holes(vertices, triangles, graph)
-    seen_through = seen_through_by(cameras, [depth_buffer(camera, capped.vertices) for camera in cameras])
-    completed = mirrored_completion(capped.vertices, capped.triangles, graph, seen_through)
+        with timed("people removal"):
+            vertices, triangles = without_vertices(vertices, triangles, _people_on(vertices, graph, cameras, people))
+    with timed("object holes"):
+        capped = closed_object_holes(vertices, triangles, graph)
+    with timed("seen-through buffers"):
+        seen_through = seen_through_by(cameras, _depth_buffers(capped.vertices, cameras))
+    with timed("mirrored completion"):
+        completed = mirrored_completion(capped.vertices, capped.triangles, graph, seen_through)
     added_so_far = np.concatenate([capped.inferred, completed.added[len(capped.vertices):]])
-    patched = with_holes_patched(completed.vertices, completed.triangles, graph)
+    with timed("hole patches"):
+        patched = with_holes_patched(completed.vertices, completed.triangles, graph)
     extra = len(patched.vertices) - len(completed.vertices)
     return DisplayGeometry(
         vertices=patched.vertices,
@@ -466,7 +493,8 @@ def shown_scan(
     ]
     if not cameras:
         raise ValueError("no stored photo has a usable camera pose")
-    vertices, triangles = scan_geometry(mesh_path, graph.capture_to_room)
+    with timed("mesh load"):
+        vertices, triangles = scan_geometry(mesh_path, graph.capture_to_room)
     shown = _display_geometry(vertices, triangles, graph, cameras, people)
     blank = ColouredScan(
         shown.vertices, shown.triangles, np.tile(UNSEEN, (len(shown.vertices), 1)), np.zeros(len(shown.vertices), bool),

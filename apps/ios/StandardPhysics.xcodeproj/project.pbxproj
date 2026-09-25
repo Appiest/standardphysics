@@ -34,12 +34,14 @@
 		64F682303274D92E0E95F53D /* Karla-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FA1E07B60063CA95B588DD98 /* Karla-Bold.ttf */; };
 		66E408F8858728C03CAAAF70 /* CaptureRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = F33989C0129F58DE12C08EB2 /* CaptureRecovery.swift */; };
 		713304160FEAF00570DD4668 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 29D039B41C8F6BE0EB2C67D7 /* OFL.txt */; };
+		74B8D022B80681B7D64A029C /* DeveloperMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA840C54A8F2B5F2D2C05A81 /* DeveloperMode.swift */; };
 		75C17C86ACC84F5A8841278B /* CoverageEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27785166F1CA3E6AACF4C012 /* CoverageEngineTests.swift */; };
 		78589EC893CD951BDC0B4396 /* ResumableUploadStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4C6263A656172ADAE5138BF /* ResumableUploadStore.swift */; };
 		7E88E95F4EEB81132EF2A0E3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8F25B66322A8547361197B53 /* Assets.xcassets */; };
 		812ABC8C0C2FCD7648188442 /* SceneCaptureConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46525BF5D2C5213EB7FED758 /* SceneCaptureConfiguration.swift */; };
 		837EBEDE2B395F2129F29D8A /* DraftingPaper.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFCDE194CA8E81C8F043EE76 /* DraftingPaper.swift */; };
 		850EE6F0C14C7ABDB7A9FB7F /* ScanExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5281D7312D6F754DBC7B8377 /* ScanExportTests.swift */; };
+		882F93342D510E45AE98BDF1 /* PaintedCoverageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CC6FDF77837464E7D9EB697 /* PaintedCoverageView.swift */; };
 		8BA7B9F89E034B879E779614 /* ScanPrimerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = F313ADD03C0085CEF9FE8D31 /* ScanPrimerScreen.swift */; };
 		95E15EFB23AEA929A41B1EA4 /* CaptureScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD126A7334930ED9E61ADA9A /* CaptureScreen.swift */; };
 		9BF68FA1A07FE744E37BACA9 /* ResumableUploadStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0748121F1E998BBBC5AA865E /* ResumableUploadStoreTests.swift */; };
@@ -79,6 +81,7 @@
 		0BC02FEB13501BED123058EA /* ConnectionScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionScreen.swift; sourceTree = "<group>"; };
 		0F927501CBAEE186F740ECBB /* PoseRecordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseRecordTests.swift; sourceTree = "<group>"; };
 		1AA420D8B693B08C38D20603 /* apple_bedroom3.room.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = apple_bedroom3.room.json; sourceTree = "<group>"; };
+		1CC6FDF77837464E7D9EB697 /* PaintedCoverageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaintedCoverageView.swift; sourceTree = "<group>"; };
 		23610824E5B44F0425258F9B /* StandardPhysics.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = StandardPhysics.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		27785166F1CA3E6AACF4C012 /* CoverageEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageEngineTests.swift; sourceTree = "<group>"; };
 		29D039B41C8F6BE0EB2C67D7 /* OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
@@ -123,6 +126,7 @@
 		E5526B07C28987E15F8C00DE /* Karla-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Karla-Medium.ttf"; sourceTree = "<group>"; };
 		E6F34E396942BEF7BD1CB0CE /* RoomCaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCaptureController.swift; sourceTree = "<group>"; };
 		E822CFE0693E33CDA2D1BF3B /* LibreFranklin-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "LibreFranklin-Bold.ttf"; sourceTree = "<group>"; };
+		EA840C54A8F2B5F2D2C05A81 /* DeveloperMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperMode.swift; sourceTree = "<group>"; };
 		F313ADD03C0085CEF9FE8D31 /* ScanPrimerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanPrimerScreen.swift; sourceTree = "<group>"; };
 		F33989C0129F58DE12C08EB2 /* CaptureRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureRecovery.swift; sourceTree = "<group>"; };
 		F6A8C1D60ECF23C6304B08D1 /* apple_livingroom.room.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = apple_livingroom.room.json; sourceTree = "<group>"; };
@@ -257,6 +261,7 @@
 				AB85814D71BB5E268CE101E1 /* AppRootView.swift */,
 				B698CFA6F39664D668AE5C63 /* AppTheme.swift */,
 				0BC02FEB13501BED123058EA /* ConnectionScreen.swift */,
+				EA840C54A8F2B5F2D2C05A81 /* DeveloperMode.swift */,
 				AFCDE194CA8E81C8F043EE76 /* DraftingPaper.swift */,
 				7670F5B1251C2FB1FDB73F09 /* SessionStore.swift */,
 				CCB174918D63F6BD96B3249F /* SignInScreen.swift */,
@@ -282,6 +287,7 @@
 				9AA3EF92FB3C776BBFC316A2 /* FrameRecorder.swift */,
 				09F99DAFD73FC2772167D60C /* KeyframeBook.swift */,
 				9B07A989AF5FC994A8CD0AAA /* LidarMeshRecorder.swift */,
+				1CC6FDF77837464E7D9EB697 /* PaintedCoverageView.swift */,
 				D8F7D787B2D14BBCBCF9F0FA /* PoseRecord.swift */,
 				E6F34E396942BEF7BD1CB0CE /* RoomCaptureController.swift */,
 				F313ADD03C0085CEF9FE8D31 /* ScanPrimerScreen.swift */,
@@ -412,10 +418,12 @@
 				31226E685F8615CF36220EF7 /* CaptureSessionStore.swift in Sources */,
 				F29735B46B915B98C96C7A13 /* ConnectionScreen.swift in Sources */,
 				5F7D792A2DD916716749DA38 /* CoverageEngine.swift in Sources */,
+				74B8D022B80681B7D64A029C /* DeveloperMode.swift in Sources */,
 				837EBEDE2B395F2129F29D8A /* DraftingPaper.swift in Sources */,
 				29D2538D10668801A37E448A /* FrameRecorder.swift in Sources */,
 				452AAD37D7369A834D52CCA5 /* KeyframeBook.swift in Sources */,
 				F0BBA90A344EE46F6F912FDE /* LidarMeshRecorder.swift in Sources */,
+				882F93342D510E45AE98BDF1 /* PaintedCoverageView.swift in Sources */,
 				61D0ADE124324A2C39DBE840 /* PoseRecord.swift in Sources */,
 				78589EC893CD951BDC0B4396 /* ResumableUploadStore.swift in Sources */,
 				21CA6D7591146572C7FB7AEF /* ReviewScreen.swift in Sources */,

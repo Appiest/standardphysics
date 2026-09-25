@@ -71,6 +71,16 @@ services:
     environment:
       PORT: "3000"
       SP_API_ORIGIN: http://api:8787
+    # The image's own healthcheck asks port 8787 for /health, which is the API
+    # and not this. Inherited unchanged, the workspace reports unhealthy while
+    # serving every page correctly, and a status column that is always wrong is
+    # one nobody reads on the day it is right.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/sign-in').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       api:
         condition: service_healthy

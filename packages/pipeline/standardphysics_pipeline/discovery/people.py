@@ -20,6 +20,7 @@ that is not there.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 import numpy as np
@@ -76,7 +77,8 @@ def _visible(points: np.ndarray, camera: PhotoCamera, depth_buffer: np.ndarray |
 def mostly_people(
     points: np.ndarray,
     graph: SceneGraph,
-    views: list[tuple[PhotoCamera, list[Detection], np.ndarray | None]],
+    views: Iterable[tuple[PhotoCamera, list[Detection], np.ndarray | None]],
+    visible_to: Callable[[PhotoCamera], np.ndarray] | None = None,
 ) -> np.ndarray:
     """Points that were a person in most of the photos that saw them.
 
@@ -91,15 +93,21 @@ def mostly_people(
     seen_count = np.zeros(len(points), dtype=np.int32)
     person_count = np.zeros(len(points), dtype=np.int32)
     for camera, detections, depth_buffer in views:
-        seen_count += _visible(points, camera, depth_buffer)
-        in_person = np.zeros(len(points), dtype=bool)
-        for detection in detections:
-            if detection.is_person:
-                in_person |= _person_surface(points, camera, detection, depth_buffer)
-        person_count += in_person
+        indices = visible_to(camera) if visible_to is not None else slice(None)
+        near = points[indices]
+        seen_count[indices] += _visible(near, camera, depth_buffer)
+        person_count[indices] += _in_a_person(near, camera, detections, depth_buffer)
     share = person_count / np.maximum(seen_count, 1)
     voted = (share >= MIN_PERSON_SHARE) & (person_count >= MIN_PERSON_VIEWS)
     return voted & ~structure_points(points, graph)
+
+
+def _in_a_person(points: np.ndarray, camera: PhotoCamera, detections: list[Detection], depth_buffer) -> np.ndarray:
+    inside = np.zeros(len(points), dtype=bool)
+    for detection in detections:
+        if detection.is_person:
+            inside |= _person_surface(points, camera, detection, depth_buffer)
+    return inside
 
 
 def without_people(

@@ -57,6 +57,9 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
         recorder.start()
     }
 
+    /// The session RoomPlan is running, for anything that draws over its view.
+    var arSession: ARSession? { captureView?.captureSession.arSession }
+
     func finish() {
         guard !isFinishing else { return }
         isFinishing = true
@@ -121,6 +124,11 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
         let surfaces = RoomCoverage.snapshots(from: liveRoom)
         coverageEngine.update(surfaces: surfaces, camera: camera)
         store?.didUpdate(coverage: coverageEngine.snapshot, surfaces: surfaces, instruction: coaching)
+        // Only the developer build paints, and working out where costs enough
+        // to be worth skipping when nothing is going to draw it.
+        if DeveloperMode.isOn {
+            store?.didPaint(coverageEngine.paint(on: surfaces))
+        }
     }
 
     nonisolated func captureView(shouldPresent data: CapturedRoomData, error: Error?) -> Bool {

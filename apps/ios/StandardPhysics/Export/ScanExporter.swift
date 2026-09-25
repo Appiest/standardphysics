@@ -102,12 +102,17 @@ enum ScanExporter {
             exportOptions: [.parametric, .mesh]
         )
         try JSONEncoder.standardPhysics.encode(room).write(to: roomJSONURL, options: .atomic)
-        let coverageByID = Dictionary(uniqueKeysWithValues: coverage.surfaces.map {
-            ($0.id.uuidString, CoverageValue(
-                observedFraction: $0.observedFraction,
-                viewpointCount: $0.viewpointCount
-            ))
-        })
+        // A repeated surface identifier must not lose the scan at the last
+        // step, after the walk is already done. The later reading wins.
+        let coverageByID = Dictionary(
+            coverage.surfaces.map {
+                ($0.id.uuidString, CoverageValue(
+                    observedFraction: $0.observedFraction,
+                    viewpointCount: $0.viewpointCount
+                ))
+            },
+            uniquingKeysWith: { _, newer in newer }
+        )
         try JSONEncoder.standardPhysics.encode(coverageByID).write(to: coverageURL, options: .atomic)
 
         var artifacts = [

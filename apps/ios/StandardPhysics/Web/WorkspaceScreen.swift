@@ -18,7 +18,7 @@ struct WorkspaceScreen: View {
                         url: workspaceURL.appendingPathComponent("scans").appendingPathComponent(scanID.uuidString),
                         allowedOrigin: origin,
                         sessionToken: appModel.session.token,
-                        onScanRequested: { appModel.beginCapture() },
+                        onScanRequested: { appModel.showScanPrimer() },
                         onFailure: { message = $0 }
                     )
                 } else {

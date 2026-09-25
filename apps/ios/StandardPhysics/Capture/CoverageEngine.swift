@@ -80,6 +80,13 @@ struct CameraObservation: Sendable {
     }
 }
 
+/// One cell of a surface, in world space, and whether the walk has covered it.
+struct PaintedSample: Sendable, Equatable {
+    let worldPoint: SIMD3<Float>
+    let worldNormal: SIMD3<Float>
+    let isObserved: Bool
+}
+
 struct SurfaceCoverage: Identifiable, Codable, Equatable, Sendable {
     let id: UUID
     let observedFraction: Double
@@ -240,11 +247,14 @@ struct CoverageEngine {
     /// Scores the processed room against the whole walk, including surfaces
     /// RoomPlan only settled on at the end.
     mutating func reconcile(finalSurfaces: [SurfaceSnapshot]) -> CoverageSnapshot {
-        observations = Dictionary(uniqueKeysWithValues: finalSurfaces.map { surface in
-            var replayed = replayedState(on: surface)
-            replayed.geometry = geometryFingerprint(for: surface)
-            return (surface.id, replayed)
-        })
+        observations = Dictionary(
+            finalSurfaces.map { surface in
+                var replayed = replayedState(on: surface)
+                replayed.geometry = geometryFingerprint(for: surface)
+                return (surface.id, replayed)
+            },
+            uniquingKeysWith: { _, newer in newer }
+        )
         snapshot = makeSnapshot(surfaces: finalSurfaces, camera: nil)
         return snapshot
     }
@@ -356,6 +366,25 @@ struct CoverageEngine {
         }
     }
 
+    /// Where the paint goes, and whether it is down yet.
+    ///
+    /// Drawn from the same samples that decide completion, so a wall that looks
+    /// painted is a wall the app will accept. A prettier overlay that disagreed
+    /// with the rule would leave an owner staring at a finished room the app
+    /// says is unfinished.
+    func paint(on surfaces: [SurfaceSnapshot]) -> [PaintedSample] {
+        surfaces.flatMap { surface -> [PaintedSample] in
+            let observed = observations[surface.id]?.observedSamples ?? []
+            return preparedSamples(on: surface).map { prepared in
+                PaintedSample(
+                    worldPoint: prepared.worldPoint,
+                    worldNormal: prepared.worldNormal,
+                    isObserved: observed.contains(prepared.sample.index)
+                )
+            }
+        }
+    }
+
     private func preparedSamples(on surface: SurfaceSnapshot) -> [PreparedSurfaceSample] {
         let normalTransform = simd_transpose(simd_inverse(surface.transform))
         return samples(on: surface).map { sample in
@@ -435,7 +464,12 @@ struct CoverageEngine {
     }
 
     private func guidance(for surfaces: [SurfaceSnapshot], coverage: [SurfaceCoverage], camera: CameraObservation) -> Guidance {
-        let coverageByID = Dictionary(uniqueKeysWithValues: coverage.map { ($0.id, $0) })
+        // RoomPlan can report the same surface identifier twice in one update,
+        // and `uniqueKeysWithValues` traps on that rather than tolerating it.
+        // This runs on the display link for every frame of a scan, so the trap
+        // took the whole capture down mid-walk. The later reading is the newer
+        // one, so it wins.
+        let coverageByID = Dictionary(coverage.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
         let candidates = surfaces.flatMap { surface -> [GuidanceTarget] in
             guard let surfaceCoverage = coverageByID[surface.id], !surfaceCoverage.isDone else { return [] }
             let state = observations[surface.id, default: ObservationState()]

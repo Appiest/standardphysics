@@ -15,6 +15,7 @@ set -euo pipefail
 
 HOST="${SP_DEPLOY_HOST:-root@api.standardphysics.app}"
 DIR="${SP_DEPLOY_DIR:-/root/standardphysics}"
+LOCK="${SP_DEPLOY_LOCK:-/var/lock/standardphysics-deploy}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 say() { printf '\n== %s\n' "$1"; }
@@ -40,7 +41,17 @@ deploy() {
   # and ssh then has no way to ask for a key passphrase: it gives up and
   # reports publickey, which reads as a key the server will not accept rather
   # than a question it could not ask. -t gives the prompt a terminal to use.
+  #
+  # The lock is on the box and not on this machine, because two people on two
+  # laptops collide the same way one person running it twice does. Two deploys
+  # racing to recreate a container leave the name taken, the stack half torn
+  # down and the site answering 502, which is how this was learned.
   ssh -t "$HOST" "set -euo pipefail
+exec 9>'$LOCK'
+if ! flock -n 9; then
+  echo 'Another deploy is already running on this box. Wait for it to finish.' >&2
+  exit 75
+fi
 cd '$DIR'
 git pull --ff-only
 cd deploy/digitalocean

@@ -20,11 +20,9 @@ of surface, which is itself a photograph or the room's generated material.
 
 from __future__ import annotations
 
-import os
 import pathlib
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
@@ -38,17 +36,20 @@ from .hole_patches import hidden_behind_objects
 from .object_holes import people_masks
 from .project import (
     MAX_EXPOSURE_POINTS,
+    PointBlocks,
     TopViews,
     bilinear,
     depth_buffer,
     exposure_gains,
     face_normals,
+    in_parallel,
     pad_gutters,
     rasterize_atlas,
     to_linear,
     to_srgb,
 )
 from .scan_colour import BLEND_SHARPNESS, ColouredScan, _small_static_mask, _weights_from
+from .stages import timed
 
 TEXEL_METRES = 0.02
 MIN_ATLAS_SIZE = 512
@@ -58,8 +59,6 @@ MAX_ATLAS_PHOTOS = 800
 PHOTO_EDGE = 1600
 EXPOSURE_PHOTO_EDGE = 400
 """Exposure is a per-photo brightness, so it can be read off a thumbnail."""
-BLOCK_METRES = 1.0
-"""The size of the cubes texels are grouped into, so a photo only projects the texels it could see."""
 ATLAS_JPEG_QUALITY = 90
 CONSENSUS_VIEWS = 5
 """How many of the best views each texel keeps, so the colour most of them agree on can win."""
@@ -117,29 +116,6 @@ def atlas_size(mesh: UnwrappedScan) -> int:
     needed = world_areas.sum() / TEXEL_METRES ** 2 / max(uv_areas.sum(), 1e-9)
     side = 2 ** int(np.ceil(np.log2(max(np.sqrt(needed), 1.0))))
     return int(np.clip(side, MIN_ATLAS_SIZE, MAX_ATLAS_SIZE))
-
-
-class _Blocks:
-    """Texels grouped into cubes, so each photo projects only the cubes inside its frame."""
-
-    def __init__(self, points: np.ndarray):
-        keys = np.floor(points / BLOCK_METRES).astype(np.int64)
-        unique, inverse = np.unique(keys, axis=0, return_inverse=True)
-        self.order = np.argsort(inverse.ravel(), kind="stable")
-        self.starts = np.searchsorted(inverse.ravel()[self.order], np.arange(len(unique) + 1))
-        self.centres = (unique + 0.5) * BLOCK_METRES
-        self.radius = BLOCK_METRES * np.sqrt(3) / 2
-
-    def seen_by(self, camera: PhotoCamera) -> np.ndarray:
-        """Indices of every texel in a cube that reaches into the camera's frame."""
-        u, v, depth = camera.project(self.centres)
-        reach = self.radius * max(camera.fx, camera.fy) / np.maximum(depth, 0.1)
-        near = depth < self.radius
-        framed = (depth > -self.radius) & (u > -reach) & (u < camera.width + reach) & (v > -reach) & (v < camera.height + reach)
-        chosen = np.flatnonzero(near | framed)
-        first, count = self.starts[chosen], self.starts[chosen + 1] - self.starts[chosen]
-        offsets = np.arange(count.sum()) - np.repeat(np.cumsum(count) - count, count)
-        return self.order[np.repeat(first, count) + offsets]
 
 
 def _read(path: pathlib.Path, edge: int) -> np.ndarray:
@@ -206,7 +182,7 @@ class _Surface:
         self.fallback = _blended(to_linear(painted.colours), distances, nearest)
         patches = painted.sheet_patches if painted.sheet_patches is not None else np.zeros(len(painted.vertices), bool)
         self.patch = patches[nearest[:, 0]]
-        self.blocks = _Blocks(self.positions)
+        self.blocks = PointBlocks(self.positions)
 
     def weights(self, camera: PhotoCamera, photo: np.ndarray, detections: dict, indices: np.ndarray, buffer: np.ndarray):
         """This photo's view weight for each texel in `indices`, and where in the photo to sample it."""
@@ -237,60 +213,56 @@ def _people_mask(camera: PhotoCamera, photo: np.ndarray, detections: dict, buffe
     return _small_static_mask(mask, *buffer.shape)
 
 
-def _in_parallel(work, items):
-    """`work` over every item on all cores, in bounded batches, yielding results in item order.
-
-    The per-photo work is array arithmetic that lets go of the interpreter lock,
-    so threads run it side by side while sharing the texels rather than copying
-    them. Results come back in photo order, so the bake is the same as one run
-    photo by photo.
-    """
-    workers = os.cpu_count() or 4
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        for start in range(0, len(items), 2 * workers):
-            yield from pool.map(work, items[start:start + 2 * workers])
-
-
 def _exposure(surface: _Surface, cameras, frame_paths, detections) -> tuple[np.ndarray, list]:
     """Per-photo gains from an even sample of texels, and each photo's depth buffer for the bake."""
     sample = np.unique(np.linspace(0, len(surface.positions) - 1, MAX_EXPOSURE_POINTS).astype(np.int64))
     in_sample = np.full(len(surface.positions), -1, dtype=np.int64)
     in_sample[sample] = np.arange(len(sample))
 
+    nothing = (np.empty(0, np.int64), np.empty((0, 3), np.float32))
+
     def measure(camera):
         visible = surface.blocks.seen_by(camera)
         if not len(visible):
-            return None, (np.empty(0, np.int64), np.empty((0, 3), np.float32))
-        buffer = depth_buffer(camera, surface.positions[visible])
+            return False, nothing
         sampled = visible[in_sample[visible] >= 0]
         if not len(sampled):
-            return buffer, (np.empty(0, np.int64), np.empty((0, 3), np.float32))
+            return True, nothing
+        buffer = depth_buffer(camera, surface.positions[visible])
         photo = _read(frame_paths[camera.frame_id], EXPOSURE_PHOTO_EDGE)
         weight, columns, rows = surface.weights(camera, photo, detections, sampled, buffer)
         seen = np.flatnonzero(weight > 0)
-        return buffer, (in_sample[sampled[seen]], to_linear(bilinear(photo, columns[seen], rows[seen])))
+        return True, (in_sample[sampled[seen]], to_linear(bilinear(photo, columns[seen], rows[seen])))
 
-    measured = list(_in_parallel(measure, cameras))
-    buffers = [buffer for buffer, _ in measured]
-    return exposure_gains([seen for _, seen in measured], len(cameras), len(sample)), buffers
+    measured = list(in_parallel(measure, cameras))
+    framed = [sees for sees, _ in measured]
+    return exposure_gains([seen for _, seen in measured], len(cameras), len(sample)), framed
 
 
-def _bake(surface: _Surface, cameras, frame_paths, detections, gains, buffers) -> tuple[np.ndarray, np.ndarray]:
-    """Linear colour per texel and whether any photo reached it."""
-    blend = TopViews(len(surface.positions), CONSENSUS_VIEWS)
+def _bake(surface: _Surface, cameras, frame_paths, detections, gains, framed) -> tuple[np.ndarray, np.ndarray]:
+    """Linear colour per texel and whether any photo reached it.
+
+    Each photo's depth buffer is built again here rather than kept from the
+    exposure pass: thousands of them held at once were more memory than a
+    small server has, and one is quick to make from the texels in its frame.
+    The best views keep their colours at half precision, which is still eight
+    times finer than the atlas stores and halves the largest array of the bake.
+    """
+    blend = TopViews(len(surface.positions), CONSENSUS_VIEWS, color_type=np.float16)
     painted = np.zeros(len(surface.positions), dtype=bool)
 
     def sample(job):
-        camera, gain, buffer = job
+        camera, gain = job
         visible = surface.blocks.seen_by(camera)
+        buffer = depth_buffer(camera, surface.positions[visible])
         photo = _read(frame_paths[camera.frame_id], PHOTO_EDGE)
         weight, columns, rows = surface.weights(camera, photo, detections, visible, buffer)
         seen = np.flatnonzero(weight > 0)
         colours = np.clip(to_linear(bilinear(photo, columns[seen], rows[seen])) * gain, 0.0, 1.0)
         return visible[seen], weight[seen], colours
 
-    jobs = [(camera, gain, buffer) for camera, gain, buffer in zip(cameras, gains, buffers) if buffer is not None]
-    for indices, weights, colours in _in_parallel(sample, jobs):
+    jobs = [(camera, gain) for camera, gain, sees in zip(cameras, gains, framed) if sees]
+    for indices, weights, colours in in_parallel(sample, jobs):
         blend.add(indices, weights, colours)
         painted[indices] = True
     return _in_chunks(agreed_colours, blend.weights, blend.colors), painted
@@ -298,7 +270,7 @@ def _bake(surface: _Surface, cameras, frame_paths, detections, gains, buffers) -
 
 def _in_chunks(resolve, weights: np.ndarray, colours: np.ndarray, size: int = 250_000) -> np.ndarray:
     """The resolution run a slice at a time, since comparing every pair of views is five-by-five per texel."""
-    return np.concatenate([resolve(weights[start:start + size], colours[start:start + size])
+    return np.concatenate([resolve(weights[start:start + size], colours[start:start + size].astype(np.float32))
                            for start in range(0, len(weights), size)] or [np.empty((0, 3), np.float32)])
 
 
@@ -450,13 +422,18 @@ def bake_scan_atlas(
     detections = people or {}
     with tempfile.TemporaryDirectory(prefix="standardphysics-atlas-") as temporary:
         work = pathlib.Path(temporary)
-        mesh = unwrapped(painted, work, max_triangles)
+        with timed("unwrap"):
+            mesh = unwrapped(painted, work, max_triangles)
         size = atlas_size(mesh)
-        surface = _Surface(mesh, size, painted, graph)
-        gains, buffers = _exposure(surface, chosen, frame_paths, detections)
-        colours, reached = _bake(surface, chosen, frame_paths, detections, gains, buffers)
+        with timed("texels"):
+            surface = _Surface(mesh, size, painted, graph)
+        with timed("exposure"):
+            gains, framed = _exposure(surface, chosen, frame_paths, detections)
+        with timed("photo bake"):
+            colours, reached = _bake(surface, chosen, frame_paths, detections, gains, framed)
         atlas_path, mesh_path = work / "atlas.jpg", work / "mesh.npz"
-        _atlas_image(surface, colours, reached).save(atlas_path, quality=ATLAS_JPEG_QUALITY)
+        with timed("atlas image"):
+            _atlas_image(surface, colours, reached).save(atlas_path, quality=ATLAS_JPEG_QUALITY)
         np.savez(mesh_path, vertices=mesh.vertices, triangles=mesh.triangles, uv=mesh.uv)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         _write_glb(mesh_path, atlas_path, out_path)

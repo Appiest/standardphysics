@@ -14,6 +14,7 @@ final class CaptureSessionStore: ObservableObject {
     @Published private(set) var instruction = "Turn around slowly"
     @Published private(set) var capturedScan: CapturedScan?
     @Published private(set) var hasDetailedGeometry = false
+    @Published private(set) var paint: [PaintedSample] = []
     weak var controller: RoomCaptureController?
 
     func attach(_ controller: RoomCaptureController) {
@@ -42,6 +43,11 @@ final class CaptureSessionStore: ObservableObject {
     }
 
     var canRetrySave: Bool { controller?.canExport == true }
+
+    func didPaint(_ paint: [PaintedSample]) {
+        guard phase == .scanning else { return }
+        self.paint = paint
+    }
 
     func didUpdate(coverage: CoverageSnapshot, surfaces: [SurfaceSnapshot], instruction: String? = nil) {
         guard phase == .scanning else { return }

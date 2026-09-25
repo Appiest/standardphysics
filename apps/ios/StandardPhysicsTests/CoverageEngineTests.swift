@@ -43,6 +43,39 @@ final class CoverageEngineTests: XCTestCase {
         }
     }
 
+    /// RoomPlan reported one surface twice under a single identifier and the
+    /// engine built a dictionary that traps on duplicates, on the display link,
+    /// for every frame. A scan died mid-walk with a Swift runtime trap, and the
+    /// owner lost the room they had just walked.
+    func testARepeatedSurfaceIdentifierDoesNotEndTheScan() {
+        var engine = CoverageEngine(gridSize: 1)
+        let repeated = UUID()
+        let wall = { (width: Float) in
+            SurfaceSnapshot(
+                id: repeated,
+                width: width,
+                height: 2,
+                transform: matrix_identity_float4x4,
+                confidence: .high,
+                isWall: true,
+                shape: .plane(
+                    width: width,
+                    height: 2,
+                    localU: SIMD3<Float>(1, 0, 0),
+                    localV: SIMD3<Float>(0, 1, 0),
+                    localNormal: SIMD3<Float>(0, 0, 1)
+                )
+            )
+        }
+
+        engine.update(
+            surfaces: [wall(2), wall(3)],
+            camera: downwardCamera(position: SIMD3<Float>(0, 2, 0))
+        )
+
+        XCTAssertFalse(engine.snapshot.surfaces.isEmpty)
+    }
+
     func testFloorPlaneUsesItsExplicitUpNormal() {
         var engine = CoverageEngine(gridSize: 1)
         let floor = SurfaceSnapshot(

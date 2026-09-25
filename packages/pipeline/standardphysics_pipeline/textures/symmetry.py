@@ -25,6 +25,8 @@ import numpy as np
 from scipy.spatial import cKDTree
 from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
 
+from .project import CameraArray
+
 OBJECT_REACH = 0.03
 """How far outside its box a scanned vertex may sit and still belong to the object."""
 AGREEMENT_DISTANCE = 0.03
@@ -58,22 +60,36 @@ SeenThrough = Callable[[np.ndarray], np.ndarray]
 def seen_through_by(
     cameras, depth_buffers: list[np.ndarray], min_views: int = MIN_SEEN_THROUGH_VIEWS,
 ) -> SeenThrough:
-    """Points enough cameras saw beyond: the surface each recorded along that ray lies well behind them."""
+    """Points enough cameras saw beyond: the surface each recorded along that ray lies well behind them.
+
+    Only the cameras whose frame reaches the points are asked. Each question is
+    about one piece of furniture, and a walk of a library floor has thousands of
+    photos, nearly all of them pointed somewhere else.
+    """
+    rig = CameraArray(cameras)
 
     def seen_through(points: np.ndarray) -> np.ndarray:
         views = np.zeros(len(points), dtype=np.int32)
-        for camera, buffer in zip(cameras, depth_buffers):
-            columns, rows, depth = camera.project(points)
-            in_view = (depth > 0.2) & (columns >= 0) & (columns < camera.width) & (rows >= 0) & (rows < camera.height)
-            height, width = buffer.shape
-            recorded = buffer[
-                np.clip((rows * height / camera.height).astype(np.int64), 0, height - 1),
-                np.clip((columns * width / camera.width).astype(np.int64), 0, width - 1),
-            ]
-            views += in_view & np.isfinite(recorded) & (recorded > depth + SEEN_THROUGH_MARGIN)
+        if not len(points):
+            return views >= min_views
+        centre = (points.min(axis=0) + points.max(axis=0)) / 2
+        radius = float(np.linalg.norm(points - centre, axis=1).max())
+        for index in rig.reaching(centre, radius):
+            views += _seen_beyond(points, cameras[index], depth_buffers[index])
         return views >= min_views
 
     return seen_through
+
+
+def _seen_beyond(points: np.ndarray, camera, buffer: np.ndarray) -> np.ndarray:
+    columns, rows, depth = camera.project(points)
+    in_view = (depth > 0.2) & (columns >= 0) & (columns < camera.width) & (rows >= 0) & (rows < camera.height)
+    height, width = buffer.shape
+    recorded = buffer[
+        np.clip((rows * height / camera.height).astype(np.int64), 0, height - 1),
+        np.clip((columns * width / camera.width).astype(np.int64), 0, width - 1),
+    ]
+    return in_view & np.isfinite(recorded) & (recorded > depth + SEEN_THROUGH_MARGIN)
 
 
 @dataclass(frozen=True)
