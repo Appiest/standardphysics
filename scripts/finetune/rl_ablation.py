@@ -127,11 +127,29 @@ def train(data_dir: pathlib.Path, arm: str, sft_state: str) -> None:
         for step in range(first, plan.rl_steps):
             run_step(trainer, arm, step)
             if step + 1 in EVAL_STEPS:
-                trainer.evaluate(f"{arm}-step{step + 1}")
+                trainer.evaluate(eval_label(arm, step + 1))
         progress.record("rl", status="done", completed_steps=plan.rl_steps, finished_at=time.time())
     except BudgetExceeded as stop:
         progress.record("budget", status="stopped", reason=str(stop))
         raise SystemExit(3) from stop
+    finally:
+        trainer.close()
+
+
+def eval_label(arm: str, step: int) -> str:
+    """Lowercase: the label becomes a checkpoint name, which has to be a DNS label."""
+    return f"{arm.lower()}-step{step}"
+
+
+def evaluate_state(data_dir: pathlib.Path, arm: str, state: str, step: int) -> None:
+    """Check one saved RL state on the real held-out rooms, for a step whose evaluation did not run."""
+    plan = Plan(**{**asdict(Plan()), **PLAN})
+    run_dir = data_dir / f"arm-{arm}"
+    progress = Progress(run_dir / "PROGRESS.json")
+    trainer = Trainer(plan, load(data_dir), progress, run_dir, os.environ["FIREWORKS_API_KEY"])
+    try:
+        trainer.connect(state)
+        print(json.dumps({"arm": arm, "step": step, **trainer.evaluate(eval_label(arm, step))}), flush=True)
     finally:
         trainer.close()
 
@@ -160,9 +178,16 @@ def main() -> None:
     run.add_argument("--data", type=pathlib.Path, required=True)
     run.add_argument("--arm", choices=sorted(ARMS), required=True)
     run.add_argument("--sft-state", required=True)
+    check = commands.add_parser("evaluate")
+    check.add_argument("--data", type=pathlib.Path, required=True)
+    check.add_argument("--arm", choices=sorted(ARMS), required=True)
+    check.add_argument("--state", required=True)
+    check.add_argument("--step", type=int, required=True)
     args = parser.parse_args()
     if args.command == "build":
         print(json.dumps(build(args.real_run, args.generated_run, args.out), indent=2))
+    elif args.command == "evaluate":
+        evaluate_state(args.data, args.arm, args.state, args.step)
     else:
         train(args.data, args.arm, args.sft_state)
 
