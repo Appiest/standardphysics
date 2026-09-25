@@ -10,8 +10,9 @@ it reports what the reward saw and two things the solver hides:
                     what they serve as written: rotation awareness without the
                     solver turning them
 
-`--previous` adds last night's model, whose saved answers are re-scored under
-the current reward on the same real rooms.
+Verdicts the trainer saved are reused, so only the raw checks are computed
+here. `--previous` adds last night's model, whose saved answers are re-scored
+under the current reward, since they were scored under an older one.
 
     python scripts/finetune/harness_benchmarks.py --run runs/finetune/harness \\
         --previous ~/sp-finetune/repo/runs/finetune/multiroom/v2/qwen3p8-27b/eval/rl.jsonl
@@ -90,7 +91,7 @@ def summarize(records: list[dict]) -> dict:
         "all_fixable_cleared": _share([v["gate_accepts"] and v["fixable_left"] == 0 for v in verdicts]),
         "mean_reward": _mean([v["reward"] for v in verdicts]),
         "mean_recovered_when_accepted": _mean([v["shortfall_recovered"] for v in verdicts if v["gate_accepts"]]),
-        "mean_usefulness_when_accepted": _mean([v["usefulness"]["score"] for v in verdicts
+        "mean_usefulness_when_accepted": _mean([(v.get("usefulness") or {}).get("score", 0) for v in verdicts
                                                 if v["gate_accepts"] and v.get("usefulness")]),
         "mean_snapped_meters": _mean([v["snapped_meters"] for v in verdicts if v["parsed"]]),
         "refused_by_directive": _share([v["reason"].startswith("precedent_violation") for v in verdicts]),
@@ -100,28 +101,37 @@ def summarize(records: list[dict]) -> dict:
     }
 
 
+VERDICT_KEYS = ("reward", "parsed", "hard_constraints_pass", "gate_accepts", "shortfall_recovered", "fixable_left",
+                "reason", "usefulness", "snapped_meters")
+"""What the trainer already saved for every evaluation answer; re-scoring them is the slow part."""
+
+
 class Rooms:
     def __init__(self, run: pathlib.Path):
         self.windows = {row["window_id"]: Window.from_dict(row) for row in _rows(run / "windows.jsonl")}
         self.variants = {row["variant_id"]: row for row in _rows(run / "variants.jsonl") if row.get("variant_id")}
         self._checkers: dict = {}
 
-    def score(self, record: dict) -> dict | None:
+    def score(self, record: dict, rescore: bool) -> dict | None:
+        """One answer's verdict and raw checks; the saved verdict is reused unless `rescore` asks otherwise."""
         variant = self.variants.get(record["variant"])
         if variant is None:
             return None
         window = self.windows[variant["window_id"]]
-        if window.window_id not in self._checkers:
-            self._checkers[window.window_id] = checker_for(window)
         graph = SceneGraph.model_validate(variant["graph"])
-        verdict = score_completion(record["completion"], graph, self._checkers[window.window_id]).as_dict()
+        verdict = self._verdict(record, window, graph) if rescore else {k: record.get(k) for k in VERDICT_KEYS}
         legal, faces = raw_checks(record["completion"], graph)
         return {"variant": record["variant"], "source": source_of(window.window_id), "verdict": verdict,
                 "raw_legal": legal, "raw_faces": faces}
 
+    def _verdict(self, record: dict, window: Window, graph: SceneGraph) -> dict:
+        if window.window_id not in self._checkers:
+            self._checkers[window.window_id] = checker_for(window)
+        return score_completion(record["completion"], graph, self._checkers[window.window_id]).as_dict()
 
-def benchmark(rooms: Rooms, answers: list[dict]) -> dict:
-    scored = [found for found in (rooms.score(record) for record in answers) if found]
+
+def benchmark(rooms: Rooms, answers: list[dict], rescore: bool = False) -> dict:
+    scored = [found for found in (rooms.score(record, rescore) for record in answers) if found]
     groups = defaultdict(list)
     for record in scored:
         groups[record["source"]].append(record)
@@ -138,7 +148,7 @@ def main() -> None:
     evals = args.run / "qwen3p8-27b" / "eval"
     report = {path.stem: benchmark(rooms, _rows(path)) for path in sorted(evals.glob("*.jsonl"))}
     if args.previous:
-        report["previous_night_rl"] = benchmark(rooms, _rows(args.previous))
+        report["previous_night_rl"] = benchmark(rooms, _rows(args.previous), rescore=True)
     out = args.out or args.run / "benchmarks.json"
     out.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
