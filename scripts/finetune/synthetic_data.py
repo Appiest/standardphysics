@@ -109,6 +109,19 @@ def _real_heldout(real: pathlib.Path) -> tuple[list[dict], list[dict], list[dict
     return prompts, window_rows, variants
 
 
+EXTRA_HELDOUT = "extra_heldout.jsonl"
+"""Optional rows of {"window": ..., "variant": ...} evaluated with the held-out set, such as rooms in the web app."""
+
+
+def _extra_heldout(run: pathlib.Path) -> tuple[list[dict], list[dict], list[dict]]:
+    rows = _rows(run / EXTRA_HELDOUT)
+    window_rows = [row["window"] for row in rows]
+    variants = [row["variant"] for row in rows]
+    windows = {row["window_id"]: Window.from_dict(row) for row in window_rows}
+    prompts = [_prompt_row(variant, windows[variant["window_id"]], None) for variant in variants]
+    return prompts, window_rows, variants
+
+
 def run_dataset(run: pathlib.Path, real: pathlib.Path, max_sft: int | None = None) -> None:
     if (run / "report.json").exists():
         return
@@ -116,6 +129,9 @@ def run_dataset(run: pathlib.Path, real: pathlib.Path, max_sft: int | None = Non
     synthetic_variants = [row for row in _rows(run / "variants.jsonl") if row["variant_id"]]
     targets = {row["variant_id"]: row for row in _rows(run / "targets.jsonl")}
     real_heldout, real_windows, real_variants = _real_heldout(real)
+    extra_heldout, extra_windows, extra_variants = _extra_heldout(run)
+    real_heldout, real_windows, real_variants = (real_heldout + extra_heldout, real_windows + extra_windows,
+                                                 real_variants + extra_variants)
     windows = {row["window_id"]: Window.from_dict(row) for row in synthetic_windows}
     sft, rl, synthetic_heldout = [], [], []
     for variant in synthetic_variants:
