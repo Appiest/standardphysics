@@ -26,8 +26,8 @@
       "status": "done"
     },
     "generator_amenities_and_scan_shells": {
-      "status": "in_progress",
-      "by": "opus subagent on finetune/shop-generator"
+      "status": "done",
+      "commit": "d4e577f"
     },
     "obj_extraction": {
       "status": "done",
@@ -42,7 +42,32 @@
       "mansion": "not usable without hand labelling: interior storeys have no enclosing walls after extraction"
     },
     "merge_generator_into_integration": {
-      "status": "todo"
+      "status": "done"
     }
+  },
+  "training_2026_09_25": {
+    "status": "done",
+    "spend_dollars_pessimistic": 21.63,
+    "dataset": {
+      "rooms": 760,
+      "sft_kept": 375,
+      "rl_kept": 399,
+      "heldout_kept": 97,
+      "dropped_over_4000_tokens": "all McDonald shell rows"
+    },
+    "models": {
+      "sft": "accounts/amelia-team/models/harness-qwen3p8-27b-sft",
+      "rl": "accounts/amelia-team/models/harness-qwen3p8-27b-rl"
+    },
+    "benchmarks": "~/Documents/sp-data/webapp/benchmarks.json and compute-box runs/finetune/harness/benchmarks.json",
+    "webapp_runs": {
+      "Ravida test 1 (c3fe841f) revision 1": "final RL adapter, loop try 1, reward 0.445",
+      "Ravida test 5 (837220f6) revision 1": "SFT adapter, loop try 1, reward 0.490"
+    },
+    "next": [
+      "compact the room view (merge wall pieces, trim distant fixed objects) so McDonald shell rooms fit",
+      "RL regressed on real rooms: more real windows in RL, fewer steps on generated rooms, or KL control",
+      "re-rate the 30 pairs to validate usefulness weights"
+    ]
   }
 }
