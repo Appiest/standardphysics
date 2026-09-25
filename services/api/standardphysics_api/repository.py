@@ -18,6 +18,7 @@ from standardphysics_contracts import (
     Scan,
     Scenario,
     SceneGraph,
+    SpaceTypology,
     SurfaceCoverage,
     graph_hash,
 )
@@ -56,6 +57,7 @@ def _scan(connection: sqlite3.Connection, row: sqlite3.Row) -> Scan:
         artifacts=_artifacts(connection, row["id"]),
         coverage=[SurfaceCoverage.model_validate(c) for c in json.loads(row["coverage_json"])],
         content_hash=row["content_hash"],
+        space_typology=row["space_typology"],
     )
 
 
@@ -68,11 +70,29 @@ def insert_scan(
 ) -> uuid.UUID:
     scan_id = scan_id or uuid.uuid4()
     connection.execute(
-        "INSERT INTO scans (id, name, created_at, device_model, duration_seconds, state, owner_id)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (str(scan_id), request.name, now(), request.device_model, request.duration_seconds, state, str(owner_id)),
+        "INSERT INTO scans (id, name, created_at, device_model, duration_seconds, state, owner_id, space_typology)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            str(scan_id), request.name, now(), request.device_model, request.duration_seconds, state,
+            str(owner_id), _typology_value(request.space_typology),
+        ),
     )
     return scan_id
+
+
+def _typology_value(typology: SpaceTypology | None) -> str | None:
+    return None if typology is None else typology.value
+
+
+def set_space_typology(connection: sqlite3.Connection, scan_id: uuid.UUID, typology: SpaceTypology | None) -> None:
+    connection.execute(
+        "UPDATE scans SET space_typology = ? WHERE id = ?", (_typology_value(typology), str(scan_id))
+    )
+
+
+def space_typology(connection: sqlite3.Connection, scan_id: uuid.UUID) -> SpaceTypology | None:
+    row = connection.execute("SELECT space_typology FROM scans WHERE id = ?", (str(scan_id),)).fetchone()
+    return SpaceTypology(row["space_typology"]) if row and row["space_typology"] else None
 
 
 def get_scan(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Scan | None:

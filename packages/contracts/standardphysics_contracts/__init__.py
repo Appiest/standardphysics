@@ -25,6 +25,7 @@ from .api import (
     ReviewedRule,
     SaveLayoutRequest,
     ScanList,
+    SpaceTypologyRequest,
 )
 from .findings import Annotation, AnnotationKind, Finding, Locus, Outcome
 from .geometry import CameraPose, Mat4, Vec3, to_inches, to_meters
@@ -235,6 +236,7 @@ __all__ = [
     "SaveLayoutRequest",
     "Scan",
     "ScanList",
+    "SpaceTypologyRequest",
     "ScanState",
     "Scenario",
     "SceneGraph",

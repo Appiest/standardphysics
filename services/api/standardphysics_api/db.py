@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS scans (
     state TEXT NOT NULL,
     content_hash TEXT,
     coverage_json TEXT NOT NULL DEFAULT '[]',
-    owner_id TEXT REFERENCES owners(id)
+    owner_id TEXT REFERENCES owners(id),
+    space_typology TEXT
 );
 CREATE TABLE IF NOT EXISTS artifacts (
     scan_id TEXT NOT NULL REFERENCES scans(id),
@@ -142,7 +143,7 @@ ADDED_COLUMNS = {
         ("cycle", "INTEGER NOT NULL DEFAULT 0"),
         ("candidate_graph_json", "TEXT"),
     ),
-    "scans": (("owner_id", "TEXT REFERENCES owners(id)"),),
+    "scans": (("owner_id", "TEXT REFERENCES owners(id)"), ("space_typology", "TEXT")),
     "jobs": (
         ("input_hash", "TEXT"),
         ("note", "TEXT"),

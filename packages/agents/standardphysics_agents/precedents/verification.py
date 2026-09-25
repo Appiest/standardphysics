@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -60,8 +60,19 @@ class PrecedentLedger:
         return iter(self._entries.values())
 
 
+def _ledger_path(path: Path | None) -> Path:
+    return path or (Path(os.environ[LEDGER_ENV]) if LEDGER_ENV in os.environ else LEDGER_FILE)
+
+
+def _reviewer(name: str) -> str:
+    cleaned = name.strip()
+    if not cleaned or cleaned == PREVIEW_REVIEWER:
+        raise ValueError("a sign-off needs the name of the person who read the source")
+    return cleaned
+
+
 def load_precedent_ledger(path: Path | None = None) -> PrecedentLedger:
-    target = path or (Path(os.environ[LEDGER_ENV]) if LEDGER_ENV in os.environ else LEDGER_FILE)
+    target = _ledger_path(path)
     if not target.exists():
         return PrecedentLedger({})
     raw = json.loads(target.read_text(encoding="utf-8"))
@@ -85,5 +96,37 @@ def load_precedents(
     if allow_unverified or os.environ.get("SP_PREVIEW_UNVERIFIED_PRECEDENTS") == "1":
         return directives
 
-    active_ledger = ledger or load_precedent_ledger()
+    active_ledger = ledger if ledger is not None else load_precedent_ledger()
     return [d for d in directives if active_ledger.is_verified(d.directive_id)]
+
+
+def record_directive_review(directive_id: str, verified_by: str, path: Path | None = None) -> PrecedentVerification:
+    """Enable a directive: a person read the ADA sections it cites and confirmed its thresholds."""
+    target = _ledger_path(path)
+    entries = {entry.directive_id: entry for entry in load_precedent_ledger(target)}
+    entry = PrecedentVerification(
+        directive_id=directive_id, verified_by=_reviewer(verified_by), verified_at=datetime.now(UTC)
+    )
+    entries[directive_id] = entry
+    target.write_text(
+        json.dumps([json.loads(item.model_dump_json()) for item in entries.values()], indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return entry
+
+
+def sign_case_reference(
+    directive_id: str, citation: str, verified_by: str, path: Path | None = None
+) -> None:
+    """Mark one case reference as read: a person checked the citation and holding against the opinion."""
+    target = path or PRECEDENTS_FILE
+    raw = json.loads(target.read_text(encoding="utf-8"))
+    directive = next((d for d in raw["precedents"] if d["directive_id"] == directive_id), None)
+    if directive is None:
+        raise KeyError(f"no directive {directive_id}")
+    case = next((c for c in directive["case_references"] if c["citation"] == citation), None)
+    if case is None:
+        raise KeyError(f"{directive_id} has no case cited as {citation}")
+    case["verified_by"] = _reviewer(verified_by)
+    case["verified_at"] = datetime.now(UTC).isoformat()
+    target.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

@@ -4,20 +4,76 @@
     {
       "directive_id": "service_counter",
       "title": "Ordering counter height, length and approach",
-      "authority": ["ADA_2010_904.4", "ADA_2010_904.4.1", "ADA_2010_305.7.2", "ADA_2010_904.5.1"],
+      "authority": [
+        "ADA_2010_904.4",
+        "ADA_2010_904.4.1",
+        "ADA_2010_305.7.2",
+        "ADA_2010_904.5.1"
+      ],
       "trigger": {
-        "space_typologies": ["commercial.beverage.boba", "commercial.restaurant.dining", "commercial.retail.mercantile"],
-        "required_entities": ["service_counter", "ordering_counter", "point_of_sale", "straw_dispenser"]
+        "space_typologies": [
+          "commercial.beverage.boba",
+          "commercial.restaurant.dining",
+          "commercial.retail.mercantile"
+        ],
+        "required_entities": [
+          "service_counter",
+          "ordering_counter",
+          "point_of_sale",
+          "straw_dispenser"
+        ]
       },
       "inspection_queries": [
-        {"query_id": "service_counter_height", "target_role": "service_counter", "metric": "height_inches", "threshold": 36.0, "comparison": "at_most", "citation": "ADA_2010_904.4.1", "rule_id": "service_counter_height"},
-        {"query_id": "service_counter_clear_length", "target_role": "service_counter", "metric": "clear_length_inches", "threshold": 36.0, "comparison": "at_least", "citation": "ADA_2010_904.4.1", "rule_id": "service_counter_height"},
-        {"query_id": "service_counter_approach_width", "target_role": "service_counter", "metric": "clear_width_inches", "threshold": 48.0, "comparison": "at_least", "citation": "ADA_2010_305.3", "rule_id": "service_counter_approach"},
-        {"query_id": "service_counter_alcove_width", "target_role": "service_counter_alcove", "metric": "clear_width_inches", "threshold": 60.0, "comparison": "at_least", "citation": "ADA_2010_305.7.2"},
-        {"query_id": "self_service_dispenser_reach", "target_role": "straw_dispenser", "metric": "reach_inches", "threshold": 48.0, "comparison": "at_most", "citation": "ADA_2010_308.2.1", "rule_id": "reach_range"}
+        {
+          "query_id": "service_counter_height",
+          "target_role": "service_counter",
+          "metric": "height_inches",
+          "threshold": 36.0,
+          "comparison": "at_most",
+          "citation": "ADA_2010_904.4.1",
+          "rule_id": "service_counter_height"
+        },
+        {
+          "query_id": "service_counter_clear_length",
+          "target_role": "service_counter",
+          "metric": "clear_length_inches",
+          "threshold": 36.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_904.4.1",
+          "rule_id": "service_counter_height"
+        },
+        {
+          "query_id": "service_counter_approach_width",
+          "target_role": "service_counter",
+          "metric": "clear_width_inches",
+          "threshold": 48.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_305.3",
+          "rule_id": "service_counter_approach"
+        },
+        {
+          "query_id": "service_counter_alcove_width",
+          "target_role": "service_counter_alcove",
+          "metric": "clear_width_inches",
+          "threshold": 60.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_305.7.2"
+        },
+        {
+          "query_id": "self_service_dispenser_reach",
+          "target_role": "straw_dispenser",
+          "metric": "reach_inches",
+          "threshold": 48.0,
+          "comparison": "at_most",
+          "citation": "ADA_2010_308.2.1",
+          "rule_id": "reach_range"
+        }
       ],
       "constraints": {
-        "fixed_roles": ["service_counter", "point_of_sale"],
+        "fixed_roles": [
+          "service_counter",
+          "point_of_sale"
+        ],
         "solution_pattern": "clear_36_inch_counter_section_and_open_parallel_approach"
       },
       "plain_english_warning": "Part of the ordering counter must be no higher than 36 inches and at least 36 inches long, and that length has to stay clear of registers, tip jars and impulse-buy displays. If displays in front of the counter form an alcove more than 15 inches deep, it must be at least 60 inches wide so a wheelchair can pull up alongside. Self-serve straws, lids and napkins go within 48 inches of the floor.",
@@ -38,13 +94,35 @@
     {
       "directive_id": "circulation_clear_width",
       "title": "Movable displays and furniture on the accessible route",
-      "authority": ["ADA_2010_403.5.1"],
+      "authority": [
+        "ADA_2010_403.5.1"
+      ],
       "trigger": {
-        "space_typologies": ["commercial.retail.mercantile", "commercial.restaurant.dining", "commercial.beverage.boba", "civic.library.reading_room"],
-        "required_entities": ["merchandise_display", "display_case", "clothing_rack", "shelf", "table", "chair"]
+        "space_typologies": [
+          "commercial.retail.mercantile",
+          "commercial.restaurant.dining",
+          "commercial.beverage.boba",
+          "civic.library.reading_room"
+        ],
+        "required_entities": [
+          "merchandise_display",
+          "display_case",
+          "clothing_rack",
+          "shelf",
+          "table",
+          "chair"
+        ]
       },
       "inspection_queries": [
-        {"query_id": "route_clear_width", "target_role": "route_leg", "metric": "clear_width_inches", "threshold": 36.0, "comparison": "at_least", "citation": "ADA_2010_403.5.1", "rule_id": "route_clear_width"}
+        {
+          "query_id": "route_clear_width",
+          "target_role": "route_leg",
+          "metric": "clear_width_inches",
+          "threshold": 36.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_403.5.1",
+          "rule_id": "route_clear_width"
+        }
       ],
       "constraints": {
         "solution_pattern": "keep_36_inch_route_clear_of_movable_items"
@@ -67,16 +145,58 @@
     {
       "directive_id": "accessible_dining_surfaces",
       "title": "Accessible dining surfaces and where they sit",
-      "authority": ["ADA_2010_226.1", "ADA_2010_226.2", "ADA_2010_902.3", "ADA_2010_306.3"],
+      "authority": [
+        "ADA_2010_226.1",
+        "ADA_2010_226.2",
+        "ADA_2010_902.3",
+        "ADA_2010_306.3"
+      ],
       "trigger": {
-        "space_typologies": ["commercial.restaurant.dining", "commercial.beverage.boba", "commercial.hospitality.lounge"],
-        "required_entities": ["table", "dining_surface"]
+        "space_typologies": [
+          "commercial.restaurant.dining",
+          "commercial.beverage.boba",
+          "commercial.hospitality.lounge"
+        ],
+        "required_entities": [
+          "table",
+          "dining_surface"
+        ]
       },
       "inspection_queries": [
-        {"query_id": "dining_surface_height_max", "target_role": "dining_surface", "metric": "height_inches", "threshold": 34.0, "comparison": "at_most", "citation": "ADA_2010_902.3", "rule_id": "dining_surface_height"},
-        {"query_id": "dining_surface_height_min", "target_role": "dining_surface", "metric": "height_inches", "threshold": 28.0, "comparison": "at_least", "citation": "ADA_2010_902.3", "rule_id": "dining_surface_height"},
-        {"query_id": "dining_knee_clearance_height", "target_role": "dining_surface", "metric": "knee_clearance_inches", "threshold": 27.0, "comparison": "at_least", "citation": "ADA_2010_306.3.1"},
-        {"query_id": "dining_knee_clearance_width", "target_role": "dining_surface", "metric": "clear_width_inches", "threshold": 30.0, "comparison": "at_least", "citation": "ADA_2010_306.3.5"}
+        {
+          "query_id": "dining_surface_height_max",
+          "target_role": "dining_surface",
+          "metric": "height_inches",
+          "threshold": 34.0,
+          "comparison": "at_most",
+          "citation": "ADA_2010_902.3",
+          "rule_id": "dining_surface_height"
+        },
+        {
+          "query_id": "dining_surface_height_min",
+          "target_role": "dining_surface",
+          "metric": "height_inches",
+          "threshold": 28.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_902.3",
+          "rule_id": "dining_surface_height"
+        },
+        {
+          "query_id": "dining_knee_clearance_height",
+          "target_role": "dining_surface",
+          "metric": "knee_clearance_inches",
+          "threshold": 27.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_306.3.1"
+        },
+        {
+          "query_id": "dining_knee_clearance_width",
+          "target_role": "dining_surface",
+          "metric": "clear_width_inches",
+          "threshold": 30.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_306.3.5"
+        }
       ],
       "constraints": {
         "solution_pattern": "provide_accessible_dining_surfaces_among_general_seating",
@@ -101,15 +221,50 @@
     {
       "directive_id": "door_clearances",
       "title": "Door width, latch-side clearance and threshold",
-      "authority": ["ADA_2010_404.2.3", "ADA_2010_404.2.4", "ADA_2010_404.2.5"],
+      "authority": [
+        "ADA_2010_404.2.3",
+        "ADA_2010_404.2.4",
+        "ADA_2010_404.2.5"
+      ],
       "trigger": {
-        "space_typologies": ["commercial.office.private", "commercial.retail.mercantile", "commercial.restaurant.dining"],
-        "required_entities": ["door", "entrance_door"]
+        "space_typologies": [
+          "commercial.office.private",
+          "commercial.retail.mercantile",
+          "commercial.restaurant.dining"
+        ],
+        "required_entities": [
+          "door",
+          "entrance_door"
+        ]
       },
       "inspection_queries": [
-        {"query_id": "door_clear_width", "target_role": "door", "metric": "clear_width_inches", "threshold": 32.0, "comparison": "at_least", "citation": "ADA_2010_404.2.3", "rule_id": "door_clear_width"},
-        {"query_id": "door_pull_side_latch_clearance", "target_role": "door", "metric": "clear_width_inches", "threshold": 18.0, "comparison": "at_least", "citation": "ADA_2010_404.2.4.1", "rule_id": "door_maneuvering_clearance"},
-        {"query_id": "door_threshold_height", "target_role": "door", "metric": "height_inches", "threshold": 0.5, "comparison": "at_most", "citation": "ADA_2010_404.2.5", "rule_id": "entrance_threshold"}
+        {
+          "query_id": "door_clear_width",
+          "target_role": "door",
+          "metric": "clear_width_inches",
+          "threshold": 32.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_404.2.3",
+          "rule_id": "door_clear_width"
+        },
+        {
+          "query_id": "door_pull_side_latch_clearance",
+          "target_role": "door",
+          "metric": "clear_width_inches",
+          "threshold": 18.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_404.2.4.1",
+          "rule_id": "door_maneuvering_clearance"
+        },
+        {
+          "query_id": "door_threshold_height",
+          "target_role": "door",
+          "metric": "height_inches",
+          "threshold": 0.5,
+          "comparison": "at_most",
+          "citation": "ADA_2010_404.2.5",
+          "rule_id": "entrance_threshold"
+        }
       ],
       "constraints": {
         "solution_pattern": "keep_door_maneuvering_clearance_free_of_furniture"
@@ -120,13 +275,30 @@
     {
       "directive_id": "restroom_turning_space",
       "title": "Restroom turning space",
-      "authority": ["ADA_2010_603.2.1", "ADA_2010_304.3.1"],
+      "authority": [
+        "ADA_2010_603.2.1",
+        "ADA_2010_304.3.1"
+      ],
       "trigger": {
-        "space_typologies": ["facility.restroom.single_user"],
-        "required_entities": ["toilet", "sink", "trash_can"]
+        "space_typologies": [
+          "facility.restroom.single_user"
+        ],
+        "required_entities": [
+          "toilet",
+          "sink",
+          "trash_can"
+        ]
       },
       "inspection_queries": [
-        {"query_id": "restroom_turning_circle", "target_role": "restroom", "metric": "clear_width_inches", "threshold": 60.0, "comparison": "at_least", "citation": "ADA_2010_304.3.1", "rule_id": "restroom_turning_space"}
+        {
+          "query_id": "restroom_turning_circle",
+          "target_role": "restroom",
+          "metric": "clear_width_inches",
+          "threshold": 60.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_304.3.1",
+          "rule_id": "restroom_turning_space"
+        }
       ],
       "constraints": {
         "solution_pattern": "clear_60_inch_turning_circle"
@@ -137,14 +309,41 @@
     {
       "directive_id": "self_service_kiosk",
       "title": "Self-ordering kiosk reach and floor space",
-      "authority": ["ADA_2010_309.3", "ADA_2010_308.2.1", "ADA_2010_305.3"],
+      "authority": [
+        "ADA_2010_309.3",
+        "ADA_2010_308.2.1",
+        "ADA_2010_305.3"
+      ],
       "trigger": {
-        "space_typologies": ["commercial.beverage.boba", "commercial.restaurant.dining", "commercial.retail.mercantile"],
-        "required_entities": ["ordering_kiosk", "terminal", "touchscreen"]
+        "space_typologies": [
+          "commercial.beverage.boba",
+          "commercial.restaurant.dining",
+          "commercial.retail.mercantile"
+        ],
+        "required_entities": [
+          "ordering_kiosk",
+          "terminal",
+          "touchscreen"
+        ]
       },
       "inspection_queries": [
-        {"query_id": "kiosk_operable_part_height", "target_role": "ordering_kiosk", "metric": "reach_inches", "threshold": 48.0, "comparison": "at_most", "citation": "ADA_2010_308.2.1", "rule_id": "reach_range"},
-        {"query_id": "kiosk_clear_floor_width", "target_role": "ordering_kiosk", "metric": "clear_width_inches", "threshold": 30.0, "comparison": "at_least", "citation": "ADA_2010_305.3"}
+        {
+          "query_id": "kiosk_operable_part_height",
+          "target_role": "ordering_kiosk",
+          "metric": "reach_inches",
+          "threshold": 48.0,
+          "comparison": "at_most",
+          "citation": "ADA_2010_308.2.1",
+          "rule_id": "reach_range"
+        },
+        {
+          "query_id": "kiosk_clear_floor_width",
+          "target_role": "ordering_kiosk",
+          "metric": "clear_width_inches",
+          "threshold": 30.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_305.3"
+        }
       ],
       "constraints": {
         "solution_pattern": "provide_30_by_48_inch_clear_floor_space"
@@ -155,14 +354,39 @@
     {
       "directive_id": "assembly_wheelchair_spaces",
       "title": "Wheelchair spaces in presentation rooms",
-      "authority": ["ADA_2010_802.1.2", "ADA_2010_802.1.3", "ADA_2010_221.2.3"],
+      "authority": [
+        "ADA_2010_802.1.2",
+        "ADA_2010_802.1.3",
+        "ADA_2010_221.2.3"
+      ],
       "trigger": {
-        "space_typologies": ["assembly.presentation_room", "civic.library.reading_room"],
-        "required_entities": ["presentation_seating", "auditorium_row", "podium"]
+        "space_typologies": [
+          "assembly.presentation_room",
+          "civic.library.reading_room"
+        ],
+        "required_entities": [
+          "presentation_seating",
+          "auditorium_row",
+          "podium"
+        ]
       },
       "inspection_queries": [
-        {"query_id": "wheelchair_space_width", "target_role": "presentation_seating", "metric": "clear_width_inches", "threshold": 36.0, "comparison": "at_least", "citation": "ADA_2010_802.1.2"},
-        {"query_id": "wheelchair_space_depth", "target_role": "presentation_seating", "metric": "clear_length_inches", "threshold": 48.0, "comparison": "at_least", "citation": "ADA_2010_802.1.3"}
+        {
+          "query_id": "wheelchair_space_width",
+          "target_role": "presentation_seating",
+          "metric": "clear_width_inches",
+          "threshold": 36.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_802.1.2"
+        },
+        {
+          "query_id": "wheelchair_space_depth",
+          "target_role": "presentation_seating",
+          "metric": "clear_length_inches",
+          "threshold": 48.0,
+          "comparison": "at_least",
+          "citation": "ADA_2010_802.1.3"
+        }
       ],
       "constraints": {
         "solution_pattern": "disperse_wheelchair_spaces_with_companion_seats"

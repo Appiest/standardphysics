@@ -45,6 +45,7 @@ from standardphysics_contracts import (
     SceneGraph,
     SimulationRequest,
     SimulationStatus,
+    SpaceTypologyRequest,
     graph_hash,
 )
 from standardphysics_contracts.textures import FRAME_ID_PATTERN
@@ -525,6 +526,13 @@ def _install_route_routes(app: FastAPI, database: Database, stages: Stages, work
     @app.get("/api/scans/{scan_id}/scenario/suggestion", response_model=Scenario)
     def scenario_suggestion(scan_id: uuid.UUID) -> Scenario:
         return suggestion(database, scan_id)
+
+    @app.put("/api/scans/{scan_id}/space-type", response_model=Scan)
+    def set_space_type(scan_id: uuid.UUID, body: SpaceTypologyRequest) -> Scan:
+        with database.transaction() as connection:
+            _scan_or_404(connection, scan_id)
+            repo.set_space_typology(connection, scan_id, body.space_typology)
+            return repo.get_scan(connection, scan_id)
 
     @app.put("/api/scans/{scan_id}/scenario", response_model=Scenario)
     def confirm_scenario(scan_id: uuid.UUID, body: Scenario) -> Scenario:

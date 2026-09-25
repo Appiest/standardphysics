@@ -34,7 +34,8 @@ from standardphysics_agents import (
 from standardphysics_agents.ask import Answer, ask
 from standardphysics_agents.fix import FixOutcome, propose_fix
 from standardphysics_agents.loop import loop_steps
-from standardphysics_contracts import Assessment, Finding, Scenario, SceneGraph, Stop, Vec3
+from standardphysics_agents.precedents import rejection_for_space
+from standardphysics_contracts import Assessment, Finding, Scenario, SceneGraph, SpaceTypology, Stop, Vec3
 from standardphysics_pipeline import PipelineMeasurements, blender, parse_room_json, reconstruct
 from standardphysics_pipeline.discovery import DiscoveryError, DiscoveryInputs, DiscoveryResult, discover_objects
 from standardphysics_pipeline.textures import BakeInputs, BakeResult, bake_textures
@@ -298,21 +299,36 @@ class Stages:
         scope = build_scope_manifest(graph, scenario, result.assessment, pack.enabled(ledger, max_tier=1), waiting)
         return result.assessment.model_copy(update={"rules_checked": checked, "scope": scope})
 
-    def propose(self, graph: SceneGraph, scenario: Scenario, targets: list[Finding]) -> FixOutcome:
-        """Lane C's fix agent: one arrangement that clears the targets, or one thing to ask."""
+    def propose(
+        self, graph: SceneGraph, scenario: Scenario, targets: list[Finding], typology: SpaceTypology | None = None
+    ) -> FixOutcome:
+        """Lane C's fix agent: one arrangement that clears the targets, or one thing to ask.
+
+        The space type's verified ADA directives veto any arrangement that breaks them.
+        """
         with self._search_lock:
             ledger = self.ledger_factory()
-            return propose_fix(graph, scenario, self.search_measure, targets, rules=load_pack(), ledger=ledger)
+            return propose_fix(
+                graph, scenario, self.search_measure, targets, rules=load_pack(), ledger=ledger,
+                candidate_rejection=rejection_for_space(typology, graph),
+            )
 
-    def loop(self, graph: SceneGraph, scenario: Scenario) -> tuple[str, Iterator[LoopStep]]:
+    def loop(
+        self, graph: SceneGraph, scenario: Scenario, typology: SpaceTypology | None = None
+    ) -> tuple[str, Iterator[LoopStep]]:
         """Lane C's loop on the search cache: the router's name, and each pass as it finishes."""
         router = self.router_factory()
-        return router.provider, self._loop_steps(graph, scenario, router)
+        return router.provider, self._loop_steps(graph, scenario, router, typology)
 
-    def _loop_steps(self, graph: SceneGraph, scenario: Scenario, router) -> Iterator[LoopStep]:
+    def _loop_steps(
+        self, graph: SceneGraph, scenario: Scenario, router, typology: SpaceTypology | None
+    ) -> Iterator[LoopStep]:
         with self._search_lock:
             ledger = self.ledger_factory()
-            yield from loop_steps(graph, scenario, self.search_measure, router, rules=load_pack(), ledger=ledger)
+            yield from loop_steps(
+                graph, scenario, self.search_measure, router, rules=load_pack(), ledger=ledger,
+                candidate_rejection=rejection_for_space(typology, graph),
+            )
 
     def ask(self, text: str, graph: SceneGraph, scenario: Scenario) -> Answer:
         """Lane C's ask box, on the search cache."""

@@ -4,6 +4,21 @@
  */
 
 /**
+ * Categorical classification of room use and public accommodation occupancy.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "SpaceTypology".
+ */
+export type SpaceTypology =
+  | "commercial.beverage.boba"
+  | "commercial.restaurant.dining"
+  | "commercial.hospitality.lounge"
+  | "commercial.retail.mercantile"
+  | "commercial.office.private"
+  | "assembly.presentation_room"
+  | "civic.library.reading_room"
+  | "facility.restroom.single_user";
+/**
  * One line of `POST /api/scans/{scan_id}/loop/stream`, which reports each pass as it finishes.
  *
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -337,6 +352,35 @@ export interface Blocked {
   reason: string;
 }
 /**
+ * A court opinion showing the directive's rule being enforced.
+ *
+ * References are illustration, not authority. `verified_by` stays None until a
+ * person has read the opinion and confirmed the citation and the holding.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "CaseReference".
+ */
+export interface CaseReference {
+  case_name: string;
+  /**
+   * Reporter citation, e.g. '81 F. Supp. 3d 876 (N.D. Cal. 2015)'.
+   */
+  citation: string;
+  court: string;
+  decided: string;
+  docket_number: string;
+  /**
+   * What the court decided that bears on this directive.
+   */
+  holding: string;
+  /**
+   * Where the opinion text can be read.
+   */
+  source_url: string;
+  verified_at: string | null;
+  verified_by: string | null;
+}
+/**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "Check".
  */
@@ -383,6 +427,7 @@ export interface CreateScanRequest {
   device_model: string;
   duration_seconds: number;
   name: string;
+  space_typology: SpaceTypology | null;
 }
 /**
  * An inferred finish for rendering; never physical or compliance evidence.
@@ -909,6 +954,119 @@ export interface PoseRecord {
   ];
 }
 /**
+ * Hard constraints on layout proposals for this kind of space.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrecedentConstraintSpec".
+ */
+export interface PrecedentConstraintSpec {
+  /**
+   * Whether accessible surfaces must sit among the others (226.2).
+   */
+  dispersed: boolean;
+  /**
+   * Roles a proposal may not move, whatever the scan says about movability.
+   */
+  fixed_roles: ("service_counter" | "point_of_sale")[];
+  /**
+   * Whether 226.1's share of dining surfaces must comply with 902.3.
+   */
+  requires_accessible_dining: boolean;
+  /**
+   * Remedy pattern a proposal should follow.
+   */
+  solution_pattern: string;
+}
+/**
+ * A layout constraint for one kind of space, grounded in ADA sections.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrecedentDirective".
+ */
+export interface PrecedentDirective {
+  /**
+   * ADA sections this directive rests on, e.g. 'ADA_2010_226.1'.
+   *
+   * @minItems 1
+   */
+  authority: [string, ...string[]];
+  case_references: CaseReference[];
+  constraints: PrecedentConstraintSpec;
+  /**
+   * Stable identifier, e.g. 'accessible_dining_surfaces'.
+   */
+  directive_id: string;
+  inspection_queries: PrecedentQuerySpec[];
+  plain_english_warning: string;
+  title: string;
+  trigger: PrecedentTrigger;
+}
+/**
+ * A measurement the directive needs, and the ADA section that sets its limit.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrecedentQuerySpec".
+ */
+export interface PrecedentQuerySpec {
+  /**
+   * ADA section that sets the limit, e.g. 'ADA_2010_904.4.1'.
+   */
+  citation: string;
+  /**
+   * Which side of the limit complies.
+   */
+  comparison: "at_most" | "at_least";
+  /**
+   * Physical dimension being measured.
+   */
+  metric: "height_inches" | "clear_width_inches" | "clear_length_inches" | "knee_clearance_inches" | "reach_inches";
+  /**
+   * Unique identifier for this query within the corpus.
+   */
+  query_id: string;
+  /**
+   * Rulepack rule that already measures this, or None when nothing measures it yet.
+   */
+  rule_id: string | null;
+  /**
+   * Target object role, e.g. 'dining_surface', 'service_counter'.
+   */
+  target_role: string;
+  /**
+   * Limit from the cited section.
+   */
+  threshold: number;
+}
+/**
+ * When a scan's scene graph activates this directive.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrecedentTrigger".
+ */
+export interface PrecedentTrigger {
+  /**
+   * Entity labels that must exist in the scene (case-insensitive substring match).
+   */
+  required_entities: string[];
+  /**
+   * Space typologies this directive governs.
+   */
+  space_typologies: SpaceTypology[];
+}
+/**
+ * A failure of a scene layout against a directive.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrecedentViolation".
+ */
+export interface PrecedentViolation {
+  authority: string;
+  detail: string;
+  directive_id: string;
+  rule_broken: string;
+  target_node_id: string | null;
+}
+/**
  * One primitive's answer, with everything needed to show or cite it.
  *
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -1045,6 +1203,7 @@ export interface Scan {
   duration_seconds: number;
   id: string;
   name: string;
+  space_typology: SpaceTypology | null;
   state: "uploading" | "measuring" | "checking" | "ready" | "failed";
 }
 /**
@@ -1330,6 +1489,13 @@ export interface SimulationStatus {
   samples: number;
   state: "queued" | "running" | "done" | "failed";
   typesafe_call_limit: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "SpaceTypologyRequest".
+ */
+export interface SpaceTypologyRequest {
+  space_typology: SpaceTypology | null;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema

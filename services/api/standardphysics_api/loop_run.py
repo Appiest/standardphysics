@@ -21,7 +21,7 @@ from standardphysics_contracts import (
 )
 
 from .db import Database
-from .proposals import fix_inputs
+from .proposals import fix_inputs, space_typology_of
 from .stages import Stages
 
 log = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ def combine_moves(moves: list[NodeMove]) -> list[NodeMove]:
 
 def _start(database: Database, stages: Stages, scan_id: uuid.UUID, body: LoopRequest) -> tuple[str, Iterable[LoopStep]]:
     graph, scenario, _ = fix_inputs(database, scan_id, body.base_revision)
-    return stages.loop(graph, scenario)
+    return stages.loop(graph, scenario, space_typology_of(database, scan_id))
 
 
 def _result(body: LoopRequest, decided_by: str, passes: list[LoopPass]) -> LoopResult:

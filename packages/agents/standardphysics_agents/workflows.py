@@ -27,12 +27,15 @@ from standardphysics_contracts import (
     graph_hash,
     to_inches,
 )
+from standardphysics_contracts.precedents import PrecedentDirective
 from standardphysics_contracts.rules import Tier
 
 from .assess import Pass, assess
 from .checks.walls import is_room_shell
+from .fix import combine_rejections
 from .loop import Loop, LoopStep, StepResult, _do_fix, run_loop
 from .mesh_collision import MeshCollisionIndex
+from .precedents import precedent_rejection_for
 from .router import LocalPolicyRouter, TypeSafeRouter
 from .rules import AgentRulePack, VerificationLedger, load_ledger, load_pack
 from .tracing import suspend_tracing
@@ -721,8 +724,12 @@ def run_workflow_batch(
     lidar_mesh: LidarMesh | None = None,
     max_tier: Tier = 3,
     on_progress: Callable[[int], None] | None = None,
+    directives: tuple[PrecedentDirective, ...] = (),
 ) -> WorkflowBatchResult:
     """Run many complete workflow loops with bounded parallelism.
+
+    ``directives`` are the space type's ADA layout directives; a fix that
+    breaks one is refused alongside any workflow regression.
 
     ``samples`` is the total number of TypeSafe trials. Workflow/profile pairs
     are selected round-robin, which makes repeated trials useful for measuring
@@ -732,6 +739,7 @@ def run_workflow_batch(
     built once for the entire batch.
     """
     _check_batch_inputs(workflows, profiles, samples, max_workers)
+    directive_rejection = precedent_rejection_for(list(directives)) if directives else None
 
     selected_rules = rules or load_pack()
     selected_ledger = ledger if ledger is not None else load_ledger()
@@ -789,9 +797,12 @@ def run_workflow_batch(
         return tuple(run_loop(
             graph, workflow.scenario, measure, router, rules=selected_rules,
             ledger=selected_ledger, max_tier=max_tier,
-            candidate_rejection=lambda before, candidate: workflow_candidate_rejection(
-                before, candidate, workflows=workflows, profiles=profiles,
-                measure=measure, collision_index=mesh_index,
+            candidate_rejection=combine_rejections(
+                lambda before, candidate: workflow_candidate_rejection(
+                    before, candidate, workflows=workflows, profiles=profiles,
+                    measure=measure, collision_index=mesh_index,
+                ),
+                directive_rejection,
             ),
             initial_pass=initial_passes[workflow.id],
             fix_handler=cached_fix,

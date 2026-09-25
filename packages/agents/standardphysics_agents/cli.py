@@ -241,6 +241,58 @@ def _precedents_show(args) -> int:
     return 0
 
 
+def _precedent_directive(directive_id: str):
+    from .precedents import load_precedents
+
+    return next((d for d in load_precedents(allow_unverified=True) if d.directive_id == directive_id), None)
+
+
+def _precedents_verify(args) -> int:
+    from .precedents import record_directive_review
+
+    directive = _precedent_directive(args.directive_id)
+    if directive is None:
+        print(f"Unknown directive: {args.directive_id}", file=sys.stderr)
+        return 1
+    print(f"{directive.directive_id}: {directive.title}")
+    print(f"  Read these sections first: {', '.join(directive.authority)}")
+    for q in directive.inspection_queries:
+        print(f"    {q.citation}: {q.target_role} {q.metric} {q.comparison} {q.threshold:g}")
+    print(f"  {directive.plain_english_warning}\n")
+    typed = input("  If every number above matches the sections, type the directive id to sign it: ").strip()
+    if typed != directive.directive_id:
+        print(f"  Not signed. {directive.directive_id} stays off.")
+        return 1
+    record_directive_review(directive.directive_id, args.by)
+    print(f"  {directive.directive_id} is on.")
+    return 0
+
+
+def _precedents_sign_case(args) -> int:
+    from .precedents import sign_case_reference
+
+    directive = _precedent_directive(args.directive_id)
+    cases = [] if directive is None else directive.case_references
+    if not cases:
+        print(f"No case references on {args.directive_id}", file=sys.stderr)
+        return 1
+    for number, case in enumerate(cases, start=1):
+        print(f"  {number}. {case.case_name}, {case.citation} ({case.verified_by or 'unverified'})")
+    choice = input("  Which case did you read? ").strip()
+    if not choice.isdigit() or not 1 <= int(choice) <= len(cases):
+        print("  No such case. Not signed.")
+        return 1
+    case = cases[int(choice) - 1]
+    print(f"\n  Open {case.source_url}\n  The corpus says it held: {case.holding}\n")
+    typed = input("  Type the reporter citation as it appears on the opinion: ").strip()
+    if typed != case.citation:
+        print("  That does not match the corpus. Not signed.")
+        return 1
+    sign_case_reference(args.directive_id, case.citation, args.by)
+    print(f"  {case.case_name} will now appear in model prompts for {args.directive_id}.")
+    return 0
+
+
 def _precedents_benchmark(args) -> int:
     import subprocess
 
@@ -680,6 +732,8 @@ HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "precedents.list": _precedents_list,
     "precedents.show": _precedents_show,
     "precedents.benchmark": _precedents_benchmark,
+    "precedents.verify": _precedents_verify,
+    "precedents.sign-case": _precedents_sign_case,
 }
 
 
@@ -723,6 +777,14 @@ def _add_precedent_commands(parent) -> None:
     show.add_argument("directive_id")
 
     sub.add_parser("benchmark", help="run the precedent constraint benchmark")
+
+    verify = sub.add_parser("verify", help="turn a directive on after reading its ADA sections")
+    verify.add_argument("directive_id")
+    verify.add_argument("--by", required=True, help="your name, for the ledger")
+
+    sign = sub.add_parser("sign-case", help="mark a case reference as read against the opinion")
+    sign.add_argument("directive_id")
+    sign.add_argument("--by", required=True, help="your name, for the corpus")
 
 
 def build_parser() -> argparse.ArgumentParser:

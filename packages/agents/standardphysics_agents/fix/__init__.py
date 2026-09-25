@@ -31,17 +31,19 @@ from .occupancy import (
 from .pinch import Pinch, pinch_from
 from .search import (
     CANDIDATE_LIMIT,
+    CandidateRejection,
     FixOutcome,
     Relaxation,
+    combine_rejections,
     proposal_id,
     propose_fix,
 )
 from .strategies import Candidate, candidates
 
 __all__ = [
-    "CANDIDATE_LIMIT", "Candidate", "FixOutcome", "Pinch", "Relaxation",
+    "CANDIDATE_LIMIT", "Candidate", "CandidateRejection", "FixOutcome", "Pinch", "Relaxation",
     "Violation", "apply_moves", "candidates", "collision_shape",
-    "door_keep_clear", "interior_bounds", "is_allowed", "move_node",
+    "combine_rejections", "door_keep_clear", "interior_bounds", "is_allowed", "move_node",
     "pinch_from", "proposal_id", "propose_fix", "unlocked", "violations",
     "without",
     "ApproachResult", "ReachRecord", "evaluate_approach", "suggestion_stop",

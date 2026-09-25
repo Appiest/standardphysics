@@ -9,14 +9,22 @@ from uuid import uuid4
 import pytest
 from standardphysics_agents import assess
 from standardphysics_agents.evaluation.precedent_benchmark import evaluate_precedent_benchmark
-from standardphysics_agents.fix.search import propose_fix
+from standardphysics_agents.fix.search import combine_rejections, propose_fix
+from standardphysics_agents.models import ModelAnswer
 from standardphysics_agents.precedents import (
     PrecedentCompiler,
     check_precedent_constraints,
+    directives_for_space,
     load_precedent_ledger,
     load_precedents,
     precedent_rejection_for,
+    record_directive_review,
+    rejection_for_space,
+    sign_case_reference,
 )
+from standardphysics_agents.precedents.verification import PRECEDENTS_FILE, PREVIEW_REVIEWER
+from standardphysics_agents.redesign import propose_redesign, validate_redesign
+from standardphysics_agents.workflows import WHEELCHAIR_PROFILE, Workflow
 from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3
 from standardphysics_contracts.precedents import SpaceTypology
 from standardphysics_fixtures.shop import node_id
@@ -245,3 +253,112 @@ def test_benchmark_counts_one_pass_and_one_failure():
     ])
     assert summary.precedent_constraint_passes == 1
     assert summary.precedent_violations_by_directive == {"accessible_dining_surfaces": 1}
+
+
+class TestSpaceTypeWiring:
+    def test_no_space_type_means_no_veto(self, graph):
+        assert rejection_for_space(None, graph, ALL) is None
+        assert directives_for_space(None, graph, ALL) == []
+
+    def test_the_shipped_ledger_enables_nothing_by_default(self, graph, monkeypatch, tmp_path):
+        monkeypatch.delenv("SP_PREVIEW_UNVERIFIED_PRECEDENTS", raising=False)
+        empty = tmp_path / "ledger.json"
+        empty.write_text("[]")
+        monkeypatch.setenv("STANDARDPHYSICS_PRECEDENT_LEDGER", str(empty))
+        assert rejection_for_space(SpaceTypology.QSR_BEVERAGE, graph) is None
+
+    def test_a_boba_shop_gets_the_directive_veto(self, graph):
+        reject = rejection_for_space(SpaceTypology.QSR_BEVERAGE, graph, ALL)
+        counter = next(n for n in graph.nodes if n.id == node_id("counter"))
+        assert reject(graph, _moved(graph, counter, 0.05)) == "precedent_violation:moved_fixed_role"
+
+    def test_combined_rejections_report_the_first_refusal(self, graph):
+        combined = combine_rejections(None, lambda *_: None, lambda *_: "second", lambda *_: "third")
+        assert combined(graph, graph) == "second"
+        assert combine_rejections(None, None) is None
+
+
+def _counter_marked_movable(graph: SceneGraph) -> SceneGraph:
+    return graph.model_copy(update={"nodes": [
+        node.model_copy(update={"movable": True}) if node.id == node_id("counter") else node for node in graph.nodes
+    ]})
+
+
+def _astra_answer(*moves: tuple[str, float, float]) -> ModelAnswer:
+    return ModelAnswer(
+        {"moves": [{"node_id": str(node_id(name)), "dx": dx, "dy": dy, "rotation_degrees": 0} for name, dx, dy in moves]},
+        "test", "test/astra",
+    )
+
+
+class TestAstraRedesign:
+    CASES_APART = (("case_west", -0.07, 0.0), ("case_east", 0.07, 0.0))
+
+    def _validate(self, graph, scenario, pipeline, pack, ledger, answer, directives):
+        return validate_redesign(
+            graph, answer, [Workflow(id="room", title="Room", scenario=scenario)], [WHEELCHAIR_PROFILE], pipeline,
+            rules=pack, ledger=ledger, directives=directives,
+        )
+
+    def test_a_mislabelled_counter_slides_through_without_directives(self, graph, scenario, pipeline, pack, ledger):
+        room = _counter_marked_movable(graph)
+        answer = _astra_answer(*self.CASES_APART, ("counter", 0.0, -0.05))
+        assert self._validate(room, scenario, pipeline, pack, ledger, answer, ()).accepted
+
+    def test_the_directives_refuse_it(self, graph, scenario, pipeline, pack, ledger):
+        room = _counter_marked_movable(graph)
+        directives = tuple(directives_for_space(SpaceTypology.QSR_BEVERAGE, room, ALL))
+        answer = _astra_answer(*self.CASES_APART, ("counter", 0.0, -0.05))
+        result = self._validate(room, scenario, pipeline, pack, ledger, answer, directives)
+        assert not result.accepted
+        assert result.reasons == ("precedent_violation:moved_fixed_role",)
+
+    def test_the_right_fix_still_passes_with_directives(self, graph, scenario, pipeline, pack, ledger):
+        directives = tuple(directives_for_space(SpaceTypology.QSR_BEVERAGE, graph, ALL))
+        result = self._validate(graph, scenario, pipeline, pack, ledger, _astra_answer(*self.CASES_APART), directives)
+        assert result.accepted
+
+    def test_astra_sees_the_constraints_only_when_some_apply(self, graph, scenario, pipeline, pack, ledger):
+        seen = []
+
+        class Recorder:
+            model = "test/astra"
+
+            def structured(self, instruction, payload, schema, name):
+                seen.append(payload)
+                return _astra_answer(*TestAstraRedesign.CASES_APART)
+
+        directives = tuple(directives_for_space(SpaceTypology.QSR_BEVERAGE, graph, ALL))
+        workflows = [Workflow(id="room", title="Room", scenario=scenario)]
+        for given in ((), directives):
+            propose_redesign(graph, workflows, [WHEELCHAIR_PROFILE], [], pipeline,
+                             rules=pack, ledger=ledger, model=Recorder(), directives=given)
+        assert "ada_layout_constraints" not in seen[0]
+        assert "904.4.1" in seen[1]["ada_layout_constraints"]
+
+
+class TestSignOffs:
+    def test_a_directive_review_lands_in_the_ledger(self, tmp_path):
+        path = tmp_path / "ledger.json"
+        record_directive_review("service_counter", "A Reviewer", path)
+        assert load_precedent_ledger(path).is_verified("service_counter")
+
+    def test_a_sign_off_needs_a_real_name(self, tmp_path):
+        with pytest.raises(ValueError):
+            record_directive_review("service_counter", "  ", tmp_path / "ledger.json")
+        with pytest.raises(ValueError):
+            record_directive_review("service_counter", PREVIEW_REVIEWER, tmp_path / "ledger.json")
+
+    def test_signing_a_case_puts_it_in_the_prompt(self, tmp_path):
+        corpus = tmp_path / "precedents.json"
+        corpus.write_text(PRECEDENTS_FILE.read_text())
+        sign_case_reference("service_counter", "81 F. Supp. 3d 876 (N.D. Cal. 2015)", "A Reviewer", corpus)
+        counter = next(d for d in load_precedents(corpus, allow_unverified=True) if d.directive_id == "service_counter")
+        assert counter.verified_cases[0].verified_by == "A Reviewer"
+        assert "Kalani" in PrecedentCompiler([counter]).format_qwen_precedent_prompt([counter])
+
+    def test_signing_an_unknown_case_fails(self, tmp_path):
+        corpus = tmp_path / "precedents.json"
+        corpus.write_text(PRECEDENTS_FILE.read_text())
+        with pytest.raises(KeyError):
+            sign_case_reference("service_counter", "999 F.3d 1 (9th Cir. 2099)", "A Reviewer", corpus)
