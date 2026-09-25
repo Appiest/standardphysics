@@ -2,8 +2,10 @@
 
 The instruction and the answer schema come from `redesign.py`. The room keeps
 only what a rearrangement needs: walls as segments, doors, fixed obstacles,
-movable furniture with its size and heading, the route stops, and the
-furniture-fixable problems the checker measured.
+movable furniture with its size, heading and the way its front faces, the route
+stops, the furniture-fixable problems the checker measured, the seats facing
+away from what they serve, the room's usefulness shares, and the ADA layout
+directives for the space type when one is known.
 """
 
 from __future__ import annotations
@@ -17,17 +19,26 @@ from standardphysics_pipeline.occupancy import blocks_floor
 
 from ..fix.constraints import MAX_TRAVEL_METERS, interior_bounds
 from ..fix.moves import measured_position
+from ..precedents import PrecedentCompiler
 from ..redesign import INSTRUCTION
+from ..snap import facing_error_degrees
 from .checker import TrainingChecker
 from .edits import yaw_degrees
+from .usefulness import FACING_TOLERANCE_DEGREES, usefulness
 
 ANSWER_FORMAT = (
     'Answer with JSON only, no prose: {"moves":[{"node_id":"<id from movable_objects>","dx":<meters>,'
     '"dy":<meters>,"rotation_degrees":<degrees>}]}. dx and dy slide the object across the floor from where it '
     "is now; rotation_degrees turns it about its own centre. A piece may end at most "
     f"{MAX_TRAVEL_METERS:.2f} m from where the scan found it (`travel_left_m` says how much it has left). "
-    "Clear every problem in `problems` if you can, move as little as possible, keep every table and seat "
-    "usable, and never push anything into a wall, a door swing or another object."
+    "Clear every problem in `problems` if you can, move as little as possible, and keep every table and seat "
+    "usable. Moves are requests: each piece lands on the nearest spot the room allows, so aim where you want it "
+    "and keep requests close to legal, because every metre the application has to shift a request costs you. "
+    "`front_degrees` is the direction a piece faces. A seat you move turns to face the table, desk or counter it "
+    "sits at, and shelving, fridges and stations turn their backs to the wall; a seat in `facing_away` has to be "
+    "moved or turned to face what it serves. Do not trade away `usefulness`: seats facing what they serve, clear "
+    "floor in front of wall pieces, and enough accessible tables. When `ada_layout_constraints` is present, "
+    "every one of them has to hold."
 )
 
 TRAINING_INSTRUCTION = INSTRUCTION.split(" Use `actionable_failures`")[0] + (
@@ -57,7 +68,19 @@ def _placed(node: SceneNode) -> dict:
         "center": [_r(centre.x), _r(centre.y)],
         "size": [_r(node.dimensions.x), _r(node.dimensions.y), _r(node.dimensions.z)],
         "heading_degrees": round(yaw_degrees(node)),
+        "front_degrees": round((yaw_degrees(node) - 90.0 + 180.0) % 360.0 - 180.0),
     }
+
+
+def _facing_away(graph: SceneGraph) -> list[dict]:
+    wrong = []
+    for node in graph.nodes:
+        if not node.movable or node.kind != "object":
+            continue
+        error = facing_error_degrees(node, graph)
+        if error is not None and error > FACING_TOLERANCE_DEGREES:
+            wrong.append({"id": str(node.id), "label": node.label, "off_by_degrees": round(error)})
+    return wrong
 
 
 def _movable(node: SceneNode) -> dict:
@@ -95,12 +118,17 @@ def room_view(graph: SceneGraph, scenario: Scenario, problems: list[Finding]) ->
             {"name": stop.name, "at": [_r(stop.position.x), _r(stop.position.y)]} for stop in scenario.stops
         ],
         "problems": [_problem(finding, graph) for finding in problems],
+        "facing_away": _facing_away(graph),
+        "usefulness": usefulness(graph).as_dict(),
     }
 
 
 def prompt_messages(graph: SceneGraph, checker: TrainingChecker) -> list[dict]:
     problems = checker.fixable_problems(checker.assess(graph))
     view = room_view(graph, checker.scenario, problems)
+    directives = checker.directives_for(graph)
+    if directives:
+        view["ada_layout_constraints"] = PrecedentCompiler(directives).format_qwen_precedent_prompt(directives)
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps(view, separators=(",", ":"))},
