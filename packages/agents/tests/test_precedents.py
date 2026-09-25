@@ -337,6 +337,30 @@ class TestAstraRedesign:
         assert "904.4.1" in seen[1]["ada_layout_constraints"]
 
 
+    def test_a_refused_layout_is_rebuilt_with_the_directive_s_own_words(self, graph, scenario, pipeline, pack, ledger):
+        room = _counter_marked_movable(graph)
+        seen = []
+        answers = iter([_astra_answer(*self.CASES_APART, ("counter", 0.0, -0.05)), _astra_answer(*self.CASES_APART)])
+
+        class Rebuilder:
+            model = "test/astra"
+
+            def structured(self, instruction, payload, schema, name):
+                seen.append(payload)
+                return next(answers)
+
+        directives = tuple(directives_for_space(SpaceTypology.QSR_BEVERAGE, room, ALL))
+        result = propose_redesign(room, [Workflow(id="room", title="Room", scenario=scenario)], [WHEELCHAIR_PROFILE],
+                                  [], pipeline, rules=pack, ledger=ledger, model=Rebuilder(), directives=directives)
+        assert result.accepted and len(seen) == 2
+        assert "refused_attempts" not in seen[0]
+        told = seen[1]["refused_attempts"][0]
+        assert told["reasons"] == ["precedent_violation:moved_fixed_role"]
+        feedback = told["ada_directive_feedback"][0]
+        assert feedback["what_broke"] == "moved_fixed_role" and feedback["requirement"]
+        assert result.attempts == tuple(seen[1]["refused_attempts"])
+
+
 class TestSignOffs:
     def test_a_directive_review_lands_in_the_ledger(self, tmp_path):
         path = tmp_path / "ledger.json"

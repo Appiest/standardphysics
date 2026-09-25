@@ -71,7 +71,7 @@ def test_moving_a_fixed_piece_scores_nothing(graph, scenario, pipeline, pack, le
     checker = checker_for(scenario, pipeline, pack, ledger)
     answer = '{"moves":[{"node_id":"%s","dx":0.3,"dy":0,"rotation_degrees":0}]}' % node_id("counter")
     verdict = score_completion(answer, graph, checker)
-    assert verdict.reward == 0.0 and verdict.reason == "moved_fixed_object"
+    assert verdict.reward == 0.0 and verdict.reason == "moved_something_fixed"
 
 
 def test_moving_more_always_costs_more():

@@ -56,7 +56,6 @@ ALL_CLEAR_BONUS = 0.10
 USABILITY_WEIGHT = 0.15
 USEFULNESS_WEIGHT = 0.15
 MOVED_PINNED = "moved_unconfirmed_object"
-MOVED_FIXED = "moved_fixed_object"
 NOTHING_PLACED = "no_legal_spot_for_any_move"
 DISRUPTION_PENALTY_PER_METER = 0.03
 SNAP_PENALTY_PER_METER = 0.10
@@ -116,11 +115,7 @@ def _recovered(before: float, after: float) -> float:
 def _request_complaint(edits, room: SceneGraph, checker: TrainingChecker) -> str | None:
     if any(move.node_id in checker.pinned for move in edits.moves):
         return MOVED_PINNED
-    complaint = edit_complaint(room, edits)
-    if complaint:
-        return complaint
-    fixed = {node.id for node in room.nodes if not node.movable}
-    return MOVED_FIXED if any(move.node_id in fixed for move in edits.moves) else None
+    return edit_complaint(room, edits)
 
 
 def score_completion(completion: str, room: SceneGraph, checker: TrainingChecker) -> Verdict:

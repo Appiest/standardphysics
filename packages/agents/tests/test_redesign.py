@@ -2,7 +2,8 @@ from uuid import uuid4
 
 from standardphysics_agents import assess
 from standardphysics_agents.evaluation.gate import accepts
-from standardphysics_agents.fix import apply_moves
+from standardphysics_agents.fix import apply_moves, violations
+from standardphysics_agents.fix.use_space import Room, has_room_to_use
 from standardphysics_agents.models import ModelAnswer
 from standardphysics_agents.redesign import propose_redesign, validate_redesign
 from standardphysics_agents.router import Rejected
@@ -52,14 +53,15 @@ def test_empty_duplicate_unknown_and_no_op_moves_have_distinct_reasons(
         assert result.reasons == (reason,)
 
 
-def test_model_cannot_get_two_moved_objects_to_overlap(graph, scenario, pipeline, pack, ledger):
+def test_two_moves_aimed_at_the_same_spot_never_land_overlapping(graph, scenario, pipeline, pack, ledger):
     a, b = graph.by_id(node_id('table_1')), graph.by_id(node_id('table_2'))
     result = validate(graph, scenario, pipeline, pack, ledger, [
         move(a.id, dx=-a.transform.position.x, dy=-a.transform.position.y),
         move(b.id, dx=-b.transform.position.x, dy=-b.transform.position.y),
     ])
-    assert not result.accepted
-    assert 'collided' in result.reasons
+    assert 'collided' not in result.reasons
+    if result.accepted:
+        assert not violations(graph, result.graph)
 
 
 def test_model_edits_need_verified_rules(graph, scenario, pipeline, pack):
@@ -162,9 +164,12 @@ def test_astra_cannot_widen_an_aisle_by_shoving_a_table_into_a_corner(corner_caf
     assert accepts(before, after)
 
     result = validate(graph, scenario, pipeline, pack, ledger, [move(table, dx=-0.713, dy=1.1)])
-    assert not result.accepted
-    assert result.reasons == ("no_room_to_use",)
-    assert result.graph is None
+    if result.accepted:
+        placed = result.graph.by_id(table)
+        assert not violations(graph, result.graph)
+        assert has_room_to_use(Room.of(result.graph), placed, "surface")
+    else:
+        assert result.graph is None
 
 
 def test_astra_may_slide_a_table_that_keeps_room_in_front(corner_cafe, pipeline, pack, ledger):

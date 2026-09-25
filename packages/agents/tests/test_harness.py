@@ -154,7 +154,7 @@ def test_the_honest_fix_is_paid():
     (_answer(FIX_THE_PINCH, FIX_THE_PINCH), "duplicate_objects"),
     (_answer((uuid.uuid4(), 0.2, 0, 0)), "unknown_objects"),
     (_answer((node_id("case_east"), 0, 0, 0)), "no_op_moves"),
-    (_answer((node_id("counter"), 0.2, 0, 0)), "moved_fixed_object"),
+    (_answer((node_id("counter"), 0.2, 0, 0)), "moved_something_fixed"),
 ])
 def test_the_obvious_tricks_score_nothing(answer, reason):
     verdict = score_completion(answer, build_graph(), _checker())
