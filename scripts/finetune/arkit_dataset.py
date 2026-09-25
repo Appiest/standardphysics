@@ -20,7 +20,7 @@ import pathlib
 import zlib
 
 from fit_dataset import fit
-from multiroom_data import _prompt_row
+from multiroom_data import _prompt_row, target_quality
 from standardphysics_agents.training.windows import Window
 from synthetic_data import HELDOUT_PREFIX
 
@@ -102,12 +102,24 @@ def dataset(run: pathlib.Path, harness: pathlib.Path, real: pathlib.Path) -> dic
                      "real_scans": sum(1 for row in harness_heldout if not row["variant"].startswith(HELDOUT_PREFIX))}
     report = {"sft_before_fit": kinds, "heldout_before_fit": heldout_kinds, "fit": fitted}
     (run / "dataset_report.json").write_text(json.dumps(report, indent=2) + "\n")
+    write_trainer_report(run)
     return report
+
+
+def write_trainer_report(run: pathlib.Path) -> None:
+    """The `report.json` the trainer reads for its data composition."""
+    windows_rows = _rows(run / "windows.jsonl")
+    held = [row["window_id"] for row in windows_rows if row["window_id"].startswith(ARKIT_HELDOUT)]
+    summary = {"windows": [{"window_id": row["window_id"], "scan": row.get("source", "")} for row in windows_rows],
+               "split": {"totals": {"arkit_heldout_rooms": len(held)}, "by_scan": {}, "held_out": {"arkit": held}},
+               "variants": {"total": sum(1 for row in _rows(run / "variants.jsonl") if row.get("variant_id"))},
+               "targets": target_quality(_rows(run / "targets.jsonl"))}
+    (run / "report.json").write_text(json.dumps(summary) + "\n")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("stage", choices=("windows", "dataset"))
+    parser.add_argument("stage", choices=("windows", "dataset", "report"))
     parser.add_argument("--run", type=pathlib.Path, required=True)
     parser.add_argument("--arkit", type=pathlib.Path)
     parser.add_argument("--harness", type=pathlib.Path)
@@ -115,6 +127,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.stage == "windows":
         print(json.dumps(windows(args.arkit, args.run), indent=2))
+    elif args.stage == "report":
+        write_trainer_report(args.run)
     else:
         print(json.dumps(dataset(args.run, args.harness, args.real), indent=2))
 
