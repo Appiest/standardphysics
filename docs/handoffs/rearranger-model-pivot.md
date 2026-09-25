@@ -2,7 +2,7 @@
 
 **Context**: Standard Physics AI room rearranger fine-tuning.  
 **Target Audience**: Claude / AI Engineers in `.claude/worktrees/multiroom-data` (and related branches).  
-**Goal**: Pivot from failing from-scratch RL / continuous-float text generation on Qwen 3.8 27B to a viable, grounded pretrained architecture runnable locally on Apple Silicon (M5 Pro 48 GB) or Fireworks AI.
+**Goal**: Pivot from failing from-scratch RL / continuous-float text generation on Qwen 3.8 27B to a viable, grounded pretrained architecture runnable locally on Apple Silicon (M5 Pro 48 GB) or Fireworks AI, powered by commercial shop/restaurant/supermarket datasets.
 
 ---
 
@@ -23,7 +23,7 @@
 | **After SFT** | 40 | 100.0% | 52.5% | 25.0% | **0.0%** | 0.0524 |
 | **After 24 RL Steps** | 40 | 100.0% | 40.0% | 22.5% | **0.0%** | 0.0428 |
 
-Across 1,152 RL rollouts and 24 policy iterations, **`all_fixable_cleared_rate` remained exactly 0.0%**, and hard constraint violations (wall intersections, furniture collisions) remained over 50%. The download also terminated with `HTTP Error 400: Bad Request`.
+Across 1,152 RL rollouts and 24 policy iterations, **`all_fixable_cleared_rate` remained exactly 0.0%**, and hard constraint violations (wall intersections, furniture collisions) remained over 50%. The download step also terminated with `HTTP Error 400: Bad Request`.
 
 ### The Fundamental Flaw
 1. **Continuous Metric Inequalities vs. Tokenized Probabilities**:
@@ -73,51 +73,68 @@ Do not train 3D scene generative models from scratch. Use one of these establish
 
 ---
 
-### Option 3: Relevant Datasets on Hugging Face
-- **`yfan1997/room-layout-planning-curated-v1`**: Curated tasks with usable floor polygons, fixed furniture inventory briefs, and activity grouping.
-- **`HiHiAllen/Imaginarium-Dataset`**: 3D indoor scene graphs, layouts, and constraints.
-- **`chenguolin/InstructScene_dataset`**: Natural language instruction-driven 3D indoor layouts with spatial relational graphs.
+## 3. Commercial Shop, Supermarket & Restaurant Datasets & Generators
+
+To train models that understand actual stores, boba shops, supermarkets, and restaurants (rather than residential bedrooms), leverage these specialized Hugging Face datasets and procedural generators:
+
+### A. Supermarket & Grocery Store Datasets & Generators
+*   **[`HXX/MarketGen`](https://huggingface.co/HXX/MarketGen)** *(Top Recommendation for Retail / Supermarkets)*:
+    *   **What it is**: An embodied simulation platform designed specifically for **supermarket environments** with an agent-based **Procedural Content Generation (PCG)** framework.
+    *   **Assets**: Library of **1,100+ 3D supermarket assets** (gondola shelving, endcaps, refrigerated display islands, checkout counters).
+    *   **Value for ADA**: Generates dense multi-aisle grocery layouts with parameterized corridor widths and cashier checkout bottlenecks.
+*   **[`behavior-1k`](https://huggingface.co/behavior-1k) & RoboBenchMart** (Stanford / Hugging Face):
+    *   **What it is**: Stanford's BEHAVIOR-1K and OmniGibson environment hosted on Hugging Face.
+    *   **Assets**: Full interactive 3D commercial environments, including dark-store retail and grocery layouts (`RoboBenchMart`) with object bounding boxes and physical collision meshes.
+*   **[`cyberagent/in-store-visual-localization`](https://huggingface.co/datasets/cyberagent/in-store-visual-localization)** (Hugging Face):
+    *   Real-world retail store scans with **COLMAP 3D reconstructions**, aisle pathways, and camera trajectories.
+
+### B. Restaurants, Cafes, Boba Shops & Dining Layouts
+*   **[`nepfaff/steerable-scene-generation`](https://huggingface.co/datasets/nepfaff/steerable-scene-generation-restaurant-low-clutter)** (MIT / Hugging Face):
+    *   Dedicated dining layout datasets:
+        *   `nepfaff/steerable-scene-generation-restaurant-low-clutter`
+        *   `nepfaff/steerable-scene-generation-restaurant-high-clutter`
+        *   `nepfaff/steerable-scene-generation-dimsum-table`
+    *   Contains 3D object arrangements for restaurant dining tables, chairs, service stations, and circulation paths.
+*   **[`Pointcept/hm3d-compressed`](https://huggingface.co/datasets/Pointcept/hm3d-compressed) (Habitat-Matterport 3D)** (Hugging Face):
+    *   1,000 building-scale 3D scans with a dedicated **commercial subset**: cafes, bakeries, coffee shops, boutiques, and restaurants.
+*   **ScanNet++ Commercial Subsets**:
+    *   High-fidelity sub-millimeter laser scans of commercial dining spaces, coffee bars, and retail shops with CAD-aligned furniture annotations.
+
+### C. Procedural Store & Boba Shop Generators
+1.  **MarketGen PCG Engine** ([GitHub / Hugging Face](https://huggingface.co/HXX/MarketGen)):
+    *   Agent-based procedural synthesis of retail aisle grids, cash-wraps, and shelf aisles with configurable clearance widths.
+2.  **Holodeck / Holodeck 2.0** ([AI2-THOR](https://github.com/allenai/Holodeck)):
+    *   Language-driven procedural generation of commercial spaces (e.g. `"a busy boba cafe with counter, register, and 2-top dining tables"`).
+3.  **Parametric Boba Shop Generator in Standard Physics**:
+    *   Expand `create_sample_boba_shop_room()` in [`scripts/import_research_dataset.py`](file:///Users/yanzihao/Documents/standardphysics/scripts/import_research_dataset.py) into a synthetic generator:
+        ```python
+        def generate_random_boba_shop(
+            room_width: float = random.uniform(5.0, 9.0),
+            room_depth: float = random.uniform(6.0, 12.0),
+            counter_type: str = random.choice(["straight", "L-shape"]),
+            table_count: int = random.randint(3, 8),
+            bottleneck_clearance_inches: float = random.uniform(24.0, 40.0) # Synthesize ADA violations
+        ) -> SceneGraph:
+        ```
+    *   Pipe generated scenes through [`scripts/audit_rooms.py`](file:///Users/yanzihao/Documents/standardphysics/scripts/audit_rooms.py) to automatically ensure commercial typology validity and non-trivial circulation bottlenecks.
 
 ---
 
-## 3. The Necessary Architectural Pivot: Neuro-Symbolic Hybrid
+## 4. The Necessary Architectural Pivot: Neuro-Symbolic Hybrid
 
 In production systems (e.g. SceneWeaver, SceneCraft, LayoutGPT), the neural model is **never** asked to calculate millimeter-level continuous coordinates without a solver.
 
-```
-+-------------------------------------------------------------------+
-|                        NEURAL PLANNER                             |
-|          (SceneReVis-7B or Qwen2.5-VL with Top-Down Floorplan)     |
-+-------------------------------------------------------------------+
-                                  |
-                                  | Outputs High-Level Relational Intent:
-                                  | "Tuck sofa against north wall"
-                                  | "Rotate dining table 90 degrees"
-                                  | "Designate west corridor for primary 36" route"
-                                  v
-+-------------------------------------------------------------------+
-|                 DETERMINISTIC GEOMETRIC SOLVER                    |
-|   (packages/agents/standardphysics_agents/fix/search.py)          |
-+-------------------------------------------------------------------+
-                                  |
-                                  | Snaps exact continuous coordinates (dx, dy, yaw)
-                                  | Guarantees distance >= 36.0" (clear width)
-                                  | Eliminates all bounding box intersections
-                                  v
-                       ACCEPTED VALIDATED LAYOUT
+```mermaid
+flowchart TD
+    VLM["Visual Spatial Planner (SceneReVis-7B / Qwen2.5-VL)<br/>Input: Top-down Floorplan + Problems"] -->|Emits Discrete Relational Intent| Solver["Deterministic Geometric Solver<br/>(standardphysics_agents.fix.search)"]
+    Solver -->|Snaps Coordinates to Continuous Bounds| Valid["Validated ADA Layout<br/>(Clearance >= 36'', 0 Collisions)"]
 ```
 
 Your codebase already has this deterministic solver in [`packages/agents/standardphysics_agents/fix/search.py`](file:///Users/yanzihao/Documents/standardphysics/packages/agents/standardphysics_agents/fix/search.py) and [`strategies.py`](file:///Users/yanzihao/Documents/standardphysics/packages/agents/standardphysics_agents/fix/strategies.py) (`split_the_gap`, `pinch_from`, `violations`).
 
 ### Reforming the Action Space
-Instead of:
+Instead of continuous floats (`dx: -0.34, dy: 0.3`), use **Discrete Relational Actions**:
 ```json
-// BROKEN: Continuous float prediction (0.0% success)
-{"moves": [{"node_id": "28174dfd...", "dx": -0.34, "dy": 0.3, "rotation_degrees": -45.0}]}
-```
-Use **Discrete Relational Actions** or **Discretized Grid Bounding Boxes**:
-```json
-// VIABLE: Discrete relational macro-actions
 {
   "strategy": "clear_pinch_aisle",
   "bottleneck_id": "route_clear_width_counter",
@@ -135,7 +152,7 @@ The solver takes this intent and applies exact mathematical projection.
 
 ---
 
-## 4. Execution Platform Options
+## 5. Execution Platform Options
 
 ### Platform A: Local Fine-Tuning on This Machine
 - **Specs**: Apple M5 Pro, **48 GB Unified Memory**, macOS.
@@ -154,8 +171,7 @@ The solver takes this intent and applies exact mathematical projection.
          --lora-layers 16 \
          --iters 1000
        ```
-  2. **PyTorch MPS + Hugging Face `peft` / `trl`**:
-     - Standard `SFTTrainer` with LoRA on device `"mps"`.
+  2. **PyTorch MPS + Hugging Face `peft` / `trl`**: Standard `SFTTrainer` with LoRA on device `"mps"`.
 
 ### Platform B: Fireworks AI Serverless Fine-Tuning
 - **Current Script**: `scripts/finetune/serverless_train.py`
@@ -165,21 +181,24 @@ The solver takes this intent and applies exact mathematical projection.
   - `accounts/fireworks/models/llama-v3p1-8b-instruct`
   - `accounts/fireworks/models/qwen3p8-27b`
 - **Changes Needed**:
-  1. Switch task from continuous float generation to discrete macro-actions or structured step-by-step reasoning.
-  2. Run SFT first on synthetic verified pairs before turning on RL.
+  1. Switch task from continuous float generation to discrete macro-actions.
+  2. Run SFT first on verified synthetic pairs before turning on RL.
   3. Fix the `download_adapter.py` HTTP 400 error by setting proper `Authorization: Bearer $FIREWORKS_API_KEY` headers in `_get()`.
 
 ---
 
-## 5. Actionable Roadmap for Claude
+## 6. Actionable Roadmap for Claude
 
-1. **Stop running `run_room6.sh` with the current unconstrained float action space.** It will not converge.
-2. **Render a 2D Top-Down Floorplan SVG/PNG**:
-   - Write a helper `packages/pipeline/standardphysics_pipeline/render_topdown.py` that takes a `SceneGraph` and outputs a clean $512 \times 512$ orthographic top-down raster showing walls (black), doors (green), fixed counters (grey), and movable furniture (blue) with labeled node IDs.
-3. **Format Training Data for Visual-Spatial Prompting**:
+1. **Halt `run_room6.sh`** with the continuous float action space.
+2. **Ingest / Procedurally Generate Store Data**:
+   - Integrate **MarketGen** (`HXX/MarketGen`) for supermarket retail aisles and **nepfaff/restaurant** for dining layouts.
+   - Parameterize `create_sample_boba_shop_room()` in [`scripts/import_research_dataset.py`](file:///Users/yanzihao/Documents/standardphysics/scripts/import_research_dataset.py) to generate synthetic boba shops with controlled ADA clearance bottlenecks.
+3. **Render a 2D Top-Down Floorplan Raster**:
+   - Write a helper that renders `SceneGraph` bounding boxes and walls to a $512 \times 512$ orthographic top-down image.
+4. **Format Training Data for Visual-Spatial Prompting**:
    - In `room6_dataset.py`, pair the top-down floorplan image with the structured problem list.
-   - Target output: Discrete strategic moves (e.g. `move_aside`, `split_gap`, `align_to_wall`).
-4. **Fine-Tune `Qwen2.5-VL-7B` or `SceneReVis-7B`**:
+   - Target output: Discrete strategic moves (`move_aside`, `split_gap`, `align_to_wall`).
+5. **Fine-Tune `Qwen2.5-VL-7B` or `SceneReVis-7B`**:
    - Use MLX locally on this M5 Pro Mac or PyTorch MPS.
-5. **Route Proposals Through `standardphysics_agents.fix.search`**:
+6. **Route Proposals Through `standardphysics_agents.fix.search`**:
    - Connect model output to `standardphysics_agents.fix.search.apply_moves()` and `violations()`.
