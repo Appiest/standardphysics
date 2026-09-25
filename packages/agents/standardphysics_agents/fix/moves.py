@@ -5,7 +5,8 @@ floor keeps its height. A piece that was resting on something else, a laptop on
 a desk or a pillow on a sofa, settles onto whatever is under it where it lands,
 or onto the floor when nothing is. Nothing here can change a dimension, because
 there is no code path that writes one: the candidate node is copied from the
-original with a new transform and nothing else.
+original with a new transform and a record of where the scan found it, and
+nothing else.
 """
 
 from __future__ import annotations
@@ -50,8 +51,16 @@ def move_node(node: SceneNode, move: NodeMove) -> SceneNode:
         z=origin.z + move.delta_translation.z,
     )
     return node.model_copy(
-        update={"transform": _turned(node, move.delta_rotation_z_degrees, moved_to)}
+        update={
+            "transform": _turned(node, move.delta_rotation_z_degrees, moved_to),
+            "measured_position": measured_position(node),
+        }
     )
+
+
+def measured_position(node: SceneNode) -> Vec3:
+    """Where the scan found the node, before any rearrangement moved it."""
+    return node.measured_position or node.transform.position
 
 
 def floor_height(graph: SceneGraph) -> float:

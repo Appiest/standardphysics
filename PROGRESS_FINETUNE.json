@@ -1,0 +1,35 @@
+{
+  "steps": {},
+  "jobs": [],
+  "plan": {
+    "lora_rank": 32,
+    "lora_alpha": 64,
+    "max_seq_len": 8192,
+    "sft_epochs": 3,
+    "sft_batch": 8,
+    "sft_learning_rate": 0.0001,
+    "rl_steps": 24,
+    "rl_prompts_per_step": 6,
+    "rl_group_size": 8,
+    "rl_learning_rate": 2e-05,
+    "rl_temperature": 1.0,
+    "rl_state_every": 6,
+    "eval_samples": 4,
+    "eval_temperature": 0.7,
+    "max_sample_tokens": 512,
+    "budget_dollars": 25.0,
+    "sft_model_id": "room6-qwen3p8-27b-sft",
+    "rl_model_id": "room6-qwen3p8-27b-rl",
+    "base_model": "accounts/fireworks/models/qwen3p8-27b",
+    "renderer": "qwen3_8_disable_thinking_interleaved",
+    "expected_cost": {
+      "sft_rows": 84,
+      "rl_rollouts": 1152,
+      "eval_samples": 120,
+      "prefill_tokens": 2925600,
+      "sample_tokens": 254400,
+      "train_tokens": 3090000,
+      "estimated_dollars": 19.5433
+    }
+  }
+}
