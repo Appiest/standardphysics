@@ -21,6 +21,7 @@ import pathlib
 import time
 from dataclasses import asdict
 
+import tinker
 from fit_dataset import MAX_PROMPT_TOKENS, fit
 from multiroom_data import _prompt_row
 from multiroom_train_data import load
@@ -136,8 +137,6 @@ def train(data_dir: pathlib.Path, arm: str, sft_state: str) -> None:
 
 
 def run_step(trainer: Trainer, arm: str, step: int) -> None:
-    import tinker
-
     picked = pick(trainer.data.rl, arm, step)
     snapshot = trainer.client.save_weights_for_sampler(f"rl-{step:04d}").result().path
     sampled = trainer.sample(snapshot, picked, trainer.plan.rl_group_size, trainer.plan.rl_temperature)
