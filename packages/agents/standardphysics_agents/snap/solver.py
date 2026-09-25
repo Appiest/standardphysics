@@ -11,10 +11,14 @@ pieces, then seats:
 3. At each spot the piece takes its settled heading (`facing.settled_yaw`): a seat
    turns to its table, a shelf turns its back to the wall. Other pieces keep the
    requested turn.
-4. The first spot where `fix.constraints.violations` finds nothing wins: no
+4. The whole request is first tried at once, with seats and wall pieces turned to
+   face the right way; when that is already legal it is kept exactly, which is
+   the only way two pieces can swap places. Otherwise each piece is placed in
+   turn, and the first spot where `fix.constraints.violations` finds nothing wins: no
    overlap, still on the floor, within the travel limit, no table left without
    room to use it. A cheap footprint test rejects most spots before that call.
-5. A piece with no legal spot stays where it was, and the result says so.
+5. A piece with no legal spot, or pushed aside, is tried again once the rest have
+   moved; one still without a spot stays where it was, and the result says so.
 
 Seats paired with a table the model moved travel with it unless the model moved
 them itself. A layout this returns never breaks a hard constraint.
@@ -182,12 +186,60 @@ def _place(base: SceneGraph, current: SceneGraph, move: NodeMove) -> tuple[Scene
     return current, Placement(node.id, node.label, None, False)
 
 
+def _settled_request(graph: SceneGraph, move: NodeMove) -> NodeMove:
+    """The request exactly as asked, with a seat or wall piece turned the way it should face there."""
+    node = next(n for n in graph.nodes if n.id == move.node_id)
+    target = (_xy(node)[0] + move.delta_translation.x, _xy(node)[1] + move.delta_translation.y)
+    yaw = settled_yaw(node, target, graph)
+    return move if yaw is None else _pose_move(node, target, yaw)
+
+
+def _as_asked(base: SceneGraph, moves: list[NodeMove]) -> Snapped | None:
+    """The whole request applied at once, when that is already legal; swaps only work this way."""
+    candidate = apply_moves(base, [_settled_request(base, move) for move in moves])
+    if violations(base, candidate):
+        return None
+    placements = [Placement(move.node_id, next(n.label for n in base.nodes if n.id == move.node_id), 0.0, False)
+                  for move in moves]
+    return Snapped(candidate, placements)
+
+
+def _one_by_one(base: SceneGraph, moves: list[NodeMove]) -> Snapped:
+    """Each request snapped in turn, then any piece that was pushed aside tried again once the rest have moved."""
+    current, placements = base, {}
+    for move in moves:
+        current, placements[move.node_id] = _place(base, current, move)
+    for move in moves:
+        placed = placements[move.node_id]
+        if placed.snapped_meters is None or placed.snapped_meters > RING_STEP_METERS:
+            retry = _toward_request(base, current, move)
+            again, second = _place(base, current, retry)
+            if second.snapped_meters is not None:
+                current = again
+                placements[move.node_id] = _measured_from_request(base, again, move, second)
+    return Snapped(current, list(placements.values()))
+
+
+def _toward_request(base: SceneGraph, current: SceneGraph, move: NodeMove) -> NodeMove:
+    """The original request, restated from where the piece stands now."""
+    was = next(n for n in base.nodes if n.id == move.node_id)
+    now = next(n for n in current.nodes if n.id == move.node_id)
+    return NodeMove(node_id=move.node_id, delta_rotation_z_degrees=_yaw(was) + move.delta_rotation_z_degrees - _yaw(now),
+                    delta_translation=Vec3(x=_xy(was)[0] + move.delta_translation.x - _xy(now)[0],
+                                           y=_xy(was)[1] + move.delta_translation.y - _xy(now)[1], z=0.0))
+
+
+def _measured_from_request(base: SceneGraph, graph: SceneGraph, move: NodeMove, placed: Placement) -> Placement:
+    was = next(n for n in base.nodes if n.id == move.node_id)
+    now = next(n for n in graph.nodes if n.id == move.node_id)
+    asked = (_xy(was)[0] + move.delta_translation.x, _xy(was)[1] + move.delta_translation.y)
+    return Placement(move.node_id, placed.label, math.dist(asked, _xy(now)), placed.turned_to_settle)
+
+
 def snap(base: SceneGraph, moves: list[NodeMove], rejection: Rejection | None = None) -> Snapped:
     """The nearest legal layout to the requested one, never breaking a hard constraint."""
-    current, placements = base, []
     movable = {node.id for node in base.nodes if node.movable}
-    for move in with_carried_seats(base, [m for m in moves if m.node_id in movable]):
-        current, placement = _place(base, current, move)
-        placements.append(placement)
-    refused = rejection(base, current) if rejection else None
-    return Snapped(current, placements, refused)
+    requested = with_carried_seats(base, [m for m in moves if m.node_id in movable])
+    snapped = _as_asked(base, requested) or _one_by_one(base, requested)
+    snapped.refused = rejection(base, snapped.graph) if rejection else None
+    return snapped

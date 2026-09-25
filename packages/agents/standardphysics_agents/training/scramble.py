@@ -9,6 +9,7 @@ rearrangement could fix teach nothing and are dropped.
 from __future__ import annotations
 
 import random
+from collections import Counter
 from dataclasses import dataclass
 
 from standardphysics_contracts import NodeMove, SceneGraph, SceneNode, Vec3, bounds_the_room
@@ -42,7 +43,7 @@ class Variant:
     name: str
     graph: SceneGraph
     fixable: tuple[str, ...]
-    """Check ids of the furniture-fixable problems the variant has."""
+    """Check ids of the furniture-fixable problems the variant has more of than the scanned room."""
 
 
 def floor_furniture(graph: SceneGraph) -> list[SceneNode]:
@@ -66,16 +67,30 @@ def random_moves(pieces: list[SceneNode], rng: random.Random, how: Displacement 
     ]
 
 
+def _fixable_counts(graph: SceneGraph, checker: TrainingChecker) -> Counter:
+    return Counter(finding.check_id for finding in checker.fixable_problems(checker.assess(graph)))
+
+
+def added_problems(candidate: SceneGraph, already: Counter, checker: TrainingChecker) -> tuple[str, ...]:
+    """Check ids the candidate has more of than the room it came from.
+
+    A problem the room already has is not one a rearrangement back to the room
+    can fix, so a variant carrying only those teaches nothing.
+    """
+    now = _fixable_counts(candidate, checker)
+    return tuple(sorted(check for check, count in now.items() if count > already.get(check, 0)))
+
+
 def _one_variant(scanned: SceneGraph, start: SceneGraph, rng: random.Random, checker: TrainingChecker,
-                 how: Displacement):
+                 how: Displacement, already: Counter):
     pieces = floor_furniture(start)
     for _ in range(ATTEMPTS_PER_VARIANT):
         candidate = apply_moves(start, random_moves(pieces, rng, how))
         if violations(scanned, candidate):
             continue
-        fixable = checker.fixable_problems(checker.assess(candidate))
-        if fixable:
-            return candidate, tuple(sorted({finding.check_id for finding in fixable}))
+        added = added_problems(candidate, already, checker)
+        if added:
+            return candidate, added
     return None
 
 
@@ -85,10 +100,11 @@ def scramble(
 ) -> list[Variant]:
     """Up to `count` distinct variants. `starts` are layouts to scramble from, the scanned one by default."""
     origins = starts or [scanned]
+    already = _fixable_counts(scanned, checker)
     found: list[Variant] = []
     for index in range(count):
         rng = random.Random(seed * 100_003 + index)
-        made = _one_variant(scanned, origins[index % len(origins)], rng, checker, how)
+        made = _one_variant(scanned, origins[index % len(origins)], rng, checker, how, already)
         if made is None:
             continue
         graph, fixable = made
