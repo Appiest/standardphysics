@@ -5,7 +5,7 @@ exactly as the reward scores it (snapped to legal, gate, usefulness, the space t
 A refused answer goes back to the model as its own turn followed by the refusal reason and, when an ADA
 directive refused it, that directive's requirement in its own words. Up to `MAX_ATTEMPTS` tries.
 
-    python scripts/finetune/rebuild_loop.py --run runs/finetune/harness --snapshot <sampler path> \\
+    python scripts/finetune/rebuild_loop.py --run runs/finetune/harness --state <training state reference> \\
         --variant webapp-ravida-test-1:whole:as-is --out loop.json
 """
 
@@ -45,10 +45,14 @@ def refusal_message(verdict, directives) -> str:
 
 
 class Model:
-    def __init__(self, snapshot: str):
+    """A sampler over a saved training state; a sampler snapshot only lives as long as its session."""
+
+    def __init__(self, state: str):
         self.tokenizer = load_tokenizer(TOKENIZER_MODEL)
         self.renderer = get_renderer(RENDERER, self.tokenizer)
         self.service = FiretitanServiceClient(api_key=os.environ["FIREWORKS_API_KEY"], base_url=SERVERLESS_URL)
+        client = self.service.create_training_client_from_state(state)
+        snapshot = client.save_weights_for_sampler("rebuild-loop").result().path
         self.sampler = self.service.create_sampling_client(model_path=snapshot, tokenizer=self.tokenizer)
         self.params = FiretitanSamplingParams(max_tokens=MAX_TOKENS, temperature=TEMPERATURE,
                                               stop=self.renderer.get_stop_sequences())
@@ -82,13 +86,13 @@ def run_loop(model: Model, window: Window, graph: SceneGraph) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", type=pathlib.Path, required=True)
-    parser.add_argument("--snapshot", required=True)
+    parser.add_argument("--state", required=True, help="a training state reference, such as rl-state-0012")
     parser.add_argument("--variant", action="append", required=True)
     parser.add_argument("--out", type=pathlib.Path, required=True)
     args = parser.parse_args()
     windows = {row["window_id"]: Window.from_dict(row) for row in _rows(args.run / "windows.jsonl")}
     variants = {row["variant_id"]: row for row in _rows(args.run / "variants.jsonl") if row.get("variant_id")}
-    model = Model(args.snapshot)
+    model = Model(args.state)
     try:
         results = {}
         for variant_id in args.variant:
@@ -97,7 +101,7 @@ def main() -> None:
             print(variant_id, [(a["reward"], a["reason"]) for a in results[variant_id]["attempts"]], flush=True)
     finally:
         model.close()
-    args.out.write_text(json.dumps({"snapshot": args.snapshot, "results": results}, indent=2) + "\n")
+    args.out.write_text(json.dumps({"state": args.state, "results": results}, indent=2) + "\n")
 
 
 if __name__ == "__main__":
