@@ -9,8 +9,13 @@ label is the fallback, not the first answer.
 
 from __future__ import annotations
 
-from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
+import math
+
+from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room, lies_flat
+from standardphysics_pipeline.footprints import floor_polygon
 from standardphysics_pipeline.occupancy import reads_as_wall
+
+Segment = tuple[tuple[float, float], tuple[float, float]]
 
 SHELL_KINDS = frozenset({"wall", "floor", "ceiling", "door", "window", "opening"})
 
@@ -27,3 +32,14 @@ def is_room_shell(node: SceneNode) -> bool:
     too thick to read as a sheet answers the other; both are the room either way.
     """
     return bounds_the_room(node) or node.kind in SHELL_KINDS
+
+
+def wall_faces(graph: SceneGraph) -> list[Segment]:
+    """Each labelled wall as the segment between the two farthest corners of its footprint."""
+    segments = []
+    for node in graph.nodes:
+        if node.kind != "wall" or lies_flat(node):
+            continue
+        hull = floor_polygon(node)
+        segments.append(max(((a, b) for a in hull for b in hull), key=lambda pair: math.dist(*pair)))
+    return segments

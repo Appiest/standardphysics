@@ -27,6 +27,7 @@ from standardphysics_pipeline import contains_point, footprint
 from standardphysics_pipeline.footprints import floor_polygon
 
 from ..checks import roles
+from ..checks.walls import wall_faces
 from .edits import yaw_degrees
 
 WALL_WEIGHT = 0.4
@@ -88,14 +89,7 @@ def _angle_between(a: float, b: float, period: float) -> float:
 
 
 def wall_segments(graph: SceneGraph) -> list[tuple[tuple[float, float], tuple[float, float]]]:
-    segments = []
-    for node in graph.nodes:
-        if node.kind != "wall" or lies_flat(node):
-            continue
-        hull = floor_polygon(node)
-        ends = max(((a, b) for a in hull for b in hull), key=lambda pair: math.dist(*pair))
-        segments.append(ends)
-    return segments
+    return wall_faces(graph)
 
 
 def _to_segment(point, segment) -> float:

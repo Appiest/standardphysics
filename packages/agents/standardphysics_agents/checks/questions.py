@@ -17,6 +17,7 @@ from ..tracing import traced
 from . import roles
 from .context import CheckContext
 from .observation import Observation
+from .restroom import toilets
 
 NodeFinder = Callable[[SceneGraph], list[SceneNode]]
 
@@ -60,10 +61,14 @@ ASK_ABOUT: tuple[tuple[str, NodeFinder], ...] = (
 
 RULE_IDS = frozenset(rule_id for rule_id, _ in ASK_ABOUT)
 
+MEASURED_WHEN_SEEN = frozenset({"restroom_turning_space"})
+"""Asked about only while the scan shows no toilet; `restroom.restroom_turning_space` measures it otherwise."""
+
 
 @traced("checks.scan_cannot_see")
 def scan_cannot_see(ctx: CheckContext) -> list[Observation]:
-    return [_ask(ctx, rule_id, finder) for rule_id, finder in ASK_ABOUT]
+    measured = MEASURED_WHEN_SEEN if toilets(ctx.graph) else frozenset()
+    return [_ask(ctx, rule_id, finder) for rule_id, finder in ASK_ABOUT if rule_id not in measured]
 
 
 def _ask(ctx: CheckContext, rule_id: str, finder: NodeFinder) -> Observation:

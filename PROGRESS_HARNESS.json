@@ -1,0 +1,45 @@
+{
+  "goal": "Snap-to-legal harness, ADA-directive rebuild loop, reward without the four gaps, usefulness and facing measures, amenity-rich training rooms from generated, scanned and OBJ shells",
+  "branch": "integrate/ada-rl-harness",
+  "steps": {
+    "merge_branches": {
+      "status": "done",
+      "commit": "9d08c6b",
+      "by": "sonnet subagent"
+    },
+    "snap_solver_and_facing": {
+      "status": "done"
+    },
+    "usefulness_measures": {
+      "status": "done"
+    },
+    "restroom_check": {
+      "status": "done"
+    },
+    "role_vocabulary_front_desk_accessible_table": {
+      "status": "done"
+    },
+    "reward_v2": {
+      "status": "todo"
+    },
+    "directive_rebuild_loop": {
+      "status": "todo"
+    },
+    "generator_amenities_and_scan_shells": {
+      "status": "in_progress",
+      "by": "opus subagent on finetune/shop-generator"
+    },
+    "obj_extraction": {
+      "status": "done",
+      "by": "sonnet subagent",
+      "outputs": "~/Documents/sp-data/obj",
+      "metres_per_stud_from_toilet": 0.217
+    },
+    "obj_shells": {
+      "status": "todo"
+    },
+    "merge_generator_into_integration": {
+      "status": "todo"
+    }
+  }
+}

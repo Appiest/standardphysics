@@ -23,6 +23,7 @@ from .passing_space import passing_space
 from .protrusions import protruding_objects
 from .questions import RULE_IDS as QUESTION_RULE_IDS
 from .questions import scan_cannot_see
+from .restroom import restroom_turning_space
 from .result import CheckResult, as_result
 from .route_width import route_clear_width, route_width_verdict
 from .service_counter import (
@@ -48,6 +49,7 @@ REGISTRY: tuple[tuple[frozenset[str], CheckFn], ...] = (
     (frozenset({"door_maneuvering_clearance"}), door_maneuvering_clearance),
     (frozenset({"protruding_objects"}), protruding_objects),
     (frozenset({"dining_surface_height"}), dining_surface_height),
+    (frozenset({"restroom_turning_space"}), restroom_turning_space),
     (QUESTION_RULE_IDS, scan_cannot_see),
 )
 
@@ -116,7 +118,7 @@ __all__ = [
     "COVERED", "CheckContext", "CheckResult", "Observation", "REGISTRY",
     "Unevaluated", "dedupe", "dining_surface_height", "door_clear_width",
     "door_maneuvering_clearance", "door_verdict", "exit_path", "passing_space",
-    "point_of_sale_height", "protruding_objects", "route_clear_width",
+    "point_of_sale_height", "protruding_objects", "restroom_turning_space", "route_clear_width",
     "route_width_verdict", "run_checks", "scan_cannot_see",
     "service_counter_approach", "service_counter_height", "turn_clear_width",
     "turn_verdict", "turning_space",

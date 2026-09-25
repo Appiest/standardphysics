@@ -39,7 +39,7 @@ def resolve(
     observation: Observation, rule: RuleSpec, graph: SceneGraph
 ) -> tuple[Outcome, FindingCopy]:
     """A check resting on geometry we are unsure of becomes a request."""
-    if not rule.measurable:
+    if not (rule.measurable or observation.seen_directly):
         return "question", describe(observation, rule)
     if observation.asks_for:
         return "question", request(rule)

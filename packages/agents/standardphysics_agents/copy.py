@@ -204,6 +204,23 @@ def _turning_space(observation: Observation, rule: RuleSpec) -> FindingCopy:
     )
 
 
+def _restroom_turning(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    needed = inches(rule.threshold)
+    shown = measured(observation.measured_inches, rule.threshold)
+    if observation.satisfied:
+        return FindingCopy(
+            title="There's room to turn around in the restroom",
+            detail=f"The widest clear circle is {shown} across. Turning a wheelchair needs {needed}.",
+        )
+    blocking = observation.facts.get("blocking") or []
+    what = " and ".join(label.casefold() for label in blocking[:2]) or "what's standing on the floor"
+    return FindingCopy(
+        title="There's not enough room to turn around in the restroom",
+        detail=f"The widest clear circle is {shown} across. Turning a wheelchair needs {needed}.",
+        fix=f"Move the {what} so there's a {size(rule.threshold)} circle of clear floor inside the restroom.",
+    )
+
+
 def _turn_width(observation: Observation, rule: RuleSpec) -> FindingCopy:
     destination = stop_phrase(observation.facts.get("destination"))
     pivot = observation.facts.get("pivot")
@@ -356,6 +373,7 @@ WRITERS: dict[str, Callable[[Observation, RuleSpec], FindingCopy]] = {
     "service_counter_approach": _counter_approach,
     "passing_space": _passing_space,
     "turning_space": _turning_space,
+    "restroom_turning_space": _restroom_turning,
     "turn_clear_width": _turn_width,
     "exit_path": _exit_path,
 }
@@ -517,7 +535,7 @@ def escalation_note(count: int) -> str:
 
 
 def describe(observation: Observation, rule: RuleSpec) -> FindingCopy:
-    if rule.id in QUESTIONS:
+    if rule.id in QUESTIONS and not observation.seen_directly:
         return QUESTIONS[rule.id]
     writer = WRITERS.get(rule.id)
     if writer is None:
