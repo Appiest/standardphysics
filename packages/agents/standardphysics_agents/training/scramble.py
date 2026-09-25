@@ -84,6 +84,8 @@ def added_problems(candidate: SceneGraph, already: Counter, checker: TrainingChe
 def _one_variant(scanned: SceneGraph, start: SceneGraph, rng: random.Random, checker: TrainingChecker,
                  how: Displacement, already: Counter):
     pieces = floor_furniture(start)
+    if not pieces:
+        return None
     for _ in range(ATTEMPTS_PER_VARIANT):
         candidate = apply_moves(start, random_moves(pieces, rng, how))
         if violations(scanned, candidate):
