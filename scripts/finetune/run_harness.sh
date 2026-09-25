@@ -28,15 +28,23 @@ mkdir -p "$DATA"
 
 note() { echo "$(date -u +%FT%TZ) $*" | tee -a "$STATUS"; }
 
-note "rooms: $ROOMS training, $HELDOUT_ROOMS held out"
-"$PYTHON" scripts/finetune/synthetic_data.py rooms --run "$DATA" --count "$ROOMS" --heldout "$HELDOUT_ROOMS" > "$DATA/rooms.log"
-note "scrambles"
-"$PYTHON" scripts/finetune/synthetic_data.py scrambles --run "$DATA" --workers "$WORKERS" > "$DATA/scrambles.log"
-note "targets"
-"$PYTHON" scripts/finetune/synthetic_data.py targets --run "$DATA" --workers "$WORKERS" > "$DATA/targets.log"
-note "dataset"
-"$PYTHON" scripts/finetune/synthetic_data.py dataset --run "$DATA" --real "$REAL" --max-sft "$MAX_SFT"
-note "dataset: $(cat "$DATA/progress.json" | tr -d '\n ')"
+if [ -f "$DATA/report.json" ]; then
+  note "dataset already built; skipping data stages"
+else
+  note "rooms: $ROOMS training, $HELDOUT_ROOMS held out"
+  "$PYTHON" scripts/finetune/synthetic_data.py rooms --run "$DATA" --count "$ROOMS" --heldout "$HELDOUT_ROOMS" > "$DATA/rooms.log"
+  note "scrambles"
+  "$PYTHON" scripts/finetune/synthetic_data.py scrambles --run "$DATA" --workers "$WORKERS" > "$DATA/scrambles.log"
+  note "targets"
+  "$PYTHON" scripts/finetune/synthetic_data.py targets --run "$DATA" --workers "$WORKERS" > "$DATA/targets.log"
+  note "dataset"
+  "$PYTHON" scripts/finetune/synthetic_data.py dataset --run "$DATA" --real "$REAL" --max-sft "$MAX_SFT"
+  note "dataset: $(cat "$DATA/progress.json" | tr -d '\n ')"
+fi
+if [ ! -f "$DATA/dataset/fit_report.json" ]; then
+  "$PYTHON" scripts/finetune/fit_dataset.py --data "$DATA" > /dev/null
+  note "fitted to prompt length: $(cat "$DATA/dataset/fit_report.json" | tr -d '\n ')"
+fi
 
 PLAN='{"sft_epochs": 1, "rl_steps": 12, "rl_prompts_per_step": 6, "rl_group_size": 8, "eval_samples": 2,
        "budget_dollars": 45, "sft_model_id": "harness-qwen3p8-27b-sft", "rl_model_id": "harness-qwen3p8-27b-rl"}'
