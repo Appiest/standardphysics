@@ -33,10 +33,13 @@
       "status": "done",
       "by": "sonnet subagent",
       "outputs": "~/Documents/sp-data/obj",
-      "metres_per_stud_from_toilet": 0.217
+      "metres_per_stud_from_toilet": "superseded: extractor measured from a raised plate"
     },
     "obj_shells": {
-      "status": "todo"
+      "status": "done",
+      "output": "~/Documents/sp-data/obj/rooms/mcdonalds.json",
+      "metres_per_stud": 0.27,
+      "mansion": "not usable without hand labelling: interior storeys have no enclosing walls after extraction"
     },
     "merge_generator_into_integration": {
       "status": "todo"
