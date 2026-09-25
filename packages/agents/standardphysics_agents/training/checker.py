@@ -13,10 +13,13 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from standardphysics_contracts import Finding, MeasurementProvider, Scenario, SceneGraph
+from standardphysics_contracts.precedents import PrecedentDirective, SpaceTypology
 from standardphysics_contracts.rules import Tier
 from standardphysics_pipeline import PipelineMeasurements
 
 from ..assess import Pass, assess
+from ..fix.search import CandidateRejection
+from ..precedents import directives_for_space, rejection_for_space
 from ..rules import AgentRulePack, VerificationLedger, load_ledger, load_pack
 
 UNSURE_QUALITY = "needs_another_look"
@@ -46,6 +49,17 @@ class TrainingChecker:
     """Pieces the phantom filter holds still; moving one scores zero."""
     owner_layout: SceneGraph | None = None
     """The room as its owner has it, before any scramble, for judging how a layout looks."""
+    space_typology: SpaceTypology | None = None
+    """What kind of space this is. No ADA layout directive applies without it."""
+    directives: list[PrecedentDirective] | None = None
+    """The directives to hold layouts to; None means the ones a person has verified."""
+
+    def directive_rejection(self, graph: SceneGraph) -> CandidateRejection | None:
+        """The veto of every directive that applies to this room, or None."""
+        return rejection_for_space(self.space_typology, graph, self.directives)
+
+    def directives_for(self, graph: SceneGraph) -> list[PrecedentDirective]:
+        return directives_for_space(self.space_typology, graph, self.directives)
 
     def assess(self, graph: SceneGraph) -> Pass:
         return assess(

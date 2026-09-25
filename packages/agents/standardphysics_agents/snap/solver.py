@@ -32,8 +32,7 @@ from standardphysics_pipeline import footprint, gap_between
 
 from ..fix import apply_moves, violations
 from ..fix.constraints import OVERLAP_TOLERANCE
-from ..training.quality import seat_table_pairs
-from .facing import is_seat, is_surface, settled_yaw
+from .facing import is_seat, is_surface, served_surface, settled_yaw
 
 SEARCH_RADIUS_METERS = 0.9
 RING_STEP_METERS = 0.05
@@ -114,12 +113,23 @@ def _order(graph: SceneGraph, moves: list[NodeMove]) -> list[NodeMove]:
     return sorted(moves, key=rank)
 
 
+def seat_pairs(graph: SceneGraph) -> list[tuple[UUID, UUID]]:
+    """(seat, surface) for every movable seat sitting at a surface."""
+    pairs = []
+    for node in graph.nodes:
+        if node.movable and node.kind == "object" and is_seat(node):
+            surface = served_surface(_xy(node), graph, node.id)
+            if surface is not None:
+                pairs.append((node.id, surface.id))
+    return pairs
+
+
 def with_carried_seats(graph: SceneGraph, moves: list[NodeMove]) -> list[NodeMove]:
     """The requested moves plus a matching slide for each seat of a moved table the model left alone."""
     asked = {move.node_id: move for move in moves}
     carried = [
         NodeMove(node_id=seat, delta_translation=asked[table].delta_translation)
-        for seat, table in seat_table_pairs(graph)
+        for seat, table in seat_pairs(graph)
         if table in asked and seat not in asked
     ]
     return _order(graph, [*moves, *carried])

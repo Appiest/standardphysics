@@ -54,14 +54,32 @@ def test_unparseable_and_fixed_and_noop_answers_score_zero(graph, scenario, pipe
         assert verdict.reward == 0.0 and not verdict.gate_accepts
 
 
-def test_collision_breaks_a_hard_constraint(graph, scenario, pipeline, pack, ledger):
+def test_a_request_into_the_counter_is_snapped_to_legal_and_never_scored_as_a_collision(
+    graph, scenario, pipeline, pack, ledger
+):
     checker = checker_for(scenario, pipeline, pack, ledger)
     table = graph.by_id(node_id("table_1")).transform.position
     counter = graph.by_id(node_id("counter")).transform.position
     into = '{"moves":[{"node_id":"%s","dx":%f,"dy":%f,"rotation_degrees":0}]}' % (
         node_id("table_1"), counter.x - table.x, counter.y - table.y)
     verdict = score_completion(into, graph, checker)
-    assert verdict.parsed and not verdict.hard_constraints_pass and verdict.reward == 0.0
+    assert verdict.parsed and "collided" not in verdict.reason
+    assert verdict.hard_constraints_pass or verdict.reason == "no_legal_spot_for_any_move"
+
+
+def test_moving_a_fixed_piece_scores_nothing(graph, scenario, pipeline, pack, ledger):
+    checker = checker_for(scenario, pipeline, pack, ledger)
+    answer = '{"moves":[{"node_id":"%s","dx":0.3,"dy":0,"rotation_degrees":0}]}' % node_id("counter")
+    verdict = score_completion(answer, graph, checker)
+    assert verdict.reward == 0.0 and verdict.reason == "moved_fixed_object"
+
+
+def test_moving_more_always_costs_more():
+    assert shaped_reward(0.5, False, 6.0) > shaped_reward(0.5, False, 9.0)
+
+
+def test_leaning_on_the_solver_costs_something():
+    assert shaped_reward(0.5, False, 1.0, snapped=0.0) > shaped_reward(0.5, False, 1.0, snapped=0.5)
 
 
 def test_shaped_reward_rewards_recovery_and_charges_disruption():

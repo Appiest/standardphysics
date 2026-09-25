@@ -8,7 +8,7 @@ import pytest
 from standardphysics_agents.checks.questions import scan_cannot_see
 from standardphysics_agents.fix import apply_moves, violations
 from standardphysics_agents.snap import facing_error_degrees, snap
-from standardphysics_agents.training import TrainingChecker
+from standardphysics_agents.training import TrainingChecker, score_completion
 from standardphysics_agents.training.usefulness import usefulness
 from standardphysics_contracts import Mat4, NodeMove, SceneGraph, SceneNode, Vec3
 from standardphysics_fixtures import build_graph, build_scenario
@@ -129,3 +129,72 @@ def test_a_seat_s_front_is_its_local_minus_y_side():
     graph = SceneGraph(scan_id=uuid.uuid5(NAMESPACE, "g"), nodes=[table, south])
     assert facing_error_degrees(south, graph) == pytest.approx(0.0, abs=1e-6)
     assert _yaw(south) == pytest.approx(180.0)
+
+
+def _answer(*moves) -> str:
+    items = ",".join('{"node_id":"%s","dx":%s,"dy":%s,"rotation_degrees":%s}' % move for move in moves)
+    return '{"moves":[%s]}' % items
+
+
+FIX_THE_PINCH = (node_id("case_east"), 0.13, 0, 0)
+
+
+def _checker(**kwargs) -> TrainingChecker:
+    return TrainingChecker(build_scenario(), owner_layout=build_graph(), **kwargs)
+
+
+def test_the_honest_fix_is_paid():
+    verdict = score_completion(_answer(FIX_THE_PINCH), build_graph(), _checker())
+    assert verdict.gate_accepts and verdict.reward > 0.5
+
+
+@pytest.mark.parametrize("answer, reason", [
+    ("not json", "unparseable"),
+    ('{"moves":[]}', "no_supported_furniture_move"),
+    (_answer(FIX_THE_PINCH, FIX_THE_PINCH), "duplicate_objects"),
+    (_answer((uuid.uuid4(), 0.2, 0, 0)), "unknown_objects"),
+    (_answer((node_id("case_east"), 0, 0, 0)), "no_op_moves"),
+    (_answer((node_id("counter"), 0.2, 0, 0)), "moved_fixed_object"),
+])
+def test_the_obvious_tricks_score_nothing(answer, reason):
+    verdict = score_completion(answer, build_graph(), _checker())
+    assert verdict.reward == 0.0 and verdict.reason == reason
+
+
+def test_asking_to_turn_a_chair_away_leaves_it_facing_its_table():
+    graph = snap(build_graph(), [_move(n.id, turn=1.0) for n in build_graph().nodes if n.label == "Chair"]).graph
+    chair = next(n for n in graph.nodes if n.label == "Chair")
+    trick = _answer(FIX_THE_PINCH, (chair.id, 0, 0, 180))
+    verdict = score_completion(trick, graph, TrainingChecker(build_scenario(), owner_layout=graph))
+    assert verdict.usefulness["seats_facing"] == 1.0
+
+
+def _shop_with_shelf() -> SceneGraph:
+    shelf = _yaw_node("shelf", "object", "Shelving unit", "storage", (-2.75, -1.1, 0.9), (0.9, 0.4, 1.8),
+                      heading=90.0, movable=True)
+    graph = build_graph()
+    return graph.model_copy(update={"nodes": [*graph.nodes, shelf]})
+
+
+def test_fixing_the_pinch_while_parking_a_table_in_front_of_a_shelf_scores_nothing():
+    graph = _shop_with_shelf()
+    checker = TrainingChecker(build_scenario(), owner_layout=graph)
+    assert score_completion(_answer(FIX_THE_PINCH), graph, checker).gate_accepts
+    trick = _answer(FIX_THE_PINCH, (node_id("table_3"), -0.1, 1.25, 0))
+    verdict = score_completion(trick, graph, checker)
+    assert verdict.reward == 0.0 and verdict.reason == "less_useful:fronts_clear"
+
+
+def test_a_layout_a_directive_refuses_scores_nothing():
+    checker = _checker()
+    checker.directive_rejection = lambda graph: (lambda base, candidate: "precedent_violation:kept_the_aisle")
+    verdict = score_completion(_answer(FIX_THE_PINCH), build_graph(), checker)
+    assert verdict.reward == 0.0 and verdict.reason.startswith("precedent_violation")
+
+
+def test_moving_everything_a_little_is_not_free():
+    graph = build_graph()
+    others = [(n.id, 0.05, 0.05, 0) for n in graph.nodes if n.movable and n.label == "Table"]
+    honest = score_completion(_answer(FIX_THE_PINCH), graph, _checker())
+    busy = score_completion(_answer(FIX_THE_PINCH, *others), graph, _checker())
+    assert busy.reward < honest.reward
