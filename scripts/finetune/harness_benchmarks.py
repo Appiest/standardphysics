@@ -24,6 +24,7 @@ import json
 import pathlib
 from collections import defaultdict
 
+from arkit_dataset import ARKIT_HELDOUT
 from multiroom_data import checker_for
 from standardphysics_agents.fix import apply_moves, violations
 from standardphysics_agents.snap import facing_error_degrees
@@ -41,7 +42,9 @@ def _rows(path: pathlib.Path) -> list[dict]:
 
 
 def source_of(window_id: str) -> str:
-    return "generated" if window_id.startswith(HELDOUT_PREFIX) else "real"
+    if window_id.startswith(ARKIT_HELDOUT):
+        return "arkit homes"
+    return "generated" if window_id.startswith(HELDOUT_PREFIX) else "real scans"
 
 
 def raw_checks(completion: str, graph: SceneGraph) -> tuple[bool | None, list[bool]]:
