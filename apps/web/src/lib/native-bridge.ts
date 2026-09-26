@@ -13,7 +13,8 @@ export type AppMessage =
   | { type: "saveReport" }
   | { type: "share"; url: string; title: string }
   | { type: "openLink"; url: string }
-  | { type: "stageChanged"; scanId: string; stage: string };
+  | { type: "stageChanged"; scanId: string; stage: string }
+  | { type: "shopDeleted"; scanId: string };
 
 type Handler = { postMessage: (body: unknown) => void };
 type WithWebkit = { webkit?: { messageHandlers?: Record<string, Handler | undefined> } };

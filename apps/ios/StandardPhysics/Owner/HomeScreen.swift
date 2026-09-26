@@ -7,6 +7,7 @@ import SwiftUI
 /// too. A scan saved here and never uploaded is listed until it is.
 struct HomeScreen: View {
     @ObservedObject var model: AppModel
+    @State private var shopToDelete: Journey?
 
     private var primary: Journey? { model.journeys.first }
     private var otherShops: [Journey] { Array(model.journeys.dropFirst()) }
@@ -27,7 +28,9 @@ struct HomeScreen: View {
                 DraftingPaper()
                 List {
                     header
-                    if !otherShops.isEmpty { OtherShopsSection(journeys: otherShops, open: model.open) }
+                    if !otherShops.isEmpty {
+                        OtherShopsSection(journeys: otherShops, open: model.open, delete: { shopToDelete = $0 })
+                    }
                     if !phoneOnlyScans.isEmpty {
                         SavedScansSection(
                             scans: phoneOnlyScans,
@@ -57,6 +60,19 @@ struct HomeScreen: View {
                 .refreshable { await model.refreshJourneys() }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .confirmationDialog(
+                "Delete this shop?",
+                isPresented: .init(get: { shopToDelete != nil }, set: { if !$0 { shopToDelete = nil } }),
+                titleVisibility: .visible,
+                presenting: shopToDelete
+            ) { journey in
+                Button("Delete \(journey.shopName)", role: .destructive) {
+                    Task { await model.deleteShop(journey) }
+                }
+                Button("Keep it", role: .cancel) {}
+            } message: { _ in
+                Text("The room, the walkthrough and the findings all go with it.")
+            }
             .task { await model.refreshSavedScanStates() }
             .task { await model.refreshJourneys() }
         }
@@ -72,6 +88,7 @@ struct HomeScreen: View {
                 .accessibilityAddTraits(.isHeader)
             if let primary {
                 NextStepCard(journey: primary) { model.open(primary) }
+                    .contextMenu { DeleteShopButton { shopToDelete = primary } }
             } else if !model.journeysLoaded {
                 ProgressView()
                     .tint(AppTheme.accent)
@@ -171,9 +188,21 @@ enum NextStepMark {
     }
 }
 
+/// The destructive action on a shop, the same in its swipe and its long-press menu.
+private struct DeleteShopButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(role: .destructive, action: action) {
+            Label("Delete this shop", systemImage: "trash")
+        }
+    }
+}
+
 private struct OtherShopsSection: View {
     let journeys: [Journey]
     let open: (Journey) -> Void
+    let delete: (Journey) -> Void
 
     var body: some View {
         Section {
@@ -202,6 +231,11 @@ private struct OtherShopsSection: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contextMenu { DeleteShopButton { delete(journey) } }
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    DeleteShopButton { delete(journey) }
+                        .labelStyle(.iconOnly)
+                }
                 .listRowBackground(AppTheme.panel)
                 .listRowSeparatorTint(AppTheme.rule)
                 .listRowInsets(EdgeInsets(

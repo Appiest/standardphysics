@@ -46,6 +46,7 @@ enum WebBridgeMessage: Equatable {
     case share(url: URL, title: String)
     case openLink(URL)
     case stageChanged(scanID: UUID?, stage: String)
+    case shopDeleted(scanID: UUID)
 
     static let handlerName = "standardPhysics"
 
@@ -70,6 +71,9 @@ enum WebBridgeMessage: Equatable {
         "stageChanged": { fields in
             guard let stage = fields["stage"] as? String else { return nil }
             return .stageChanged(scanID: (fields["scanId"] as? String).flatMap(UUID.init(uuidString:)), stage: stage)
+        },
+        "shopDeleted": { fields in
+            (fields["scanId"] as? String).flatMap(UUID.init(uuidString:)).map { .shopDeleted(scanID: $0) }
         },
     ]
 
@@ -111,6 +115,7 @@ final class WebBridge {
         case .share(let url, let title): share(url, title: title, from: webView)
         case .openLink(let url): UIApplication.shared.open(url)
         case .stageChanged: Task { await app?.refreshJourneys() }
+        case .shopDeleted(let scanID): Task { await app?.shopDeletedOnTheWeb(scanID) }
         }
     }
 

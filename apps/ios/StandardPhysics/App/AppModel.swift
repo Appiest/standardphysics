@@ -396,6 +396,38 @@ final class AppModel: ObservableObject {
         await refreshJourneys()
     }
 
+    /// Deletes a shop from the account, and this phone's copy of its walk
+    /// with it. A shop still being measured is taken off the list at once and
+    /// removed on the server when its measuring stops.
+    func deleteShop(_ journey: Journey) async {
+        guard let baseURL = AppEnvironment.apiBaseURL else { return }
+        do {
+            try await ScanUploadClient(baseURL: baseURL, token: session.token).delete(id: journey.scanID)
+        } catch {
+            deletionMessage = "That shop could not be deleted. Check your connection and try again."
+            return
+        }
+        deletionMessage = nil
+        await forgetShop(journey.scanID)
+    }
+
+    /// The owner deleted a shop on its web page: drop this phone's copy of it
+    /// and go back home.
+    func shopDeletedOnTheWeb(_ scanID: UUID) async {
+        await forgetShop(scanID)
+        screen = .home
+    }
+
+    private func forgetShop(_ scanID: UUID) async {
+        for scan in savedScans where ResumableUploadStore(captureDirectory: scan.directory).scanID == scanID {
+            uploads[scan.id] = nil
+            try? CaptureLibrary.remove(scan)
+        }
+        savedScans = CaptureLibrary.all()
+        journeys.removeAll { $0.scanID == scanID }
+        await refreshJourneys()
+    }
+
     func recoverSavedRoom(_ directory: URL) async {
         recoveryMessage = "Saving your room"
         let result = await Task.detached(priority: .userInitiated) {
