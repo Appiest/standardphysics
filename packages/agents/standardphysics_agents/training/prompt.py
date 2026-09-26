@@ -26,7 +26,7 @@ from ..fix.moves import measured_position
 from ..redesign import INSTRUCTION
 from .catalog import CATALOG
 from .checker import Scope, TrainingChecker
-from .construction import MAX_FIXTURE_MOVE_INCHES, MAX_WALL_SHIFT_INCHES, fixture_ids, floor_edges
+from .construction import MAX_FIXTURE_MOVE_INCHES, MAX_WALL_SHIFT_INCHES, fixture_ids, walled_edges
 from .edits import yaw_degrees
 from .fittings import MAX_SECTION_INCHES, MIN_SECTION_INCHES, height_range, use_of
 
@@ -184,7 +184,7 @@ def room_view(graph: SceneGraph, scenario: Scenario, problems: list[Finding], sc
         "problems": [_problem(finding, graph) for finding in problems],
         "walls_you_can_move": [
             {"side": edge.side, "outward": [_r(edge.outward[0]), _r(edge.outward[1])], "edge": edge.segment()}
-            for edge in floor_edges(graph)
+            for edge in walled_edges(graph)
         ],
         **(fittings_view(graph) if scope == "fittings" else {}),
     }

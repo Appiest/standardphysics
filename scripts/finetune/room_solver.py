@@ -35,7 +35,7 @@ from standardphysics_agents.training.construction import (
     FixtureMove,
     WallShift,
     fixture_ids,
-    floor_edges,
+    walled_edges,
 )
 from standardphysics_agents.training.edits import TrainingEdits, built_room, combined, edits_between, edits_json
 from standardphysics_agents.training.prices import construction_price
@@ -160,7 +160,10 @@ class _Push:
                                                  dy_inches=round(push[1] * inches, 1))
             return True
         if node.kind == "wall" and inches <= MAX_WALL_SHIFT_INCHES:
-            edge = max(floor_edges(graph), key=lambda e: e.outward[0] * push[0] + e.outward[1] * push[1])
+            edges = walled_edges(graph)
+            if not edges:
+                return False
+            edge = max(edges, key=lambda e: e.outward[0] * push[0] + e.outward[1] * push[1])
             self.shifts[edge.side] = max(self.shifts.get(edge.side, 0.0), math.ceil(inches))
             return True
         return False
@@ -310,7 +313,7 @@ def _layout_construction(graph: SceneGraph, checker, rejected: Counter) -> list[
     options.extend(_circle_options(graph, checker, rejected))
     if not any(option.clears for option in options):
         options.extend(_fixture_options(graph, checker, rejected))
-    for edge in floor_edges(graph):
+    for edge in walled_edges(graph):
         if time.monotonic() > deadline or any(option.clears for option in options):
             break
         widest = _attempt(graph, checker, [WallShift(side=edge.side, inches=MAX_WALL_SHIFT_INCHES)], rejected)

@@ -11,12 +11,14 @@ from standardphysics_agents.training.construction import (
     floor_edges,
     move_fixtures,
     shift_walls,
+    walled_edges,
 )
 from standardphysics_agents.training.edits import edit_complaint, edits_json, parse_edits
 from standardphysics_agents.training.prices import wall_shift_price
 from standardphysics_agents.training.prompt import _wall, room_view
 from standardphysics_agents.training.reward import shaped_reward
-from standardphysics_contracts import Mat4, SceneNode, Vec3, to_meters
+from standardphysics_contracts import Mat4, SceneNode, Vec3, lies_flat, to_meters
+from standardphysics_pipeline.occupancy import reads_as_wall
 
 SHIFT = WallShift(side="x+", inches=12)
 
@@ -118,3 +120,11 @@ def test_exterior_walls_are_not_fixtures():
 def test_construction_inches_count_fixture_slides():
     move = FixtureMove(node_id="00000000-0000-0000-0000-000000000002", dx_inches=3, dy_inches=4)
     assert construction_inches([WallShift(side="x-", inches=2)], [move]) == 7.0
+
+
+def test_a_room_cut_from_a_larger_scan_has_no_wall_to_shift():
+    graph = shop()
+    open_floor = graph.model_copy(update={"nodes": [n for n in graph.nodes if not reads_as_wall(n) or lies_flat(n)]})
+    assert walled_edges(graph) and walled_edges(open_floor) == []
+    with pytest.raises(ValueError):
+        shift_walls(open_floor, [SHIFT])
