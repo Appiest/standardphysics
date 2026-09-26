@@ -57,9 +57,17 @@ final class AppModel: ObservableObject {
         session.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &subscriptions)
+        session.$credentialChanges
+            .dropFirst()
+            .sink { [weak self] _ in Task { @MainActor in self?.handOverUploads() } }
+            .store(in: &subscriptions)
         NotificationCenter.default.publisher(for: PushRegistration.deviceTokenArrived)
             .compactMap { $0.object as? String }
             .sink { [weak self] token in Task { await self?.registerDevice(token) } }
+            .store(in: &subscriptions)
+        NotificationCenter.default.publisher(for: PushRegistration.shopOpened)
+            .compactMap { $0.object as? UUID }
+            .sink { [weak self] scanID in self?.openShop(scanID) }
             .store(in: &subscriptions)
 #if DEBUG
         if DebugLaunch.apply(to: self) { return }
@@ -87,7 +95,7 @@ final class AppModel: ObservableObject {
         await refreshSession()
         if canScan, !session.isSignedIn { try? await session.startGuest() }
         await refreshJourneys()
-        if case .welcome = screen, !journeys.isEmpty { screen = .home }
+        if isOnFirstScreen, !journeys.isEmpty { screen = .home }
         PushRegistration.registerIfAllowed()
     }
 
@@ -126,12 +134,23 @@ final class AppModel: ObservableObject {
         journeysLoaded = true
     }
 
+    private var isOnFirstScreen: Bool {
+        switch screen {
+        case .welcome, .unsupported: true
+        default: false
+        }
+    }
+
+    /// After a sign-in the account's shops decide where home is, so they are
+    /// read before leaving the sign-in screen.
     func didSignIn() {
         enforceDeveloperModeRole()
         PushRegistration.registerIfAllowed()
-        Task { await refreshJourneys() }
         guard let pending = pendingUpload else {
-            showStart()
+            Task {
+                await refreshJourneys()
+                showStart()
+            }
             return
         }
         pendingUpload = nil
@@ -193,6 +212,14 @@ final class AppModel: ObservableObject {
         FirstRun.hasStartedAShop = false
         accountDeletionMessage = nil
         screen = canScan ? .welcome : .unsupported
+    }
+
+    /// Moves every running upload to the session the phone holds now.
+    private func handOverUploads() {
+        guard let baseURL = AppEnvironment.apiBaseURL, let token = session.token else { return }
+        for upload in uploads.values {
+            upload.resume(with: ScanUploadClient(baseURL: baseURL, token: token))
+        }
     }
 
     func registerDevice(_ deviceToken: String) async {

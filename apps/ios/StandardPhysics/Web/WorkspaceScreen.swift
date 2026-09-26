@@ -152,6 +152,9 @@ struct WorkspaceWebView: UIViewRepresentable {
             if url.scheme?.lowercased() == "https" {
                 properties[.secure] = "TRUE"
             }
+            // As the API sets it: the page's own scripts never read the token.
+            properties[HTTPCookiePropertyKey("HttpOnly")] = "TRUE"
+            properties[.sameSitePolicy] = HTTPCookieStringPolicy.sameSiteLax.rawValue
             return HTTPCookie(properties: properties)
         }
 

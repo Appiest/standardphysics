@@ -71,6 +71,9 @@ final class SessionStore: ObservableObject {
     }
 
     @Published private(set) var owner: Owner?
+    /// Goes up whenever this phone's token changes, so work already running
+    /// under the old one can move to the new one.
+    @Published private(set) var credentialChanges = 0
 
     private let service = "app.standardphysics.session"
     private let session: URLSession
@@ -163,7 +166,18 @@ final class SessionStore: ObservableObject {
         Keychain.write(bearer, service: service, account: account)
         storedOwner = signedIn
         owner = signedIn
+        credentialChanges += 1
     }
+
+#if DEBUG
+    /// Signs this phone in with a token made elsewhere, so a Debug build can
+    /// open a real shop's screens without typing on the simulator.
+    func adoptForDebugging(token: String) {
+        guard let account = accountKey else { return }
+        Keychain.write(token, service: service, account: account)
+        Task { await refresh() }
+    }
+#endif
 
     /// Asks the server who this token belongs to now.
     ///
@@ -211,6 +225,7 @@ final class SessionStore: ObservableObject {
         if let account = accountKey { Keychain.delete(service: service, account: account) }
         storedOwner = nil
         owner = nil
+        credentialChanges += 1
     }
 
     /// Called when the upload address changes: a token for one server is

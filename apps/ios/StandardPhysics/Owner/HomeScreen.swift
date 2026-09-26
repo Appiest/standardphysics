@@ -127,7 +127,7 @@ struct NextStepCard: View {
                     .foregroundStyle(AppTheme.ink)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "chevron.right")
                     .font(.headline)
                     .foregroundStyle(AppTheme.faintInk)

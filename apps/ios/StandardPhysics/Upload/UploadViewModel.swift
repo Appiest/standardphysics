@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 @MainActor
 final class UploadViewModel: ObservableObject {
@@ -22,7 +23,7 @@ final class UploadViewModel: ObservableObject {
 
     let scan: CapturedScan
     let name: String
-    private let client: ScanUploadClient
+    private var client: ScanUploadClient
     private let pollInterval: Duration
     private var uploadStore: ResumableUploadStore
     private var task: Task<Void, Never>?
@@ -84,6 +85,26 @@ final class UploadViewModel: ObservableObject {
         beginRun(mode: .full(replacingFailedRemote: replacingFailedRemote))
     }
 
+    /// The account changed under this upload, like a guest signing in to an
+    /// account the server then moved the shop into. The guest's session can
+    /// no longer reach the scan, so the upload carries on with the new one
+    /// from the artifact it had reached, and never starts a second scan.
+    func resume(with client: ScanUploadClient) {
+        self.client = client
+        guard task != nil || needsSignIn else { return }
+        cancel()
+        if needsSignIn {
+            needsSignIn = false
+            errorMessage = nil
+            state = uploadStore.lastServerState ?? .uploading
+        }
+        if state == .ready {
+            if pendingOptionalUploadCount > 0 { beginRun(mode: .optionalOnly) }
+            return
+        }
+        beginRun(mode: .full(replacingFailedRemote: false))
+    }
+
     func cancel() {
         activeRunID = nil
         task?.cancel()
@@ -94,7 +115,9 @@ final class UploadViewModel: ObservableObject {
         let runID = UUID()
         activeRunID = runID
         task = Task { [weak self] in
+            let grace = BackgroundGrace(named: "Sending your walk")
             await self?.run(runID: runID, mode: mode)
+            grace.end()
         }
     }
 
@@ -311,4 +334,25 @@ final class UploadViewModel: ObservableObject {
 
 enum UploadViewModelError: Error {
     case missingCoreArtifact(ArtifactKind)
+}
+
+/// The extra time iOS gives an app that has just been left, asked for while
+/// an upload runs so a walk half sent when the owner locks the phone gets
+/// its last artifacts up. It is seconds, not minutes: a walk left in the
+/// background longer finishes the next time the app is open.
+@MainActor
+final class BackgroundGrace {
+    private var identifier = UIBackgroundTaskIdentifier.invalid
+
+    init(named name: String) {
+        identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+            MainActor.assumeIsolated { self?.end() }
+        }
+    }
+
+    func end() {
+        guard identifier != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(identifier)
+        identifier = .invalid
+    }
 }
