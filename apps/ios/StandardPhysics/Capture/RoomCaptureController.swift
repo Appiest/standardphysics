@@ -45,6 +45,9 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
         view.addSubview(captureView)
         self.captureView = captureView
         recorder.onTimeLimit = { [weak self] in self?.store?.finish() }
+        recorder.onTimeWarning = { [weak self] in
+            self?.store?.didReachTimeWarning(secondsLeft: FrameRecorder.timeWarningLead)
+        }
         recorder.onObservation = { [weak self] frame in self?.observe(frame) }
         self.recorder = recorder
         detailRecorder = LidarMeshRecorder(

@@ -63,6 +63,7 @@
 		F0BBA90A344EE46F6F912FDE /* LidarMeshRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B07A989AF5FC994A8CD0AAA /* LidarMeshRecorder.swift */; };
 		F29735B46B915B98C96C7A13 /* ConnectionScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BC02FEB13501BED123058EA /* ConnectionScreen.swift */; };
 		F7E34F881A324ECD9B4E8003 /* UploadViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59A92436F4F383797A4976A8 /* UploadViewModel.swift */; };
+		F84A8C916240724958224D22 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580A469595355055D93921C9 /* Haptics.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -97,6 +98,7 @@
 		46525BF5D2C5213EB7FED758 /* SceneCaptureConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneCaptureConfiguration.swift; sourceTree = "<group>"; };
 		52376FEBBD4E599CC43E78B9 /* ScanObjectLocatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanObjectLocatorTests.swift; sourceTree = "<group>"; };
 		5281D7312D6F754DBC7B8377 /* ScanExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanExportTests.swift; sourceTree = "<group>"; };
+		580A469595355055D93921C9 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
 		59A92436F4F383797A4976A8 /* UploadViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadViewModel.swift; sourceTree = "<group>"; };
 		6510F54E3E72FFD41662E47A /* ReviewScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewScreen.swift; sourceTree = "<group>"; };
 		67DB51144E0AB741AE3E13F8 /* ScanExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanExporter.swift; sourceTree = "<group>"; };
@@ -266,6 +268,7 @@
 				0BC02FEB13501BED123058EA /* ConnectionScreen.swift */,
 				EA840C54A8F2B5F2D2C05A81 /* DeveloperMode.swift */,
 				AFCDE194CA8E81C8F043EE76 /* DraftingPaper.swift */,
+				580A469595355055D93921C9 /* Haptics.swift */,
 				7670F5B1251C2FB1FDB73F09 /* SessionStore.swift */,
 				CCB174918D63F6BD96B3249F /* SignInScreen.swift */,
 				4600DB3A7BEEAEF3F23ADC57 /* StandardPhysicsApp.swift */,
@@ -424,6 +427,7 @@
 				74B8D022B80681B7D64A029C /* DeveloperMode.swift in Sources */,
 				837EBEDE2B395F2129F29D8A /* DraftingPaper.swift in Sources */,
 				29D2538D10668801A37E448A /* FrameRecorder.swift in Sources */,
+				F84A8C916240724958224D22 /* Haptics.swift in Sources */,
 				452AAD37D7369A834D52CCA5 /* KeyframeBook.swift in Sources */,
 				F0BBA90A344EE46F6F912FDE /* LidarMeshRecorder.swift in Sources */,
 				882F93342D510E45AE98BDF1 /* PaintedCoverageView.swift in Sources */,

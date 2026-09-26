@@ -130,7 +130,10 @@ extension Color {
 }
 
 struct AppButtonStyle: ButtonStyle {
-    enum Variant { case primary, secondary, destructive, capture }
+    /// `capture` sits on the live camera. `captureFinish` is the same control
+    /// once the walk has enough: white, so it reads as the next thing to tap
+    /// against any room behind it.
+    enum Variant { case primary, secondary, destructive, capture, captureFinish }
     let variant: Variant
     @Environment(\.isEnabled) private var isEnabled
 
@@ -153,7 +156,7 @@ struct AppButtonStyle: ButtonStyle {
     /// action sits on the same quiet surface as any other secondary control.
     private var label: Color {
         switch variant {
-        case .secondary: AppTheme.ink
+        case .secondary, .captureFinish: AppTheme.ink
         case .destructive: AppTheme.problem
         case .primary, .capture: AppTheme.onDark
         }
@@ -164,6 +167,7 @@ struct AppButtonStyle: ButtonStyle {
         case .primary: pressed ? AppTheme.ink.opacity(0.78) : AppTheme.ink
         case .secondary, .destructive: pressed ? AppTheme.secondaryPressed : AppTheme.secondaryIdle
         case .capture: pressed ? AppTheme.captureProgress : AppTheme.captureChrome
+        case .captureFinish: pressed ? AppTheme.rule : AppTheme.onDark
         }
     }
 }
