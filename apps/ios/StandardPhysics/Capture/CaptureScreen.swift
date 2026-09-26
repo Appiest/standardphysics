@@ -3,8 +3,15 @@ import simd
 
 struct CaptureScreen: View {
     @ObservedObject var model: AppModel
-    @StateObject private var capture = CaptureSessionStore()
+    @StateObject private var capture: CaptureSessionStore
     @Environment(\.scenePhase) private var scenePhase
+    private let isPreview: Bool
+
+    init(model: AppModel, preview: CaptureSessionStore? = nil) {
+        self.model = model
+        _capture = StateObject(wrappedValue: preview ?? CaptureSessionStore())
+        isPreview = preview != nil
+    }
 
     /// The room paints itself in, so the arrow, the map and the tally all go:
     /// an unpainted wall says where to walk and how much is left at once.
@@ -12,7 +19,11 @@ struct CaptureScreen: View {
 
     var body: some View {
         ZStack {
-            RoomCaptureContainer(store: capture).ignoresSafeArea()
+            if isPreview {
+                CameraStandIn().ignoresSafeArea()
+            } else {
+                RoomCaptureContainer(store: capture).ignoresSafeArea()
+            }
             LinearGradient(
                 colors: [AppTheme.captureScrimTop, AppTheme.transparent, AppTheme.captureScrimBottom],
                 startPoint: .top,
@@ -49,11 +60,11 @@ struct CaptureScreen: View {
         }
         .onChange(of: capture.phase) { _, phase in
             if phase == .ready, let scan = capture.capturedScan {
-                model.screen = .review(scan)
+                model.walkFinished(scan)
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { capture.finish() }
+            if phase != .active, !isPreview { capture.finish() }
         }
     }
 
@@ -96,7 +107,7 @@ struct CaptureScreen: View {
                     Button("Save again") { capture.retrySave() }
                         .buttonStyle(AppButtonStyle(.primary))
                 }
-                Button("Start a new scan") { model.showScanPrimer() }
+                Button("Start a new scan") { model.beginCapture() }
                     .buttonStyle(AppButtonStyle(.capture))
                 Button("Back to saved scans") { model.showStart() }
                     .buttonStyle(AppButtonStyle(.capture))
@@ -282,6 +293,19 @@ private struct MapBounds {
         return CGPoint(
             x: CGFloat((point.x - minX) / width) * size.width,
             y: CGFloat((point.y - minY) / height) * size.height
+        )
+    }
+}
+
+/// What sits behind the walk's controls in a Debug preview, where there is
+/// no camera: a dim room so the controls are judged against something like a
+/// real feed.
+private struct CameraStandIn: View {
+    var body: some View {
+        LinearGradient(
+            colors: [Color(hex: 0x6B6660), Color(hex: 0x3E3A36), Color(hex: 0x57524C)],
+            startPoint: .top,
+            endPoint: .bottom
         )
     }
 }

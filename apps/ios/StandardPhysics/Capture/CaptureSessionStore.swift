@@ -72,7 +72,8 @@ final class CaptureSessionStore: ObservableObject {
         instruction = currentInstruction(coverage: coverage, coaching: nil)
     }
 
-    static let timeWarningInstruction = "30 seconds left. Finish this wall, then tap Done."
+    /// The countdown beside it carries the seconds, so the words don't.
+    static let timeWarningInstruction = "Time is nearly up. Finish this wall, then tap Done."
 
     /// What the one line at the top says, in the order it matters: finished
     /// beats running out of time, which beats RoomPlan's own hints, which beat
@@ -103,6 +104,17 @@ final class CaptureSessionStore: ObservableObject {
     }
 
     func didRecordDetail() { hasDetailedGeometry = true }
+
+#if DEBUG
+    /// A walk in progress with made-up coverage, for `SP_DEBUG_SCREEN`.
+    func showForDebugging(coverage: CoverageSnapshot, surfaces: [SurfaceSnapshot], secondsLeft: TimeInterval?) {
+        phase = .scanning
+        self.coverage = coverage
+        self.surfaces = surfaces
+        timeLimit = secondsLeft.map { Date().addingTimeInterval($0) }
+        instruction = currentInstruction(coverage: coverage, coaching: nil)
+    }
+#endif
 
     func didFinish(_ scan: CapturedScan) {
         WalkHistory.hasWalked = true
