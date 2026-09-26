@@ -25,8 +25,14 @@ class FindingCopy:
 
 STOP_PHRASES = {
     "counter": "the counter",
-    "pickup": "where you pick up drinks",
+    "order": "the order counter",
+    "pickup": "the pickup spot",
+    "checkout": "the checkout",
+    "check in": "the check-in desk",
     "seat": "the seats",
+    "browse": "the shop floor",
+    "wait": "the waiting area",
+    "restroom": "the restroom",
     "exit": "the way out",
     "entrance": "the front door",
 }

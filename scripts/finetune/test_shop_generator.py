@@ -2,14 +2,16 @@ import functools
 import math
 
 import pytest
-from shop_generator import SHOP_TYPES, generate
+from shop_generator import FOOD_KINDS, SHOP_TYPES, generate
 from shop_geometry import Rect, outline
 from shop_restroom import turning_circle_fits
 from shop_shells import available_scans
 from standardphysics_agents.checks import roles
 from standardphysics_agents.fix.constraints import violations
+from standardphysics_agents.training import TrainingChecker
 from standardphysics_agents.training.quality import front_heading_degrees, wall_segments
 from standardphysics_contracts import SceneGraph, SceneNode
+from standardphysics_pipeline.measure import PipelineMeasurements
 
 COUNTER_LABELS = roles.SERVICE_COUNTER_LABELS | {"front desk", "reception desk"}
 """The integration branch adds the two desks to the checker's roles."""
@@ -159,6 +161,36 @@ def test_a_drawn_restroom_has_a_toilet_a_door_and_a_stop():
         if shop.name in ALWAYS_A_RESTROOM:
             assert doors, f"#{index} {shop.name}"
         assert [s.name for s in scenario.stops][-1] == "Exit"
+
+
+def test_pickup_stop_only_appears_for_quick_service_food_shops():
+    for index in ROOMS:
+        graph, scenario, shop = room(index)
+        pickup_stops = [stop for stop in scenario.stops if stop.name == "Pickup"]
+        assert bool(pickup_stops) == (shop.handoff_label is not None), shop.name
+        if shop.name not in FOOD_KINDS:
+            assert not pickup_stops, shop.name
+
+
+def test_every_leg_of_the_route_is_reachable():
+    measure = PipelineMeasurements()
+    for index in ROOMS:
+        graph, scenario, shop = room(index)
+        for leg in range(len(scenario.stops) - 1):
+            result = measure.route_clear_width(graph, scenario, leg)
+            origin, destination = scenario.stops[leg].name, scenario.stops[leg + 1].name
+            assert result.reachable, f"#{index} {shop.name}: {origin} -> {destination}"
+
+
+def test_findings_never_mention_drinks_for_a_non_food_business():
+    for index in ROOMS:
+        graph, scenario, shop = room(index)
+        if shop.name in FOOD_KINDS:
+            continue
+        findings = TrainingChecker(scenario, owner_layout=graph).assess(graph).findings
+        for finding in findings:
+            text = f"{finding.title} {finding.detail} {finding.fix or ''}".casefold()
+            assert "drink" not in text, f"#{index} {shop.name}: {finding.title}"
 
 
 def test_dining_rooms_mix_table_heights():
