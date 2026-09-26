@@ -1,0 +1,46 @@
+{
+  "objective": "Build a five-loop propose-check-revise benchmark and training path before any further paid fine-tuning.",
+  "spend_policy": "No paid training, deployment, or provider inference during implementation and offline verification.",
+  "tasks": [
+    {
+      "name": "benchmark",
+      "owner": "benchmark agent",
+      "status": "complete; integrated",
+      "files": "scripts/finetune/*results.py and *ceiling.py",
+      "proof": "12 scoped tests and Ruff pass; independent-shop CI requires explicit scan-to-shop map; historical raw data unavailable locally."
+    },
+    {
+      "name": "loop_evaluator",
+      "owner": "loop_eval agent",
+      "status": "complete; integrated",
+      "files": "scripts/finetune/evaluate_five_loop.py and tests",
+      "proof": "8 fake-sampler tests, Ruff and compileall pass; resumable JSONL; no provider calls."
+    },
+    {
+      "name": "training_data_reward",
+      "owner": "training agent",
+      "status": "complete; integrated",
+      "files": "training/reward.py and multiroom/synthetic data scripts",
+      "proof": "Train-only correction rows and reward ranking; 39 scoped tests and a real-checker two-step synthetic smoke passed; no bulk generation."
+    }
+  ],
+  "integration": {
+    "owner": "root",
+    "status": "complete; verified",
+    "checks": [
+      "focused tests passed",
+      "agents suite passed",
+      "focused mypy passed",
+      "Ruff complexity passed",
+      "syntax compilation passed",
+      "git diff --check passed"
+    ],
+    "proof": "35 focused tests and 906 agents tests passed; Ruff C90, compileall, focused mypy on seven files, and git diff --check passed. The existing serverless trainer has 14 pre-existing mypy errors and its training SDK is unavailable locally."
+  },
+  "model_tiers": {
+    "benchmark": "Luna",
+    "loop_evaluator": "Terra",
+    "training_data_reward": "Sol",
+    "integration": "Sol"
+  }
+}

@@ -8,8 +8,10 @@ import pathlib
 from collections import Counter
 
 from multiroom_data import _append, _rows, _write_json, checker_for, put_back_record
-from standardphysics_agents.fix import propose_fix
+from standardphysics_agents.fix import apply_moves, propose_fix
 from standardphysics_agents.training import edits_between, edits_json, score_completion
+from standardphysics_agents.training.edits import node_moves, parse_edits
+from standardphysics_agents.training.usability import usability
 from standardphysics_agents.training.windows import Window
 from standardphysics_contracts import SceneGraph
 
@@ -35,8 +37,19 @@ def _search(graph: SceneGraph, checker, limit: int, rounds: int) -> tuple[dict |
     edits = edits_between(graph, layout)
     if not edits.moves:
         return None, rejected
-    verdict = score_completion(edits_json(edits), graph, checker).as_dict()
+    completion = edits_json(edits)
+    verdict = score_completion(completion, graph, checker).as_dict()
+    if verdict["gate_accepts"]:
+        verdict["step_usability"] = _step_usability(graph, checker, completion)
     return verdict, rejected
+
+
+def _step_usability(graph: SceneGraph, checker, completion: str) -> float:
+    edits = parse_edits(completion)
+    if edits is None:
+        raise AssertionError("accepted edits did not parse")
+    candidate = apply_moves(graph, node_moves(edits))
+    return usability(graph, candidate, graph, checker.scenario)
 
 
 def _reason(graph, checker, rejections: Counter) -> str:
@@ -61,7 +74,10 @@ def _task(task: tuple[dict, dict]) -> dict:
     options = []
     put_back = put_back_record(graph, window.graph, checker)
     if put_back:
-        options.append(put_back["verdict"])
+        verdict = put_back["verdict"]
+        if verdict["gate_accepts"]:
+            verdict["step_usability"] = _step_usability(graph, checker, put_back["edits"])
+        options.append(verdict)
     wide, rejected = _search(graph, checker, 96, 8)
     if wide:
         options.append(wide)
@@ -69,7 +85,9 @@ def _task(task: tuple[dict, dict]) -> dict:
     best = max(accepted, key=lambda option: option["shortfall_recovered"], default=None)
     return {"variant_id": variant_row["variant_id"], "scan_id": variant_row["scan_id"],
             "fixable": bool(accepted), "best_shortfall_recovered": best["shortfall_recovered"] if best else 0,
-            "all_clear": best["fixable_left"] == 0 if best else False,
+            "all_clear": any(option["fixable_left"] == 0 for option in accepted),
+            "usable_all_clear": any(option["fixable_left"] == 0 and option.get("step_usability") == 1.0
+                                    for option in accepted),
             "reason": None if best else _reason(graph, checker, rejected),
             "baseline_fixable_findings": len(checker.fixable_problems(before)),
             "rejections": dict(rejected)}

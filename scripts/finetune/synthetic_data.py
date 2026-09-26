@@ -14,6 +14,7 @@ from multiroom_data import (
     _rows,
     _write_json,
     checker_for,
+    run_corrections,
     run_targets,
     target_quality,
 )
@@ -110,7 +111,7 @@ def run_dataset(run: pathlib.Path, real: pathlib.Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("stage", choices=("rooms", "scrambles", "targets", "dataset"))
+    parser.add_argument("stage", choices=("rooms", "scrambles", "targets", "dataset", "corrections"))
     parser.add_argument("--run", type=pathlib.Path, required=True)
     parser.add_argument("--real", type=pathlib.Path)
     parser.add_argument("--count", type=int, default=500)
@@ -123,6 +124,8 @@ def main() -> None:
         run_scrambles(args.run, args.workers)
     elif args.stage == "targets":
         run_targets(args.run, args.workers, Progress(args.run / "target_progress.json"))
+    elif args.stage == "corrections":
+        run_corrections(args.run, Progress(args.run / "corrections_progress.json"), args.workers)
     else:
         run_dataset(args.run, args.real)
 

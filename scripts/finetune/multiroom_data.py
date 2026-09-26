@@ -7,6 +7,8 @@ Stages, each resumable (a rerun skips every item already written):
     variants  scramble every window                         -> RUN/variants.jsonl
     targets   deterministic search on every variant         -> RUN/targets.jsonl
     split     held-out rooms by place, then prompt rows     -> RUN/dataset/*.jsonl, RUN/report.json
+    corrections  accepted one-step search traces -> RUN/dataset/corrections.jsonl
+    trace-corrections  checked training-room model traces -> RUN/dataset/corrections_from_trace.jsonl
     all       windows, variants, targets and split in order
 
 Progress is rewritten atomically to RUN/progress.json after every item.
@@ -28,7 +30,10 @@ import uuid
 import zlib
 from collections import Counter
 
+from standardphysics_agents.fix import apply_moves
 from standardphysics_agents.training import TrainingChecker, edits_between, edits_json, prompt_messages, scramble
+from standardphysics_agents.training.edits import node_moves, parse_edits
+from standardphysics_agents.training.feedback import feedback_message
 from standardphysics_agents.training.reward import score_completion
 from standardphysics_agents.training.rooms import build_window, plan_scan, whole_scan
 from standardphysics_agents.training.scans import export_scan, load_export, read_only, write_export
@@ -44,6 +49,7 @@ from standardphysics_agents.training.split import (
     split_report,
 )
 from standardphysics_agents.training.targets import searched_layout
+from standardphysics_agents.training.usability import usability
 from standardphysics_agents.training.windows import Window
 from standardphysics_contracts import SceneGraph, bounds_the_room
 
@@ -58,6 +64,7 @@ CONTAINED_SHARE = 0.9
 VARIANTS_PER_WINDOW = 8
 HELDOUT_SMALL_SCAN = "ravida"
 HELDOUT_BIG_SCAN_WINDOWS = 9
+MAX_CORRECTION_STEPS = 5
 
 
 def _write_json(path: pathlib.Path, value) -> None:
@@ -139,15 +146,15 @@ def run_export(database: pathlib.Path, run: pathlib.Path) -> None:
     finally:
         connection.close()
     directory = run / "exports"
-    log = {"scans": [], "skipped": skip_reasons(exports)}
+    scans: list[dict] = []
     for export in exports:
         path = write_export(directory, export)
-        log["scans"].append({"scan_id": export.scan_id, "name": export.name, "latest_revision": export.latest_revision,
-                             "nodes": len(export.latest["nodes"]), "bytes": path.stat().st_size,
-                             "duplicates_dropped": export.duplicates_dropped})
+        scans.append({"scan_id": export.scan_id, "name": export.name, "latest_revision": export.latest_revision,
+                      "nodes": len(export.latest["nodes"]), "bytes": path.stat().st_size,
+                      "duplicates_dropped": export.duplicates_dropped})
         _log(f"exported {export.name!r} r{export.latest_revision}: {len(export.latest['nodes'])} nodes, "
              f"{len(export.duplicates_dropped)} duplicate ids dropped")
-    _write_json(directory / "export_log.json", log)
+    _write_json(directory / "export_log.json", {"scans": scans, "skipped": skip_reasons(exports)})
 
 
 def _used_exports(run: pathlib.Path):
@@ -324,7 +331,7 @@ def room_record(window: Window) -> RoomRecord:
 def hold_out(rooms: list[RoomRecord], names: dict[str, str]) -> HoldOut:
     small = {sid for sid, name in names.items() if name == HELDOUT_SMALL_SCAN}
     per_scan = Counter(room.scan_id for room in rooms)
-    big = max(per_scan, key=per_scan.get)
+    big = max(per_scan, key=lambda scan: per_scan[scan])
     floor = pick_floor(rooms, big, HELDOUT_BIG_SCAN_WINDOWS)
     return HoldOut(scans=frozenset(small), floors=frozenset({(big, floor)} if floor else set()))
 
@@ -361,7 +368,7 @@ def _prompt_row(variant: dict, window: Window, target: dict | None) -> dict:
 
 def _dataset_rows(run: pathlib.Path, windows: dict[str, Window], splits: dict[str, str]) -> dict[str, list]:
     targets = {row["variant_id"]: row for row in _rows(run / "targets.jsonl")}
-    out = {"sft": [], "rl": [], "heldout": []}
+    out: dict[str, list[dict]] = {"sft": [], "rl": [], "heldout": []}
     for variant in _rows(run / "variants.jsonl"):
         if not variant["variant_id"] or variant["variant_id"] not in targets:
             continue
@@ -375,6 +382,175 @@ def _dataset_rows(run: pathlib.Path, windows: dict[str, Window], splits: dict[st
                 out["sft"].append({"messages": [*row["messages"], {"role": "assistant", "content": row["target"]}],
                                    "variant": row["variant"], "window": row["window"]})
     return out
+
+
+def correction_rows(variant: dict, window: Window, max_steps: int = MAX_CORRECTION_STEPS) -> list[dict]:
+    """SFT prefixes for accepted search moves and the checker feedback between them.
+
+    This checker trusts uncertain scan geometry for training; these labels are
+    not claims that a physical shop was measured or verified.
+    """
+    graph, checker = SceneGraph.model_validate(variant["graph"]), checker_for(window)
+    baseline = graph
+    messages = prompt_messages(graph, checker)
+    rows = []
+    for step in range(1, max_steps + 1):
+        edits = edits_between(graph, searched_layout(graph, checker, rounds=1))
+        if not edits.moves:
+            break
+        target = edits_json(edits)
+        verdict = score_completion(target, graph, checker)
+        if not verdict.gate_accepts:
+            break
+        candidate = apply_moves(graph, node_moves(edits))
+        step_usability = usability(graph, candidate, graph, checker.scenario)
+        baseline_usability = usability(baseline, candidate, baseline, checker.scenario)
+        answer = {"role": "assistant", "content": target}
+        rows.append({"messages": [*messages, answer], "variant": variant["variant_id"],
+                     "window": window.window_id, "step": step, "all_fixable_cleared": verdict.fixable_left == 0,
+                     "baseline_usability": baseline_usability, "checker_scope": "trusted_geometry"})
+        graph = candidate
+        if verdict.fixable_left == 0:
+            break
+        messages = [*messages, answer, feedback_message(
+            graph, checker, accepted=True, reason=verdict.reason, fixable_left=verdict.fixable_left,
+            parsed=verdict.parsed, hard_constraints_pass=verdict.hard_constraints_pass,
+            step_usability=step_usability, candidate_baseline_usability=baseline_usability,
+            current_baseline_usability=baseline_usability,
+        )]
+    return rows
+
+
+def _replay_trace_attempt(attempt: dict, graph: SceneGraph, baseline: SceneGraph,
+                          checker: TrainingChecker, current_usability: float) -> tuple[SceneGraph, dict, float]:
+    completion = attempt["completion"]
+    verdict = score_completion(completion, graph, checker)
+    if verdict.gate_accepts != attempt["accepted"]:
+        raise ValueError("Trace acceptance differs from checker")
+    step_usability = candidate_usability = None
+    if verdict.gate_accepts:
+        edits = parse_edits(completion)
+        candidate = apply_moves(graph, node_moves(edits))
+        step_usability = usability(graph, candidate, graph, checker.scenario)
+        candidate_usability = usability(baseline, candidate, baseline, checker.scenario)
+        graph, current_usability = candidate, candidate_usability
+    feedback = feedback_message(
+        graph, checker, accepted=verdict.gate_accepts, reason=verdict.reason,
+        fixable_left=len(checker.fixable_problems(checker.assess(graph))), parsed=verdict.parsed,
+        hard_constraints_pass=verdict.hard_constraints_pass, step_usability=step_usability,
+        candidate_baseline_usability=candidate_usability, current_baseline_usability=current_usability,
+    )
+    if json.loads(feedback["content"]) != attempt["feedback"]:
+        raise ValueError("Trace feedback differs from checker")
+    return graph, feedback, current_usability
+
+
+def _validate_trace_header(variant: dict, window: Window, trace: dict, checker: TrainingChecker,
+                           graph: SceneGraph) -> None:
+    expected = {"variant": variant["variant_id"], "window_id": window.window_id,
+                "scan_id": variant["scan_id"],
+                "baseline_fixable_left": len(checker.fixable_problems(checker.assess(graph)))}
+    if any(trace.get(key) != value for key, value in expected.items()):
+        raise ValueError(f"Trace room metadata does not match {variant['variant_id']}")
+    if len(trace["attempts"]) > MAX_CORRECTION_STEPS:
+        raise ValueError("Trace exceeds the five-attempt limit")
+
+
+def trace_correction_rows(variant: dict, window: Window, trace: dict) -> list[dict]:
+    """Pair actual train-room attempts with an accepted next move from search.
+
+    The recorded feedback is the exact user message the model saw. Replay
+    accepted moves through the checker so old or inconsistent traces fail fast.
+    """
+    graph, checker = SceneGraph.model_validate(variant["graph"]), checker_for(window)
+    _validate_trace_header(variant, window, trace, checker, graph)
+    baseline = graph
+    current_usability = 1.0
+    messages = prompt_messages(graph, checker)
+    rows = []
+    for index, attempt in enumerate(trace["attempts"][:MAX_CORRECTION_STEPS - 1], start=1):
+        if attempt["index"] != index:
+            raise ValueError("Trace attempts are out of order")
+        completion = attempt["completion"]
+        graph, feedback, current_usability = _replay_trace_attempt(
+            attempt, graph, baseline, checker, current_usability,
+        )
+        messages = [*messages, {"role": "assistant", "content": completion}, feedback]
+        if not checker.fixable_problems(checker.assess(graph)):
+            break
+        edits = edits_between(graph, searched_layout(graph, checker, rounds=1))
+        if not edits.moves:
+            continue
+        target = edits_json(edits)
+        target_verdict = score_completion(target, graph, checker)
+        if target_verdict.gate_accepts:
+            rows.append({"messages": [*messages, {"role": "assistant", "content": target}],
+                         "variant": variant["variant_id"], "window": window.window_id,
+                         "after_attempt": attempt["index"], "checker_scope": "trusted_geometry"})
+    return rows
+
+
+def run_trace_corrections(run: pathlib.Path, trace_path: pathlib.Path) -> int:
+    training = {row["variant"] for row in _rows(run / "dataset/rl.jsonl")}
+    variants = {row["variant_id"]: row for row in _rows(run / "variants.jsonl") if row["variant_id"] in training}
+    windows = {row["window_id"]: Window.from_dict(row) for row in _rows(run / "windows.jsonl")}
+    rows = []
+    seen = set()
+    for trace in _rows(trace_path):
+        variant_id = trace["variant"]
+        if variant_id not in variants or variant_id in seen:
+            raise ValueError(f"Unknown, held-out, or duplicate trace variant: {variant_id}")
+        seen.add(variant_id)
+        variant = variants[variant_id]
+        rows.extend(trace_correction_rows(variant, windows[variant["window_id"]], trace))
+    output = run / "dataset/corrections_from_trace.jsonl"
+    temporary = output.with_suffix(".jsonl.tmp")
+    temporary.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    os.replace(temporary, output)
+    return len(rows)
+
+
+def _correction_task(variant: dict) -> tuple[str, list[dict]]:
+    return variant["variant_id"], correction_rows(variant, _WINDOWS[variant["window_id"]])
+
+
+def _correction_records(variants: list[dict], windows: dict[str, Window], run: pathlib.Path, workers: int):
+    if workers == 1:
+        for variant in variants:
+            yield variant["variant_id"], correction_rows(variant, windows[variant["window_id"]])
+        return
+    context = multiprocessing.get_context("spawn")
+    with context.Pool(workers, initializer=_load_windows, initargs=(str(run),), maxtasksperchild=20) as pool:
+        yield from pool.imap_unordered(_correction_task, variants)
+
+
+def run_corrections(run: pathlib.Path, progress: Progress, workers: int = 1) -> None:
+    """Build a separate train-only SFT file; leave the one-shot files untouched."""
+    dataset = run / "dataset"
+    if not (dataset / "rl.jsonl").exists():
+        raise FileNotFoundError("Build the dataset split before correction rows")
+    training = {row["variant"] for row in _rows(dataset / "rl.jsonl")}
+    variants = [row for row in _rows(run / "variants.jsonl") if row["variant_id"] in training]
+    windows = {row["window_id"]: Window.from_dict(row) for row in _rows(run / "windows.jsonl")}
+    output, log = dataset / "corrections.jsonl", dataset / "corrections_log.jsonl"
+    recorded = {row["variant"]: row["steps"] for row in _rows(log)}
+    existing = _rows(output)
+    counts = Counter(row["variant"] for row in existing)
+    done = {variant for variant, steps in recorded.items() if counts[variant] == steps}
+    retained = [row for row in existing if row["variant"] in done]
+    if len(retained) != len(existing):
+        temporary = output.with_suffix(".jsonl.tmp")
+        temporary.write_text("".join(json.dumps(row) + "\n" for row in retained))
+        os.replace(temporary, output)
+    progress.stage("corrections", len(variants), len(done))
+    todo = [variant for variant in variants if variant["variant_id"] not in done]
+    for variant_id, rows in _correction_records(todo, windows, run, workers):
+        for row in rows:
+            _append(output, row)
+        _append(log, {"variant": variant_id, "steps": len(rows),
+                      "fully_cleared": bool(rows and rows[-1]["all_fixable_cleared"])})
+        progress.tick("corrections")
+    progress.finish("corrections", rows=len(_rows(output)))
 
 
 def run_split(run: pathlib.Path, progress: Progress) -> dict:
@@ -422,10 +598,12 @@ def _report(run, windows, splits, held, names, skipped, rooms) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("stage", choices=("export", "windows", "variants", "targets", "split", "all"))
+    parser.add_argument("stage", choices=("export", "windows", "variants", "targets", "split",
+                                          "corrections", "trace-corrections", "all"))
     parser.add_argument("--database", type=pathlib.Path, default=ROOT / "services/api/var/standardphysics.sqlite3")
     parser.add_argument("--run", type=pathlib.Path, default=DEFAULT_RUN)
     parser.add_argument("--workers", type=int, default=max(1, math.floor((os.cpu_count() or 2) * 0.75)))
+    parser.add_argument("--trace", type=pathlib.Path, help="five-loop train-room JSONL for correction targets")
     args = parser.parse_args()
     args.run.mkdir(parents=True, exist_ok=True)
     if args.stage == "export":
@@ -439,6 +617,12 @@ def main() -> None:
             stages[name](args.run, args.workers, progress)
     if args.stage in ("split", "all"):
         print(json.dumps(run_split(args.run, progress)["targets"], indent=2))
+    if args.stage == "corrections":
+        run_corrections(args.run, progress, args.workers)
+    if args.stage == "trace-corrections":
+        if args.trace is None:
+            parser.error("trace-corrections requires --trace")
+        _log(f"train-trace correction rows: {run_trace_corrections(args.run, args.trace)}")
 
 
 if __name__ == "__main__":

@@ -3,15 +3,14 @@
 Zero for anything the application would refuse: an answer that does not
 parse, edits that move a piece the phantom filter holds still, edits that name
 the wrong furniture, a layout that breaks a hard constraint, or one the gate
-rejects. An accepted layout earns
+rejects. An accepted partial fix earns at most 0.55; a fix clearing every
+fixable finding earns at least 0.65. Recovery helps rank partial fixes, while
+usability and movement break ties within each tier. This makes a complete fix
+the training objective without paying for rejected layouts.
 
-    clamp(0.15 + 0.55 * recovered + 0.10 * all_clear + 0.20 * U - min(0.15, 0.03 * moved), 0.05, 1)
-
-where U (`usability.usability`) is how many sides and seats of the tables,
-desks and counters the edits touched are still usable, against the owner's
-layout. Q (`quality.layout_quality`) is still measured and logged on every
-accepted layout, and no longer paid for: it agreed with a person's choice in
-12 of 24 rated pairs.
+The training checker treats uncertain scan geometry as measured. Its all-clear
+verdict is therefore a training result, not physical verification. Q
+(`quality.layout_quality`) is measured and logged but not paid for.
 """
 
 from __future__ import annotations
@@ -29,9 +28,9 @@ from .edits import edit_complaint, node_moves, parse_edits
 from .quality import layout_quality
 from .usability import usability
 
-ACCEPTED_FLOOR = 0.15
-RECOVERY_WEIGHT = 0.55
-ALL_CLEAR_BONUS = 0.10
+ACCEPTED_FLOOR = 0.05
+RECOVERY_WEIGHT = 0.30
+ALL_CLEAR_FLOOR = 0.80
 USABILITY_WEIGHT = 0.20
 MOVED_PINNED = "moved_unconfirmed_object"
 DISRUPTION_PENALTY_PER_METER = 0.03
@@ -67,8 +66,9 @@ def disruption_meters(moves) -> float:
 
 def shaped_reward(recovered: float, all_clear: bool, disruption: float, usable: float = 1.0) -> float:
     penalty = min(MAX_DISRUPTION_PENALTY, DISRUPTION_PENALTY_PER_METER * disruption)
-    earned = (ACCEPTED_FLOOR + RECOVERY_WEIGHT * recovered + (ALL_CLEAR_BONUS if all_clear else 0.0)
-              + USABILITY_WEIGHT * max(0.0, min(1.0, usable)))
+    usability_credit = USABILITY_WEIGHT * max(0.0, min(1.0, usable))
+    earned = (ALL_CLEAR_FLOOR if all_clear else ACCEPTED_FLOOR + RECOVERY_WEIGHT * max(0.0, min(1.0, recovered)))
+    earned += usability_credit
     return round(max(MIN_ACCEPTED_REWARD, min(1.0, earned - penalty)), 6)
 
 
