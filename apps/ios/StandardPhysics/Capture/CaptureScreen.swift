@@ -109,7 +109,7 @@ struct CaptureScreen: View {
                 }
                 Button("Start a new scan") { model.beginCapture() }
                     .buttonStyle(AppButtonStyle(.capture))
-                Button("Back to saved scans") { model.showStart() }
+                Button("Go to home") { model.showStart() }
                     .buttonStyle(AppButtonStyle(.capture))
             }
         case .scanning:

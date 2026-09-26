@@ -271,7 +271,7 @@ struct GuestAccountRow: View {
                 ZStack {
                     DraftingPaper()
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.section) {
-                        FlowTitle("Keep your shop on any phone, and on the web.")
+                        FlowTitle("Keep your shop on any phone and on the web.")
                         SaveShopOptions(session: session) {
                             saving = false
                             Task { await model.refreshJourneys() }

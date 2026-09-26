@@ -133,7 +133,7 @@ struct CameraAccessScreen: View {
             }
             if isRefused {
                 FlowTitle("Camera access is off")
-                FlowDetail("Open Settings, turn on Camera for Standard Physics, then come back here.")
+                FlowDetail("Turn on Camera for Standard Physics in Settings, then come back here.")
             } else {
                 FlowTitle("Standard Physics measures your shop with the camera.")
             }
