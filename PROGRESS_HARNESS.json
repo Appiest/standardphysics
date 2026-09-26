@@ -66,24 +66,47 @@
     },
     "next": [
       "compact the room view (merge wall pieces, trim distant fixed objects) so McDonald shell rooms fit",
-      "RL regresses from SFT whether or not prompts include generated rooms (see rl_ablation_2026_09_25): stop RL at the SFT state or add KL control and select checkpoints on held-out full clears",
-      "rate the 30 pairs (rate-pairs launch config, scripts/finetune/rate_pairs.py) to validate usefulness weights; 0 of 30 rated as of 2026-09-26"
+      "RL regresses from SFT whether or not prompts include generated rooms (see rl_ablation_2026_09_25): stop RL at the SFT state or add KL control and select checkpoints on held-out full clears"
     ]
   },
   "rl_ablation_2026_09_25": {
     "question": "Does RL on generated rooms hurt real rooms?",
     "arms": "A = every RL prompt a real-scan window; B = half real, half generated. Both start from the harness SFT state (accounts/amelia-team/models/harness-qwen3p8-27b-sft), 8 RL steps, evaluated at steps 4 and 8.",
-    "spend_dollars": {"A": 3.16, "B": 4.17},
+    "spend_dollars": {
+      "A": 3.16,
+      "B": 4.17
+    },
     "eval_set": "67 real held-out variants, 2 samples each (134 answers), from 4 physical rooms; one room (f143082d) holds 112 of the 134 answers, so this is mostly evidence about one room.",
     "results": {
       "out_of": 134,
-      "base": {"accepted": 58, "fully_cleared": 44},
-      "sft": {"accepted": 57, "fully_cleared": 48},
-      "harness_rl": {"accepted": 39, "fully_cleared": 30},
-      "A_step4": {"accepted": 49, "fully_cleared": 41},
-      "A_step8": {"accepted": 49, "fully_cleared": 37},
-      "B_step4": {"accepted": 52, "fully_cleared": 43},
-      "B_step8": {"accepted": 49, "fully_cleared": 39}
+      "base": {
+        "accepted": 58,
+        "fully_cleared": 44
+      },
+      "sft": {
+        "accepted": 57,
+        "fully_cleared": 48
+      },
+      "harness_rl": {
+        "accepted": 39,
+        "fully_cleared": 30
+      },
+      "A_step4": {
+        "accepted": 49,
+        "fully_cleared": 41
+      },
+      "A_step8": {
+        "accepted": 49,
+        "fully_cleared": 37
+      },
+      "B_step4": {
+        "accepted": 52,
+        "fully_cleared": 43
+      },
+      "B_step8": {
+        "accepted": 49,
+        "fully_cleared": 39
+      }
     },
     "paired_full_clear": {
       "legend": "variants where the first model fully clears more / fewer / the same, of 67",
@@ -96,5 +119,20 @@
     "answer": "generated-room prompts do not measurably hurt real rooms (the arms tie); the regression comes from RL itself: both arms clear fewer rooms than the SFT state they started from and both get worse from step 4 to step 8.",
     "outputs": "compute-box:~/sp-finetune/harness/runs/finetune/ablation (copy at ~/sp-finetune/ft-runs/ablation)",
     "known_issue": "evaluate step checkpoint names used uppercase arm letters ('ev-B-step8-...') and Fireworks rejected them as invalid DNS labels; the evaluate-only reruns with lowercase labels are the numbers above."
+  },
+  "layout_ratings_2026_09_26": {
+    "rated": 30,
+    "ties": 18,
+    "decisive": 12,
+    "q_agrees": {
+      "overall": "8/12",
+      "wall": "5/7",
+      "pairs": "7/11",
+      "sight": "no decisive pairs"
+    },
+    "bar": 0.75,
+    "verdict": "Q misses the 75% bar on every term; 8 of 12 is consistent with chance (one-sided binomial p about 0.19), so Q stays logged, not paid for",
+    "side_bias_check": "left layout picked in 3 of 12 decisive pairs",
+    "ratings": "runs/finetune/multiroom/ratings.jsonl (copy at compute-box:~/sp-finetune/ft-runs/multiroom/ratings.jsonl)"
   }
 }
