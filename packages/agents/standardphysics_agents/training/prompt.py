@@ -11,10 +11,12 @@ from __future__ import annotations
 import json
 import math
 
-from standardphysics_contracts import Finding, Scenario, SceneGraph, SceneNode, bounds_the_room, lies_flat
+from standardphysics_contracts import Finding, Scenario, SceneGraph, SceneNode, bounds_the_room
 from standardphysics_pipeline.footprints import rotation_about_z
 from standardphysics_pipeline.occupancy import blocks_floor
 
+from ..checks import roles
+from ..checks.walls import standing_walls
 from ..fix.constraints import MAX_TRAVEL_METERS, interior_bounds
 from ..fix.moves import measured_position
 from ..redesign import INSTRUCTION
@@ -97,8 +99,8 @@ def room_view(graph: SceneGraph, scenario: Scenario, problems: list[Finding]) ->
     return {
         "units": "metres and degrees; x and y lie on the floor",
         "floor_inside_walls": None if bounds is None else [_r(value) for value in bounds],
-        "walls": [_wall(node) for node in graph.nodes if node.kind == "wall" and not lies_flat(node)],
-        "doors": [_placed(node) for node in graph.nodes if node.kind == "door"],
+        "walls": [_wall(node) for node in standing_walls(graph)],
+        "doors": [_placed(node) for node in roles.doors(graph)],
         "fixed_objects": [{"id": str(node.id), **_placed(node)} if node.id in fixtures else _placed(node)
                           for node in fixed],
         "movable_objects": [_movable(node) for node in graph.nodes if node.movable and not bounds_the_room(node)],
