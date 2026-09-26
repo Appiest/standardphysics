@@ -48,8 +48,8 @@ struct ScanPrimerScreen: View {
                             Advice(
                                 symbol: "checkmark.circle",
                                 title: "We'll say when a wall is done",
-                                detail: "The bar at the bottom fills in as each surface is covered, "
-                                    + "and an arrow points at whatever is still missing."
+                                detail: "The phone taps once for each wall, and that wall turns solid "
+                                    + "blue on the map. An arrow points at what is still missing."
                             )
                         }
 
