@@ -2,8 +2,8 @@
 
 A walk captured here can then be taken to another server through the phone's
 own upload, `import_capture.py`, and that server processes and paints it the
-way it would a fresh capture. Files are hard links into the store, so nothing
-is copied.
+way it would a fresh capture. Files are hard links into the store where the
+output is on the same disk, and copies where it is not.
 
     .venv/bin/python scripts/export_scan_capture.py --scan <scan id> --out /tmp/walk
 """
@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import pathlib
+import shutil
 import sqlite3
 
 CAPTURE_FILES = {
@@ -27,16 +28,23 @@ CAPTURE_FILES = {
 }
 
 
+def _placed(source: pathlib.Path, target: pathlib.Path) -> None:
+    try:
+        os.link(source, target)
+    except OSError:
+        shutil.copyfile(source, target)
+
+
 def export(scans: pathlib.Path, database: pathlib.Path, scan_id: str, out: pathlib.Path) -> int:
     artifacts = scans / scan_id / "artifacts"
     out.mkdir(parents=True)
     (out / "frames").mkdir()
     for artifact_id, filename in CAPTURE_FILES.items():
         if (artifacts / artifact_id).is_file():
-            os.link(artifacts / artifact_id, out / filename)
+            _placed(artifacts / artifact_id, out / filename)
     manifest = json.loads((artifacts / "photo-manifest").read_text())
     for frame in manifest["frames"]:
-        os.link(artifacts / frame["frame_id"], out / "frames" / f"{frame['frame_id'].replace('-', '_')}.jpg")
+        _placed(artifacts / frame["frame_id"], out / "frames" / f"{frame['frame_id'].replace('-', '_')}.jpg")
     with sqlite3.connect(database) as connection:
         name = connection.execute("SELECT name FROM scans WHERE id=?", (scan_id,)).fetchone()[0]
     (out / "capture.json").write_text(json.dumps({"name": name}))
