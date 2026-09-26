@@ -1,6 +1,6 @@
 import { useCurrentFrame } from "remotion";
 import { Footage } from "../../components/Footage";
-import { LidarRoom } from "../../components/LidarRoom";
+import { ScanToPhoto } from "../../components/ScanToPhoto";
 import { ScanBar } from "../../components/ScanBar";
 import { TapeLabel } from "../../components/Type";
 import { progress, sweep } from "../../lib/ease";
@@ -39,15 +39,16 @@ export function PhoneScene() {
     <div className="absolute inset-0">
       {frame >= PHONE.sweepStart - 2 && (
         <div className="absolute inset-0 bg-night">
-          <LidarRoom
-            scan="test1"
+          <div className="absolute inset-0" style={{ opacity: 1 - 0.65 * progress(frame, PHONE.sweepEnd + 12, 20, sweep) }}>
+          <ScanToPhoto
+            scan="moffett"
             width={REEL.width}
             height={REEL.height}
-            reveal={sweepAt}
-            cutaway={2.3}
-            radius={6.2}
-            camera={{ azimuth: 0.35 + frame * 0.0045, elevation: 0.62 + sweepAt * 0.3, distance: 36 - sweepAt * 5 }}
+            measured={sweepAt}
+            painted={progress(frame, PHONE.sweepEnd - 4, 30, sweep)}
+            camera={{ azimuth: 0.35 + frame * 0.0045, elevation: 0.66 + sweepAt * 0.28, distance: 84 - sweepAt * 8 }}
           />
+          </div>
         </div>
       )}
       <div className="absolute inset-0 overflow-hidden" style={{ clipPath: footageClip(frame) }}>
@@ -60,7 +61,7 @@ export function PhoneScene() {
           A phone can catch it first.
         </TapeLabel>
         <TapeLabel at={PHONE.secondTape} exitAt={PHONE.sweepStart + 22} tilt={1.5} className="reel-caption text-caption">
-          One walk measures the room.
+          Walk it once. It measures everything.
         </TapeLabel>
       </div>
     </div>

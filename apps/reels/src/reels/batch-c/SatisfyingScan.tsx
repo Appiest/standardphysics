@@ -12,8 +12,8 @@ import { SonarRoom } from "./SonarRoom";
 /** Nine seconds, which is exactly twelve beats of the scan bed, so picture and sound loop together. */
 export const SATISFYING_SCAN = { revealEnd: 110, eraseStart: 150, eraseEnd: 270, length: 270 } as const;
 
-const TRIANGLES_IN_SCAN = 988_079;
-const RING_REACH_METRES = 6.5;
+const TRIANGLES_IN_SCAN = 3_792_503;
+const RING_REACH_METRES = 38;
 /** The loop opens mid-reveal, with the ring already sweeping, rather than on an empty frame. */
 const OPENING_OFFSET = 55;
 const counted = new Intl.NumberFormat("en-US");
@@ -28,7 +28,7 @@ function Counter({ frame }: { frame: number }) {
   const shown = measured * (1 - erased);
   return (
     <div className="absolute inset-x-safe-side top-safe-top text-paper-raised">
-      <p className="reel-copy text-title">watching a phone measure a room</p>
+      <p className="reel-copy text-title">a phone measuring a whole library</p>
       <p className="reel-copy figures mt-6 text-headline text-tape-light tape-glow" style={{ opacity: 0.35 + 0.65 * shown }}>
         {counted.format(Math.round(TRIANGLES_IN_SCAN * shown))}
       </p>
@@ -44,8 +44,8 @@ export function SatisfyingScan() {
   const azimuth = 0.4 + (frame / SATISFYING_SCAN.length) * Math.PI * 2;
   return (
     <Paper tone="night">
-      <div className="absolute inset-x-0 top-[380px] h-[1540px]">
-        <SonarRoom scan="test1" width={REEL.width} height={1540} camera={{ azimuth, elevation: 0.95, distance: 27 }} front={front} trailing={trailing} cutaway={2.3} radius={6.4} />
+      <div className="absolute inset-x-0 top-[420px] h-[1500px]">
+        <SonarRoom scan="moffett" width={REEL.width} height={1500} camera={{ azimuth, elevation: 1.0, distance: 100 }} front={front} trailing={trailing} cutaway={2.3} radius={40} />
       </div>
       <Counter frame={frame} />
       <Soundtrack bed="c-bed-scan" bedVolume={0.55} cues={cues} loops />

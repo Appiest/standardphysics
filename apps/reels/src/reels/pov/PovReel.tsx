@@ -3,7 +3,7 @@ import { cue, Soundtrack } from "../../components/Cues";
 import { Cutout } from "../../components/Cutout";
 import { EndCard } from "../../components/EndCard";
 import { Footage } from "../../components/Footage";
-import { LidarRoom } from "../../components/LidarRoom";
+import { ScanToPhoto } from "../../components/ScanToPhoto";
 import { Grain, Paper, Vignette } from "../../components/Paper";
 import { PaperWipe } from "../../components/PaperWipe";
 import { progress, sweep } from "../../lib/ease";
@@ -77,19 +77,18 @@ function IntoThePhone() {
 
 function Model() {
   const frame = useCurrentFrame();
-  const reveal = 0.55 + 0.45 * progress(frame, 0, 34, sweep);
+  const measured = 0.55 + 0.45 * progress(frame, 0, 30, sweep);
   return (
     <div className="absolute inset-0 bg-night">
-      <LidarRoom
-        scan="test1"
+      <ScanToPhoto
+        scan="moffett"
         width={REEL.width}
         height={REEL.height}
-        reveal={reveal}
-        cutaway={2.3}
-        radius={6.2}
-        camera={{ azimuth: -0.5 + frame * 0.006, elevation: 0.55 + reveal * 0.35, distance: 34 - reveal * 4 }}
+        measured={measured}
+        painted={progress(frame, 30, 26, sweep)}
+        camera={{ azimuth: -0.5 + frame * 0.006, elevation: 0.6 + measured * 0.32, distance: 82 - measured * 8 }}
       />
-      <Caption lines={["ok the 3D model", "goes kind of hard"]} at={30} />
+      <Caption lines={["ok the 3D model of", "the library goes hard"]} at={30} />
     </div>
   );
 }

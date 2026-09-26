@@ -23,7 +23,6 @@ import { MOFFITT_WALK_MINUTES } from "./walks";
 const STAGE = { top: 440, width: REEL.width, height: 880 } as const;
 const SCAN = "moffett";
 /** Photos the phone took across the four walks, which the app paints back onto the model. */
-const PHOTOS_TAKEN = 3524;
 const AISLE_ZOOM = 3.2;
 
 export const ONE_LINE = {
@@ -112,7 +111,7 @@ function Captions() {
         <RevealLines lines={["Then it checks where", "a wheelchair can turn."]} at={T.checkStart + 10} exitAt={T.unzoomStart + 6} className="reel-copy block text-title" />
       </div>
       <div className="absolute inset-x-0 top-0">
-        <RevealLines lines={["And paints on the", `${PHOTOS_TAKEN.toLocaleString("en-US")} photos it took.`]} at={T.paintStart + 12} exitAt={T.unpaintStart - 4} className="reel-copy block text-title" />
+        <RevealLines lines={["And paints it with", "the photos it took."]} at={T.paintStart + 12} exitAt={T.unpaintStart - 4} className="reel-copy block text-title" />
       </div>
     </div>
   );
