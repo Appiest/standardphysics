@@ -119,12 +119,34 @@ class Worker:
             job = repo.claim_job(connection, texture_only)
         if job is None:
             return False
+        scan_id = uuid.UUID(job["scan_id"])
+        if self._delete_if_asked(scan_id, job["id"]):
+            return True
         outcome = self._run(job)
         with self.database.transaction() as connection:
             repo.finish_job(connection, job["id"], outcome.error)
-            repo.record_job_attempt(connection, job["id"], job["attempts"], uuid.UUID(job["scan_id"]))
+            repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
+        if self._delete_if_asked(scan_id):
+            return True
         if outcome.follow_up and outcome.error is None:
-            self._queue_follow_up_if_due(uuid.UUID(job["scan_id"]))
+            self._queue_follow_up_if_due(scan_id)
+        return True
+
+    def _delete_if_asked(self, scan_id: uuid.UUID, claimed_job: int | None = None) -> bool:
+        """Finish deleting a scan its owner deleted while a job of its was running.
+
+        A job claimed for a deleted scan is closed without running. The scan
+        goes once no job of its is running, which is whenever the last one ends.
+        """
+        with self.database.transaction() as connection:
+            if not repo.marked_for_deletion(connection, scan_id):
+                return False
+            if claimed_job is not None:
+                repo.finish_job(connection, claimed_job, "The shop was deleted")
+            if repo.other_running_job(connection, scan_id):
+                return True
+            repo.delete_scan(connection, scan_id)
+        self.store.remove_scan(scan_id)
         return True
 
     def _queue_follow_up_if_due(self, scan_id: uuid.UUID) -> None:

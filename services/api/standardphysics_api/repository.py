@@ -116,6 +116,27 @@ def scan_exists(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
     return connection.execute("SELECT 1 FROM scans WHERE id = ?", (str(scan_id),)).fetchone() is not None
 
 
+def other_running_job(connection: sqlite3.Connection, scan_id: uuid.UUID, job_id: int | None = None) -> bool:
+    """True when a job for this scan is running, not counting the one given."""
+    return connection.execute(
+        "SELECT 1 FROM jobs WHERE scan_id = ? AND state = 'running' AND id IS NOT ?", (str(scan_id), job_id)
+    ).fetchone() is not None
+
+
+def mark_for_deletion(connection: sqlite3.Connection, scan_id: uuid.UUID) -> None:
+    """Hide a scan whose job is still running, for the worker to delete when the job ends.
+
+    With no owner the scan answers 404 to everyone and leaves every list, so to
+    the owner it is gone the moment they ask.
+    """
+    connection.execute("UPDATE scans SET owner_id = NULL, deleting_at = ? WHERE id = ?", (now(), str(scan_id)))
+
+
+def marked_for_deletion(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
+    row = connection.execute("SELECT deleting_at FROM scans WHERE id = ?", (str(scan_id),)).fetchone()
+    return row is not None and row["deleting_at"] is not None
+
+
 CHILD_TABLES = (
     "owner_requests", "checklist_items", "share_links", "layout_plans",
     "texture_builds", "simulations", "assessments", "evidence_bundles", "scenarios", "revisions",

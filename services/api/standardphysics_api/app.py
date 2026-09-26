@@ -248,15 +248,15 @@ def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore)
 
         The rows go first and the files second. A stored file with no scan row
         is invisible and reclaimable; a scan row whose files have gone is a
-        listing that breaks the moment anyone opens it.
+        listing that breaks the moment anyone opens it. A scan still being
+        measured is hidden now and deleted by the worker when its job ends, so
+        a job that never ends can't keep a shop on anyone's list.
         """
         with database.transaction() as connection:
             _scan_or_404(connection, scan_id)
-            running = connection.execute(
-                "SELECT 1 FROM jobs WHERE scan_id=? AND state='running'", (str(scan_id),)
-            ).fetchone()
-            if running:
-                raise ApiProblem(409, "Wait for this room's running job to finish before deleting it")
+            if repo.other_running_job(connection, scan_id):
+                repo.mark_for_deletion(connection, scan_id)
+                return Response(status_code=204)
             repo.delete_scan(connection, scan_id)
         store.remove_scan(scan_id)
         return Response(status_code=204)

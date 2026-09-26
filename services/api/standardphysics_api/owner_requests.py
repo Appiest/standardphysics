@@ -278,6 +278,7 @@ def pending_reviews(connection: sqlite3.Connection) -> list[tuple[uuid.UUID, str
     """Every photo waiting for a person on the team, oldest first."""
     rows = connection.execute(
         "SELECT scan_id, request_id FROM owner_requests WHERE status = 'answered' AND photo_name IS NOT NULL"
+        " AND scan_id NOT IN (SELECT id FROM scans WHERE deleting_at IS NOT NULL)"
         " ORDER BY answered_at"
     ).fetchall()
     return [(uuid.UUID(row["scan_id"]), row["request_id"]) for row in rows]
