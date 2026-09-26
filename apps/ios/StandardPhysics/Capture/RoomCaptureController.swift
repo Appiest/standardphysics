@@ -239,7 +239,7 @@ private extension RoomCaptureSession.Instruction {
         switch self {
         case .moveCloseToWall: "Walk closer to the wall"
         case .moveAwayFromWall: "Take one step back"
-        case .slowDown: "Turn around slowly"
+        case .slowDown: "Walk a little slower"
         case .turnOnLight: "Turn on more lights"
         case .lowTexture: nil
         case .normal: nil

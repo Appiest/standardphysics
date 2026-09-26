@@ -317,33 +317,31 @@ final class CoverageEngineTests: XCTestCase {
         )
     }
 
-    func testThreeMeterBoundaryCountsButAFartherViewDoesNot() {
+    func testFiveMeterBoundaryCountsButAFartherViewDoesNot() {
         let surface = standardSurface()
         var boundaryEngine = CoverageEngine(gridSize: 1)
         var distantEngine = CoverageEngine(gridSize: 1)
 
-        boundaryEngine.update(surfaces: [surface], camera: .lookingStraightAhead(position: SIMD3<Float>(0, 0, 3)))
-        distantEngine.update(surfaces: [surface], camera: .lookingStraightAhead(position: SIMD3<Float>(0, 0, 3.01)))
+        boundaryEngine.update(surfaces: [surface], camera: .lookingStraightAhead(position: SIMD3<Float>(0, 0, 5)))
+        distantEngine.update(surfaces: [surface], camera: .lookingStraightAhead(position: SIMD3<Float>(0, 0, 5.01)))
 
         XCTAssertEqual(boundaryEngine.snapshot.surfaces[0].observedFraction, 1, accuracy: 0.001)
         XCTAssertEqual(distantEngine.snapshot.surfaces[0].observedFraction, 0, accuracy: 0.001)
     }
-
-    func testViewAtFiftyDegreesOrMoreDoesNotCount() {
+    func testViewAtSixtyDegreesOrMoreDoesNotCount() {
         let surface = standardSurface()
         var acceptableEngine = CoverageEngine(gridSize: 1)
-        var exactEngine = CoverageEngine(gridSize: 1)
+        var justOverEngine = CoverageEngine(gridSize: 1)
         var steepEngine = CoverageEngine(gridSize: 1)
 
-        acceptableEngine.update(surfaces: [surface], camera: wideCamera(position: SIMD3<Float>(1.18, 0, 1)))
-        exactEngine.update(surfaces: [surface], camera: wideCamera(position: SIMD3<Float>(1.2, 0, 1)))
-        steepEngine.update(surfaces: [surface], camera: wideCamera(position: SIMD3<Float>(1.3, 0, 1)))
+        acceptableEngine.update(surfaces: [surface], camera: wideCamera(position: SIMD3<Float>(1.72, 0, 1)))
+        justOverEngine.update(surfaces: [surface], camera: wideCamera(position: SIMD3<Float>(1.74, 0, 1)))
+        steepEngine.update(surfaces: [surface], camera: wideCamera(position: SIMD3<Float>(1.9, 0, 1)))
 
         XCTAssertEqual(acceptableEngine.snapshot.surfaces[0].observedFraction, 1, accuracy: 0.001)
-        XCTAssertEqual(exactEngine.snapshot.surfaces[0].observedFraction, 0, accuracy: 0.001)
+        XCTAssertEqual(justOverEngine.snapshot.surfaces[0].observedFraction, 0, accuracy: 0.001)
         XCTAssertEqual(steepEngine.snapshot.surfaces[0].observedFraction, 0, accuracy: 0.001)
     }
-
     func testAVisibleFacingPointOutsideTheCameraFrustumDoesNotCount() {
         var transform = matrix_identity_float4x4
         transform.columns.3 = SIMD4(3, 0, 0, 1)
@@ -472,34 +470,47 @@ final class CoverageEngineTests: XCTestCase {
         XCTAssertEqual(engine.snapshot.instruction, "Walk to a new spot. Point the phone at the back wall.")
     }
 
-    func testLegacySeventyPercentAndTwoViewpointsNeverComplete() {
-        XCTAssertFalse(
-            SurfaceCoverage(
-                id: UUID(),
-                observedFraction: 0.70,
-                viewpointCount: 2,
-                highConfidence: true
-            ).isDone
-        )
-        XCTAssertFalse(
-            SurfaceCoverage(
-                id: UUID(),
-                observedFraction: 0.90,
-                viewpointCount: 2,
-                highConfidence: true
-            ).isDone
-        )
-        XCTAssertFalse(
-            SurfaceCoverage(
-                id: UUID(),
-                observedFraction: 0.90,
-                viewpointCount: 3,
-                highConfidence: false
-            ).isDone
-        )
+    func testAWallIsDoneAtSeventyPercentFromTwoSpotsWithRoomPlanSure() {
+        XCTAssertTrue(SurfaceCoverage(id: UUID(), observedFraction: 0.70, viewpointCount: 2, highConfidence: true).isDone)
+        XCTAssertFalse(SurfaceCoverage(id: UUID(), observedFraction: 0.69, viewpointCount: 2, highConfidence: true).isDone)
+        XCTAssertFalse(SurfaceCoverage(id: UUID(), observedFraction: 1, viewpointCount: 1, highConfidence: true).isDone)
+        XCTAssertFalse(SurfaceCoverage(id: UUID(), observedFraction: 1, viewpointCount: 3, highConfidence: false).isDone)
     }
 
-    func testSurfaceNeedsNinetyPercentAndThreeSeparatedViews() {
+    func testTheFloorIsDoneAtHalfItsArea() {
+        XCTAssertTrue(SurfaceCoverage(
+            id: UUID(), observedFraction: 0.50, viewpointCount: 2, highConfidence: true, kind: "floor").isDone)
+        XCTAssertFalse(SurfaceCoverage(
+            id: UUID(), observedFraction: 0.49, viewpointCount: 2, highConfidence: true, kind: "floor").isDone)
+    }
+
+    func testFurnitureNeverHoldsUpEnough() {
+        let snapshot = CoverageSnapshot(surfaces: [
+            SurfaceCoverage(id: UUID(), observedFraction: 1, viewpointCount: 2, highConfidence: true),
+            SurfaceCoverage(id: UUID(), observedFraction: 0, viewpointCount: 0, highConfidence: false, kind: "chair"),
+        ])
+
+        XCTAssertTrue(snapshot.isComplete)
+    }
+
+    func testWallsCountByAreaSoAMissedStubIsEnoughButAMissedWallIsNot() {
+        let longWall = SurfaceCoverage(id: UUID(), observedFraction: 1, viewpointCount: 2, highConfidence: true, area: 24)
+        let stub = SurfaceCoverage(id: UUID(), observedFraction: 0.01, viewpointCount: 1, highConfidence: true, area: 1.6)
+        let missedWall = SurfaceCoverage(id: UUID(), observedFraction: 0.2, viewpointCount: 1, highConfidence: true, area: 24)
+
+        XCTAssertTrue(CoverageSnapshot(surfaces: [longWall, stub]).isComplete)
+        XCTAssertFalse(CoverageSnapshot(surfaces: [longWall, stub, missedWall]).isComplete)
+    }
+
+    func testAnUnfinishedFloorHoldsUpEnough() {
+        let wall = SurfaceCoverage(id: UUID(), observedFraction: 1, viewpointCount: 2, highConfidence: true)
+        let floor = SurfaceCoverage(
+            id: UUID(), observedFraction: 0.3, viewpointCount: 4, highConfidence: true, kind: "floor", area: 60)
+
+        XCTAssertFalse(CoverageSnapshot(surfaces: [wall, floor]).isComplete)
+        XCTAssertFalse(CoverageSnapshot(surfaces: [floor]).isComplete)
+    }
+    func testSurfaceNeedsTwoSeparatedViews() {
         let surfaceID = UUID(uuidString: "38C99F20-2327-4BB7-A435-AFCBBB1C2C73")!
         var engine = CoverageEngine(gridSize: 2)
         let surface = SurfaceSnapshot(
@@ -521,23 +532,13 @@ final class CoverageEngineTests: XCTestCase {
             camera: .lookingStraightAhead(position: SIMD3<Float>(1.1, 0, 2))
         )
 
-        var result = engine.snapshot.surfaces[0]
+        let result = engine.snapshot.surfaces[0]
         XCTAssertEqual(result.observedFraction, 1, accuracy: 0.001)
         XCTAssertEqual(result.observedSegments, [true, true])
         XCTAssertEqual(result.viewpointCount, 2)
-        XCTAssertFalse(result.isDone)
-
-        engine.update(
-            surfaces: [surface],
-            camera: .lookingStraightAhead(position: SIMD3<Float>(-1.1, 0, 2))
-        )
-
-        result = engine.snapshot.surfaces[0]
-        XCTAssertEqual(result.viewpointCount, 3)
         XCTAssertTrue(result.isDone)
     }
-
-    func testCompletedSurfacesAskForEvidenceCloseUpsInsteadOfClaimingDone() {
+    func testEnoughSaysThatsEverythingWeNeed() {
         var engine = CoverageEngine(gridSize: 1)
         let surface = SurfaceSnapshot(
             id: UUID(),
@@ -551,27 +552,25 @@ final class CoverageEngineTests: XCTestCase {
             surfaces: [surface],
             camera: .lookingStraightAhead(position: SIMD3<Float>(0, 0, 2))
         )
+        XCTAssertNotEqual(engine.snapshot.instruction, CoverageSnapshot.completeInstruction)
         engine.update(
             surfaces: [surface],
             camera: .lookingStraightAhead(position: SIMD3<Float>(1.1, 0, 2))
         )
-        engine.update(
-            surfaces: [surface],
-            camera: .lookingStraightAhead(position: SIMD3<Float>(-1.1, 0, 2))
-        )
 
         let coverage = engine.snapshot
         XCTAssertTrue(coverage.isComplete)
-        XCTAssertEqual(coverage.instruction, CoverageSnapshot.completeInstruction)
-        XCTAssertTrue(coverage.instruction.contains("outlets"))
-        XCTAssertTrue(coverage.instruction.contains("TV"))
-        XCTAssertTrue(coverage.instruction.contains("restroom entrance"))
+        XCTAssertEqual(coverage.instruction, "That\u{2019}s everything we need.")
 
         let reconciled = engine.reconcile(finalSurfaces: [surface])
         XCTAssertTrue(reconciled.isComplete)
         XCTAssertEqual(reconciled.instruction, CoverageSnapshot.completeInstruction)
     }
 
+    func testTheWalkOpensOnOneWallRatherThanTurningOnTheSpot() {
+        XCTAssertEqual(CoverageSnapshot().instruction, "Point the phone at the wall in front of you.")
+        XCTAssertFalse(CoverageSnapshot().instruction.localizedCaseInsensitiveContains("turn around"))
+    }
     func testLowConfidenceSurfaceStaysUnfinished() {
         var engine = CoverageEngine(gridSize: 1)
         let surface = SurfaceSnapshot(
@@ -654,7 +653,7 @@ final class CoverageEngineTests: XCTestCase {
 
     func testDistantUnobservedWallUsesMoveCloserGuidance() {
         var transform = matrix_identity_float4x4
-        transform.columns.3 = SIMD4(3, 0, -2, 1)
+        transform.columns.3 = SIMD4(4.5, 0, -3, 1)
         let wall = SurfaceSnapshot(
             id: UUID(),
             width: 1,
