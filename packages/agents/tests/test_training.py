@@ -64,6 +64,22 @@ def test_collision_breaks_a_hard_constraint(graph, scenario, pipeline, pack, led
     assert verdict.parsed and not verdict.hard_constraints_pass and verdict.reward == 0.0
 
 
+def _slide_counter(dx_inches, dy_inches):
+    return '{"moves":[],"fixture_moves":[{"node_id":"%s","dx_inches":%s,"dy_inches":%s}]}' % (
+        node_id("counter"), dx_inches, dy_inches)
+
+
+def test_a_relocated_fixture_cannot_land_on_furniture(graph, scenario, pipeline, pack, ledger):
+    checker = checker_for(scenario, pipeline, pack, ledger)
+    verdict = score_completion(_slide_counter(20, -20), graph, checker)
+    assert not verdict.hard_constraints_pass and "collided" in verdict.reason
+
+
+def test_a_relocated_fixture_may_slide_onto_open_floor(graph, scenario, pipeline, pack, ledger):
+    checker = checker_for(scenario, pipeline, pack, ledger)
+    assert "collided" not in score_completion(_slide_counter(0, -6), graph, checker).reason
+
+
 def test_shaped_reward_rewards_recovery_and_charges_disruption():
     assert shaped_reward(1.0, True, 0.0) == 1.0
     assert shaped_reward(0.5, False, 0.0) > shaped_reward(0.1, False, 0.0)

@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass
 from standardphysics_contracts import SceneGraph
 
 from ..evaluation.gate import accepts
-from ..fix import apply_moves, violations
+from ..fix import apply_moves, relocation_violations, violations
 from ..fix.strategies import TURN_DISRUPTION_METERS
 from .checker import TrainingChecker
 from .construction import build, construction_inches
@@ -102,7 +102,8 @@ def score_completion(completion: str, room: SceneGraph, checker: TrainingChecker
     except ValueError:
         return Verdict(0.0, parsed=True, reason="unbuildable_construction")
     candidate = apply_moves(built, moves)
-    broken = violations(built, candidate)
+    relocated = {move.node_id for move in edits.fixture_moves}
+    broken = [*violations(built, candidate), *relocation_violations(room, candidate, relocated)]
     if broken:
         return Verdict(0.0, parsed=True, reason=",".join(sorted({item.kind for item in broken})))
     return _gated(room, candidate, checker, disruption_meters(moves), construction_inches(edits.wall_shifts, edits.fixture_moves))

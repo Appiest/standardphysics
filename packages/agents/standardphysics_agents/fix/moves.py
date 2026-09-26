@@ -80,7 +80,7 @@ def rests_on_something(node: SceneNode, floor_z: float) -> bool:
     return not bounds_the_room(node) and underside(node) > floor_z + RESTING_GAP
 
 
-def _surface_under(graph: SceneGraph, node: SceneNode, floor_z: float) -> float:
+def surface_under(graph: SceneGraph, node: SceneNode, floor_z: float) -> float:
     """The highest top among the pieces directly under this one's centre."""
     centre = (node.transform.position.x, node.transform.position.y)
     tops = [
@@ -94,7 +94,7 @@ def _surface_under(graph: SceneGraph, node: SceneNode, floor_z: float) -> float:
 def settle(graph: SceneGraph, node: SceneNode, floor_z: float) -> SceneNode:
     """The node lowered or raised so its underside sits on the surface below it."""
     position = node.transform.position
-    resting_at = _surface_under(graph, node, floor_z) + node.dimensions.z / 2
+    resting_at = surface_under(graph, node, floor_z) + node.dimensions.z / 2
     return node.model_copy(
         update={"transform": _turned(node, 0.0, Vec3(x=position.x, y=position.y, z=resting_at))}
     )

@@ -541,6 +541,19 @@ class TestMovingThingsThatShareFloorSpace:
         graph = self._room(self._table(), chair)
         assert "collided" in _kinds(graph, self._slide(graph, chair, -2.0))
 
+    def _counter_with_register(self):
+        register = _node("share_register", "object", "Cash register", (0.3, 0.0, 0.85), (0.35, 0.35, 0.2), False)
+        reader = _node("share_reader", "object", "Card reader", (-0.3, 0.0, 0.79), (0.1, 0.15, 0.08), True)
+        return self._room(self._table(), register, reader), reader
+
+    def test_a_card_reader_cannot_be_set_down_on_the_register_beside_it(self):
+        graph, reader = self._counter_with_register()
+        assert "collided" in _kinds(graph, self._slide(graph, reader, 0.6))
+
+    def test_a_card_reader_can_slide_to_open_counter(self):
+        graph, reader = self._counter_with_register()
+        assert "collided" not in _kinds(graph, self._slide(graph, reader, 0.0, 0.2))
+
     def test_a_laptop_slides_across_the_desk_it_sits_on(self):
         laptop = _node("share_laptop", "object", "Laptop", (-0.3, 0.0, 0.765), (0.35, 0.25, 0.03), True)
         graph = self._room(self._table(), laptop)

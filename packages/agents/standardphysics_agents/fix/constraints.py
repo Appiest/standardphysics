@@ -27,7 +27,7 @@ from standardphysics_pipeline.occupancy import blocks_floor
 from ..checks import roles
 from ..checks.walls import upright_walls
 from ..hashing import inventory
-from .moves import floor_height, measured_position, rests_on_something, top_of, underside
+from .moves import floor_height, measured_position, rests_on_something, surface_under, top_of, underside
 from .use_space import Room, has_room_to_use, reach
 
 FLOOR_MARGIN = 0.01
@@ -217,15 +217,16 @@ def _one_above_the_other(a: SceneNode, b: SceneNode) -> bool:
     return underside(a) >= top_of(b) - VERTICAL_TOLERANCE or underside(b) >= top_of(a) - VERTICAL_TOLERANCE
 
 
-def _overlapping(a: SceneNode, b: SceneNode) -> bool:
+def _footprints_meet(a: SceneNode, b: SceneNode) -> bool:
     # Each shape gives up half the tolerance, so together the two may
     # interpenetrate by OVERLAP_TOLERANCE and no more. Pulling both in by the
     # whole of it allowed twice that: a case slid 9 mm into a wall passed.
     half = OVERLAP_TOLERANCE / 2
-    return (
-        gap_between(collision_shape(a, half), collision_shape(b, half)) == 0.0
-        and not _one_above_the_other(a, b)
-    )
+    return gap_between(collision_shape(a, half), collision_shape(b, half)) == 0.0
+
+
+def _overlapping(a: SceneNode, b: SceneNode) -> bool:
+    return _footprints_meet(a, b) and not _one_above_the_other(a, b)
 
 
 def _in_swing(node: SceneNode, keep_clear: Polygon, floor_z: float) -> bool:
@@ -239,23 +240,48 @@ class _Scene:
 
     before: dict
     floor_z: float
+    on_surfaces: frozenset = frozenset()
 
     def already(self, clash, node: SceneNode, other: SceneNode) -> bool:
         was, other_was = self.before.get(node.id), self.before.get(other.id, other)
         return was is not None and clash(was, other_was)
 
+    def collide(self, node: SceneNode, other: SceneNode) -> bool:
+        """Two pieces that both stood on a surface clash wherever their footprints meet.
+
+        A moved piece settles onto whatever is under it where it lands, so a
+        card reader slid onto a register would rest on top of it and pass the
+        height test. A counter is somewhere to put things; a register is not.
+        """
+        if node.id in self.on_surfaces and other.id in self.on_surfaces:
+            return _footprints_meet(node, other)
+        return _overlapping(node, other)
+
+
+def _on_a_surface(graph: SceneGraph) -> set:
+    """Pieces the scan found standing on another piece, such as a register on a counter.
+
+    They take no floor, but a card reader slid along the counter still cannot
+    land where the register stands. A socket or a wall cabinet also sits above
+    the floor, with nothing under it, so it is not one of these.
+    """
+    floor_z = floor_height(graph)
+    return {node.id for node in graph.nodes
+            if rests_on_something(node, floor_z) and surface_under(graph, node, floor_z) > floor_z}
+
 
 def _collisions(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode]) -> list[Violation]:
     moved_ids = {node.id for node in moved}
     wall_ids = {node.id for node in upright_walls(candidate)}
+    surface_ids = frozenset(_on_a_surface(base))
     obstacles = [
         node
         for node in candidate.nodes
         if node.id not in moved_ids
-        and (blocks_floor(node) or node.id in wall_ids)
+        and (blocks_floor(node) or node.id in wall_ids or node.id in surface_ids)
     ]
     swings = [node for node in candidate.nodes if node.kind in SWING_KINDS]
-    scene = _Scene(before={node.id: node for node in base.nodes}, floor_z=floor_height(base))
+    scene = _Scene(before={node.id: node for node in base.nodes}, floor_z=floor_height(base), on_surfaces=surface_ids)
 
     found = []
     for index, node in enumerate(moved):
@@ -265,7 +291,7 @@ def _collisions(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode])
 
 def _overlaps(node: SceneNode, obstacles, swings, scene: _Scene) -> list[Violation]:
     for other in obstacles:
-        if _overlapping(node, other) and not scene.already(_overlapping, node, other):
+        if scene.collide(node, other) and not scene.already(scene.collide, node, other):
             return [Violation("collided", str(node.id), f"{node.label} into {other.label}", blocker=other.label)]
     for door in swings:
         clash = lambda piece, swing: _in_swing(piece, door_keep_clear(swing), scene.floor_z)
@@ -350,6 +376,23 @@ def violations(
         *_collisions(base, candidate, checked),
         *_travelled_too_far(base, moved),
         *_lost_room_to_use(base, candidate, checked),
+    ]
+
+
+def relocation_violations(original: SceneGraph, candidate: SceneGraph, relocated) -> list[Violation]:
+    """What a built-in fixture that construction slid across the floor may not do.
+
+    Construction relocates the fixture before any furniture moves, so to
+    `violations` the fixture looks like it was always there. Measured against
+    the room as scanned, it is held to the same rules as a moved piece: it may
+    not land on another piece or a wall, leave the floor, or take the room
+    somebody needs to use a table or counter.
+    """
+    checked = [node for node in candidate.nodes if node.id in relocated]
+    return [
+        *_off_the_floor(original, candidate, checked),
+        *_collisions(original, candidate, checked),
+        *_lost_room_to_use(original, candidate, checked),
     ]
 
 
