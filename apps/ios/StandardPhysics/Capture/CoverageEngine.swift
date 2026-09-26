@@ -8,23 +8,76 @@ enum SurfaceConfidence: String, Codable, Sendable {
     case high
 }
 
-private enum CoveragePolicy {
-    static let requiredObservedFraction = 0.90
-    static let requiredViewpointCount = 3
-    static let maximumObservationDistance: Float = 3
-    static let maximumObservationAngleRadians = 50 * Float.pi / 180
-    static let minimumFacingDot = Float(cos(Double(maximumObservationAngleRadians)))
+/// When a surface counts as seen, and when the walk has seen enough.
+///
+/// A patch counts once it is inside the frame, within 5 m and under 60
+/// degrees off the surface, which is LANE_A.md's rule. A surface is done at
+/// 70% of its area, seen from two spots at least a metre apart, with RoomPlan
+/// sure of it. A-47 replayed the two phone scans against the stricter 90%,
+/// three view, 3 m, 50 degree rule the code had drifted to, and it finished 2
+/// of their 17 walls.
+///
+/// Enough means the walls and the floor. Furniture is measured and written to
+/// coverage.json but never holds up "That's everything we need": RoomPlan
+/// leaves every chair at medium confidence however long the owner walks, and
+/// the back of a counter against a wall cannot be seen at all.
+///
+/// The walls are judged by area rather than one by one. RoomPlan reports the
+/// short return beside a pillar or a door jamb as a wall of its own, and the
+/// ravida scan has a 0.36 m one that no pose saw; it is 2% of that room's wall
+/// area. A missed full wall is 30% or more in both scans, so 90% of the area
+/// still sends the owner back for it.
+///
+/// The floor asks for half. From standing height a floor point more than about
+/// 2.3 m away is seen at over 60 degrees, and RoomPlan's floor is the rectangle
+/// around the room, so a walk a stride from every wall sees 55% and 57% of the
+/// floors in the two phone scans, both of which ran the full four minutes.
+struct CoveragePolicy: Sendable {
+    var requiredObservedFraction: Double
+    var requiredFloorFraction: Double
+    var requiredWallAreaFraction: Double
+    var requiredViewpointCount: Int
+    var maximumObservationDistance: Float
+    var maximumObservationAngleRadians: Float
+
+    static let standard = CoveragePolicy(
+        requiredObservedFraction: 0.70,
+        requiredFloorFraction: 0.50,
+        requiredWallAreaFraction: 0.90,
+        requiredViewpointCount: 2,
+        maximumObservationDistance: 5,
+        maximumObservationAngleRadians: 60 * Float.pi / 180
+    )
+
     static let supportFaceMaximumUpDot: Float = -0.9
     static let floorContactTolerance: Float = 0.05
+    static let requiredKinds: Set<String> = ["wall", "floor"]
 
-    static func isComplete(observedFraction: Double, viewpointCount: Int, highConfidence: Bool) -> Bool {
-        observedFraction >= requiredObservedFraction &&
+    var minimumFacingDot: Float { cos(maximumObservationAngleRadians) }
+
+    func requiredFraction(for kind: String) -> Double {
+        kind == "floor" ? requiredFloorFraction : requiredObservedFraction
+    }
+
+    func isComplete(kind: String, observedFraction: Double, viewpointCount: Int, highConfidence: Bool) -> Bool {
+        observedFraction >= requiredFraction(for: kind) &&
             viewpointCount >= requiredViewpointCount &&
             highConfidence
     }
 
-    static func isCloseEnoughToObserve(distance: Float) -> Bool {
+    func isCloseEnoughToObserve(distance: Float) -> Bool {
         distance <= maximumObservationDistance
+    }
+
+    /// Every floor is done, and the done walls hold most of the wall area.
+    func hasEnough(_ surfaces: [SurfaceCoverage]) -> Bool {
+        let walls = surfaces.filter { $0.kind == "wall" }
+        let floors = surfaces.filter { $0.kind == "floor" }
+        let wallArea = walls.reduce(0) { $0 + $1.area }
+        guard !walls.isEmpty, floors.allSatisfy(\.isDone) else { return false }
+        guard wallArea > 0 else { return walls.allSatisfy(\.isDone) }
+        let finishedArea = walls.filter(\.isDone).reduce(0) { $0 + $1.area }
+        return Double(finishedArea / wallArea) >= requiredWallAreaFraction
     }
 }
 
@@ -93,6 +146,9 @@ struct SurfaceCoverage: Identifiable, Codable, Equatable, Sendable {
     let observedSegments: [Bool]
     let viewpointCount: Int
     let highConfidence: Bool
+    let kind: String
+    let area: Float
+    let isDone: Bool
 
     enum CodingKeys: String, CodingKey {
         case id = "node_id"
@@ -100,20 +156,32 @@ struct SurfaceCoverage: Identifiable, Codable, Equatable, Sendable {
         case viewpointCount = "viewpoint_count"
     }
 
-    var isDone: Bool {
-        CoveragePolicy.isComplete(
-            observedFraction: observedFraction,
-            viewpointCount: viewpointCount,
-            highConfidence: highConfidence
-        )
-    }
+    /// Whether the walk has to finish this surface before it can say so.
+    var isRequired: Bool { CoveragePolicy.requiredKinds.contains(kind) }
 
-    init(id: UUID, observedFraction: Double, observedSegments: [Bool] = [], viewpointCount: Int, highConfidence: Bool) {
+    init(
+        id: UUID,
+        observedFraction: Double,
+        observedSegments: [Bool] = [],
+        viewpointCount: Int,
+        highConfidence: Bool,
+        kind: String = "wall",
+        area: Float = 1,
+        policy: CoveragePolicy = .standard
+    ) {
         self.id = id
         self.observedFraction = observedFraction
         self.observedSegments = observedSegments
         self.viewpointCount = viewpointCount
         self.highConfidence = highConfidence
+        self.kind = kind
+        self.area = area
+        isDone = policy.isComplete(
+            kind: kind,
+            observedFraction: observedFraction,
+            viewpointCount: viewpointCount,
+            highConfidence: highConfidence
+        )
     }
 
     init(from decoder: Decoder) throws {
@@ -123,21 +191,31 @@ struct SurfaceCoverage: Identifiable, Codable, Equatable, Sendable {
         observedSegments = []
         viewpointCount = try container.decode(Int.self, forKey: .viewpointCount)
         highConfidence = false
+        kind = "area"
+        area = 0
+        isDone = false
     }
 }
 
 struct CoverageSnapshot: Sendable {
     var surfaces: [SurfaceCoverage] = []
+    var policy = CoveragePolicy.standard
     var unfinishedDirection: CoverageAngle = .zero
-    var instruction = "Turn around slowly"
+    var instruction = CoverageSnapshot.openingInstruction
 
-    /// Said when every measured surface is covered. Surfaces say nothing about
-    /// outlets, a TV or a restroom, which is why the completion line asks for
-    /// those evidence photos instead of claiming the shop is fully captured.
-    static let completeInstruction =
-        "Room surfaces covered. Now add close-ups of low outlets, the TV, and the restroom entrance."
+    /// The first thing the walk asks. The tips before it say to keep walking
+    /// and never to turn on the spot, so the first instruction is one wall.
+    static let openingInstruction = "Point the phone at the wall in front of you."
+    /// Said while RoomPlan has not settled on anything to aim at yet.
+    static let keepWalkingInstruction = "Walk slowly along the walls, about a stride away."
+    /// Said once the walls and the floor are done. The photos the rules need
+    /// are asked for one at a time after the walk, not here.
+    static let completeInstruction = "That\u{2019}s everything we need."
 
-    var isComplete: Bool { !surfaces.isEmpty && surfaces.allSatisfy(\.isDone) }
+    var finishedWallIDs: Set<UUID> { Set(surfaces.filter { $0.kind == "wall" && $0.isDone }.map(\.id)) }
+    var wallCount: Int { surfaces.filter { $0.kind == "wall" }.count }
+
+    var isComplete: Bool { policy.hasEnough(surfaces) }
 }
 
 struct CoverageAngle: Equatable, Sendable {
@@ -210,6 +288,7 @@ struct CoverageEngine {
     }
 
     private let gridSize: Int
+    private let policy: CoveragePolicy
     private var observations: [UUID: ObservationState] = [:]
     /// Every camera the capture has fed in, so a surface is always scored
     /// against the whole walk.
@@ -224,9 +303,10 @@ struct CoverageEngine {
     private var cameras: [CameraObservation] = []
     private(set) var snapshot = CoverageSnapshot()
 
-    init(gridSize: Int = 10) {
+    init(gridSize: Int = 10, policy: CoveragePolicy = .standard) {
         precondition(gridSize > 0)
         self.gridSize = gridSize
+        self.policy = policy
     }
 
     mutating func reset() {
@@ -316,9 +396,14 @@ struct CoverageEngine {
 
     private func makeSnapshot(surfaces: [SurfaceSnapshot], camera: CameraObservation?) -> CoverageSnapshot {
         var result = CoverageSnapshot()
+        result.policy = policy
         result.surfaces = surfaces.map(coverage(for:))
+        if result.isComplete {
+            result.instruction = CoverageSnapshot.completeInstruction
+            return result
+        }
         guard let camera else {
-            result.instruction = result.isComplete ? CoverageSnapshot.completeInstruction : "Turn around slowly"
+            result.instruction = CoverageSnapshot.keepWalkingInstruction
             return result
         }
         let guidance = guidance(for: surfaces, coverage: result.surfaces, camera: camera)
@@ -338,7 +423,10 @@ struct CoverageEngine {
             observedFraction: min(1, fraction),
             observedSegments: observedSegments(samples: samples, state: state, shape: surface.shape),
             viewpointCount: state.viewpoints.count,
-            highConfidence: surface.confidence == .high
+            highConfidence: surface.confidence == .high,
+            kind: surface.kind,
+            area: surface.width * surface.height,
+            policy: policy
         )
     }
 
@@ -435,7 +523,7 @@ struct CoverageEngine {
             let segmentSamples = samples.filter { $0.segment == segment }
             let total = segmentSamples.reduce(0) { $0 + $1.weight }
             let observed = segmentSamples.filter { state.observedSamples.contains($0.index) }.reduce(0) { $0 + $1.weight }
-            return total > 0 && observed / total >= Float(CoveragePolicy.requiredObservedFraction)
+            return total > 0 && observed / total >= Float(policy.requiredObservedFraction)
         }
     }
 
@@ -453,8 +541,8 @@ struct CoverageEngine {
     private func isVisible(_ sample: PreparedSurfaceSample, from camera: PreparedCamera) -> Bool {
         let pointToCamera = camera.position - sample.worldPoint
         let distance = simd_length(pointToCamera)
-        guard distance > 0, CoveragePolicy.isCloseEnoughToObserve(distance: distance) else { return false }
-        guard simd_dot(sample.worldNormal, pointToCamera / distance) > CoveragePolicy.minimumFacingDot else { return false }
+        guard distance > 0, policy.isCloseEnoughToObserve(distance: distance) else { return false }
+        guard simd_dot(sample.worldNormal, pointToCamera / distance) > policy.minimumFacingDot else { return false }
         let cameraPoint = camera.inverseTransform * SIMD4(sample.worldPoint, 1)
         guard cameraPoint.z < 0 else { return false }
         let depth = -cameraPoint.z
@@ -471,20 +559,21 @@ struct CoverageEngine {
         // one, so it wins.
         let coverageByID = Dictionary(coverage.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
         let candidates = surfaces.flatMap { surface -> [GuidanceTarget] in
-            guard let surfaceCoverage = coverageByID[surface.id], !surfaceCoverage.isDone else { return [] }
+            guard let surfaceCoverage = coverageByID[surface.id],
+                  surfaceCoverage.isRequired, !surfaceCoverage.isDone else { return [] }
             let state = observations[surface.id, default: ObservationState()]
             let remaining = completionSamples(on: surface).filter { !state.observedSamples.contains($0.index) }
             if !remaining.isEmpty {
                 return remaining.map { GuidanceTarget(surface: surface, sample: $0, need: .point) }
             }
-            let need: GuidanceNeed = surfaceCoverage.viewpointCount < CoveragePolicy.requiredViewpointCount ? .secondViewpoint : .steadierView
+            let need: GuidanceNeed = surfaceCoverage.viewpointCount < policy.requiredViewpointCount ? .secondViewpoint : .steadierView
             return nearestCenterSample(on: surface).map { [GuidanceTarget(surface: surface, sample: $0, need: need)] } ?? []
         }
         guard var target = candidates.min(by: { distance(to: $0.sample, on: $0.surface, from: camera) < distance(to: $1.sample, on: $1.surface, from: camera) }) else {
-            return Guidance(angle: .zero, instruction: CoverageSnapshot.completeInstruction)
+            return Guidance(angle: .zero, instruction: CoverageSnapshot.keepWalkingInstruction)
         }
         let targetDistance = distance(to: target.sample, on: target.surface, from: camera)
-        if target.need == .point, !CoveragePolicy.isCloseEnoughToObserve(distance: targetDistance) {
+        if target.need == .point, !policy.isCloseEnoughToObserve(distance: targetDistance) {
             target = GuidanceTarget(surface: target.surface, sample: target.sample, need: .moveCloser)
         }
         let worldPoint = worldPoint(for: target.sample, on: target.surface)

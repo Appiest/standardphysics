@@ -11,7 +11,7 @@ final class CaptureSessionStore: ObservableObject {
     @Published private(set) var phase: Phase = .preparing
     @Published private(set) var coverage = CoverageSnapshot()
     @Published private(set) var surfaces: [SurfaceSnapshot] = []
-    @Published private(set) var instruction = "Turn around slowly"
+    @Published private(set) var instruction = CoverageSnapshot.openingInstruction
     @Published private(set) var capturedScan: CapturedScan?
     @Published private(set) var hasDetailedGeometry = false
     @Published private(set) var paint: [PaintedSample] = []
