@@ -22,7 +22,7 @@ struct SamplePhoto: View {
 
     private static func drawing(for requestID: String) -> (SketchPen) -> Void {
         switch requestID {
-        case "entrance_threshold": drawDoorwayFromTheSide
+        case "entrance_threshold": drawDoorwayFromLowDown
         case "door_hardware": drawDoorHandle
         case "floor_surface": drawFloorInsideTheDoor
         case "restroom_turning_space": drawRestroomFromTheDoorway
@@ -33,7 +33,7 @@ struct SamplePhoto: View {
     private static func description(for requestID: String) -> String {
         switch requestID {
         case "entrance_threshold":
-            "A doorway seen from the side, with the floor and the bottom of the door in frame and the step marked."
+            "A doorway seen straight on from low down outside, with the threshold across the bottom, its height marked, and a tape measure standing against it."
         case "door_hardware":
             "A door seen straight on, with its handle inside a band marked 34 to 48 inches up."
         case "floor_surface":
@@ -54,25 +54,27 @@ struct SamplePhoto: View {
         }
     }
 
-    /// Side on: the pavement outside, the threshold, the floor inside, the
-    /// door frame and the open door's edge, with the step between the two
-    /// floor levels marked.
-    private static func drawDoorwayFromTheSide(_ pen: SketchPen) {
-        var ground = Path()
-        for (index, corner) in [(0, 60), (40, 60), (46, 56), (100, 56), (100, 72), (0, 72)].enumerated() {
-            let point = pen.space.point(CGFloat(corner.0), CGFloat(corner.1))
-            if index == 0 { ground.move(to: point) } else { ground.addLine(to: point) }
+    /// Straight on and low from just outside: the wall either side, the floor
+    /// inside through the doorway, the threshold across its bottom with its
+    /// height marked, and a tape measure standing against it.
+    private static func drawDoorwayFromLowDown(_ pen: SketchPen) {
+        pen.box(0, 60, 100, 12, fill: AppTheme.ink.opacity(0.07), stroke: AppTheme.transparent)
+        pen.box(0, 0, 24, 60, fill: AppTheme.ink.opacity(0.1), stroke: AppTheme.transparent)
+        pen.box(76, 0, 24, 60, fill: AppTheme.ink.opacity(0.1), stroke: AppTheme.transparent)
+        pen.box(24, 42, 52, 10, fill: AppTheme.ink.opacity(0.05), stroke: AppTheme.transparent)
+        pen.wall([(24, 60), (24, 0)])
+        pen.wall([(76, 60), (76, 0)])
+        pen.box(24, 52, 52, 8, fill: AppTheme.ink.opacity(0.28))
+        pen.line([(0, 60), (100, 60)], width: 2, colour: AppTheme.ink)
+        pen.box(29, 32, 6, 28, fill: AppTheme.Sketch.paper)
+        for (index, y) in stride(from: CGFloat(36), through: 56, by: 4).enumerated() {
+            pen.line([(29, y), (index.isMultiple(of: 2) ? 33 : 31, y)], width: 1, colour: AppTheme.ink)
         }
-        ground.closeSubpath()
-        pen.context.fill(ground, with: .color(AppTheme.ink.opacity(0.07)))
-        pen.wall([(0, 60), (40, 60), (46, 56), (100, 56)])
-        pen.box(46, 4, 4, 52, fill: AppTheme.ink.opacity(0.28))
-        pen.box(51, 6, 3, 49)
-        pen.line([(34, 56), (46, 56)], width: 1, colour: AppTheme.accent, dash: [2, 2])
-        pen.line([(36, 56), (36, 60)], width: 2, colour: AppTheme.accent)
-        pen.line([(34, 56), (38, 56)], width: 2, colour: AppTheme.accent)
-        pen.line([(34, 60), (38, 60)], width: 2, colour: AppTheme.accent)
-        pen.label("step", at: 32, 52, anchor: .trailing, isMeasurement: false)
+        pen.line([(76, 52), (84, 52)], width: 1, colour: AppTheme.accent, dash: [2, 2])
+        pen.line([(82, 52), (82, 60)], width: 2, colour: AppTheme.accent)
+        pen.line([(80, 52), (84, 52)], width: 2, colour: AppTheme.accent)
+        pen.line([(80, 60), (84, 60)], width: 2, colour: AppTheme.accent)
+        pen.label("step", at: 86, 56, anchor: .leading, isMeasurement: false)
     }
 
     private static func drawDoorHandle(_ pen: SketchPen) {
