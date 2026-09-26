@@ -91,7 +91,7 @@ def expected_cost(plan: Plan, data: Room6Data, prompt_tokens: int, sft_tokens: i
     sft_rows = len(data.sft) * plan.sft_epochs
     spend.train_tokens += sft_rows * sft_tokens
     rollouts = plan.rl_steps * plan.rl_prompts_per_step * plan.rl_group_size
-    evals = 3 * len(data.heldout) * plan.eval_samples
+    evals = (3 if plan.rl_steps else 2) * len(data.heldout) * plan.eval_samples
     spend.prefill_tokens += (rollouts + evals) * prompt_tokens
     spend.sample_tokens += (rollouts + evals) * plan.max_sample_tokens
     spend.train_tokens += rollouts * (prompt_tokens + plan.max_sample_tokens)
@@ -414,6 +414,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--estimate-only", action="store_true")
     parser.add_argument("--prompt-tokens", type=int, default=2300)
     parser.add_argument("--answer-tokens", type=int, default=200)
+    parser.add_argument("--phases", choices=("sft", "sft,rl"), default="sft,rl",
+                        help="`sft` stops after supervised training, its evaluation and optional promotion")
     return parser
 
 
@@ -445,7 +447,8 @@ def main() -> None:
     trainer = Trainer(plan, data, progress, args.run_dir, os.environ["FIREWORKS_API_KEY"])
     try:
         run_sft_phase(trainer)
-        run_rl_phase(trainer)
+        if "rl" in args.phases.split(","):
+            run_rl_phase(trainer)
     except BudgetExceeded as stop:
         progress.record("budget", status="stopped", reason=str(stop))
         raise SystemExit(BUDGET_EXIT_CODE) from stop
