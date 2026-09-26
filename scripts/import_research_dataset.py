@@ -9,16 +9,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import math
 import pathlib
 import sys
 import uuid
-from typing import Any
 
 from standardphysics_contracts import (
     Mat4,
-    Quality,
     SceneGraph,
     SceneNode,
     Vec3,

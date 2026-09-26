@@ -18,9 +18,8 @@ import json
 import pathlib
 import sys
 from dataclasses import dataclass
-from typing import Any
 
-from standardphysics_contracts import SceneGraph
+from standardphysics_contracts import SceneGraph, SceneNode
 
 
 @dataclass
@@ -36,6 +35,18 @@ class AuditResult:
     suggested_journey: list[str]
 
 
+def _floor_area_m2(floors: list[SceneNode], walls: list[SceneNode]) -> float:
+    if floors:
+        dims = sorted([floors[0].dimensions.x, floors[0].dimensions.y, floors[0].dimensions.z], reverse=True)
+        return dims[0] * dims[1]
+    if walls:
+        xs = [n.transform.m[3] for n in walls]
+        ys = [n.transform.m[7] for n in walls]
+        if xs and ys:
+            return max(1.0, (max(xs) - min(xs)) * (max(ys) - min(ys)))
+    return 0.0
+
+
 def audit_scene_graph(graph: SceneGraph) -> AuditResult:
     """Audit a single SceneGraph for RL rearranger suitability."""
     movable_nodes = [n for n in graph.nodes if n.movable]
@@ -43,17 +54,7 @@ def audit_scene_graph(graph: SceneGraph) -> AuditResult:
     doors = [n for n in graph.nodes if n.kind == "door" or "door" in n.raw_category.lower()]
     walls = [n for n in graph.nodes if n.kind == "wall" or "wall" in n.raw_category.lower()]
     floors = [n for n in graph.nodes if n.kind == "floor" or "floor" in n.raw_category.lower()]
-
-    # Estimate floor area
-    area_m2 = 0.0
-    if floors:
-        dims = sorted([floors[0].dimensions.x, floors[0].dimensions.y, floors[0].dimensions.z], reverse=True)
-        area_m2 = dims[0] * dims[1]
-    elif walls:
-        xs = [n.transform.m[3] for n in walls]
-        ys = [n.transform.m[7] for n in walls]
-        if xs and ys:
-            area_m2 = max(1.0, (max(xs) - min(xs)) * (max(ys) - min(ys)))
+    area_m2 = _floor_area_m2(floors, walls)
 
     reasons: list[str] = []
     is_useful = True
