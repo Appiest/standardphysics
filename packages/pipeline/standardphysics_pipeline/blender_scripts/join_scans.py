@@ -54,8 +54,15 @@ def joined(meshes: list):
 
 
 def thin(obj, max_triangles: int) -> None:
+    """Fewer faces for a floor of untextured scans; a photographed floor keeps every face.
+
+    Each painted face has its own island in its atlas, and collapsing an edge
+    between two faces blends two unrelated islands' coordinates, so a thinned
+    photographed floor came out as smeared texture. The walks were each thinned
+    to the viewer's budget when they were painted.
+    """
     triangle_count = sum(len(polygon.vertices) - 2 for polygon in obj.data.polygons)
-    if triangle_count <= max_triangles:
+    if triangle_count <= max_triangles or len(obj.data.uv_layers):
         return
     modifier = obj.modifiers.new("thin", "DECIMATE")
     modifier.ratio = max_triangles / triangle_count
