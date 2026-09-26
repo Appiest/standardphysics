@@ -1,0 +1,266 @@
+[
+ {
+  "frame_id": "frame-10045",
+  "name": "bench",
+  "box": [
+   996.48,
+   44.64000000000004,
+   1257.6000000000001,
+   1026.72
+  ],
+  "movable": false,
+  "confidence": 0.96
+ },
+ {
+  "frame_id": "frame-10089",
+  "name": "bench",
+  "box": [
+   42.239999999999995,
+   360.0,
+   184.32,
+   655.1999999999999
+  ],
+  "movable": false,
+  "confidence": 0.86
+ },
+ {
+  "frame_id": "frame-10319",
+  "name": "sofa",
+  "box": [
+   1182.72,
+   406.08000000000004,
+   1344.0,
+   620.6400000000001
+  ],
+  "movable": true,
+  "confidence": 0.65
+ },
+ {
+  "frame_id": "frame-10381",
+  "name": "bench",
+  "box": [
+   518.4000000000001,
+   1157.76,
+   746.88,
+   1440.0
+  ],
+  "movable": true,
+  "confidence": 0.75
+ },
+ {
+  "frame_id": "frame-10425",
+  "name": "bench",
+  "box": [
+   641.2800000000001,
+   0.0,
+   1054.0800000000002,
+   465.11999999999995
+  ],
+  "movable": false,
+  "confidence": 0.88
+ },
+ {
+  "frame_id": "frame-10434",
+  "name": "bench",
+  "box": [
+   334.08,
+   2.8800000000000026,
+   917.76,
+   792.0000000000001
+  ],
+  "movable": false,
+  "confidence": 0.88
+ },
+ {
+  "frame_id": "frame-10504",
+  "name": "bench",
+  "box": [
+   222.72,
+   14.400000000000013,
+   1046.4,
+   1440.0
+  ],
+  "movable": false,
+  "confidence": 0.93
+ },
+ {
+  "frame_id": "frame-10513",
+  "name": "bench",
+  "box": [
+   380.16,
+   138.23999999999995,
+   1418.8799999999999,
+   1440.0
+  ],
+  "movable": false,
+  "confidence": 0.95
+ },
+ {
+  "frame_id": "frame-10513",
+  "name": "bench",
+  "box": [
+   645.12,
+   1.4400000000000013,
+   1201.92,
+   345.59999999999997
+  ],
+  "movable": false,
+  "confidence": 0.9
+ },
+ {
+  "frame_id": "frame-10557",
+  "name": "bin",
+  "box": [
+   1547.52,
+   1065.6,
+   1685.76,
+   1300.32
+  ],
+  "movable": false,
+  "confidence": 0.89
+ },
+ {
+  "frame_id": "frame-20595",
+  "name": "bin",
+  "box": [
+   1822.08,
+   76.32000000000006,
+   1918.08,
+   325.43999999999994
+  ],
+  "movable": true,
+  "confidence": 0.81
+ },
+ {
+  "frame_id": "frame-30021",
+  "name": "bin",
+  "box": [
+   493.44,
+   796.3199999999999,
+   1207.68,
+   1195.2
+  ],
+  "movable": true,
+  "confidence": 0.98
+ },
+ {
+  "frame_id": "frame-30021",
+  "name": "bin",
+  "box": [
+   529.9200000000001,
+   1002.2399999999999,
+   1305.6000000000001,
+   1438.56
+  ],
+  "movable": true,
+  "confidence": 0.98
+ },
+ {
+  "frame_id": "frame-30021",
+  "name": "bin",
+  "box": [
+   645.12,
+   1248.48,
+   1401.6,
+   1440.0
+  ],
+  "movable": true,
+  "confidence": 0.93
+ },
+ {
+  "frame_id": "frame-30039",
+  "name": "bin",
+  "box": [
+   314.88,
+   1033.92,
+   1176.96,
+   1440.0
+  ],
+  "movable": true,
+  "confidence": 0.98
+ },
+ {
+  "frame_id": "frame-30039",
+  "name": "bin",
+  "box": [
+   299.52,
+   662.4,
+   1125.12,
+   1146.24
+  ],
+  "movable": true,
+  "confidence": 0.98
+ },
+ {
+  "frame_id": "frame-30039",
+  "name": "bin",
+  "box": [
+   293.76,
+   345.59999999999997,
+   1080.9599999999998,
+   731.52
+  ],
+  "movable": true,
+  "confidence": 0.98
+ },
+ {
+  "frame_id": "frame-30039",
+  "name": "bin",
+  "box": [
+   284.15999999999997,
+   51.840000000000046,
+   1054.0800000000002,
+   466.55999999999995
+  ],
+  "movable": true,
+  "confidence": 0.98
+ },
+ {
+  "frame_id": "frame-30048",
+  "name": "bin",
+  "box": [
+   1150.08,
+   1108.8,
+   1920.0,
+   1440.0
+  ],
+  "movable": true,
+  "confidence": 0.98
+ },
+ {
+  "frame_id": "frame-30048",
+  "name": "bin",
+  "box": [
+   1128.96,
+   682.56,
+   1920.0,
+   1124.64
+  ],
+  "movable": true,
+  "confidence": 0.98
+ },
+ {
+  "frame_id": "frame-30048",
+  "name": "bin",
+  "box": [
+   1113.6,
+   390.24,
+   1920.0,
+   757.44
+  ],
+  "movable": true,
+  "confidence": 0.98
+ },
+ {
+  "frame_id": "frame-30048",
+  "name": "bin",
+  "box": [
+   1105.9199999999998,
+   131.03999999999996,
+   1918.08,
+   527.04
+  ],
+  "movable": true,
+  "confidence": 0.98
+ }
+]
