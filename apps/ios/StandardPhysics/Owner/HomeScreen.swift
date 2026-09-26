@@ -146,29 +146,28 @@ struct NextStepCard: View {
 /// A mark per kind of next step, so the card says what kind of thing it is
 /// before its words are read.
 enum NextStepMark {
+    private static let symbols: [String: String] = [
+        "answers": "questionmark.bubble",
+        "photos": "camera",
+        "measuring": "ruler",
+        "counter": "hand.tap",
+        "path": "figure.walk",
+        "follow_ups": "ruler",
+        "results": "list.bullet.clipboard",
+        "checklist": "checklist",
+        "done": "checkmark.seal",
+        "upload": "arrow.up.circle",
+        "failed": "arrow.clockwise",
+    ]
+
+    private static let colours: [String: Color] = ["failed": AppTheme.problem, "done": AppTheme.pass]
+
     static func symbol(for kind: String) -> String {
-        switch kind {
-        case "answers": "questionmark.bubble"
-        case "photos": "camera"
-        case "measuring": "ruler"
-        case "counter": "hand.tap"
-        case "path": "figure.walk"
-        case "follow_ups": "ruler"
-        case "results": "list.bullet.clipboard"
-        case "checklist": "checklist"
-        case "done": "checkmark.seal"
-        case "upload": "arrow.up.circle"
-        case "failed": "arrow.clockwise"
-        default: "arrow.right.circle"
-        }
+        symbols[kind] ?? "arrow.right.circle"
     }
 
     static func colour(for kind: String) -> Color {
-        switch kind {
-        case "failed": AppTheme.problem
-        case "done": AppTheme.pass
-        default: AppTheme.accent
-        }
+        colours[kind] ?? AppTheme.accent
     }
 }
 
