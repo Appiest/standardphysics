@@ -4,7 +4,7 @@ import WebKit
 
 struct WorkspaceScreen: View {
     @ObservedObject var appModel: AppModel
-    let scanID: UUID
+    let destination: WebDestination
     @State private var message: String?
 
     var body: some View {
@@ -15,10 +15,12 @@ struct WorkspaceScreen: View {
                    origin.allowsWorkspace,
                    message == nil {
                     WorkspaceWebView(
-                        url: workspaceURL.appendingPathComponent("scans").appendingPathComponent(scanID.uuidString),
+                        url: destination.url(on: workspaceURL),
                         allowedOrigin: origin,
-                        sessionToken: appModel.session.token,
-                        onScanRequested: { appModel.showScanPrimer() },
+                        session: appModel.session,
+                        makeBridge: { reload in
+                            WebBridge(app: appModel, scanID: destination.scanID, reloadSignedIn: reload)
+                        },
                         onFailure: { message = $0 }
                     )
                 } else {
@@ -29,17 +31,22 @@ struct WorkspaceScreen: View {
                             Button("Try again") { message = nil }
                                 .buttonStyle(AppButtonStyle())
                         }
-                        Button("Connection") { appModel.screen = .connection }
-                            .buttonStyle(AppButtonStyle())
+                        if !AppEnvironment.addressesAreCompiledIn {
+                            Button("Connection") { appModel.screen = .connection }
+                                .buttonStyle(AppButtonStyle(.secondary))
+                        }
                     }.padding(AppTheme.Spacing.page)
                 }
             }
             .ignoresSafeArea(edges: .bottom)
-            .navigationTitle("Your shop")
+            .navigationTitle(destination.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Shops") { appModel.showStart() }
+                    Button { appModel.showStart() } label: {
+                        Label("Home", systemImage: "chevron.left")
+                            .labelStyle(.titleAndIcon)
+                    }
                 }
             }
         }
@@ -49,25 +56,41 @@ struct WorkspaceScreen: View {
 struct WorkspaceWebView: UIViewRepresentable {
     let url: URL
     let allowedOrigin: WebOrigin
-    let sessionToken: String?
-    let onScanRequested: () -> Void
+    let session: SessionStore
+    let makeBridge: (@escaping () -> Void) -> WebBridge
     let onFailure: (String) -> Void
 
+    /// The web reads this to draw the owner view without the site's own
+    /// header, so the page never flashes the laptop layout first.
+    static var userAgentName: String {
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+        return "StandardPhysicsApp/\(build)"
+    }
+
     func makeCoordinator() -> Coordinator {
-        Coordinator(allowedOrigin: allowedOrigin,
-            onScanRequested: onScanRequested, onFailure: onFailure)
+        Coordinator(allowedOrigin: allowedOrigin, onFailure: onFailure)
     }
 
     func makeUIView(context: Context) -> WKWebView {
         let contentController = WKUserContentController()
         contentController.add(context.coordinator, name: "nativeCapture")
+        contentController.add(context.coordinator, name: WebBridgeMessage.handlerName)
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         configuration.userContentController = contentController
+        configuration.applicationNameForUserAgent = Self.userAgentName
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        context.coordinator.attach(webView)
-        context.coordinator.signIn(with: sessionToken, then: url, in: webView)
+        webView.uiDelegate = context.coordinator
+        let coordinator = context.coordinator
+        let session = session
+        let url = url
+        coordinator.bridge = makeBridge { [weak coordinator, weak webView] in
+            guard let coordinator, let webView else { return }
+            coordinator.signIn(with: session.token, then: url, in: webView, reloading: true)
+        }
+        coordinator.attach(webView)
+        coordinator.signIn(with: session.token, then: url, in: webView)
         return webView
     }
 
@@ -77,22 +100,22 @@ struct WorkspaceWebView: UIViewRepresentable {
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "nativeCapture")
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: WebBridgeMessage.handlerName)
         webView.navigationDelegate = nil
+        webView.uiDelegate = nil
         webView.stopLoading()
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, WKDownloadDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKDownloadDelegate {
         private let allowedOrigin: WebOrigin
-        private let onScanRequested: () -> Void
         private let onFailure: (String) -> Void
         private var requestedURL: URL?
         private weak var webView: WKWebView?
         private var downloadDestinations: [ObjectIdentifier: URL] = [:]
+        var bridge: WebBridge?
 
-        init(allowedOrigin: WebOrigin,
-             onScanRequested: @escaping () -> Void, onFailure: @escaping (String) -> Void) {
+        init(allowedOrigin: WebOrigin, onFailure: @escaping (String) -> Void) {
             self.allowedOrigin = allowedOrigin
-            self.onScanRequested = onScanRequested
             self.onFailure = onFailure
         }
 
@@ -107,7 +130,8 @@ struct WorkspaceWebView: UIViewRepresentable {
         /// set when it signed in. Without this the owner reaches their own shop
         /// and is asked to sign in a second time, inside their own app, to see
         /// the room they just walked.
-        func signIn(with token: String?, then url: URL, in webView: WKWebView) {
+        func signIn(with token: String?, then url: URL, in webView: WKWebView, reloading: Bool = false) {
+            if reloading { requestedURL = nil }
             guard let token, let cookie = Self.sessionCookie(token: token, for: url) else {
                 load(url, in: webView)
                 return
@@ -178,9 +202,30 @@ struct WorkspaceWebView: UIViewRepresentable {
                     return .download
                 }
                 return .allow
-            } else {
-                return .cancel
             }
+            openOutside(target, tapped: navigationAction.navigationType == .linkActivated || navigationAction.targetFrame == nil)
+            return .cancel
+        }
+
+        /// A link the owner tapped to somewhere else, like a rule citation,
+        /// opens in Safari. Anything the page tries on its own stays blocked.
+        private func openOutside(_ url: URL, tapped: Bool) {
+            guard tapped, let scheme = url.scheme?.lowercased(), ["https", "http", "mailto", "tel"].contains(scheme) else { return }
+            DispatchQueue.main.async { UIApplication.shared.open(url) }
+        }
+
+        /// A `target=_blank` link on our own site opens in place, since the
+        /// app has one web view and no tabs.
+        func webView(
+            _ webView: WKWebView,
+            createWebViewWith configuration: WKWebViewConfiguration,
+            for navigationAction: WKNavigationAction,
+            windowFeatures: WKWindowFeatures
+        ) -> WKWebView? {
+            if let target = navigationAction.request.url, allowedOrigin.contains(target) {
+                webView.load(navigationAction.request)
+            }
+            return nil
         }
 
         func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
@@ -278,14 +323,18 @@ struct WorkspaceWebView: UIViewRepresentable {
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard message.name == "nativeCapture",
-                  allowedOrigin.allowsWorkspace,
+            guard allowedOrigin.allowsWorkspace,
                   message.frameInfo.isMainFrame,
                   let sourceURL = message.frameInfo.request.url,
                   allowedOrigin.contains(sourceURL),
-                  let action = message.body as? String,
-                  action == "scanShop" else { return }
-            DispatchQueue.main.async { self.onScanRequested() }
+                  let webView = message.webView else { return }
+            if message.name == "nativeCapture", message.body as? String == "scanShop" {
+                Task { @MainActor in self.bridge?.scanRequested() }
+                return
+            }
+            guard message.name == WebBridgeMessage.handlerName,
+                  let bridgeMessage = WebBridgeMessage(body: message.body) else { return }
+            Task { @MainActor in self.bridge?.handle(bridgeMessage, in: webView) }
         }
     }
 }
