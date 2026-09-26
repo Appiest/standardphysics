@@ -346,6 +346,7 @@ def _route_shape_cases() -> list[Case]:
         _clean(),
         v.box("nook_west", "Shelf", (-1.0, 1.0, 0.5), (1.9, 0.5, 1.0)),
         v.box("nook_east", "Shelf", (1.0, 1.0, 0.5), (1.9, 0.5, 1.0)),
+        v.box("nook_back", "Shelf", (0.0, 3.0, 0.5), (3.8, 0.5, 1.0)),
     )
     errand = v.errand(
         "Restroom", there=Vec3(x=0.0, y=2.4, z=0.0), back=Vec3(x=0.0, y=-3.5, z=0.0)
@@ -353,7 +354,8 @@ def _route_shape_cases() -> list[Case]:
     return [
         _case(
             "dead_end_tight",
-            "An out and back errand into a corner with no room to turn round. "
+            "An out and back errand into a nook 1.5 m deep, short of a 60 in circle, "
+            "so there is no room to turn round. "
             "This is where 304.3 applies, and 403.5.2 catches the two shelves "
             "the route has to come back around.",
             nook,
