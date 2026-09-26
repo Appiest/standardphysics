@@ -31,16 +31,16 @@ def make_room(index: int) -> Window:
                   scenario=scenario, route="scan")
 
 
-def run_rooms(run: pathlib.Path, count: int) -> None:
+def run_rooms(run: pathlib.Path, count: int, start: int = 0) -> None:
     output = run / "windows.jsonl"
     done = {row["window_id"] for row in _rows(output)}
-    for index in range(count):
+    for index in range(start, start + count):
         window = make_room(index)
         if window.window_id in done:
             continue
         _append(output, window.as_dict())
-        _write_json(run / "progress.json", {"stage": "rooms", "done": index + 1, "total": count})
-        print(f"room {index + 1}/{count}", flush=True)
+        _write_json(run / "progress.json", {"stage": "rooms", "done": index - start + 1, "total": count})
+        print(f"room {index - start + 1}/{count}", flush=True)
 
 
 def _scramble_task(row: dict) -> list[dict]:
@@ -115,11 +115,12 @@ def main() -> None:
     parser.add_argument("--run", type=pathlib.Path, required=True)
     parser.add_argument("--real", type=pathlib.Path)
     parser.add_argument("--count", type=int, default=500)
+    parser.add_argument("--start", type=int, default=0, help="first room index; fresh test shops start past training")
     parser.add_argument("--workers", type=int, default=6)
     args = parser.parse_args()
     args.run.mkdir(parents=True, exist_ok=True)
     if args.stage == "rooms":
-        run_rooms(args.run, args.count)
+        run_rooms(args.run, args.count, args.start)
     elif args.stage == "scrambles":
         run_scrambles(args.run, args.workers)
     elif args.stage == "targets":
