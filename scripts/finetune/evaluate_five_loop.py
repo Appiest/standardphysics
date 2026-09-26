@@ -15,6 +15,9 @@ multiroom_data.py trace-corrections. Held-out is the default benchmark split.
 repair search (`room_solver.solve`) also answers the current room, and the
 checker keeps whichever answer ranks higher, the model's winning ties. Each
 attempt records which source it used. --mode solver-only needs no model.
+
+--plan-image attaches a top-down plan of the current room, drawn from the same
+JSON, to every message the model reads (`plan_image.py`).
 """
 
 from __future__ import annotations
@@ -39,6 +42,7 @@ EVALUATION_POLICY = "checker-full-clear-v1"
 MODES = ("model", "solver-assisted", "solver-only")
 Sampler = Callable[[list[dict]], str]
 Solver = Callable[[object, object], str | None]
+Illustrator = Callable[[dict], dict]
 
 
 def _fixable_left(graph, checker) -> int:
@@ -99,8 +103,13 @@ def _chosen(messages: list[dict], current, checker, sampler: Sampler | None, sol
     return (solved, "solver") if solver_rank > model_rank else (completion, "model")
 
 
+def _unchanged(message: dict) -> dict:
+    return message
+
+
 def evaluate_variant(data: MultiroomData, row: dict, sampler: Sampler | None, model: str,
-                     max_attempts: int = MAX_ATTEMPTS, solver: Solver | None = None) -> dict:
+                     max_attempts: int = MAX_ATTEMPTS, solver: Solver | None = None,
+                     illustrate: Illustrator = _unchanged) -> dict:
     if not 1 <= max_attempts <= MAX_ATTEMPTS:
         raise ValueError("max_attempts must be between one and five")
     variant_id = row["variant"]
@@ -118,7 +127,8 @@ def evaluate_variant(data: MultiroomData, row: dict, sampler: Sampler | None, mo
                 "checker_full_clear_within_five": False, "full_usability_preserved": False,
                 "final_baseline_usability": 1.0, "attempts_used": 0, "stop_reason": "no_fixable_findings"}
 
-    messages = prompt_messages(current, checker)
+    system, room = prompt_messages(current, checker)
+    messages = [system, illustrate(room)]
     success = False
     current_baseline_usability = 1.0
     for index in range(1, max_attempts + 1):
@@ -131,7 +141,7 @@ def evaluate_variant(data: MultiroomData, row: dict, sampler: Sampler | None, mo
         if attempt["accepted"] and attempt["feedback"]["checker_feedback"]["fixable_left"] == 0:
             success = True
             break
-        messages.extend(({"role": "assistant", "content": completion}, feedback))
+        messages.extend(({"role": "assistant", "content": completion}, illustrate(feedback)))
 
     construction = sum(a["verdict"]["construction_inches"] for a in record["attempts"] if a["accepted"])
     return {**record, "success": success, "checker_full_clear_within_five": success,
@@ -170,7 +180,7 @@ def _previous_records(data: MultiroomData, rows: list[dict], out: pathlib.Path,
 
 def evaluate(data: MultiroomData, sampler: Sampler | None, model: str, out: pathlib.Path,
              max_attempts: int = MAX_ATTEMPTS, rows: list[dict] | None = None, solver: Solver | None = None,
-             workers: int = 1, limit: int | None = None) -> dict:
+             workers: int = 1, limit: int | None = None, illustrate: Illustrator = _unchanged) -> dict:
     if not 1 <= max_attempts <= MAX_ATTEMPTS:
         raise ValueError("max_attempts must be between one and five")
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -179,7 +189,8 @@ def evaluate(data: MultiroomData, sampler: Sampler | None, model: str, out: path
     resumed = len(records_by_variant)
     pending = [row for row in rows if row["variant"] not in records_by_variant][:limit]
     with out.open("a") as handle, ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(evaluate_variant, data, row, sampler, model, max_attempts, solver) for row in pending]
+        futures = [pool.submit(evaluate_variant, data, row, sampler, model, max_attempts, solver, illustrate)
+                   for row in pending]
         for future in as_completed(futures):
             record = future.result()
             handle.write(json.dumps(record, separators=(",", ":")) + "\n")
@@ -224,7 +235,8 @@ def _sampler(args) -> Sampler | None:
     client = OpenAI(base_url=args.base_url, api_key=os.environ.get(args.api_key_env, "none"))
 
     def sample(messages: list[dict]) -> str:
-        reply = client.chat.completions.create(model=args.model, messages=messages, temperature=args.temperature,
+        reply = client.chat.completions.create(model=args.served_model or args.model, messages=messages,
+                                               temperature=args.temperature,
                                                max_tokens=args.max_tokens)
         return reply.choices[0].message.content or ""
 
@@ -238,7 +250,9 @@ def main() -> None:
     parser.add_argument("--fireworks", help="sample Fireworks serverless: `base` or a saved training state reference")
     parser.add_argument("--spend-file", type=pathlib.Path, help="where --fireworks records its estimated spend")
     parser.add_argument("--model", required=True, help="label for the records; the served model name otherwise")
+    parser.add_argument("--served-model", help="the name the --base-url server knows the model by, when it differs")
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
+    parser.add_argument("--plan-image", action="store_true", help="show the model a drawn plan of the room each turn")
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--max-tokens", type=int, default=512)
     parser.add_argument("--max-attempts", type=int, default=MAX_ATTEMPTS)
@@ -260,8 +274,11 @@ def main() -> None:
     index, count = (int(part) for part in args.shard.split("/"))
     rows = rows[index::count]
     solver = cached_solver() if args.mode != "model" else None
+    illustrate = _unchanged
+    if args.plan_image:
+        from plan_image import with_plan as illustrate
     print(json.dumps(evaluate(data, _sampler(args), args.model, args.out, args.max_attempts, rows, solver,
-                              args.workers, args.limit)))
+                              args.workers, args.limit, illustrate)))
 
 
 if __name__ == "__main__":

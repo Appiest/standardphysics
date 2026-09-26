@@ -172,3 +172,18 @@ def test_train_rows_can_be_sampled_without_evaluating_heldout(monkeypatch, tmp_p
 
     assert summary["variants"] == 1
     assert json.loads((tmp_path / "train.jsonl").read_text())["variant"] == "train"
+
+
+def test_every_user_turn_is_illustrated_and_the_model_answers_stay_plain(monkeypatch):
+    data, _ = setup_loop(monkeypatch)
+    replies = iter(("bad", "partial", "clear"))
+    seen = []
+
+    def sample(history):
+        seen.append(history)
+        return next(replies)
+
+    evaluator.evaluate_variant(data, data.heldout[0], sample, "fake-qwen",
+                               illustrate=lambda message: {**message, "drawn": True})
+    last = seen[-1]
+    assert [message.get("drawn", False) for message in last] == [False, True, False, True, False, True]
