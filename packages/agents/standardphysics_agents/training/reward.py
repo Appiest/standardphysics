@@ -7,7 +7,7 @@ rejects. An accepted partial fix earns at most 0.55; a fix clearing every
 fixable finding earns at least 0.65. Recovery helps rank partial fixes, while
 usability and movement break ties within each tier. This makes a complete fix
 the training objective without paying for rejected layouts. A fix that needs
-construction (a wall shift) pays a little less per inch moved, so a furniture-only
+construction (a wall shift or a relocated fixture) pays a little less per inch moved, so a furniture-only
 fix of the same room always ranks above it.
 
 The training checker treats uncertain scan geometry as measured. Its all-clear
@@ -26,7 +26,7 @@ from ..evaluation.gate import accepts
 from ..fix import apply_moves, violations
 from ..fix.strategies import TURN_DISRUPTION_METERS
 from .checker import TrainingChecker
-from .construction import construction_inches, shift_walls
+from .construction import build, construction_inches
 from .edits import edit_complaint, node_moves, parse_edits
 from .quality import layout_quality
 from .usability import usability
@@ -91,21 +91,21 @@ def score_completion(completion: str, room: SceneGraph, checker: TrainingChecker
     edits = parse_edits(completion)
     if edits is None:
         return Verdict(0.0, reason="unparseable")
-    if any(move.node_id in checker.pinned for move in edits.moves):
+    if any(move.node_id in checker.pinned for move in [*edits.moves, *edits.fixture_moves]):
         return Verdict(0.0, parsed=True, reason=MOVED_PINNED)
     complaint = edit_complaint(room, edits)
     if complaint:
         return Verdict(0.0, parsed=True, reason=complaint)
     moves = node_moves(edits)
     try:
-        built = shift_walls(room, edits.wall_shifts)
+        built = build(room, edits.wall_shifts, edits.fixture_moves)
     except ValueError:
-        return Verdict(0.0, parsed=True, reason="unknown_wall_side")
+        return Verdict(0.0, parsed=True, reason="unbuildable_construction")
     candidate = apply_moves(built, moves)
     broken = violations(built, candidate)
     if broken:
         return Verdict(0.0, parsed=True, reason=",".join(sorted({item.kind for item in broken})))
-    return _gated(room, candidate, checker, disruption_meters(moves), construction_inches(edits.wall_shifts))
+    return _gated(room, candidate, checker, disruption_meters(moves), construction_inches(edits.wall_shifts, edits.fixture_moves))
 
 
 def summarize(verdicts: list[Verdict]) -> dict:

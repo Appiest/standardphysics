@@ -12,7 +12,7 @@ from standardphysics_pipeline.footprints import rotation_about_z
 
 from ..fix import apply_moves
 from ..redesign import FurnitureMove, RoomEdits, _edit_complaint, _moves_of
-from .construction import SIDES, WallShift, shift_walls
+from .construction import SIDES, FixtureMove, WallShift, build
 
 THINKING = re.compile(r"<think>.*?</think>", re.DOTALL)
 FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
@@ -35,6 +35,7 @@ class TrainingEdits(RoomEdits):
 
     moves: list[FurnitureMove] = Field(default_factory=list, max_length=64)
     wall_shifts: list[WallShift] = Field(default_factory=list, max_length=len(SIDES))
+    fixture_moves: list[FixtureMove] = Field(default_factory=list, max_length=8)
 
 
 def parse_edits(completion: str) -> TrainingEdits | None:
@@ -47,16 +48,20 @@ def parse_edits(completion: str) -> TrainingEdits | None:
 
 def edit_complaint(graph: SceneGraph, edits: RoomEdits) -> str | None:
     shifts = getattr(edits, "wall_shifts", [])
+    fixtures = getattr(edits, "fixture_moves", [])
     if len({shift.side for shift in shifts}) != len(shifts):
         return "duplicate_wall_sides"
-    if shifts and not edits.moves:
+    if len({move.node_id for move in fixtures}) != len(fixtures):
+        return "duplicate_fixtures"
+    if (shifts or fixtures) and not edits.moves:
         return None
     return _edit_complaint(graph, edits)
 
 
 def apply_edits(graph: SceneGraph, edits: RoomEdits) -> SceneGraph:
     """The room after its construction, then its furniture moves."""
-    return apply_moves(shift_walls(graph, getattr(edits, "wall_shifts", [])), node_moves(edits))
+    built = build(graph, getattr(edits, "wall_shifts", []), getattr(edits, "fixture_moves", []))
+    return apply_moves(built, node_moves(edits))
 
 
 def node_moves(edits: RoomEdits) -> list[NodeMove]:
@@ -93,6 +98,7 @@ def edits_between(before: SceneGraph, after: SceneGraph) -> RoomEdits:
 
 def edits_json(edits: RoomEdits) -> str:
     payload = edits.model_dump(mode="json")
-    if not payload.get("wall_shifts"):
-        payload.pop("wall_shifts", None)
+    for construction in ("wall_shifts", "fixture_moves"):
+        if not payload.get(construction):
+            payload.pop(construction, None)
     return json.dumps(payload, separators=(",", ":"))

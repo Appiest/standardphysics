@@ -1,26 +1,40 @@
-"""Deterministic repair search: furniture first, then the smallest wall shift that clears the room.
+"""Deterministic repair search: furniture first, then the least construction that clears the room.
 
 The furniture search is the bounded `propose_fix` loop the ceiling uses. When
-it cannot clear every fixable problem, each side of the room is pushed out by
-the maximum construction shift and searched again; a side that clears is then
-narrowed to the fewest inches that still clear. The answer is always scored by
-`score_completion`, the same checker the model is judged by.
+it cannot clear every fixable problem, two kinds of construction are tried:
+each built-in fixture named by a remaining problem is slid in eight directions
+by a few sizes (the most promising slides then get the furniture search on
+top), and each side of the room is pushed out by the maximum wall shift and,
+when that clears, narrowed to the fewest inches that still clear. The answer
+is always scored by `score_completion`, the same checker the model is judged by.
 """
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from dataclasses import dataclass
 
 from standardphysics_agents.fix import propose_fix
 from standardphysics_agents.training import score_completion
-from standardphysics_agents.training.construction import MAX_WALL_SHIFT_INCHES, WallShift, floor_edges, shift_walls
+from standardphysics_agents.training.construction import (
+    MAX_WALL_SHIFT_INCHES,
+    FixtureMove,
+    WallShift,
+    build,
+    fixture_ids,
+    floor_edges,
+)
 from standardphysics_agents.training.edits import TrainingEdits, edits_between, edits_json
 from standardphysics_contracts import SceneGraph
 
 SHIFT_STEPS_INCHES = (1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, MAX_WALL_SHIFT_INCHES)
 SEARCH_LIMIT = 96
 SEARCH_ROUNDS = 8
+FIXTURE_STEPS_INCHES = (3.0, 6.0, 12.0, 18.0, 24.0)
+FIXTURE_DIRECTIONS = tuple((math.cos(math.radians(angle)), math.sin(math.radians(angle)))
+                           for angle in range(0, 360, 45))
+FIXTURE_FINALISTS = 3
 
 
 @dataclass(frozen=True)
@@ -60,11 +74,12 @@ def _furniture_layout(graph: SceneGraph, checker, rejected: Counter) -> SceneGra
     return layout
 
 
-def _attempt(graph: SceneGraph, checker, shifts: list[WallShift], rejected: Counter) -> Solution | None:
-    built = shift_walls(graph, shifts)
+def _attempt(graph: SceneGraph, checker, shifts: list[WallShift], rejected: Counter,
+             fixtures: list[FixtureMove] = ()) -> Solution | None:
+    built = build(graph, shifts, list(fixtures))
     layout = _furniture_layout(built, checker, rejected)
-    edits = TrainingEdits(moves=edits_between(built, layout).moves, wall_shifts=shifts)
-    if not edits.moves and not shifts:
+    edits = TrainingEdits(moves=edits_between(built, layout).moves, wall_shifts=shifts, fixture_moves=list(fixtures))
+    if not edits.moves and not shifts and not fixtures:
         return None
     completion = edits_json(edits)
     return Solution(completion, score_completion(completion, graph, checker).as_dict())
@@ -84,12 +99,46 @@ def _narrowed(graph: SceneGraph, checker, side, cleared: Solution, rejected: Cou
     return best
 
 
+def _blocking_fixtures(graph: SceneGraph, checker) -> list:
+    fixtures = fixture_ids(graph) - set(checker.pinned)
+    named = [node_id for finding in checker.fixable_problems(checker.assess(graph)) if finding.locus
+             for node_id in finding.locus.node_ids if node_id in fixtures]
+    return list(dict.fromkeys(named))
+
+
+def _fixture_slides(graph: SceneGraph, checker) -> list[Solution]:
+    """Every single-fixture slide, scored alone, best first."""
+    slides = []
+    for node_id in _blocking_fixtures(graph, checker):
+        for ux, uy in FIXTURE_DIRECTIONS:
+            for inches in FIXTURE_STEPS_INCHES:
+                move = FixtureMove(node_id=node_id, dx_inches=round(ux * inches, 1), dy_inches=round(uy * inches, 1))
+                completion = edits_json(TrainingEdits(fixture_moves=[move]))
+                slides.append(Solution(completion, score_completion(completion, graph, checker).as_dict()))
+    return sorted(slides, key=lambda slide: slide.rank, reverse=True)
+
+
+def _fixture_options(graph: SceneGraph, checker, rejected: Counter) -> list[Solution]:
+    slides = _fixture_slides(graph, checker)
+    cleared = [slide for slide in slides if slide.clears]
+    if cleared:
+        return cleared[:1]
+    options = []
+    for slide in [slide for slide in slides if slide.verdict["gate_accepts"]][:FIXTURE_FINALISTS]:
+        moves = TrainingEdits.model_validate_json(slide.completion).fixture_moves
+        option = _attempt(graph, checker, [], rejected, moves)
+        if option is not None:
+            options.append(option)
+    return options
+
+
 def solve(graph: SceneGraph, checker, allow_construction: bool = True) -> tuple[Solution | None, Counter]:
     """The best checker-scored repair found, preferring furniture only, then the smallest construction."""
     rejected: Counter = Counter()
     options = [option for option in [_attempt(graph, checker, [], rejected)] if option is not None]
     if (options and options[0].clears) or not allow_construction:
         return (max(options, key=lambda option: option.rank) if options else None), rejected
+    options.extend(_fixture_options(graph, checker, rejected))
     for edge in floor_edges(graph):
         widest = _attempt(graph, checker, [WallShift(side=edge.side, inches=MAX_WALL_SHIFT_INCHES)], rejected)
         if widest is None:

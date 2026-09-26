@@ -3,7 +3,15 @@ import math
 
 import pytest
 from shop_generator import generate
-from standardphysics_agents.training.construction import WallShift, floor_edges, shift_walls
+from standardphysics_agents.training.construction import (
+    FixtureMove,
+    WallShift,
+    construction_inches,
+    fixture_ids,
+    floor_edges,
+    move_fixtures,
+    shift_walls,
+)
 from standardphysics_agents.training.edits import edits_json, parse_edits
 from standardphysics_agents.training.prompt import _wall, room_view
 from standardphysics_agents.training.reward import shaped_reward
@@ -73,3 +81,28 @@ def test_prompt_lists_the_sides_a_model_may_push():
 def test_construction_pays_less_than_the_same_fix_without_it():
     assert shaped_reward(1.0, True, 0.5, 1.0, construction=6) < shaped_reward(1.0, True, 0.5, 1.0)
     assert shaped_reward(1.0, True, 0.5, 1.0, construction=12) > shaped_reward(0.9, False, 0.0, 1.0)
+
+
+def test_fixture_moves_slide_built_ins_and_refuse_furniture():
+    graph = shop()
+    fixtures = fixture_ids(graph)
+    fixture = next(node for node in graph.nodes if node.id in fixtures and node.kind == "object")
+    moved = move_fixtures(graph, [FixtureMove(node_id=fixture.id, dx_inches=12, dy_inches=0)])
+    before, after = fixture.transform.position, moved.by_id(fixture.id).transform.position
+    assert (after.x - before.x, after.y - before.y) == pytest.approx((to_meters(12), 0.0))
+    furniture = next(node for node in graph.nodes if node.movable)
+    with pytest.raises(ValueError):
+        move_fixtures(graph, [FixtureMove(node_id=furniture.id, dx_inches=3, dy_inches=0)])
+
+
+def test_exterior_walls_are_not_fixtures():
+    graph = shop()
+    edges = floor_edges(graph)
+    exterior = [node for node in graph.nodes if node.kind == "wall"
+                and any(abs(_offset(node, edge) - edge.half_extent) < 0.35 for edge in edges)]
+    assert exterior and not {node.id for node in exterior} & fixture_ids(graph)
+
+
+def test_construction_inches_count_fixture_slides():
+    move = FixtureMove(node_id="00000000-0000-0000-0000-000000000002", dx_inches=3, dy_inches=4)
+    assert construction_inches([WallShift(side="x-", inches=2)], [move]) == 7.0

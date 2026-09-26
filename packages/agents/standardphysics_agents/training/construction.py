@@ -1,4 +1,4 @@
-"""Construction edits: pushing one side of the room outward by a few inches.
+"""Construction edits: pushing one side of the room outward, or relocating a built-in fixture.
 
 Some rooms cannot be cleared by furniture alone, because the turning circle or
 the route does not fit between the pieces and the floor's edge. For those the
@@ -11,6 +11,11 @@ decides whether the shift helped.
 Sides are named by the floor's own horizontal axes, because a scanned floor is
 rarely square to the world: `x+` is the edge the floor's local x axis points
 at, and `room_view` publishes each side's outward direction and segment.
+
+A fixture move relocates something built in, such as a reception desk or a
+partition wall, when it is what blocks a turning circle or a route. Only
+fixtures qualify: furniture moves stay ordinary moves, and pieces the phantom
+filter pins cannot be moved at all.
 """
 
 from __future__ import annotations
@@ -18,11 +23,13 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3, lies_flat, to_meters
 
 MAX_WALL_SHIFT_INCHES = 12.0
+MAX_FIXTURE_MOVE_INCHES = 24.0
 EDGE_TOLERANCE_METERS = 0.35
 """How far a wall's centre line may sit from the floor edge and still stand on it."""
 PARALLEL_COSINE = 0.3
@@ -36,6 +43,28 @@ class WallShift(BaseModel):
     model_config = ConfigDict(extra="forbid")
     side: Side
     inches: float = Field(gt=0, le=MAX_WALL_SHIFT_INCHES)
+
+
+class FixtureMove(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    node_id: UUID
+    dx_inches: float = Field(ge=-MAX_FIXTURE_MOVE_INCHES, le=MAX_FIXTURE_MOVE_INCHES)
+    dy_inches: float = Field(ge=-MAX_FIXTURE_MOVE_INCHES, le=MAX_FIXTURE_MOVE_INCHES)
+
+    @property
+    def inches(self) -> float:
+        return math.hypot(self.dx_inches, self.dy_inches)
+
+
+def fixture_ids(graph: SceneGraph) -> set[UUID]:
+    """Built-in objects, and interior walls such as partitions; an exterior wall moves only by a wall shift."""
+    edges = floor_edges(graph)
+
+    def on_an_edge(node: SceneNode) -> bool:
+        return any(abs(_offset(node, edge) - edge.half_extent) <= EDGE_TOLERANCE_METERS for edge in edges)
+
+    return {node.id for node in graph.nodes if not node.movable and not lies_flat(node)
+            and (node.kind == "object" or (node.kind == "wall" and not on_an_edge(node)))}
 
 
 @dataclass(frozen=True)
@@ -163,5 +192,28 @@ def shift_walls(graph: SceneGraph, shifts: list[WallShift]) -> SceneGraph:
     return graph
 
 
-def construction_inches(shifts: list[WallShift]) -> float:
-    return round(sum(shift.inches for shift in shifts), 2)
+def move_fixtures(graph: SceneGraph, moves: list[FixtureMove]) -> SceneGraph:
+    """The room with each named fixture slid across the floor; the original graph is never touched."""
+    if not moves:
+        return graph
+    by_id = {move.node_id: move for move in moves}
+    fixtures = fixture_ids(graph)
+    nodes = []
+    for node in graph.nodes:
+        move = by_id.get(node.id)
+        if move is not None and node.id not in fixtures:
+            raise ValueError(f"{node.label} is not a built-in fixture")
+        nodes.append(node if move is None else node.model_copy(update={
+            "transform": _translated(node, to_meters(move.dx_inches), to_meters(move.dy_inches))}))
+    if len(by_id) != sum(1 for node in graph.nodes if node.id in by_id):
+        raise ValueError("a fixture move names an object that is not in the room")
+    return graph.model_copy(update={"nodes": nodes, "revision": graph.revision + 1, "base_hash": None})
+
+
+def build(graph: SceneGraph, shifts: list[WallShift], fixtures: list[FixtureMove]) -> SceneGraph:
+    """The room after all its construction: walls pushed out first, then fixtures relocated."""
+    return move_fixtures(shift_walls(graph, shifts), fixtures)
+
+
+def construction_inches(shifts: list[WallShift], fixtures: list[FixtureMove] = ()) -> float:
+    return round(sum(shift.inches for shift in shifts) + sum(move.inches for move in fixtures), 2)

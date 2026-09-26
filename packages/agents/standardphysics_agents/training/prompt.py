@@ -19,7 +19,7 @@ from ..fix.constraints import MAX_TRAVEL_METERS, interior_bounds
 from ..fix.moves import measured_position
 from ..redesign import INSTRUCTION
 from .checker import TrainingChecker
-from .construction import MAX_WALL_SHIFT_INCHES, floor_edges
+from .construction import MAX_FIXTURE_MOVE_INCHES, MAX_WALL_SHIFT_INCHES, fixture_ids, floor_edges
 from .edits import yaw_degrees
 
 ANSWER_FORMAT = (
@@ -30,7 +30,9 @@ ANSWER_FORMAT = (
     "Clear every problem in `problems` if you can, move as little as possible, keep every table and seat "
     "usable, and never push anything into a wall, a door swing or another object. Only when furniture alone "
     'cannot clear a problem, you may also add "wall_shifts":[{"side":"<side from walls_you_can_move>",'
-    f'"inches":<1 to {MAX_WALL_SHIFT_INCHES:.0f}>}}] to push that side of the room outward; this is construction, '
+    f'"inches":<1 to {MAX_WALL_SHIFT_INCHES:.0f}>}}] to push that side of the room outward, or '
+    '"fixture_moves":[{"node_id":"<id from fixed_objects>","dx_inches":<inches>,"dy_inches":<inches>}] '
+    f"(at most {MAX_FIXTURE_MOVE_INCHES:.0f} in each way) to relocate a built-in fixture; both are construction, "
     "so use the fewest inches that work."
 )
 
@@ -90,13 +92,15 @@ def _problem(finding: Finding, graph: SceneGraph) -> dict:
 
 def room_view(graph: SceneGraph, scenario: Scenario, problems: list[Finding]) -> dict:
     fixed = [node for node in graph.nodes if not node.movable and not bounds_the_room(node) and blocks_floor(node)]
+    fixtures = fixture_ids(graph)
     bounds = interior_bounds(graph)
     return {
         "units": "metres and degrees; x and y lie on the floor",
         "floor_inside_walls": None if bounds is None else [_r(value) for value in bounds],
         "walls": [_wall(node) for node in graph.nodes if node.kind == "wall" and not lies_flat(node)],
         "doors": [_placed(node) for node in graph.nodes if node.kind == "door"],
-        "fixed_objects": [_placed(node) for node in fixed],
+        "fixed_objects": [{"id": str(node.id), **_placed(node)} if node.id in fixtures else _placed(node)
+                          for node in fixed],
         "movable_objects": [_movable(node) for node in graph.nodes if node.movable and not bounds_the_room(node)],
         "route_stops": [
             {"name": stop.name, "at": [_r(stop.position.x), _r(stop.position.y)]} for stop in scenario.stops
