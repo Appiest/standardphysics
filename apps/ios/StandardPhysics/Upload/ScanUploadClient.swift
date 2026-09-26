@@ -43,7 +43,7 @@ struct ScanUploadClient {
     /// the server cannot tell whose shop this is and answers 401.
     let token: String?
 
-    init(baseURL: URL, session: URLSession = .shared, token: String? = nil) {
+    init(baseURL: URL, session: URLSession = .api, token: String? = nil) {
         self.baseURL = baseURL
         self.session = session
         self.token = token

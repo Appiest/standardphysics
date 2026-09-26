@@ -65,6 +65,7 @@
 		A80BECB27815075793657A2B /* HomeRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76C59C89DC4C191F44A0ECA /* HomeRows.swift */; };
 		AD48A914B5EDDEC5DD5AE77C /* RoomCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F34E396942BEF7BD1CB0CE /* RoomCaptureController.swift */; };
 		B68E22A68A1CE6F35B06A3C0 /* SignInScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCB174918D63F6BD96B3249F /* SignInScreen.swift */; };
+		B9FF27954D8BF9B78757BDDD /* LiveOwnerFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2A75DA236FCF85E93E880D /* LiveOwnerFlowTests.swift */; };
 		BBA9AA4999906B2ED710C485 /* HowItWorksScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8437F0CE078931B2B70AE96 /* HowItWorksScreen.swift */; };
 		BF7EDD1670A4CBAA90BDFA4B /* WalkthroughVideoRecorderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0DF9605AC317A7D73BAE94 /* WalkthroughVideoRecorderTests.swift */; };
 		C1869B64E1A0C858F7DD7E75 /* StandardPhysicsApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4600DB3A7BEEAEF3F23ADC57 /* StandardPhysicsApp.swift */; };
@@ -162,6 +163,7 @@
 		CF40C82F183330AEAA1BA2C9 /* KeyframeBookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyframeBookTests.swift; sourceTree = "<group>"; };
 		D4C6263A656172ADAE5138BF /* ResumableUploadStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResumableUploadStore.swift; sourceTree = "<group>"; };
 		D8F7D787B2D14BBCBCF9F0FA /* PoseRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseRecord.swift; sourceTree = "<group>"; };
+		DB2A75DA236FCF85E93E880D /* LiveOwnerFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveOwnerFlowTests.swift; sourceTree = "<group>"; };
 		DD126A7334930ED9E61ADA9A /* CaptureScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureScreen.swift; sourceTree = "<group>"; };
 		DED2C3EF45B4572645DDEC8A /* StandardPhysics.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StandardPhysics.entitlements; sourceTree = "<group>"; };
 		E45E01CFEEE83327A40D8450 /* SamplePhoto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SamplePhoto.swift; sourceTree = "<group>"; };
@@ -186,6 +188,7 @@
 				81C91C98D3B3ECB58EEC1351 /* CoverageRealScanTests.swift */,
 				CF40C82F183330AEAA1BA2C9 /* KeyframeBookTests.swift */,
 				B121F5EE270FA52250DEB892 /* LidarMeshTests.swift */,
+				DB2A75DA236FCF85E93E880D /* LiveOwnerFlowTests.swift */,
 				17CE2D5A2D8571F78A5A40EF /* OwnerFlowTests.swift */,
 				0F927501CBAEE186F740ECBB /* PoseRecordTests.swift */,
 				0748121F1E998BBBC5AA865E /* ResumableUploadStoreTests.swift */,
@@ -543,6 +546,7 @@
 				1F59CDA59479CE697F9E2F7A /* CoverageRealScanTests.swift in Sources */,
 				A268437BD69ABF73CC5F748B /* KeyframeBookTests.swift in Sources */,
 				1B2955B1B60E069392F0FB5B /* LidarMeshTests.swift in Sources */,
+				B9FF27954D8BF9B78757BDDD /* LiveOwnerFlowTests.swift in Sources */,
 				41FD30B99CDE7A29267122C2 /* OwnerFlowTests.swift in Sources */,
 				0C226C72BE16C1B8186CFC2F /* PoseRecordTests.swift in Sources */,
 				9BF68FA1A07FE744E37BACA9 /* ResumableUploadStoreTests.swift in Sources */,
