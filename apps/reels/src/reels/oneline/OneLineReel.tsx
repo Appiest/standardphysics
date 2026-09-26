@@ -4,141 +4,186 @@ import { cue, repeatCue, Soundtrack } from "../../components/Cues";
 import { GlowDot } from "../../components/Glow";
 import { InkLayer } from "../../components/InkLayer";
 import { Grain, Paper, Vignette } from "../../components/Paper";
+import { ScanBar } from "../../components/ScanBar";
+import { TexturedRoom } from "../../components/TexturedRoom";
 import { RevealLines } from "../../components/Type";
 import { drawn, mix, progress, sweep } from "../../lib/ease";
-import { inkDuration, type Point } from "../../lib/ink";
-import { cumulativeLengths, fitPlan, onSheet, pointAtShare, smoothPath, type SheetFrame } from "../../lib/plan";
+import { inkDuration } from "../../lib/ink";
+import { centroid, onSheet } from "../../lib/plan";
 import { useFloorPlan, type FloorPlan } from "../../lib/scan";
-import { FPS, toMs } from "../../lib/timing";
+import { FPS, REEL, toMs } from "../../lib/timing";
 import { PaperModel } from "./PaperModel";
 import { composeSheet, INK_ZOOM } from "./sheetInk";
 import { TitleBlock } from "./TitleBlock";
 import { TurningCircle } from "./TurningCircle";
+import { buildWalkSheet, penAt, type WalkSheet } from "./walkSheet";
+import { MOFFITT_WALK_MINUTES } from "./walks";
 
-const SHEET = { left: 110, top: 440, size: 860 } as const;
-const SCAN = { name: "test1", minutes: 4 } as const;
+/** The stage is a window onto the sheet; pushing into an aisle overflows it, so it clips. */
+const STAGE = { top: 440, width: REEL.width, height: 880 } as const;
+const SCAN = "moffett";
+/** Photos the phone took across the four walks, which the app paints back onto the model. */
+const PHOTOS_TAKEN = 3524;
+const AISLE_ZOOM = 3.2;
 
 export const ONE_LINE = {
-  walkStart: 10,
-  walkFrames: 180,
-  tiltStart: 222,
-  tiltFrames: 36,
-  riseStart: 240,
-  checkStart: 282,
-  checkFrames: 96,
-  flattenStart: 392,
-  rewindStart: 424,
-  rewindFrames: 44,
+  walkFrames: 120,
+  tiltStart: 128,
+  tiltFrames: 22,
+  riseStart: 136,
+  checkStart: 162,
+  zoomFrames: 22,
+  checkFrames: 80,
+  unzoomStart: 262,
+  paintStart: 288,
+  paintFrames: 30,
+  unpaintStart: 384,
+  unpaintFrames: 26,
+  rewindStart: 416,
+  rewindFrames: 52,
   length: 480,
 } as const;
 
-const WALK_MS = (ONE_LINE.walkFrames / FPS) * 1000;
+const T = ONE_LINE;
+const WALK_MS = (T.walkFrames / FPS) * 1000;
 
-type Sheet = { plan: FloorPlan; path: Point[]; frame: SheetFrame; stamps: ReturnType<typeof composeSheet>; inkEnd: number };
+type Sheet = WalkSheet & { stamps: ReturnType<typeof composeSheet>; inkEnd: number };
 
 function useSheet(plan: FloorPlan | null): Sheet | null {
   return useMemo(() => {
     if (!plan) return null;
-    const path = smoothPath(plan.path, 6);
-    const frame = fitPlan(plan, { x: 40, y: 40, width: SHEET.size - 80, height: SHEET.size - 80 });
-    const stamps = composeSheet({ plan, path, frame: { ...frame, offsetX: frame.offsetX, offsetY: frame.offsetY }, walkMs: WALK_MS });
-    return { plan, path, frame, stamps, inkEnd: inkDuration(stamps) };
+    const walkSheet = buildWalkSheet(plan, { x: 30, y: 20, width: STAGE.width - 60, height: STAGE.height - 40 }, WALK_MS, INK_ZOOM);
+    const stamps = composeSheet(walkSheet);
+    return { ...walkSheet, stamps, inkEnd: inkDuration(stamps) };
   }, [plan]);
 }
 
 const cues = [
-  cue(ONE_LINE.walkStart, "scratch", 0.6),
-  cue(ONE_LINE.walkStart + 110, "scratch", 0.6),
-  cue(18, "tick", 0.5),
-  cue(ONE_LINE.tiltStart, "whoosh", 0.6),
-  ...repeatCue(ONE_LINE.riseStart, ONE_LINE.riseStart + 30, 2, "pop", 0.22),
-  cue(ONE_LINE.checkStart, "scan", 0.7),
-  cue(ONE_LINE.checkStart + 30, "scan", 0.5),
-  cue(ONE_LINE.flattenStart, "whoosh-down", 0.5),
-  cue(ONE_LINE.rewindStart, "whoosh", 0.5),
-  cue(ONE_LINE.rewindStart + 4, "scratch", 0.35),
+  cue(0, "scratch", 0.6),
+  cue(90, "scratch", 0.45),
+  cue(T.tiltStart, "whoosh", 0.6),
+  ...repeatCue(T.riseStart, T.riseStart + 22, 2, "pop", 0.22),
+  cue(T.checkStart, "whoosh", 0.45),
+  cue(T.checkStart + T.zoomFrames, "scan", 0.7),
+  cue(T.unzoomStart, "whoosh-down", 0.4),
+  cue(T.paintStart, "scan", 0.9),
+  cue(T.paintStart + T.paintFrames, "hit", 0.5),
+  cue(T.unpaintStart, "scan", 0.6),
+  cue(T.rewindStart, "whoosh", 0.5),
+  cue(T.rewindStart + 4, "scratch", 0.35),
 ];
 
 function inkTime(frame: number, inkEnd: number) {
-  if (frame < ONE_LINE.walkStart) return 0;
-  const forward = Math.min(inkEnd, toMs(frame - ONE_LINE.walkStart));
-  const rewind = progress(frame, ONE_LINE.rewindStart, ONE_LINE.rewindFrames, sweep);
-  return forward * (1 - rewind);
+  const forward = Math.min(inkEnd, toMs(frame));
+  return forward * (1 - progress(frame, T.rewindStart, T.rewindFrames, sweep));
 }
 
-function sheetTransform(frame: number) {
-  const tilt = progress(frame, ONE_LINE.tiltStart, ONE_LINE.tiltFrames, sweep) * (1 - progress(frame, ONE_LINE.flattenStart, 30, sweep));
-  return { tilt, transform: `rotateX(${tilt * 54}deg) rotateZ(${tilt * -32}deg) scale(${1 - tilt * 0.12})` };
+/** How much of the stage the photo-textured model covers, swept down by the scan bar and lifted back up. */
+function painted(frame: number) {
+  return progress(frame, T.paintStart, T.paintFrames, sweep) * (1 - progress(frame, T.unpaintStart, T.unpaintFrames, sweep));
+}
+
+function sheetTransform(frame: number, aisleOffset: readonly [number, number]) {
+  const tilt = progress(frame, T.tiltStart, T.tiltFrames, sweep) * (1 - progress(frame, T.unpaintStart - 20, 18, sweep));
+  const zoom = progress(frame, T.checkStart, T.zoomFrames, sweep) * (1 - progress(frame, T.unzoomStart, 22, sweep));
+  const scale = mix(1, AISLE_ZOOM, zoom) * (1 - tilt * 0.1);
+  return `rotateX(${tilt * 54}deg) rotateZ(${tilt * -32}deg) scale(${scale}) translate(${-aisleOffset[0] * zoom}px, ${-aisleOffset[1] * zoom}px)`;
 }
 
 function riseOf(frame: number, count: number) {
-  const falling = progress(frame, ONE_LINE.flattenStart - 8, 24, sweep);
-  return (index: number) => progress(frame, ONE_LINE.riseStart + (index / count) * 30, 16, drawn) * (1 - falling);
+  const falling = progress(frame, T.unpaintStart - 26, 18, sweep);
+  return (index: number) => progress(frame, T.riseStart + (index / count) * 22, 14, drawn) * (1 - falling);
 }
 
 function Captions() {
+  const frame = useCurrentFrame();
+  const returning = frame >= T.rewindStart;
   return (
     <div className="absolute inset-x-safe-side top-safe-top">
-      <RevealLines lines={["Walk a room once."]} at={18} exitAt={ONE_LINE.tiltStart - 16} className="reel-copy block text-title" />
+      {returning ? (
+        <RevealLines lines={["Walk a library", "once."]} at={T.rewindStart + 26} className="reel-copy block text-headline" />
+      ) : (
+        <RevealLines lines={["Walk a library", "once."]} at={-40} exitAt={T.tiltStart - 6} className="reel-copy block text-headline" />
+      )}
       <div className="absolute inset-x-0 top-0">
-        <RevealLines lines={["It stands up every", "table and chair."]} at={ONE_LINE.tiltStart + 10} exitAt={ONE_LINE.checkStart - 6} className="reel-copy block text-title" />
+        <RevealLines lines={["It stands up every", "table and chair."]} at={T.tiltStart + 2} exitAt={T.checkStart - 8} className="reel-copy block text-title" />
       </div>
       <div className="absolute inset-x-0 top-0">
-        <RevealLines lines={["Then it checks where", "a wheelchair can turn."]} at={ONE_LINE.checkStart + 4} exitAt={ONE_LINE.flattenStart + 10} className="reel-copy block text-title" />
+        <RevealLines lines={["Then it checks where", "a wheelchair can turn."]} at={T.checkStart + 10} exitAt={T.unzoomStart + 6} className="reel-copy block text-title" />
+      </div>
+      <div className="absolute inset-x-0 top-0">
+        <RevealLines lines={["And paints on the", `${PHOTOS_TAKEN.toLocaleString("en-US")} photos it took.`]} at={T.paintStart + 12} exitAt={T.unpaintStart - 4} className="reel-copy block text-title" />
       </div>
     </div>
   );
 }
 
-function Pen({ sheet, frame }: { sheet: Sheet; frame: number }) {
-  const walked = Math.min(1, inkTime(frame, sheet.inkEnd) / WALK_MS);
-  const [x, y] = onSheet(sheet.frame, pointAtShare(sheet.path, walked));
-  const shown = frame < ONE_LINE.walkStart + ONE_LINE.walkFrames + 6 || frame > ONE_LINE.rewindStart;
-  return shown ? <GlowDot x={x} y={y} size={22} /> : null;
+function Pens({ sheet, frame }: { sheet: Sheet; frame: number }) {
+  const shown = frame < T.walkFrames + 4 || frame > T.rewindStart;
+  if (!shown) return null;
+  const timeMs = inkTime(frame, sheet.inkEnd);
+  return sheet.pens.map((strokes, index) => {
+    const at = penAt(strokes, timeMs);
+    return at ? <GlowDot key={index} x={at[0]} y={at[1]} size={24} /> : null;
+  });
 }
 
-function checkRoute(path: Point[]) {
-  const lengths = cumulativeLengths(path);
-  const total = lengths[lengths.length - 1];
-  return path.filter((_, index) => lengths[index] > total * 0.12 && lengths[index] < total * 0.62);
-}
-
-function SheetStage({ sheet }: { sheet: Sheet }) {
+function PaperSheet({ sheet }: { sheet: Sheet }) {
   const frame = useCurrentFrame();
-  const { transform } = sheetTransform(frame);
-  const route = useMemo(() => checkRoute(sheet.path), [sheet.path]);
-  const checking = progress(frame, ONE_LINE.checkStart, ONE_LINE.checkFrames, (t) => mix(t, t * t * (3 - 2 * t), 0.6));
-  const circleShown = progress(frame, ONE_LINE.checkStart - 4, 8) * (1 - progress(frame, ONE_LINE.flattenStart - 4, 10));
+  const aisleCenter = onSheet(sheet.frame, centroid(sheet.aisle));
+  const aisleOffset = [aisleCenter[0] - STAGE.width / 2, aisleCenter[1] - STAGE.height / 2] as const;
+  const checking = progress(frame, T.checkStart + T.zoomFrames - 6, T.checkFrames, (t) => t * t * (3 - 2 * t));
+  const circleShown = progress(frame, T.checkStart + 10, 8) * (1 - progress(frame, T.unzoomStart - 4, 10));
   return (
-    <div className="absolute" style={{ left: SHEET.left, top: SHEET.top, width: SHEET.size, height: SHEET.size, perspective: 2400 }}>
-      <div className="absolute inset-0" style={{ transformStyle: "preserve-3d", transform }}>
-        <InkLayer stamps={sheet.stamps} timeMs={inkTime(frame, sheet.inkEnd)} width={SHEET.size} height={SHEET.size} zoom={INK_ZOOM} className="absolute inset-0" />
-        <PaperModel objects={sheet.plan.objects} frame={sheet.frame} riseOf={riseOf(frame, sheet.plan.objects.length)} />
-        {circleShown > 0 && <TurningCircle route={route} frame={sheet.frame} share={checking} size={SHEET.size} opacity={circleShown} />}
-        <Pen sheet={sheet} frame={frame} />
-      </div>
+    <div className="absolute inset-0" style={{ transformStyle: "preserve-3d", transform: sheetTransform(frame, aisleOffset) }}>
+      <InkLayer stamps={sheet.stamps} timeMs={inkTime(frame, sheet.inkEnd)} width={STAGE.width} height={STAGE.height} zoom={INK_ZOOM} className="absolute inset-0" />
+      <PaperModel objects={sheet.plan.objects} frame={sheet.frame} riseOf={riseOf(frame, sheet.plan.objects.length)} />
+      {circleShown > 0 && <TurningCircle route={sheet.aisle} frame={sheet.frame} share={checking} size={STAGE.width} opacity={circleShown} />}
+      <Pens sheet={sheet} frame={frame} />
     </div>
   );
 }
 
-function walkedMetres(path: Point[]) {
-  const lengths = cumulativeLengths(path);
-  return Math.round(lengths[lengths.length - 1]);
+/** The photo-textured Moffitt model, seen from above and turned to line up with the squared plan. */
+function PhotoPass({ sheet }: { sheet: Sheet }) {
+  const frame = useCurrentFrame();
+  const cover = painted(frame);
+  if (cover <= 0) return null;
+  const camera = { azimuth: -sheet.angle + 0.35 + (frame - T.paintStart) * 0.0025, elevation: 0.95, distance: 96 };
+  return (
+    <>
+      <div className="absolute inset-0 bg-night" style={{ clipPath: `inset(0 0 ${(1 - cover) * 100}% 0)` }}>
+        <TexturedRoom scan={SCAN} width={STAGE.width} height={STAGE.height} camera={camera} cutaway={2.3} />
+      </div>
+      {cover < 1 && <ScanBar at={cover} trail={0.1} />}
+    </>
+  );
 }
 
+function Stage({ sheet }: { sheet: Sheet }) {
+  return (
+    <div className="absolute overflow-hidden" style={{ left: 0, top: STAGE.top, width: STAGE.width, height: STAGE.height, perspective: 2400 }}>
+      <PaperSheet sheet={sheet} />
+      <PhotoPass sheet={sheet} />
+    </div>
+  );
+}
+
+/** The one-line reel on Moffitt: four walks ink the library, it stands up, an aisle gets checked, the photos go on, and it rewinds into a loop. */
 export function OneLineReel() {
-  const plan = useFloorPlan(SCAN.name);
+  const plan = useFloorPlan(SCAN);
   const sheet = useSheet(plan);
   return (
     <Paper>
-      {sheet && <SheetStage sheet={sheet} />}
+      {sheet && <Stage sheet={sheet} />}
       <Captions />
-      {plan && (
+      {sheet && (
         <TitleBlock
           facts={[
-            { label: "Walk", value: `${SCAN.minutes} min` },
-            { label: "Path", value: `${walkedMetres(plan.path)} m` },
-            { label: "Objects", value: String(plan.objects.length) },
+            { label: "Walks", value: String(sheet.pens.length) },
+            { label: "Walking", value: `${MOFFITT_WALK_MINUTES} min` },
+            { label: "Path", value: `${sheet.metres} m` },
+            { label: "Objects", value: String(sheet.plan.objects.length) },
           ]}
         />
       )}
