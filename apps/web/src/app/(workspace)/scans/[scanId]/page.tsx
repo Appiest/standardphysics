@@ -5,7 +5,7 @@ import { getAssessment, getCapturedSplats, getEvidence, getRooms, getScan, getSc
 import { scanStatus } from "@/lib/scan-status";
 import type { Scan, SceneGraph } from "@/types/contracts";
 import type { RoomGroup } from "@/lib/room-groups";
-import { requireSession } from "@/lib/session";
+import { isTeam, requireSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +64,7 @@ function NotMeasuredYet({ scan }: { scan: Scan }) {
 }
 
 export default async function ShopPage({ params }: PageProps<"/scans/[scanId]">) {
-  await requireSession();
+  const session = await requireSession();
   const { scanId } = await params;
   const scan = await getScan(scanId);
   if (!scan) notFound();
@@ -98,6 +98,7 @@ export default async function ShopPage({ params }: PageProps<"/scans/[scanId]">)
       lidarUrl={scan.artifacts.some((artifact) => artifact.kind === "lidar_mesh") ? `/api/scans/${scanId}/lidar-mesh` : null}
       rooms={rooms}
       evidence={evidence}
+      team={isTeam(session)}
     /></>
   );
 }

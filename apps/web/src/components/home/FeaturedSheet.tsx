@@ -3,7 +3,6 @@ import Link from "next/link";
 import { InkedFloorPlan } from "@/components/blueprint/InkedFloorPlan";
 import { SHEET_GRID_CLASS, SheetField } from "@/components/blueprint/SheetField";
 import { countNeedingAttention } from "@/lib/findings";
-import { scanStatus } from "@/lib/scan-status";
 import type { ShopSheet } from "./shopSheet";
 
 const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -16,17 +15,17 @@ function toFixValue({ assessment }: ShopSheet) {
 function PlanPlaceholder({ sheet }: { sheet: ShopSheet }) {
   return (
     <div className="flex h-72 items-center justify-center px-6 text-center text-ink-muted sm:h-[26rem]">
-      {scanStatus(sheet.scan, sheet.assessment, sheet.hasScenario)}
+      {sheet.status}
     </div>
   );
 }
 
 export function FeaturedSheet({ sheet, sheetNumber }: { sheet: ShopSheet; sheetNumber: string }) {
-  const { scan, scene, assessment, hasScenario } = sheet;
+  const { scan, scene, assessment } = sheet;
   const checkedOn = new Date(assessment?.created_at ?? scan.created_at);
   const dateLabel = assessment ? "Checked" : "Scanned";
   return (
-    <Link href={`/scans/${scan.id}`} className="group block border border-ink bg-paper transition-colors duration-150 hover:bg-sheet">
+    <Link href={sheet.href} className="group block border border-ink bg-paper transition-colors duration-150 hover:bg-sheet">
       <div className="flex items-center justify-between border-b border-ink px-4 py-2">
         <span className="font-semibold tabular-nums">{sheetNumber}</span>
         <span className="flex items-center gap-1 text-sm text-ink-muted">
@@ -38,7 +37,7 @@ export function FeaturedSheet({ sheet, sheetNumber }: { sheet: ShopSheet; sheetN
       <dl className={`${SHEET_GRID_CLASS} border-t border-ink *:bg-paper group-hover:*:bg-sheet sm:grid-cols-[minmax(0,2fr)_1fr_1fr_auto]`}>
         <SheetField label="Shop">
           <span className="heading-display block truncate text-2xl">{scan.name}</span>
-          <span className="block text-sm font-normal text-ink-muted text-pretty">{scanStatus(scan, assessment, hasScenario)}</span>
+          <span className="block text-sm font-normal text-ink-muted text-pretty">{sheet.status}</span>
         </SheetField>
         <SheetField label={dateLabel}>{dateFormat.format(checkedOn)}</SheetField>
         <SheetField label="To fix">{toFixValue(sheet)}</SheetField>

@@ -60,23 +60,18 @@ struct ReviewScreen: View {
                     }
                     Text("Name this shop")
                         .font(AppTheme.Typography.title)
-                    TextField("Boba shop", text: $name)
+                    TextField(model.defaultShopName, text: $name)
                         .textInputAutocapitalization(.words)
-                        .font(AppTheme.Typography.body)
-                        .padding(AppTheme.Spacing.control)
-                        .background(AppTheme.panel)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: AppTheme.Radius.field, style: .continuous)
-                                .stroke(AppTheme.fieldOutline, lineWidth: 1)
-                        }
+                        .fieldSurface()
                     Button("Upload scan") {
                         do {
-                            model.upload(scan: try scan.renamed(trimmedName), name: trimmedName)
+                            model.upload(scan: try scan.renamed(shopName), name: shopName)
                         } catch { saveError = "Free some space on this phone, then save again." }
                     }
                     .buttonStyle(AppButtonStyle())
-                    .disabled(trimmedName.isEmpty)
-                    if let saveError { Text(saveError).foregroundStyle(AppTheme.warning) }
+                    if let saveError = saveError ?? model.walkProblem {
+                        Text(saveError).foregroundStyle(AppTheme.warning)
+                    }
                 }
                 .padding(AppTheme.Spacing.section)
             }
@@ -92,7 +87,10 @@ struct ReviewScreen: View {
         }
     }
 
-    private var trimmedName: String {
-        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// The name typed, or the account's shop name, or "My shop". A name is
+    /// never required: a first walk uploads before anyone has typed one.
+    private var shopName: String {
+        let typed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return typed.isEmpty ? model.defaultShopName : typed
     }
 }

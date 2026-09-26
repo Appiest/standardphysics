@@ -221,3 +221,26 @@ def test_a_new_scan_painter_keeps_the_boxes_it_already_baked(make_client, monkey
         assert second['build']['box_key'] == first['box_key']
         assert client.get(second['build']['glb_url']).status_code == 200
         assert len(calls) == 1
+
+
+def test_a_running_build_says_which_step_it_is_on_and_how_far_through(make_client, monkeypatch):
+    from standardphysics_pipeline.textures.stages import advanced, timed
+
+    from standardphysics_api import textures
+    monkeypatch.setattr(textures._ProgressFile, 'SECONDS_BETWEEN_COUNTS', 0.0)
+
+    seen = []
+    def reporting(inputs):
+        with timed('choosing photos'):
+            advanced(3, 8)
+            seen.append(client.get(f'/api/scans/{scan}/textures').json())
+        return _bake(inputs)
+    with make_client(stages=no_blender_stages(bake_textures=reporting)) as client:
+        scan, _ = _room(client); _photos(client, scan); drain(client)
+        running = seen[0]
+        assert running['state'] == 'running'
+        assert running['progress']['step'] == 'choosing photos'
+        assert (running['progress']['done'], running['progress']['total']) == (3, 8)
+        finished = client.get(f'/api/scans/{scan}/textures').json()
+        assert finished['state'] == 'complete' and finished['progress'] is None
+        assert not list((client.app.state.store.scan_dir(scan) / 'textures').glob('*.progress.json'))

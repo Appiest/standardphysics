@@ -122,6 +122,9 @@ SCAN_ROUTES = [
     ("get", "/scene.glb"),
     ("get", "/simulations"),
     ("get", "/textures"),
+    ("get", "/requests"),
+    ("get", "/checklist"),
+    ("get", "/journey"),
 ]
 
 
@@ -175,3 +178,25 @@ def test_two_owners_with_the_same_password_do_not_share_a_hash(client):
 def test_a_damaged_hash_verifies_nothing(client):
     assert not accounts.verify_password("anything", "not-a-hash")
     assert not accounts.verify_password("anything", "scrypt$bad$8$1$aa$bb")
+
+
+def test_an_owner_is_not_on_the_team(client):
+    assert client.get("/api/auth/session").json()["role"] == "owner"
+
+
+def test_a_team_email_signs_in_as_the_team(make_client):
+    with make_client(team_emails=frozenset({"owner@example.com"})) as test_client:
+        assert test_client.get("/api/auth/session").json()["role"] == "team"
+
+
+def test_the_team_tools_are_the_team_s_once_a_team_is_named(make_client):
+    with make_client(team_emails=frozenset({"someone@standardphysics.app"})) as owner:
+        scan_id = create_scan(owner)
+        assert owner.post(f"/api/scans/{scan_id}/ask", json={"text": "hi", "base_revision": 0}).status_code == 403
+        assert owner.post(f"/api/scans/{scan_id}/loop", json={"base_revision": 0}).status_code == 403
+        assert owner.get(f"/api/scans/{scan_id}/requests").status_code == 200
+
+
+def test_a_server_with_no_team_named_keeps_the_tools_open(client):
+    scan_id = create_scan(client)
+    assert client.post(f"/api/scans/{scan_id}/ask", json={"text": "hi", "base_revision": 0}).status_code != 403

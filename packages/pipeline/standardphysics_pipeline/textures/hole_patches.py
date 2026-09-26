@@ -590,16 +590,49 @@ def hidden_behind_objects(graph: SceneGraph, vertices: np.ndarray, patches: np.n
     would take the chair's colour from every photo. The object's measured box is
     in the graph even where its surface is not in the scan, so it does the blocking.
     """
-    objects = [
-        node for node in graph.nodes
-        if not (bounds_the_room(node) and node.parent_id is None) and node.relation != "cut_into"
-    ]
+    boxes = ObjectBoxes(graph)
     patch_index = np.flatnonzero(patches)
 
     def hidden(camera) -> np.ndarray:
         blocked = np.zeros(len(vertices), dtype=bool)
-        for node in objects:
-            blocked[patch_index] |= _segments_enter_box(camera.position, vertices[patch_index], node)
+        blocked[patch_index] = boxes.blocking(camera.position, vertices[patch_index])
         return blocked
 
     return hidden
+
+
+class ObjectBoxes:
+    """The measured object boxes that can stand between a camera and the floor, with their room-frame extents.
+
+    A library floor has hundreds of objects, and testing every line of sight
+    against every box was a third of a photo bake. A box can only cross a line
+    from the camera to a point if it overlaps the box around the camera and all
+    the points, so only those boxes are tested, with the same slab test.
+    """
+
+    def __init__(self, graph: SceneGraph):
+        self.nodes = [
+            node for node in graph.nodes
+            if not (bounds_the_room(node) and node.parent_id is None) and node.relation != "cut_into"
+        ]
+        corners = np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)], dtype=np.float64) / 2
+        extents = []
+        for node in self.nodes:
+            matrix = np.asarray(node.transform.m, dtype=np.float64).reshape(4, 4)
+            size = np.array([node.dimensions.x, node.dimensions.y, node.dimensions.z])
+            world = (corners * size) @ matrix[:3, :3].T + matrix[:3, 3]
+            extents.append((world.min(axis=0), world.max(axis=0)))
+        self.low = np.array([low for low, _ in extents]).reshape(-1, 3)
+        self.high = np.array([high for _, high in extents]).reshape(-1, 3)
+
+    def blocking(self, origin: np.ndarray, points: np.ndarray) -> np.ndarray:
+        """Whether some box stands on the straight line from origin to each point."""
+        blocked = np.zeros(len(points), dtype=bool)
+        if not len(points) or not self.nodes:
+            return blocked
+        low = np.minimum(points.min(axis=0), origin)
+        high = np.maximum(points.max(axis=0), origin)
+        near = np.flatnonzero(np.all(self.low <= high, axis=1) & np.all(self.high >= low, axis=1))
+        for index in near:
+            blocked |= _segments_enter_box(origin, points, self.nodes[index])
+        return blocked

@@ -28,6 +28,7 @@ const textures = (overrides: Partial<TextureStatus> = {}): TextureStatus => ({
   can_retry: true,
   state: "complete",
   build: null,
+  progress: null,
   ...overrides,
 });
 

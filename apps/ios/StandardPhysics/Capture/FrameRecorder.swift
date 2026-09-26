@@ -49,8 +49,16 @@ final class FrameRecorder: NSObject {
     private var lastVideoTimestamp: TimeInterval = -.infinity
     private var lastKeyframeTimestamp: TimeInterval = -.infinity
     private var hasReachedTimeLimit = false
+    private var hasWarnedOfTimeLimit = false
+
+    /// A walk stops on its own at four minutes, which keeps the video under
+    /// about 150 MB and the phone from overheating.
+    static let timeLimit: TimeInterval = 240
+    /// How long before the limit the owner is warned.
+    static let timeWarningLead: TimeInterval = 30
 
     var onTimeLimit: (() -> Void)?
+    var onTimeWarning: (() -> Void)?
     var onObservation: ((ARFrame) -> Void)?
 
     init(session: ARSession, directory: URL) throws {
@@ -151,11 +159,16 @@ final class FrameRecorder: NSObject {
 
     @objc private func sampleFrame() {
         guard let startUptime else { return }
-        guard ProcessInfo.processInfo.systemUptime - startUptime < 240 else {
+        let elapsed = ProcessInfo.processInfo.systemUptime - startUptime
+        guard elapsed < Self.timeLimit else {
             guard !hasReachedTimeLimit else { return }
             hasReachedTimeLimit = true
             onTimeLimit?()
             return
+        }
+        if elapsed >= Self.timeLimit - Self.timeWarningLead, !hasWarnedOfTimeLimit {
+            hasWarnedOfTimeLimit = true
+            onTimeWarning?()
         }
         guard let frame = session.currentFrame else { return }
         guard frame.camera.trackingState.isUsable else {

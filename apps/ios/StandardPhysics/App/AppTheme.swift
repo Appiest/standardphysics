@@ -66,6 +66,8 @@ enum AppTheme {
         static let status = Font.custom(display, size: 34, relativeTo: .title)
         static let title = Font.custom(displayTitle, size: 26, relativeTo: .title2)
         static let heading = Font.custom(displayTitle, size: 17, relativeTo: .headline)
+        /// The one line on a card that says what to do next.
+        static let cardTitle = Font.custom(displayTitle, size: 20, relativeTo: .title3)
         static let lead = Font.custom(bodyFace, size: 19, relativeTo: .title3)
         static let body = Font.custom(bodyFace, size: 17, relativeTo: .body)
         static let secondary = Font.custom(bodyFace, size: 15, relativeTo: .subheadline)
@@ -116,6 +118,54 @@ enum AppTheme {
     enum Motion {
         static let quick = Animation.easeOut(duration: 0.25)
         static let pulse = Animation.easeInOut(duration: 1).repeatForever(autoreverses: true)
+        static let step = Animation.spring(duration: 0.35, bounce: 0)
+
+        /// A critically damped spring's step response, 0 before `start` and
+        /// settling on 1 after it. Drawings that loop are a pure function of
+        /// time, so every moving part is written with this instead of a timer.
+        static func settle(_ time: Double, from start: Double, rate: Double = 8) -> Double {
+            let elapsed = time - start
+            guard elapsed > 0 else { return 0 }
+            return 1 - (1 + rate * elapsed) * exp(-rate * elapsed)
+        }
+    }
+
+    /// The drawing style every sketch in the app shares, taken from the walk
+    /// plan the scan primer first drew: ruled ink walls, furniture as a pale
+    /// fill with a fine outline, and the owner's path as a blue dash.
+    enum Sketch {
+        static let wall: CGFloat = 3
+        static let furniture: CGFloat = 1.5
+        static let path: CGFloat = 2.5
+        static let dimension: CGFloat = 1.5
+        static let dash: [CGFloat] = [7, 7]
+        static let furnitureFill = AppTheme.ink.opacity(0.14)
+        static let paper = AppTheme.panel
+    }
+}
+
+extension View {
+    /// A text field: the panel with a thin neutral outline, blue while typing.
+    /// The one place a rounded shape carries a visible edge, since a field
+    /// needs one to read as a place to type.
+    func fieldSurface(focused: Bool = false) -> some View {
+        font(AppTheme.Typography.body)
+            .padding(AppTheme.Spacing.control)
+            .background(AppTheme.panel)
+            .overlay {
+                RoundedRectangle(cornerRadius: AppTheme.Radius.field, style: .continuous)
+                    .stroke(focused ? AppTheme.accent : AppTheme.fieldOutline, lineWidth: 1)
+            }
+    }
+
+    /// A separate piece of paper laid on the sheet: the panel colour, with
+    /// the shadow cast by the paper only, never by the ink on it.
+    func raisedPanel(_ fill: Color = AppTheme.panel) -> some View {
+        background {
+            Rectangle()
+                .fill(fill)
+                .shadow(color: AppTheme.Shadow.color, radius: AppTheme.Shadow.radius, y: AppTheme.Shadow.y)
+        }
     }
 }
 
@@ -130,7 +180,12 @@ extension Color {
 }
 
 struct AppButtonStyle: ButtonStyle {
-    enum Variant { case primary, secondary, destructive, capture }
+    /// `capture` sits on the live camera. `captureFinish` is the same control
+    /// once the walk has enough: white, so it reads as the next thing to tap
+    /// against any room behind it.
+    /// `link` is a quiet text control for the way out of a step, like "Not
+    /// now", which should never compete with the step's one action.
+    enum Variant { case primary, secondary, destructive, capture, captureFinish, link }
     let variant: Variant
     @Environment(\.isEnabled) private var isEnabled
 
@@ -144,18 +199,24 @@ struct AppButtonStyle: ButtonStyle {
             .foregroundStyle(label)
             .background(background(pressed: configuration.isPressed))
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.control, style: .continuous))
+            .shadow(color: liftsOffTheSheet ? AppTheme.Shadow.color : AppTheme.transparent, radius: 2, y: 1)
             .opacity(isEnabled ? 1 : 0.45)
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 
+    /// A secondary control is nearly the sheet's own colour, so a faint
+    /// shadow gives it an edge without a border.
+    private var liftsOffTheSheet: Bool { variant == .secondary || variant == .destructive }
+
     /// Red names the consequence, it does not fill the button. A destructive
     /// action sits on the same quiet surface as any other secondary control.
     private var label: Color {
         switch variant {
-        case .secondary: AppTheme.ink
+        case .secondary, .captureFinish: AppTheme.ink
         case .destructive: AppTheme.problem
         case .primary, .capture: AppTheme.onDark
+        case .link: AppTheme.accent
         }
     }
 
@@ -164,6 +225,8 @@ struct AppButtonStyle: ButtonStyle {
         case .primary: pressed ? AppTheme.ink.opacity(0.78) : AppTheme.ink
         case .secondary, .destructive: pressed ? AppTheme.secondaryPressed : AppTheme.secondaryIdle
         case .capture: pressed ? AppTheme.captureProgress : AppTheme.captureChrome
+        case .captureFinish: pressed ? AppTheme.rule : AppTheme.onDark
+        case .link: pressed ? AppTheme.rule.opacity(0.6) : AppTheme.transparent
         }
     }
 }

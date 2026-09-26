@@ -16,7 +16,7 @@ from standardphysics_contracts import SceneGraph, SceneNode, stands_upright
 
 BOX_BAKE_VERSION = "18"
 """Bump when the photographed boxes (bake.py) come out differently."""
-SCAN_PAINT_VERSION = "21"
+SCAN_PAINT_VERSION = "25"
 """Bump when the painted scan (scan_atlas.py, scan_colour.py) comes out differently."""
 TEXTURE_PIPELINE_VERSION = f"{BOX_BAKE_VERSION}.{SCAN_PAINT_VERSION}"
 PRECISION = 6

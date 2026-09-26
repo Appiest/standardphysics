@@ -23,6 +23,8 @@ import { WheelchairController, type WheelchairState } from "./WheelchairControll
 type ViewerProps = {
   scene: SceneGraph;
   highlightNodeIds?: string[] | null;
+  /** Every piece stays visible and tappable while one is outlined, for choosing a piece. */
+  picking?: boolean;
   /** The walks of a combined scan and where they have been dragged, drawn as captured surface. */
   combinedRooms?: { rooms: RoomGroup[]; placements: Record<string, RoomPlacement> } | null;
   exported: SceneGraph;
@@ -52,7 +54,11 @@ type ViewerProps = {
   onClearWheelchairDock?: () => void;
   onWheelchairSelectNode?: (node: SceneNode) => void;
   onWheelchairExit?: () => void;
+  /** Where the walk-through starts and which way it faces. Left out, it starts in a corner facing -z. */
+  wheelchairStart?: WheelchairStart | null;
 };
+
+export type WheelchairStart = { position: [number, number, number]; yaw: number };
 
 
 class GlbFallback extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
@@ -102,7 +108,7 @@ function Lights({ castShadow }: { castShadow: boolean }) {
   );
 }
 
-type ShopSurfacesProps = Pick<ViewerProps, "scene" | "exported" | "arrange" | "dragAllNodes" | "lightweight" | "glbUrl" | "scanGlbUrl" | "splatAssets" | "onSplatError" | "lidarUrl" | "selected" | "onSelectNode" | "cutWalls" | "materialMode" | "staleNodeIds" | "coverage" | "highlightNodeIds" | "combinedRooms">;
+type ShopSurfacesProps = Pick<ViewerProps, "scene" | "exported" | "arrange" | "dragAllNodes" | "lightweight" | "glbUrl" | "scanGlbUrl" | "splatAssets" | "onSplatError" | "lidarUrl" | "selected" | "onSelectNode" | "cutWalls" | "materialMode" | "staleNodeIds" | "coverage" | "highlightNodeIds" | "combinedRooms" | "picking">;
 
 /** The boxes have no captured surface to show, so the captured modes fall back to plain material on them. */
 function boxMaterialMode(mode: ViewerProps["materialMode"]) {
@@ -121,7 +127,7 @@ function capturedRoom(props: ShopSurfacesProps, boxes: ReactNode, picking: React
 }
 
 function ShopSurfaces(props: ShopSurfacesProps) {
-  const { exported, glbUrl, lidarUrl, materialMode, selected, staleNodeIds, coverage, scene, arrange, dragAllNodes, lightweight, onSelectNode, cutWalls, highlightNodeIds } = props;
+  const { exported, glbUrl, lidarUrl, materialMode, selected, staleNodeIds, coverage, scene, arrange, dragAllNodes, lightweight, onSelectNode, cutWalls, highlightNodeIds, picking: choosing } = props;
 
   /* Picking a walk in the Combine panel has to show which one it is, or four
      grey floor plans look alike and the one being dragged is anybody's guess.
@@ -146,7 +152,8 @@ function ShopSurfaces(props: ShopSurfacesProps) {
     materialMode: boxMaterialMode(materialMode),
     staleNodeIds: staleSet,
     coverage: coverageMap,
-  }), [scene, focus, selected, highlightNodeIds, onSelectNode, arrange, dragAllNodes, lightweight, cutWalls, materialMode, staleSet, coverageMap]);
+    picking: choosing,
+  }), [scene, focus, selected, highlightNodeIds, onSelectNode, arrange, dragAllNodes, lightweight, cutWalls, materialMode, staleSet, coverageMap, choosing]);
 
   const boxes = <BoxShopModel {...modelProps} />;
   const picking = <BoxShopModel {...modelProps} pickOnly />;
@@ -210,9 +217,13 @@ function canvasTuning(lightweight: boolean | undefined, splatAssets: CapturedSpl
   };
 }
 
-type WheelchairProps = Pick<ViewerProps, "scene" | "wheelchairMode" | "wheelchairProfile" | "onWheelchairStateChange" | "wheelchairDockTarget" | "wheelchairDockDestination" | "onClearWheelchairDock" | "onWheelchairSelectNode" | "onWheelchairExit">;
+type WheelchairProps = Pick<ViewerProps, "scene" | "wheelchairMode" | "wheelchairProfile" | "onWheelchairStateChange" | "wheelchairDockTarget" | "wheelchairDockDestination" | "onClearWheelchairDock" | "onWheelchairSelectNode" | "onWheelchairExit" | "wheelchairStart">;
 
-function Wheelchair({ scene, wheelchairMode, wheelchairProfile, onWheelchairStateChange, wheelchairDockTarget, wheelchairDockDestination, onClearWheelchairDock, onWheelchairSelectNode, onWheelchairExit }: WheelchairProps) {
+function startProps(start: WheelchairStart | null | undefined) {
+  return start ? { initialPosition: start.position, initialYaw: start.yaw } : {};
+}
+
+function Wheelchair({ scene, wheelchairMode, wheelchairProfile, onWheelchairStateChange, wheelchairDockTarget, wheelchairDockDestination, onClearWheelchairDock, onWheelchairSelectNode, onWheelchairExit, wheelchairStart }: WheelchairProps) {
   if (!wheelchairMode || !wheelchairProfile || !onWheelchairStateChange) return null;
   return (
     <WheelchairController
@@ -225,6 +236,7 @@ function Wheelchair({ scene, wheelchairMode, wheelchairProfile, onWheelchairStat
       onClearDock={onClearWheelchairDock ?? NOTHING_TO_DO}
       onSelectNode={onWheelchairSelectNode ?? NOTHING_TO_DO}
       onExit={onWheelchairExit}
+      {...startProps(wheelchairStart)}
     />
   );
 }
@@ -277,6 +289,7 @@ export default function Viewer(viewerProps: ViewerProps) {
         onClearWheelchairDock={onClearWheelchairDock}
         onWheelchairSelectNode={onWheelchairSelectNode}
         onWheelchairExit={onWheelchairExit}
+        wheelchairStart={viewerProps.wheelchairStart}
       />
       <mesh rotation-x={-Math.PI / 2} position-y={-0.002} receiveShadow>
         <planeGeometry args={GROUND_PLANE_ARGS} />

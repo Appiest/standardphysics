@@ -46,6 +46,14 @@ services:
       # Secure flag. Trusting any hop is safe here because the API publishes no
       # port: nothing but Caddy can reach it.
       FORWARDED_ALLOW_IPS: "*"
+      # The photo bake's threads each keep their own pool of freed memory, and
+      # with the default of one pool per thread a floor's bake crept up atlas by
+      # atlas until the droplet killed it. Two pools hold that creep down.
+      MALLOC_ARENA_MAX: "2"
+      # The bake already runs one worker thread per core. OpenBLAS starting its
+      # own threads inside each one made two cores fight over every matrix
+      # product: 153 ms per transform instead of 85 on the droplet.
+      OPENBLAS_NUM_THREADS: "1"
     volumes:
       # create_host_path: false is the whole point of the long form here. The
       # short form lets Docker invent a missing directory, owned by root, which

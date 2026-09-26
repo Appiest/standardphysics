@@ -13,16 +13,19 @@ import logging
 import multiprocessing
 import pathlib
 import threading
+import time
 import traceback
 import uuid
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 
 from standardphysics_contracts import SimulationRequest
 
-from . import evidence
+from . import evidence, guest_sweep
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
+from .notifications import LoggedNotifier, Notifier, Push
 from .settings import Settings
 from .simulations import SIMULATE, queue_simulation, run_simulation
 from .stages import DiscoveryOutcome, Stages
@@ -32,6 +35,9 @@ from .textures import TEXTURE, maybe_queue_texture, run_texture
 log = logging.getLogger(__name__)
 
 PROCESS, ASSESS, DISPLAY = "process", "assess", "display"
+
+
+GUEST_SWEEP_SECONDS = 3600.0
 
 
 @dataclass
@@ -61,6 +67,8 @@ class Worker:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._texture_thread: threading.Thread | None = None
+        self.notifier: Notifier = LoggedNotifier()
+        self._guests_swept_at = 0.0
 
     def start(self) -> None:
         with self.database.transaction() as connection:
@@ -139,8 +147,34 @@ class Worker:
                 continue
             if not texture_only:
                 self._sweep_due_settled()
+                self._sweep_guests_hourly()
             self._wake.wait(timeout=2.0)
             self._wake.clear()
+
+    def _sweep_guests_hourly(self) -> None:
+        if time.monotonic() - self._guests_swept_at < GUEST_SWEEP_SECONDS:
+            return
+        self._guests_swept_at = time.monotonic()
+        try:
+            guest_sweep.sweep(self.database, self.store, self.notifier, datetime.now(UTC))
+        except Exception:
+            log.warning("guest sweep failed:\n%s", traceback.format_exc())
+
+    def _tell_results_ready(self, scan_id: uuid.UUID) -> None:
+        """One push, the first time a shop's results are ready. A re-check afterwards stays quiet."""
+        with self.database.transaction() as connection:
+            row = connection.execute(
+                "SELECT owner_id, results_told_at FROM scans WHERE id = ?", (str(scan_id),)
+            ).fetchone()
+            if row is None or row["owner_id"] is None or row["results_told_at"]:
+                return
+            told = datetime.now(UTC).isoformat()
+            connection.execute("UPDATE scans SET results_told_at = ? WHERE id = ?", (told, str(scan_id)))
+        push = Push(title="Your shop is measured", body="See what we found and what to fix.", scan_id=scan_id)
+        try:
+            self.notifier.send(self.database, uuid.UUID(row["owner_id"]), push)
+        except Exception:
+            log.warning("results push for %s failed:\n%s", scan_id, traceback.format_exc())
 
     def _sweep_due_settled(self) -> None:
         """Queue the one due recognition job for every quiet complete bundle.
@@ -297,6 +331,7 @@ class Worker:
             # the last one no longer belong to anything. Queueing this again
             # rather than once means a re-check redraws them.
             repo.queue_job_again(connection, scan_id, DISPLAY, revision)
+        self._tell_results_ready(scan_id)
         maybe_queue_texture(self.database, self.store, self, scan_id, revision)
         self._maybe_queue_deep_simulation(scan_id, revision, scenario is not None)
         self.wake()

@@ -14,6 +14,17 @@ targets:
     platform: iOS
     sources:
       - path: StandardPhysics
+    # Sign in with Apple saves a guest's shop during the measuring wait, and
+    # push tells the owner when the results are ready. Both also have to be
+    # switched on for com.standardphysics.capture in the developer portal.
+    # Xcode swaps aps-environment to production when it exports for the App
+    # Store.
+    entitlements:
+      path: StandardPhysics/Resources/StandardPhysics.entitlements
+      properties:
+        com.apple.developer.applesignin:
+          - Default
+        aps-environment: development
     info:
       path: StandardPhysics/Resources/Info.plist
       properties:
@@ -22,7 +33,7 @@ targets:
         # on. It refuses a build number it has already taken, so this goes up
         # by one before every upload, whether or not the version changed.
         CFBundleShortVersionString: "1.0"
-        CFBundleVersion: "6"
+        CFBundleVersion: "7"
         NSCameraUsageDescription: Use the camera to measure your shop.
         NSLocalNetworkUsageDescription: Connect to the workspace on your local network to upload your scans.
         API_BASE_URL: $(CAPTURE_API_BASE_URL)

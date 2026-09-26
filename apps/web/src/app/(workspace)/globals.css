@@ -22,6 +22,17 @@
   --shadow-float: 0 1px 2px rgb(27 28 30 / 0.12), 0 4px 16px rgb(27 28 30 / 0.08);
 
   --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-drafting-line: drafting-line 1.6s var(--ease-settle) infinite;
+
+  @keyframes drafting-line {
+    from {
+      stroke-dashoffset: 240;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
 }
 
 @layer base {

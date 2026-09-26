@@ -433,10 +433,13 @@ def test_background_worker_settles_late_evidence_without_a_manual_drain(tmp_path
         _complete_semantics(client, scan_id)
         assert client.post(f"/api/scans/{scan_id}/complete").status_code == 200
 
+        # The job that marks the evidence complete goes on to run the checks, so
+        # "complete" arrives a moment before the job stops being pending. Settled
+        # means both.
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             status = client.get(f"/api/scans/{scan_id}/evidence").json()
-            if status["semantic_state"] == "complete":
+            if status["semantic_state"] == "complete" and not status["semantic_job_pending"]:
                 break
             time.sleep(0.1)
         first = client.get(f"/api/scans/{scan_id}/evidence").json()

@@ -8,7 +8,7 @@ function finding(id: string, outcome: Finding["outcome"], nodeIds: string[] = []
   const point = { x: 0, y: 0, z: 0 };
   return {
     id, check_id: "route_clear_width", outcome, title: id, detail: "", fix: null,
-    measured_inches: null, required_inches: null, citation,
+    measured_inches: null, required_inches: null, citation, asks: null,
     locus: nodeIds.length === 0 ? null : {
       point, bbox_min: point, bbox_max: point, node_ids: nodeIds, render_url: null,
       annotation: { kind: "dimension_line", points: [point, point], label: "31 in", point_inches: null },

@@ -179,3 +179,60 @@ def suggest_scenario(graph: SceneGraph) -> Scenario:
     ]
     exit_stop = stops[0].model_copy(update={"name": "Exit"})
     return Scenario(name="Order a drink", stops=[*stops, exit_stop])
+
+
+DESTINATIONS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
+    "seating": ("Seats", ("seat", "chair", "bench"), ("table", "sofa", "chair")),
+    "restroom": ("Restroom", ("restroom", "bathroom", "toilet", "washroom"), ("toilet",)),
+    "fitting_room": ("Fitting room", ("fitting",), ()),
+    "shelves": ("Shelves", ("shelf", "shelves", "rack"), ("storage",)),
+}
+"""Each place a customer might go: the stop's name, and the words or RoomPlan
+categories that find the thing it stands beside. The name is what the copy
+says, as "the restroom" or "the shelves"."""
+
+
+def _far_corners(bounds, entrance: tuple[float, float]) -> list[tuple[float, float]]:
+    """Room corners, furthest from the front door first, for places the scan didn't name."""
+    corners = [
+        (bounds[0] + INSET, bounds[1] + INSET), (bounds[2] - INSET, bounds[1] + INSET),
+        (bounds[0] + INSET, bounds[3] - INSET), (bounds[2] - INSET, bounds[3] - INSET),
+    ]
+    return sorted(corners, key=lambda corner: -math.hypot(corner[0] - entrance[0], corner[1] - entrance[1]))
+
+
+def _destination(
+    graph: SceneGraph, destination: str, centre, counter_at, fallback
+) -> tuple[str, tuple[float, float], SceneNode | None]:
+    if destination == "pickup":
+        return "Pickup", (counter_at[0] + 1.0, counter_at[1]), None
+    name, words, categories = DESTINATIONS[destination]
+    matches = [
+        node for node in graph.nodes
+        if node.raw_category in categories or any(word in node.label.lower() for word in words)
+    ]
+    node = _nearest(matches, centre)
+    return name, (_beside(node, centre) if node else fallback), node
+
+
+def suggest_path(graph: SceneGraph, destinations: list[str]) -> Scenario:
+    """In the front door, to the counter, to each place the owner picked, and out again."""
+    bounds = _room_bounds(graph)
+    centre = _centre(bounds)
+    floor = _OpenFloor(graph)
+    entrance, door = _entrance(graph, bounds, centre)
+    counter_at, counter = _counter(graph, bounds, centre)
+    corners = _far_corners(bounds, entrance)
+    placed: list[Vec3] = []
+
+    def stop(name: str, at: tuple[float, float], anchor: SceneNode | None) -> Stop:
+        position = floor.snap(at, placed)
+        placed.append(position)
+        return Stop(name=name, position=position, anchor_node_id=anchor.id if anchor else None)
+
+    stops = [stop("Entrance", entrance, door), stop("Counter", counter_at, counter)]
+    for index, destination in enumerate(destinations):
+        name, at, anchor = _destination(graph, destination, centre, counter_at, corners[index % len(corners)])
+        stops.append(stop(name, at, anchor))
+    exit_stop = stops[0].model_copy(update={"name": "Exit"})
+    return Scenario(name="Customer path", stops=[*stops, exit_stop])

@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, CaretDown, Check } from "@phosphor-icons/react";
+import { Camera, CaretDown, Check, MapPin } from "@phosphor-icons/react";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { formatInches, type FindingGroups } from "@/lib/findings";
 import type { Finding } from "@/types/contracts";
@@ -124,14 +124,25 @@ export function FindingsList({ groups, selectedId, onSelect, extra }: ListProps)
  * How the shop stands, before any list: one number an owner can read at a glance.
  *
  * The count carries the news and the mark carries its tone, so the words under
- * them can stay few.
+ * them can stay few. A shop whose paths haven't been checked never gets the
+ * green all-clear, because the paths are where most problems turn up.
  */
-export function ProblemCount({ groups }: { groups: FindingGroups }) {
+export function ProblemCount({ groups, routeConfirmed }: { groups: FindingGroups; routeConfirmed: boolean }) {
   if (groups.problems.length > 0) {
     return <Headline count={groups.problems.length} one="thing to fix" many="things to fix" tone="bg-problem/10 text-problem" />;
   }
   if (groups.questions.length > 0) {
     return <Headline count={groups.questions.length} one="photo we still need" many="photos we still need" tone="bg-ink/[0.06] text-ink" />;
+  }
+  if (!routeConfirmed) {
+    return (
+      <div className="flex items-center gap-3 px-3">
+        <span className="grid size-12 place-items-center rounded-full bg-ink/[0.06] text-ink-muted">
+          <MapPin size={24} weight="bold" aria-hidden />
+        </span>
+        <p className="text-xl font-semibold">Nothing to fix so far</p>
+      </div>
+    );
   }
   return (
     <div className="flex items-center gap-3 px-3">

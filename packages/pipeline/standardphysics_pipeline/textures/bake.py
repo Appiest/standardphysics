@@ -34,6 +34,7 @@ from .project import (
     triangle_depth_buffer,
     view_samples,
 )
+from .stages import advanced, timed
 from .surface_materials import MaterialFill, material_key, room_materials
 
 
@@ -121,7 +122,8 @@ def bake_textures(inputs: BakeInputs) -> BakeResult:
     if not cameras:
         raise TextureBakeError("no stored frame has version 2 camera metadata")
     candidates = _evenly_spaced(cameras, MAX_FRAME_CANDIDATES)
-    cameras, quality = _rank_cameras(candidates, inputs.frame_paths)
+    with timed("choosing photos"):
+        cameras, quality = _rank_cameras(candidates, inputs.frame_paths)
     images, cameras = _load_images(cameras, inputs.frame_paths)
     if not cameras:
         raise TextureBakeError("no readable stored JPEG matches a calibrated pose")
@@ -133,7 +135,8 @@ def bake_textures(inputs: BakeInputs) -> BakeResult:
             work / "meta.json",
             work / "scene.blend",
         )
-        _layout(graph, cameras, work, triangles_path, meta_path, blend_path)
+        with timed("box layout"):
+            _layout(graph, cameras, work, triangles_path, meta_path, blend_path)
         triangles = np.load(triangles_path)
         world = triangles["world"]
         uv = triangles["uv"]
@@ -144,9 +147,12 @@ def bake_textures(inputs: BakeInputs) -> BakeResult:
         if atlas_count > MAX_ATLASES:
             raise TextureBakeError(f"layout requires {atlas_count} atlases (maximum is {MAX_ATLASES})")
         lidar = _lidar_triangles(inputs.lidar_mesh_path, graph.capture_to_room.m, work)
-        clean_buffers = _depth_buffers(cameras, world)
-        lidar_buffers = _depth_buffers(cameras, lidar) if len(lidar) else [None] * len(cameras)
-        gains = _exposure_gains(world, cameras, images, clean_buffers, lidar_buffers)
+        with timed("box occlusion"):
+            clean_buffers = _depth_buffers(cameras, world)
+        with timed("scan occlusion"):
+            lidar_buffers = _depth_buffers(cameras, lidar) if len(lidar) else [None] * len(cameras)
+        with timed("box exposure"):
+            gains = _exposure_gains(world, cameras, images, clean_buffers, lidar_buffers)
 
         node_meta = meta["nodes"]
         fill = _material_fill(graph, node_meta, inputs.materials_dir)
@@ -179,6 +185,7 @@ def bake_textures(inputs: BakeInputs) -> BakeResult:
             Image.fromarray(mask, "L").save(mask_path, optimize=True)
             atlas_paths.append(atlas_path)
             masks.append(mask_path)
+            advanced(atlas + 1, atlas_count)
 
         glb_path = inputs.out_dir / "scene.glb"
         _apply(blend_path, atlas_paths, masks, glb_path)

@@ -56,7 +56,10 @@ struct UploadStatusScreen: View {
 
     @ViewBuilder private var actions: some View {
         if uploadModel.state == .ready, let scanID = uploadModel.scanID {
-            Button("Open your shop") { appModel.screen = .workspace(scanID) }
+            Button("Open your shop") { appModel.openShop(scanID) }
+                .buttonStyle(AppButtonStyle())
+        } else if uploadModel.needsSignIn {
+            Button("Sign in and keep uploading") { appModel.signInToContinue(uploadModel) }
                 .buttonStyle(AppButtonStyle())
         } else if uploadModel.errorMessage != nil {
             Button("Try again") { uploadModel.retry() }
@@ -66,7 +69,7 @@ struct UploadStatusScreen: View {
             Button("Retry remaining uploads") { uploadModel.retry() }
                 .buttonStyle(AppButtonStyle(.secondary))
         }
-        Button("Back to saved scans") { appModel.showStart() }
+        Button("Go to home") { appModel.showStart() }
             .buttonStyle(AppButtonStyle(.secondary))
     }
 }

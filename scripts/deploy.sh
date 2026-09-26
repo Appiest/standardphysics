@@ -20,11 +20,31 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 say() { printf '\n== %s\n' "$1"; }
 
+# Whichever remote is the one the Droplet pulls from. A fork has it as
+# "upstream"; a plain clone has it as "origin". Checking against the wrong one
+# silently skips the guard below, so find it rather than assume it.
+master_remote() {
+  local remote
+  for remote in upstream origin; do
+    if git remote get-url "$remote" >/dev/null 2>&1; then
+      echo "$remote"
+      return 0
+    fi
+  done
+  return 1
+}
+
 warn_about_unpushed() {
   cd "$REPO_ROOT"
-  git fetch upstream --quiet 2>/dev/null || return 0
+  local remote
+  remote="$(master_remote)" || {
+    echo "No upstream or origin remote here, so I cannot tell whether master has your work." >&2
+    echo "Deploying anyway; check yourself that what you want is on master." >&2
+    return 0
+  }
+  git fetch "$remote" --quiet 2>/dev/null || return 0
   local ahead
-  ahead="$(git rev-list --count upstream/master..HEAD 2>/dev/null || echo 0)"
+  ahead="$(git rev-list --count "$remote/master..HEAD" 2>/dev/null || echo 0)"
   if [ "$ahead" -gt 0 ]; then
     echo "You have $ahead commit(s) not on master. The Droplet pulls master, so they will not ship." >&2
     echo "Push them first, or run with SP_DEPLOY_ANYWAY=1 to deploy master as it stands." >&2

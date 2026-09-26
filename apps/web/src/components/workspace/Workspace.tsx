@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonClassName } from "@/components/ui/Button";
 import { Menu, MENU_ITEM } from "@/components/ui/Menu";
 import { overviewPose, poseAtPoint, poseFromLocus, topDownPose, type ViewerPose } from "@/lib/camera";
 import { nodePosition } from "@/lib/review-targets";
@@ -73,6 +73,7 @@ type WorkspaceProps = {
   rooms: RoomGroup[];
   capturedSplats?: CapturedSplats | null;
   evidence?: EvidenceStatus | null;
+  team: boolean;
 };
 
 function isWorking(scan: Scan): boolean {
@@ -271,7 +272,7 @@ function findingsTaskPanel(props: SidePanelProps): ReactNode {
   const { scene, scan, findings, selected, onTryLayout, onPreviewLayout, onToggle, onLook, route, onRoute, assessment, developer } = props;
   return (
     <div className="flex flex-col gap-6">
-      <FindingsPanel scan={scan} scene={scene} assessment={assessment} findings={findings} selected={selected} onToggle={onToggle} onTryLayout={onTryLayout} route={route} onRoute={onRoute} />
+      <FindingsPanel scan={scan} scene={scene} assessment={assessment} findings={findings} selected={selected} onToggle={onToggle} onTryLayout={onTryLayout} route={route} onRoute={onRoute} developer={developer} />
       {developer && (
         <MoreTools>
           <AskBox scanId={scan.id} revision={scene.revision} onLook={onLook} onTry={onTryLayout} />
@@ -342,7 +343,7 @@ function SidePanel(props: SidePanelProps) {
   return TASK_PANELS[props.task](props);
 }
 
-type FindingsPanelProps = Pick<SidePanelProps, "scan" | "scene" | "assessment" | "findings" | "selected" | "onToggle" | "onTryLayout" | "route" | "onRoute">;
+type FindingsPanelProps = Pick<SidePanelProps, "scan" | "scene" | "assessment" | "findings" | "selected" | "onToggle" | "onTryLayout" | "route" | "onRoute" | "developer">;
 
 function RoutePrompt({ onRoute }: { onRoute: () => void }) {
   return (
@@ -353,25 +354,35 @@ function RoutePrompt({ onRoute }: { onRoute: () => void }) {
   );
 }
 
-/** Above the findings: confirm the route first, then the improvement loop can start whenever you like. */
-function NextStep({ scan, scene, route, onRoute, onTryLayout }: Omit<FindingsPanelProps, "assessment" | "selected" | "onToggle" | "findings">) {
+/** Above the findings: confirm the route first. The improvement loop is the team's, so only they see it after. */
+function NextStep({ scan, scene, route, onRoute, onTryLayout, developer }: Omit<FindingsPanelProps, "assessment" | "selected" | "onToggle" | "findings">) {
   if (!route.confirmed) return scan.state === "ready" ? <RoutePrompt onRoute={onRoute} /> : null;
-  return <LoopRun key={scene.revision} scanId={scan.id} revision={scene.revision} onTry={onTryLayout} />;
+  return developer ? <LoopRun key={scene.revision} scanId={scan.id} revision={scene.revision} onTry={onTryLayout} /> : null;
 }
 
-function FindingsPanel({ scan, scene, assessment, findings, selected, onToggle, onTryLayout, route, onRoute }: FindingsPanelProps) {
+function FindingsPanel({ scan, scene, assessment, findings, selected, onToggle, onTryLayout, route, onRoute, developer }: FindingsPanelProps) {
   if (assessment === null && isWorking(scan)) {
     return <p className="px-3 font-medium" role="status">Checking this layout</p>;
   }
   const groups = groupFindings(findings);
   return (
     <div className="flex flex-col gap-5">
-      {findings.length > 0 && <ProblemCount groups={groups} />}
-      <NextStep scan={scan} scene={scene} route={route} onRoute={onRoute} onTryLayout={onTryLayout} />
+      {findings.length > 0 && <ProblemCount groups={groups} routeConfirmed={route.confirmed} />}
+      <NextStep scan={scan} scene={scene} route={route} onRoute={onRoute} onTryLayout={onTryLayout} developer={developer} />
       {findings.length === 0
         ? <p className="px-3 text-ink-muted">{scanStatus(scan, assessment, route.confirmed)}</p>
         : <GroupedFindings scan={scan} scene={scene} groups={groups} selected={selected} onToggle={onToggle} onTryLayout={onTryLayout} />}
+      {assessment !== null && <ReportLink scanId={scan.id} />}
     </div>
+  );
+}
+
+function ReportLink({ scanId }: { scanId: string }) {
+  return (
+    <Link href={`/scans/${scanId}/report`} className={`${buttonClassName("quiet")} self-start`}>
+      <FileText size={18} weight="bold" aria-hidden />
+      Open the report
+    </Link>
   );
 }
 
@@ -521,10 +532,11 @@ type WorkspaceBodyProps = WorkspaceProps & {
 
 // The workspace deliberately coordinates several independent panels around one model.
 // eslint-disable-next-line complexity
-function WorkspaceBody({ scan, scene, exported, assessment, glbUrl, lidarUrl, textureStatus, capturedSplats, evidence, findings, task, selected, focus, mode, picked, dragging, amount, setAmount, showScanEvidence, setShowScanEvidence, visuals, actions }: WorkspaceBodyProps) {
+function WorkspaceBody({ scan, scene, exported, assessment, glbUrl, lidarUrl, textureStatus, capturedSplats, evidence, team, findings, task, selected, focus, mode, picked, dragging, amount, setAmount, showScanEvidence, setShowScanEvidence, visuals, actions }: WorkspaceBodyProps) {
   const router = useRouter();
   const [cutWalls, setCutWalls] = useState(true);
-  const [developer] = useDeveloperMode();
+  const [developerChosen] = useDeveloperMode();
+  const developer = team && developerChosen;
   const [chosenMaterialMode, setChosenMaterialMode] = useState<MaterialMode | null>(null);
   const [wheelchairMode, setWheelchairMode] = useState(false);
   const [wheelchairState, setWheelchairState] = useState<WheelchairState | null>(null);

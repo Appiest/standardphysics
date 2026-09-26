@@ -20,14 +20,17 @@ of surface, which is itself a photograph or the room's generated material.
 
 from __future__ import annotations
 
+import ctypes
 import pathlib
 import tempfile
 import time
 from dataclasses import dataclass
 
+import fast_simplification
 import numpy as np
 from PIL import Image
 from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 from standardphysics_contracts import SceneGraph
 
@@ -36,19 +39,23 @@ from .hole_patches import hidden_behind_objects
 from .object_holes import people_masks
 from .project import (
     MAX_EXPOSURE_POINTS,
+    DepthPyramid,
     PointBlocks,
     TopViews,
+    TriangleBlocks,
     bilinear,
-    depth_buffer,
+    evenly_spread,
     exposure_gains,
     face_normals,
     in_parallel,
+    occluder_depth_buffer,
     pad_gutters,
     rasterize_atlas,
+    sphere_footprints,
     to_linear,
     to_srgb,
 )
-from .scan_colour import BLEND_SHARPNESS, ColouredScan, _small_static_mask, _weights_from
+from .scan_colour import BLEND_SHARPNESS, ColouredScan, PickedRows, _small_static_mask, _weights_from, _widest_tolerance
 from .stages import timed
 
 TEXEL_METRES = 0.02
@@ -56,7 +63,8 @@ MIN_ATLAS_SIZE = 512
 MAX_ATLAS_SIZE = 4096
 MAX_ATLAS_PHOTOS = 800
 """Photos read per walk. Neighbouring video frames are nearly the same view, so past this they add time and little else."""
-PHOTO_EDGE = 1600
+PHOTO_EDGE = 2048
+"""Photos up to this size are sampled as the camera stored them: a phone's 1920 frames are sharper whole, and shrinking them cost more than the rest of a photo's work."""
 EXPOSURE_PHOTO_EDGE = 400
 """Exposure is a per-photo brightness, so it can be read off a thumbnail."""
 ATLAS_JPEG_QUALITY = 90
@@ -78,10 +86,31 @@ class UnwrappedScan:
     triangles: np.ndarray
     uv: np.ndarray
     """A UV pair for each corner of each triangle, shape (triangles, 3, 2)."""
+    atlases: np.ndarray | None = None
+    """Which atlas each triangle's UVs are packed into; all in one when absent."""
 
     @property
     def corners(self) -> np.ndarray:
         return self.vertices[self.triangles]
+
+    @property
+    def atlas_count(self) -> int:
+        return int(self.atlases.max()) + 1 if self.atlases is not None and len(self.atlases) else 1
+
+    def atlas(self, index: int) -> UnwrappedScan:
+        """The triangles packed into one atlas, over the same vertices."""
+        if self.atlases is None:
+            return self
+        chosen = self.atlases == index
+        return UnwrappedScan(self.vertices, self.triangles[chosen], self.uv[chosen], self.atlases[chosen])
+
+
+@dataclass(frozen=True)
+class _Atlas:
+    path: pathlib.Path
+    size: int
+    texels: int
+    reached: int
 
 
 @dataclass(frozen=True)
@@ -94,17 +123,102 @@ class AtlasPaint:
     seconds: float
 
 
-def unwrapped(scan: ColouredScan, work: pathlib.Path, max_triangles: int) -> UnwrappedScan:
-    """The scan thinned for the viewer and unwrapped by Blender."""
+WELD_METRES = 0.001
+"""Vertices this close are one vertex: the shared corners of patch squares, and the seams between LiDAR anchors."""
+BLENDER_FACE_FACTOR = 6
+"""How many times the viewer's face count Blender is handed to thin the rest of the way.
+
+Blender's thinning keeps more of the surface than the quadric pass does, so it
+is left a share of the work: at four times, a scanned room kept 96.5 per cent
+of its area against 97.1 at six. Blender needs about 0.6 GB per million faces
+over a 0.7 GB base, so six times the viewer's 260,000 faces is under two
+gigabytes, where a library floor's four million had needed three."""
+MAX_BLENDER_FACES = 1_560_000
+"""The most faces Blender is ever handed, which holds it under two gigabytes however large the viewer's budget."""
+VIEWER_SHARE = 4
+"""The viewer keeps about one face in this many of the scan, the thinning a single walk has always had."""
+MIN_VIEWER_FACES = 260_000
+MAX_VIEWER_FACES = 1_000_000
+"""The most faces the viewer is given, which is what four walks of a library floor came to when each was painted alone."""
+ATLAS_FACES = MIN_VIEWER_FACES
+"""The faces one atlas holds, so every face gets the texels a single room's faces get."""
+
+
+def atlas_count(faces: int) -> int:
+    """How many atlases the viewer's faces are packed into, one per ATLAS_FACES."""
+    return max(1, -(-faces // ATLAS_FACES))
+
+
+def viewer_faces(scan: ColouredScan) -> int:
+    """How many faces the painted scan keeps, in proportion to how much was scanned.
+
+    One budget for every capture thinned a whole library floor as hard as one
+    room: four million faces cut to 260,000 broke the floor into shards with
+    gaps between them. A floor now keeps as many faces as its walks had when
+    each was painted alone.
+    """
+    return int(np.clip(len(scan.triangles) // VIEWER_SHARE, MIN_VIEWER_FACES, MAX_VIEWER_FACES))
+
+
+def unwrapped(scan: ColouredScan, work: pathlib.Path, max_triangles: int, atlases: int = 1) -> UnwrappedScan:
+    """The scan thinned for the viewer and unwrapped by Blender.
+
+    Blender used to be handed the whole scan. A library floor of four million
+    faces ran it out of memory on a two-core server with four gigabytes, and the
+    painted scan was lost. It now receives a mesh already thinned to a few times
+    the viewer's size, so what it holds is bounded however large the capture.
+    """
     from ..blender import _run
 
+    handed = min(BLENDER_FACE_FACTOR * max_triangles, MAX_BLENDER_FACES)
+    vertices, triangles = thinned_for_blender(scan.vertices, scan.triangles, handed)
     source, result = work / "scan.npz", work / "unwrapped.npz"
-    np.savez(source, vertices=scan.vertices.astype(np.float32), triangles=scan.triangles.astype(np.int32))
-    output = _run("unwrap_scan.py", ["--scan", str(source), "--out", str(result), "--max-triangles", str(max_triangles)])
+    np.savez(source, vertices=vertices.astype(np.float32), triangles=triangles.astype(np.int32))
+    output = _run("unwrap_scan.py", [
+        "--scan", str(source), "--out", str(result), "--max-triangles", str(max_triangles), "--atlases", str(atlases),
+    ])
     if "SCAN_UNWRAPPED" not in output:
         raise RuntimeError(f"Blender did not unwrap the scan:\n{output[-1500:]}")
     archive = np.load(result)
-    return UnwrappedScan(archive["vertices"], archive["triangles"], archive["uv"])
+    return UnwrappedScan(archive["vertices"], archive["triangles"], archive["uv"], archive["atlases"])
+
+
+def thinned_for_blender(vertices: np.ndarray, triangles: np.ndarray, max_faces: int) -> tuple[np.ndarray, np.ndarray]:
+    """The mesh welded into one surface and, when larger than `max_faces`, thinned toward it with its open edges held.
+
+    Welding comes first: hole patches arrive as separate squares and the LiDAR
+    as separate anchors, and thinned apart each piece collapses on its own, so a
+    patched floor came out as a lattice with gaps.
+
+    Quadric thinning here keeps the surface within a centimetre, but it drags
+    the rim of every hole inward, and about one vertex in seven of a scanned
+    room lies on a rim. So it thins only the interior and leaves the rims to
+    Blender's decimation, which keeps them in place.
+    """
+    points, faces = welded(vertices, triangles)
+    if len(faces) <= max_faces:
+        return points, faces
+    return fast_simplification.simplify(
+        points.astype(np.float64), faces.astype(np.int64), target_count=max_faces, preserve_border=True,
+    )
+
+
+def welded(vertices: np.ndarray, triangles: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Vertices within WELD_METRES of each other joined, and the faces this collapses or repeats dropped."""
+    pairs = cKDTree(vertices).query_pairs(WELD_METRES, output_type="ndarray")
+    if len(pairs):
+        links = csr_matrix((np.ones(len(pairs), dtype=bool), (pairs[:, 0], pairs[:, 1])), shape=(len(vertices),) * 2)
+        _, group = connected_components(links, directed=False)
+    else:
+        group = np.arange(len(vertices))
+    first = np.full(group.max() + 1, len(vertices), dtype=np.int64)
+    np.minimum.at(first, group, np.arange(len(vertices)))
+    faces = group[triangles]
+    faces = faces[(faces[:, 0] != faces[:, 1]) & (faces[:, 1] != faces[:, 2]) & (faces[:, 0] != faces[:, 2])]
+    _, unique = np.unique(np.sort(faces, axis=1), axis=0, return_index=True)
+    faces = faces[np.sort(unique)]
+    used, compact = np.unique(faces, return_inverse=True)
+    return vertices[first[used]], compact.reshape(-1, 3)
 
 
 def atlas_size(mesh: UnwrappedScan) -> int:
@@ -119,7 +233,9 @@ def atlas_size(mesh: UnwrappedScan) -> int:
 
 
 def _read(path: pathlib.Path, edge: int) -> np.ndarray:
+    """The photo as linear-ready floats, no larger than `edge`; a JPEG is decoded straight at the nearest smaller scale."""
     with Image.open(path) as opened:
+        opened.draft("RGB", (edge, edge))
         image = opened.convert("RGB")
         image.thumbnail((edge, edge), Image.Resampling.LANCZOS)
         return np.asarray(image, dtype=np.float32) / 255.0
@@ -178,22 +294,80 @@ class _Surface:
         self.rows, self.columns, self.faces, self.positions, self.normals = _with_every_face_owned(
             mesh, size, texels.rows, texels.columns, texels.owners, texels.positions, texels.normals,
         )
-        distances, nearest = cKDTree(painted.vertices).query(self.positions, k=FALLBACK_NEIGHBOURS)
-        self.fallback = _blended(to_linear(painted.colours), distances, nearest)
-        patches = painted.sheet_patches if painted.sheet_patches is not None else np.zeros(len(painted.vertices), bool)
-        self.patch = patches[nearest[:, 0]]
+        self.normals = self.normals.astype(np.float16)
+        self.corner_weights = _corner_weights(mesh, self.faces, self.positions)
+        self.fallback, self.patch = _fallback_and_patch(painted, mesh, self.faces, self.corner_weights)
         self.blocks = PointBlocks(self.positions)
+
+    def visible_to(self, camera: PhotoCamera, buffer: np.ndarray) -> np.ndarray:
+        return unhidden_members(self.blocks, camera, buffer)
 
     def weights(self, camera: PhotoCamera, photo: np.ndarray, detections: dict, indices: np.ndarray, buffer: np.ndarray):
         """This photo's view weight for each texel in `indices`, and where in the photo to sample it."""
         sized = camera.resized(photo.shape[1], photo.shape[0])
         mask = _people_mask(camera, photo, detections, buffer)
-        weight, columns, rows = _weights_from(sized, self.positions[indices], self.normals[indices], buffer, mask, slope_aware=True)
-        behind = np.flatnonzero((weight > 0) & self.patch[indices])
+        weight, columns, rows = _weights_from(sized, self.positions[indices], PickedRows(self.normals, indices), buffer, mask, slope_aware=True)
+        positive = np.flatnonzero(weight > 0)
+        behind = positive[self.patch[indices[positive]]]
         if len(behind):
             hidden = hidden_behind_objects(self.graph, self.positions[indices[behind]], np.ones(len(behind), bool))(camera)
             weight[behind[hidden]] = 0.0
         return weight, columns, rows
+
+
+TEXEL_CHUNK = 1_000_000
+"""Texels worked on at once where each needs its face's three corners, so the gathered corners stay near a hundred megabytes."""
+
+
+def _corner_weights(mesh: UnwrappedScan, faces: np.ndarray, positions: np.ndarray) -> np.ndarray:
+    """Each texel's barycentric weights over its face's corners, kept for the fallback and the fill."""
+    weights = np.empty((len(positions), 3), dtype=np.float32)
+    for start in range(0, len(positions), TEXEL_CHUNK):
+        corners = mesh.vertices[mesh.triangles[faces[start:start + TEXEL_CHUNK]]]
+        weights[start:start + TEXEL_CHUNK] = _barycentric(corners, positions[start:start + TEXEL_CHUNK])
+    return weights
+
+
+def _fallback_and_patch(painted: ColouredScan, mesh: UnwrappedScan, faces: np.ndarray, weights: np.ndarray):
+    """Each texel's fallback colour, and whether it lies on a wall or floor patch, from its face's corners.
+
+    The fallback is the inverse-distance blend of the nearest painted vertices,
+    worked out at each corner of the atlas's faces and blended across the face.
+    Asking for the neighbours of every texel instead was sixteen million
+    lookups an atlas, over half its texel step on the droplet.
+    """
+    corners = mesh.triangles[faces]
+    used = np.unique(corners)
+    distances, nearest = cKDTree(painted.vertices).query(mesh.vertices[used], k=FALLBACK_NEIGHBOURS, workers=-1)
+    at_corner = np.zeros((len(mesh.vertices), 3), dtype=np.float32)
+    at_corner[used] = _blended(to_linear(painted.colours), distances, nearest)
+    patches = painted.sheet_patches if painted.sheet_patches is not None else np.zeros(len(painted.vertices), bool)
+    on_patch = np.zeros(len(mesh.vertices), dtype=bool)
+    on_patch[used] = patches[nearest[:, 0]]
+    fallback = np.empty((len(faces), 3), dtype=np.float16)
+    for start in range(0, len(faces), TEXEL_CHUNK):
+        chunk = slice(start, start + TEXEL_CHUNK)
+        fallback[chunk] = np.einsum("ij,ijk->ik", weights[chunk], at_corner[corners[chunk]])
+    patch = on_patch[corners[np.arange(len(faces)), weights.argmax(axis=1)]]
+    return fallback, patch
+
+
+def unhidden_members(blocks: PointBlocks, camera: PhotoCamera, buffer: np.ndarray) -> np.ndarray:
+    """Indices of the points in cubes that reach the frame and are not wholly behind the depth buffer.
+
+    A photo across a library floor frames a million texels and paints about one
+    in a hundred; most sit behind shelves and walls. A cube whose nearest point
+    lies beyond the farthest recorded depth over its footprint, by more than the
+    widest tolerance any of its points could get, holds only points the depth
+    test would reject one by one.
+    """
+    cubes = blocks.cubes_seen_by(camera)
+    radii = blocks.radii(cubes)
+    footprints = sphere_footprints(camera.resized(buffer.shape[1], buffer.shape[0]), blocks.centres[cubes], radii, margin=1)
+    farthest = DepthPyramid(buffer).farthest(footprints.left, footprints.right, footprints.top, footprints.bottom)
+    tolerance = _widest_tolerance(camera, buffer.shape[1], footprints.nearest + 2 * radii, slope_aware=True)
+    hidden = footprints.usable & (footprints.nearest > farthest + tolerance)
+    return blocks.members(cubes[~hidden])
 
 
 def _blended(colours: np.ndarray, distances: np.ndarray, nearest: np.ndarray) -> np.ndarray:
@@ -213,7 +387,26 @@ def _people_mask(camera: PhotoCamera, photo: np.ndarray, detections: dict, buffe
     return _small_static_mask(mask, *buffer.shape)
 
 
-def _exposure(surface: _Surface, cameras, frame_paths, detections) -> tuple[np.ndarray, list]:
+class _Occluders:
+    """Each photo's depth buffer of the whole thinned surface, drawn once and read by every atlas.
+
+    An atlas holds one stretch of a floor. A buffer drawn from its own texels
+    missed a shelf standing in the next stretch, so the floor behind it could
+    take the shelf's colour, and the same buffers were drawn again for every
+    atlas and for exposure. Faces also cover the gaps between texels.
+    """
+
+    def __init__(self, mesh: UnwrappedScan, cameras: list[PhotoCamera]):
+        corners = mesh.corners.astype(np.float32)
+        blocks = TriangleBlocks(corners)
+        buffers = in_parallel(lambda camera: occluder_depth_buffer(camera, corners, blocks), cameras)
+        self.buffers = {camera.frame_id: buffer for camera, buffer in zip(cameras, buffers)}
+
+    def of(self, camera: PhotoCamera) -> np.ndarray:
+        return self.buffers[camera.frame_id]
+
+
+def _exposure(surface: _Surface, cameras, frame_paths, detections, occluders: _Occluders) -> tuple[np.ndarray, list]:
     """Per-photo gains from an even sample of texels, and each photo's depth buffer for the bake."""
     sample = np.unique(np.linspace(0, len(surface.positions) - 1, MAX_EXPOSURE_POINTS).astype(np.int64))
     in_sample = np.full(len(surface.positions), -1, dtype=np.int64)
@@ -222,13 +415,13 @@ def _exposure(surface: _Surface, cameras, frame_paths, detections) -> tuple[np.n
     nothing = (np.empty(0, np.int64), np.empty((0, 3), np.float32))
 
     def measure(camera):
-        visible = surface.blocks.seen_by(camera)
+        buffer = occluders.of(camera)
+        visible = surface.visible_to(camera, buffer)
         if not len(visible):
             return False, nothing
         sampled = visible[in_sample[visible] >= 0]
         if not len(sampled):
             return True, nothing
-        buffer = depth_buffer(camera, surface.positions[visible])
         photo = _read(frame_paths[camera.frame_id], EXPOSURE_PHOTO_EDGE)
         weight, columns, rows = surface.weights(camera, photo, detections, sampled, buffer)
         seen = np.flatnonzero(weight > 0)
@@ -239,12 +432,9 @@ def _exposure(surface: _Surface, cameras, frame_paths, detections) -> tuple[np.n
     return exposure_gains([seen for _, seen in measured], len(cameras), len(sample)), framed
 
 
-def _bake(surface: _Surface, cameras, frame_paths, detections, gains, framed) -> tuple[np.ndarray, np.ndarray]:
+def _bake(surface: _Surface, cameras, frame_paths, detections, gains, framed, occluders: _Occluders) -> tuple[np.ndarray, np.ndarray]:
     """Linear colour per texel and whether any photo reached it.
 
-    Each photo's depth buffer is built again here rather than kept from the
-    exposure pass: thousands of them held at once were more memory than a
-    small server has, and one is quick to make from the texels in its frame.
     The best views keep their colours at half precision, which is still eight
     times finer than the atlas stores and halves the largest array of the bake.
     """
@@ -253,8 +443,8 @@ def _bake(surface: _Surface, cameras, frame_paths, detections, gains, framed) ->
 
     def sample(job):
         camera, gain = job
-        visible = surface.blocks.seen_by(camera)
-        buffer = depth_buffer(camera, surface.positions[visible])
+        buffer = occluders.of(camera)
+        visible = surface.visible_to(camera, buffer)
         photo = _read(frame_paths[camera.frame_id], PHOTO_EDGE)
         weight, columns, rows = surface.weights(camera, photo, detections, visible, buffer)
         seen = np.flatnonzero(weight > 0)
@@ -269,9 +459,11 @@ def _bake(surface: _Surface, cameras, frame_paths, detections, gains, framed) ->
 
 
 def _in_chunks(resolve, weights: np.ndarray, colours: np.ndarray, size: int = 250_000) -> np.ndarray:
-    """The resolution run a slice at a time, since comparing every pair of views is five-by-five per texel."""
-    return np.concatenate([resolve(weights[start:start + size], colours[start:start + size].astype(np.float32))
-                           for start in range(0, len(weights), size)] or [np.empty((0, 3), np.float32)])
+    """The resolution run a slice at a time on every core, since comparing every pair of views is five-by-five per texel."""
+    def slice_of(start: int) -> np.ndarray:
+        return resolve(weights[start:start + size].astype(np.float32), colours[start:start + size].astype(np.float32))
+
+    return np.concatenate(list(in_parallel(slice_of, range(0, len(weights), size), counted=False)) or [np.empty((0, 3), np.float32)])
 
 
 def agreed_colours(weights: np.ndarray, colours: np.ndarray) -> np.ndarray:
@@ -308,8 +500,7 @@ def _face_filled(surface: _Surface, colours: np.ndarray, painted: np.ndarray) ->
     field, known = _corner_colours(surface.mesh, surface.faces, colours, painted)
     corners = surface.mesh.triangles[surface.faces]
     reached = known[corners].all(axis=1)
-    weights = _barycentric(surface.mesh.vertices[corners], surface.positions)
-    blended = np.einsum("ij,ijk->ik", weights, field[corners]).astype(np.float32)
+    blended = np.einsum("ij,ijk->ik", surface.corner_weights, field[corners]).astype(np.float32)
     fallback = np.where(reached[:, None], blended, surface.fallback)
     return np.where(painted[:, None], colours, fallback)
 
@@ -392,19 +583,40 @@ def _atlas_image(surface: _Surface, colours: np.ndarray, painted: np.ndarray) ->
     return Image.fromarray(np.rint(to_srgb(pad_gutters(image, filled)) * 255).astype(np.uint8), "RGB")
 
 
-def _write_glb(mesh_path: pathlib.Path, atlas_path: pathlib.Path, out_path: pathlib.Path) -> None:
+def _write_glb(mesh_path: pathlib.Path, atlas_paths: list[pathlib.Path], out_path: pathlib.Path) -> None:
     from ..blender import _run
 
-    output = _run("texture_scan.py", ["--mesh", str(mesh_path), "--atlas", str(atlas_path), "--out", str(out_path)])
+    atlases = [argument for path in atlas_paths for argument in ("--atlas", str(path))]
+    output = _run("texture_scan.py", ["--mesh", str(mesh_path), *atlases, "--out", str(out_path)])
     if "SCAN_GLB_WRITTEN" not in output:
         raise RuntimeError(f"Blender did not write the textured scan:\n{output[-1500:]}")
 
 
-def _evenly_spread(cameras: list[PhotoCamera], limit: int) -> list[PhotoCamera]:
-    if len(cameras) <= limit:
-        return cameras
-    picks = np.linspace(0, len(cameras) - 1, limit).round().astype(int)
-    return [cameras[index] for index in dict.fromkeys(picks.tolist())]
+def _return_freed_memory() -> None:
+    """Give the pages an atlas freed back to the system before the next atlas starts.
+
+    The allocator keeps freed memory for reuse, and on the droplet each atlas
+    began a little higher than the last until the fourth was killed at 3.1 GB.
+    Only glibc has the call; elsewhere the memory is left where it is.
+    """
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
+
+
+def _baked_atlas(mesh: UnwrappedScan, painted: ColouredScan, graph: SceneGraph, cameras, frame_paths, detections, path, occluders) -> _Atlas:
+    """One atlas's faces baked from the photos into an image at `path`."""
+    size = atlas_size(mesh)
+    with timed("texels"):
+        surface = _Surface(mesh, size, painted, graph)
+    with timed("exposure"):
+        gains, framed = _exposure(surface, cameras, frame_paths, detections, occluders)
+    with timed("photo bake"):
+        colours, reached = _bake(surface, cameras, frame_paths, detections, gains, framed, occluders)
+    with timed("atlas image"):
+        _atlas_image(surface, colours, reached).save(path, quality=ATLAS_JPEG_QUALITY)
+    return _Atlas(path, size, len(reached), int(reached.sum()))
 
 
 def bake_scan_atlas(
@@ -414,27 +626,35 @@ def bake_scan_atlas(
     frame_paths: dict[str, pathlib.Path],
     out_path: pathlib.Path,
     people: dict | None = None,
-    max_triangles: int = 260_000,
+    max_triangles: int | None = None,
 ) -> AtlasPaint:
-    """The vertex-painted scan, thinned, unwrapped and baked from every photo into one textured glTF."""
+    """The vertex-painted scan, thinned, unwrapped and baked from every photo into one textured glTF.
+
+    `max_triangles` is the viewer's face budget, `viewer_faces` of the scan unless given.
+    A budget larger than one atlas holds is packed into several, baked one after
+    another so only one atlas's texels are in memory at a time.
+    """
     started = time.monotonic()
-    chosen = _evenly_spread(cameras, MAX_ATLAS_PHOTOS)
+    chosen = evenly_spread(cameras, MAX_ATLAS_PHOTOS)
     detections = people or {}
+    budget = max_triangles or viewer_faces(painted)
     with tempfile.TemporaryDirectory(prefix="standardphysics-atlas-") as temporary:
         work = pathlib.Path(temporary)
         with timed("unwrap"):
-            mesh = unwrapped(painted, work, max_triangles)
-        size = atlas_size(mesh)
-        with timed("texels"):
-            surface = _Surface(mesh, size, painted, graph)
-        with timed("exposure"):
-            gains, framed = _exposure(surface, chosen, frame_paths, detections)
-        with timed("photo bake"):
-            colours, reached = _bake(surface, chosen, frame_paths, detections, gains, framed)
-        atlas_path, mesh_path = work / "atlas.jpg", work / "mesh.npz"
-        with timed("atlas image"):
-            _atlas_image(surface, colours, reached).save(atlas_path, quality=ATLAS_JPEG_QUALITY)
-        np.savez(mesh_path, vertices=mesh.vertices, triangles=mesh.triangles, uv=mesh.uv)
+            mesh = unwrapped(painted, work, budget, atlas_count(budget))
+        with timed("occlusion"):
+            occluders = _Occluders(mesh, chosen)
+        atlases = []
+        for index in range(mesh.atlas_count):
+            atlases.append(_baked_atlas(
+                mesh.atlas(index), painted, graph, chosen, frame_paths, detections, work / f"atlas-{index}.jpg", occluders,
+            ))
+            _return_freed_memory()
+        mesh_path = work / "mesh.npz"
+        np.savez(mesh_path, vertices=mesh.vertices, triangles=mesh.triangles, uv=mesh.uv, atlases=mesh.atlases)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_glb(mesh_path, atlas_path, out_path)
-    return AtlasPaint(out_path, float(reached.mean()) if len(reached) else 0.0, len(chosen), size, time.monotonic() - started)
+        _write_glb(mesh_path, [atlas.path for atlas in atlases], out_path)
+    texels = sum(atlas.texels for atlas in atlases)
+    painted_fraction = sum(atlas.reached for atlas in atlases) / texels if texels else 0.0
+    size = max(atlas.size for atlas in atlases)
+    return AtlasPaint(out_path, painted_fraction, len(chosen), size, time.monotonic() - started)

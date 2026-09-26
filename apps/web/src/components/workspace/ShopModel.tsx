@@ -79,6 +79,8 @@ type ModelProps = {
   coverage?: Map<string, number>;
   /** Keep SceneGraph geometry interactive without drawing the measured bounds. */
   pickOnly?: boolean;
+  /** The owner is choosing a piece: every piece stays visible and tappable, and the focus only outlines. */
+  picking?: boolean;
 };
 
 const SCRATCH_HIT = new Vector3();
@@ -187,11 +189,12 @@ function LockMark({ node }: { node: SceneNode }) {
 }
 
 function nodeState(node: SceneNode, props: Omit<ModelProps, "shown">) {
+  const inFocus = props.picking || props.focus === null || props.focus.has(node.id);
   return {
-    faded: props.focus !== null && !props.focus.has(node.id),
+    faded: !inFocus,
     outline: edgeColor(node, props),
     lockable: props.arrange !== null && !props.dragAllNodes && node.kind === "object" && !node.movable,
-    selectable: props.focus === null || props.focus.has(node.id) ? props.arrange === null : false,
+    selectable: inFocus && props.arrange === null,
   };
 }
 
@@ -273,6 +276,7 @@ function areModelNodePropsEqual(prev: ModelNodeProps, next: ModelNodeProps): boo
   if (prev.dragAllNodes !== next.dragAllNodes) return false;
   if (prev.materialMode !== next.materialMode) return false;
   if (prev.pickOnly !== next.pickOnly) return false;
+  if (prev.picking !== next.picking) return false;
   if (prev.onSelectNode !== next.onSelectNode) return false;
   if (prev.focusColor !== next.focusColor) return false;
 

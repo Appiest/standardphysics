@@ -19,7 +19,8 @@
                 "properties": {
                   "name": {"type": "string"},
                   "device_model": {"type": "string"},
-                  "duration_seconds": {"type": "number"}
+                  "duration_seconds": {"type": "number"},
+                  "replaces": {"type": "string", "format": "uuid", "description": "A shop this walk joins. The new walk replaces that scan once it is in, and keeps the owner's in-shop answers and photos."}
                 }
               }
             }

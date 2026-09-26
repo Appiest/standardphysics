@@ -15,6 +15,7 @@ from standardphysics_pipeline.textures.hole_patches import with_holes_patched
 from standardphysics_pipeline.textures.project import face_normals, rasterize_atlas
 from standardphysics_pipeline.textures.scan_atlas import (
     TEXEL_METRES,
+    _corner_weights,
     _face_filled,
     _with_every_face_owned,
     agreed_colours,
@@ -97,6 +98,7 @@ def test_a_texel_no_photo_reached_takes_its_surface_colour_and_never_a_neighbour
         positions=np.array([[0.6, 0.2, 0], [0.8, 0.3, 0], [0.2, 0.7, 0], [5.2, 0.2, 0]], dtype=np.float32),
         fallback=np.array([grey] * 4, dtype=np.float32),
     )
+    surface.corner_weights = _corner_weights(mesh, surface.faces, surface.positions)
     colours = np.array([yellow, yellow, [0, 0, 0], [0, 0, 0]], dtype=np.float32)
     painted = np.array([True, True, False, False])
 
@@ -122,3 +124,92 @@ def test_every_face_of_a_real_scan_is_drawn_from_texels_baked_for_it(tmp_path):
 
     assert np.bincount(owned[2], minlength=len(mesh.triangles)).min() >= 1
     assert len(np.unique(owned[0].astype(np.int64) * size + owned[1])) == len(owned[0]), "no texel belongs to two faces"
+
+
+def _uv_area(mesh) -> np.ndarray:
+    first, second = mesh.uv[:, 1] - mesh.uv[:, 0], mesh.uv[:, 2] - mesh.uv[:, 0]
+    return np.abs(first[:, 0] * second[:, 1] - first[:, 1] * second[:, 0]) / 2
+
+
+@pytest.mark.skipif(_blender_missing(), reason="Blender not installed")
+def test_a_budget_packed_into_two_atlases_gives_every_face_at_least_twice_the_texture(tmp_path):
+    """A library floor in one atlas left each face a texel or two, and it rendered as flat-coloured shards."""
+    vertices, triangles = scan_geometry(REPO / "datasets/phone/test1/lidar-mesh.json", capture_to_room(0.0))
+    scan = ColouredScan(vertices, triangles, np.zeros((len(vertices), 3)), np.zeros(len(vertices), bool))
+    budget = len(triangles) // 4
+
+    (tmp_path / "one").mkdir()
+    (tmp_path / "two").mkdir()
+    one = unwrapped(scan, tmp_path / "one", max_triangles=budget, atlases=1)
+    two = unwrapped(scan, tmp_path / "two", max_triangles=budget, atlases=2)
+
+    assert one.atlas_count == 1 and two.atlas_count == 2
+    assert sorted(np.bincount(two.atlases).tolist()) == pytest.approx([len(two.triangles) / 2] * 2, rel=0.01)
+    for index in range(2):
+        packed = two.atlas(index)
+        assert packed.uv.min() >= 0.0 and packed.uv.max() <= 1.0
+    per_face_one = _uv_area(one).sum() / len(one.triangles)
+    per_face_two = sum(_uv_area(two.atlas(index)).sum() for index in range(2)) / len(two.triangles)
+    assert per_face_two >= 1.8 * per_face_one
+
+
+def _rasterized_face_by_face(world, uv, owners, size):
+    """The atlas rasterizer as it was: one call per face, the later face winning each texel."""
+    from standardphysics_pipeline.textures.project import _triangle_texels
+
+    normals, areas = face_normals(world)
+    colours = np.full((len(world), 3), 0.65, dtype=np.float32)
+    pieces = [_triangle_texels(world[i], uv[i], normals[i], owners[i], colours[i], size) for i in np.flatnonzero(areas > 1e-10)]
+    rows, columns, positions, normals_out, owners_out, _ = (np.concatenate(parts) for parts in zip(*[p for p in pieces if p is not None]))
+    _, last = np.unique((rows.astype(np.int64) * size + columns)[::-1], return_index=True)
+    keep = len(rows) - 1 - last
+    return rows[keep], columns[keep], positions[keep], normals_out[keep], owners_out[keep]
+
+
+@pytest.mark.skipif(_blender_missing(), reason="Blender not installed")
+def test_drawing_small_faces_together_matches_drawing_every_face_alone(tmp_path):
+    vertices, triangles = scan_geometry(REPO / "datasets/phone/test1/lidar-mesh.json", capture_to_room(0.0))
+    scan = ColouredScan(vertices, triangles, np.zeros((len(vertices), 3)), np.zeros(len(vertices), bool))
+    mesh = unwrapped(scan, tmp_path, max_triangles=260_000)
+    size = atlas_size(mesh)
+    owners = np.arange(len(mesh.triangles), dtype=np.int32)
+
+    together = rasterize_atlas(mesh.corners, mesh.uv, owners, size)
+    alone = _rasterized_face_by_face(mesh.corners, mesh.uv, owners, size)
+
+    assert len(together.rows) > 100_000
+    for batched, reference in zip((together.rows, together.columns, together.positions, together.normals, together.owners), alone):
+        assert np.array_equal(batched, reference)
+
+
+def _padded_whole_image(image, filled, passes):
+    """Gutter padding as it was: every pass over the whole image."""
+    image, filled = image.copy(), filled.copy()
+    for _ in range(passes):
+        total = np.zeros_like(image)
+        count = np.zeros(filled.shape, dtype=np.float32)
+        for axis, step in ((0, 1), (0, -1), (1, 1), (1, -1)):
+            shifted_filled = np.roll(filled, step, axis=axis)
+            total += np.roll(image, step, axis=axis) * shifted_filled[..., None]
+            count += shifted_filled
+        grow = ~filled & (count > 0)
+        image[grow] = total[grow] / count[grow][:, None]
+        filled |= grow
+    return image
+
+
+@pytest.mark.skipif(_blender_missing(), reason="Blender not installed")
+def test_padding_only_the_frontier_matches_padding_the_whole_image(tmp_path):
+    from standardphysics_pipeline.textures.project import GUTTER_PASSES, pad_gutters
+
+    vertices, triangles = scan_geometry(REPO / "datasets/phone/test1/lidar-mesh.json", capture_to_room(0.0))
+    scan = ColouredScan(vertices, triangles, np.zeros((len(vertices), 3)), np.zeros(len(vertices), bool))
+    mesh = unwrapped(scan, tmp_path, max_triangles=260_000)
+    size = atlas_size(mesh)
+    texels = rasterize_atlas(mesh.corners, mesh.uv, np.arange(len(mesh.triangles), dtype=np.int32), size)
+    image = np.zeros((size, size, 3), dtype=np.float32)
+    image[texels.rows, texels.columns] = np.abs(texels.positions) % 1.0
+    filled = np.zeros((size, size), dtype=bool)
+    filled[texels.rows, texels.columns] = True
+
+    assert np.array_equal(pad_gutters(image, filled), _padded_whole_image(image, filled, GUTTER_PASSES))

@@ -3,8 +3,9 @@
     blender --background --python unwrap_scan.py -- --scan scan.npz --out unwrapped.npz
 
 The input holds room-frame vertices and triangles. The output holds the thinned
-mesh's vertices and triangles and a UV pair for every corner of every triangle,
-since a vertex on a seam between two islands has a different UV on each side.
+mesh's vertices and triangles, a UV pair for every corner of every triangle,
+since a vertex on a seam between two islands has a different UV on each side,
+and which atlas each triangle is packed into.
 """
 
 import argparse
@@ -26,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scan", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--max-triangles", type=int, default=MAX_TRIANGLES)
+    parser.add_argument("--atlases", type=int, default=1)
     return parser.parse_args(argv)
 
 
@@ -88,8 +90,34 @@ def triangulated(obj) -> None:
     mesh.free()
 
 
-def unwrap(obj) -> None:
-    """Every face packed on its own, at a size in proportion to its area.
+def regions(obj, count: int) -> np.ndarray:
+    """Which of `count` atlases each face goes to: the surface cut across its longer side, again and again, into stretches of equal faces.
+
+    One atlas for a whole library floor left each face a texel or two, and the
+    floor came out as flat-coloured shards. Neighbouring faces share an atlas,
+    so each atlas holds one part of the floor at the density a single room gets.
+    """
+    centres = np.empty(len(obj.data.polygons) * 3, dtype=np.float64)
+    obj.data.polygons.foreach_get("center", centres)
+    labels = np.zeros(len(obj.data.polygons), dtype=np.int64)
+    _split(centres.reshape(-1, 3)[:, :2], np.arange(len(labels)), 0, count, labels)
+    return labels
+
+
+def _split(centres: np.ndarray, faces: np.ndarray, first: int, count: int, labels: np.ndarray) -> None:
+    if count == 1:
+        labels[faces] = first
+        return
+    lower = count // 2
+    axis = int(np.argmax(np.ptp(centres[faces], axis=0)))
+    ordered = faces[np.argsort(centres[faces, axis], kind="stable")]
+    cut = len(ordered) * lower // count
+    _split(centres, ordered[:cut], first, lower, labels)
+    _split(centres, ordered[cut:], first + lower, count - lower, labels)
+
+
+def unwrap(obj, labels: np.ndarray) -> None:
+    """Each atlas's faces packed on their own, at a size in proportion to their area.
 
     Charts that follow the surface are the usual choice, but a thinned LiDAR mesh
     is too noisy for them: it broke into so many tiny islands that the gaps
@@ -97,8 +125,15 @@ def unwrap(obj) -> None:
     Packing faces one by one fills about a third of the atlas instead.
     """
     bpy.ops.object.mode_set(mode="EDIT")
-    bpy.ops.mesh.select_all(action="SELECT")
-    bpy.ops.uv.lightmap_pack(PREF_CONTEXT="ALL_FACES", PREF_PACK_IN_ONE=True, PREF_MARGIN_DIV=MARGIN_DIVISOR)
+    bpy.ops.mesh.select_mode(type="FACE")
+    for atlas in range(int(labels.max()) + 1):
+        bpy.ops.mesh.select_all(action="DESELECT")
+        mesh = bmesh.from_edit_mesh(obj.data)
+        mesh.faces.ensure_lookup_table()
+        for index in np.flatnonzero(labels == atlas):
+            mesh.faces[index].select_set(True)
+        bmesh.update_edit_mesh(obj.data)
+        bpy.ops.uv.lightmap_pack(PREF_CONTEXT="SEL_FACES", PREF_PACK_IN_ONE=True, PREF_MARGIN_DIV=MARGIN_DIVISOR)
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
@@ -121,9 +156,10 @@ def main() -> None:
     welded(obj)
     thin(obj, args.max_triangles)
     triangulated(obj)
-    unwrap(obj)
+    atlases = regions(obj, args.atlases)
+    unwrap(obj, atlases)
     vertices, triangles, uv = corner_arrays(obj)
-    np.savez(args.out, vertices=vertices, triangles=triangles, uv=uv)
+    np.savez(args.out, vertices=vertices, triangles=triangles, uv=uv, atlases=atlases)
     print(f"SCAN_UNWRAPPED {len(triangles)}")
 
 

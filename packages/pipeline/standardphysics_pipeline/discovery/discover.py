@@ -36,7 +36,7 @@ from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
 
 from ..lidar import LidarMeshError, room_cloud
 from ..textures.camera import CameraMetadataError, PhotoCamera, load_cameras
-from ..textures.project import depth_buffer
+from ..textures.project import depth_buffer, evenly_spread
 from . import taxonomy
 from .boxes import claimed_by_any, contained_fraction, resting_parent
 from .cache import DetectionCache
@@ -219,14 +219,7 @@ def _cameras(inputs: DiscoveryInputs, graph: SceneGraph) -> list[PhotoCamera]:
     stored = [camera for camera in cameras if inputs.frame_paths.get(camera.frame_id, pathlib.Path()).is_file()]
     if not stored:
         raise DiscoveryError("no stored photo has a matching camera pose")
-    return _evenly_spread(stored, FRAME_LIMIT)
-
-
-def _evenly_spread(cameras: list[PhotoCamera], limit: int) -> list[PhotoCamera]:
-    if len(cameras) <= limit:
-        return cameras
-    picks = np.linspace(0, len(cameras) - 1, limit).round().astype(int)
-    return [cameras[index] for index in dict.fromkeys(picks.tolist())]
+    return evenly_spread(stored, FRAME_LIMIT)
 
 
 def _orientations(poses_path: pathlib.Path) -> dict[str, str]:

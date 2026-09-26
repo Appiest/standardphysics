@@ -1,4 +1,4 @@
-import type { TextureStatus } from "@/types/contracts";
+import type { TextureProgress, TextureStatus } from "@/types/contracts";
 
 type State = TextureStatus["state"];
 
@@ -44,4 +44,57 @@ export function textureStatusView(status: TextureStatus): TextureStatusView {
     ? `Photos cover ${Math.round(status.build.coverage.textured_fraction * 100)}% of surfaces`
     : base.message;
   return { ...base, message, actionLabel };
+}
+
+/** How each step of a build is named to the person waiting on it. Steps not listed read as the build as a whole. */
+const STEP_LABELS: Record<string, string> = {
+  "box model": "Building the room",
+  "choosing photos": "Choosing the best photos",
+  "box layout": "Building the room",
+  "box occlusion": "Checking what each photo shows",
+  "scan occlusion": "Checking what each photo shows",
+  "box exposure": "Matching photo brightness",
+  "painted scan": "Painting the scan",
+  "mesh load": "Loading the scan",
+  "people removal": "Removing people",
+  "object holes": "Filling holes in furniture",
+  "seen-through buffers": "Checking what each photo shows",
+  "mirrored completion": "Filling in the hidden sides of furniture",
+  "hole patches": "Patching walls and floor",
+  unwrap: "Preparing the surface",
+  texels: "Preparing the surface",
+  exposure: "Matching photo brightness",
+  "photo bake": "Painting from the photos",
+  "atlas image": "Saving the texture",
+};
+
+const WHOLE_BUILD_LABEL = "Adding photos";
+const SECONDS_BEFORE_ESTIMATE = 5;
+
+export type TextureProgressView = {
+  label: string;
+  /** How much of the step is done, from 0 to 1, when the step counts what it works through. */
+  fraction: number | null;
+  timeLeft: string | null;
+};
+
+/** The step a running build is on, how far through it, and how long it has left when that can be worked out. */
+export function textureProgressView(progress: TextureProgress | null | undefined): TextureProgressView | null {
+  if (!progress) return null;
+  const fraction = progress.total ? Math.min(1, (progress.done ?? 0) / progress.total) : null;
+  return { label: STEP_LABELS[progress.step] ?? WHOLE_BUILD_LABEL, fraction, timeLeft: timeLeft(progress, fraction) };
+}
+
+/** The rest of the step at the pace it has kept so far, measured on the build's own clock. */
+function timeLeft(progress: TextureProgress, fraction: number | null): string | null {
+  if (!fraction || fraction >= 1) return null;
+  const elapsed = (Date.parse(progress.reported_at) - Date.parse(progress.step_started_at)) / 1000;
+  if (!(elapsed >= SECONDS_BEFORE_ESTIMATE)) return null;
+  return describeSeconds((elapsed * (1 - fraction)) / fraction);
+}
+
+function describeSeconds(seconds: number): string {
+  if (seconds < 50) return "Less than a minute left";
+  const minutes = Math.round(seconds / 60);
+  return minutes === 1 ? "About a minute left" : `About ${minutes} minutes left`;
 }

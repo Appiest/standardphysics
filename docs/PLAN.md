@@ -63,6 +63,8 @@ This covers reassurance nobody asked for. "Everything stays on your device, so n
 
 It also covers softer forms: "we couldn't check the restroom", "this is not a legal certification", "results are estimates only". Each one describes a hole.
 
+The report's disclaimer is the one deliberate exception. "This is not an inspection and it is not legal advice" stays at the end of the report, because Brendan decided on Sep 25, 2026 to keep it. Don't delete it while following this section.
+
 Scope lives in one place, and it is a list of what we did: **What we checked** at the end of the report names the paths measured, the rules checked, and who reviewed it. Next steps are written as actions that get something — "Send a photo of the front door handle and we'll check it" — phrased as the thing to do, never as the thing we lack.
 
 **Name the thing, then give the number.** A finding's title says what's wrong in human terms. The line under it gives the measurement and what's needed. The fix says what to do.

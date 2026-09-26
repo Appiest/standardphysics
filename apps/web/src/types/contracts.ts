@@ -61,6 +61,16 @@ export interface Vec3 {
   z: number;
 }
 /**
+ * A yes or no, or a number in the request's unit. Exactly one.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "AnswerRequest".
+ */
+export interface AnswerRequest {
+  number: number | null;
+  yes: boolean | null;
+}
+/**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "ApiError".
  */
@@ -162,6 +172,7 @@ export interface AskAnswer {
  * via the `definition` "Finding".
  */
 export interface Finding {
+  asks: ("photo" | "owner_report" | "document" | "measurement" | "swing" | "another_look" | "review") | null;
   check_id: string;
   citation: Citation;
   detail: string;
@@ -395,6 +406,33 @@ export interface Check {
   verified_by_human: boolean;
 }
 /**
+ * One item per thing to fix. `done` counts every item that isn't To do.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "Checklist".
+ */
+export interface Checklist {
+  done: number;
+  items: ChecklistItem[];
+  total: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ChecklistItem".
+ */
+export interface ChecklistItem {
+  finding_id: string;
+  status: "to_do" | "done" | "not_doing" | "needs_pro";
+  updated_at: string | null;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ChecklistUpdate".
+ */
+export interface ChecklistUpdate {
+  status: "to_do" | "done" | "not_doing" | "needs_pro";
+}
+/**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "ClearFloorResult".
  */
@@ -427,7 +465,15 @@ export interface CreateScanRequest {
   device_model: string;
   duration_seconds: number;
   name: string;
+  replaces: string | null;
   space_typology: SpaceTypology | null;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "DeviceRegistration".
+ */
+export interface DeviceRegistration {
+  environment: "production" | "sandbox";
 }
 /**
  * An inferred finish for rendering; never physical or compliance evidence.
@@ -614,6 +660,26 @@ export interface FrameListing {
   unreadable: string[];
 }
 /**
+ * How far owners get, from the first walk to the first fix. Team only.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "Funnel".
+ */
+export interface Funnel {
+  median_hours_to_first_fix: number | null;
+  median_minutes_to_results: number | null;
+  steps: FunnelStep[];
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "FunnelStep".
+ */
+export interface FunnelStep {
+  key: string;
+  label: string;
+  shops: number;
+}
+/**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "HeightResult".
  */
@@ -621,6 +687,44 @@ export interface HeightResult {
   inches: number;
   measured_at: Vec3;
   node_id: string;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "Journey".
+ */
+export interface Journey {
+  next_step: NextStep;
+  scan_id: string;
+  shop_name: string;
+  stage: "walk" | "fill_in_the_gaps" | "results" | "fix" | "tools";
+  tools_unlocked: boolean;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "NextStep".
+ */
+export interface NextStep {
+  count: number | null;
+  kind:
+    | "upload"
+    | "answers"
+    | "photos"
+    | "measuring"
+    | "counter"
+    | "path"
+    | "follow_ups"
+    | "results"
+    | "checklist"
+    | "done"
+    | "failed";
+  title: string;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "JourneyList".
+ */
+export interface JourneyList {
+  journeys: Journey[];
 }
 /**
  * Every move so far against one saved revision, never just the latest drag.
@@ -645,6 +749,21 @@ export interface LayoutCheckResult {
   findings: Finding[];
   graph_hash: string;
   sequence: number;
+}
+/**
+ * A layout the owner planned. It never changes the shop as scanned.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "LayoutPlan".
+ */
+export interface LayoutPlan {
+  base_revision: number;
+  created_at: string;
+  findings: Finding[];
+  id: string;
+  moves: NodeMove[];
+  name: string;
+  scan_id: string;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -874,6 +993,43 @@ export interface ObservationCrop {
   sensor_box: [number, number, number, number, ...number[]];
 }
 /**
+ * One thing the app asks the owner for: an answer, a photo or a number.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "OwnerRequest".
+ */
+export interface OwnerRequest {
+  answer: RequestAnswer | null;
+  detail: string;
+  finding_id: string | null;
+  id: string;
+  kind: "yes_no" | "photo" | "number" | "another_look";
+  review: ("passes" | "problem") | null;
+  status: "open" | "skipped" | "answered" | "checked" | "not_applicable";
+  timing: "in_shop" | "follow_up";
+  title: string;
+  unit: ("in" | "lb") | null;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "RequestAnswer".
+ */
+export interface RequestAnswer {
+  answered_at: string;
+  number: number | null;
+  photo_url: string | null;
+  yes: boolean | null;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PendingReview".
+ */
+export interface PendingReview {
+  request: OwnerRequest;
+  scan_id: string;
+  shop_name: string;
+}
+/**
  * Written by the phone after its photos upload. A build waits until every listed frame is stored.
  *
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -896,6 +1052,13 @@ export interface PhotoManifestFrame {
   bytes: number;
   frame_id: string;
   sha256: string;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PlanList".
+ */
+export interface PlanList {
+  plans: LayoutPlan[];
 }
 /**
  * A named point a row's evidence is about, for a map marker or a crop link.
@@ -1358,6 +1521,41 @@ export interface UnlocalizedObservation {
     | "other";
 }
 /**
+ * A team member's verdict on a photo the owner sent.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ReviewAnswer".
+ */
+export interface ReviewAnswer {
+  outcome: "passes" | "problem";
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ReviewQueue".
+ */
+export interface ReviewQueue {
+  reviews: PendingReview[];
+}
+/**
+ * How a customer walks from one stop to the next, around what's in the way.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "RouteLeg".
+ */
+export interface RouteLeg {
+  from_stop: string;
+  path: Vec3[];
+  reachable: boolean;
+  to_stop: string;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "RouteLegs".
+ */
+export interface RouteLegs {
+  legs: RouteLeg[];
+}
+/**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "RulePack".
  */
@@ -1375,10 +1573,58 @@ export interface SaveLayoutRequest {
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "SavePlanRequest".
+ */
+export interface SavePlanRequest {
+  base_revision: number;
+  /**
+   * @minItems 1
+   */
+  moves: [NodeMove, ...NodeMove[]];
+  name: string | null;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "ScanList".
  */
 export interface ScanList {
   scans: Scan[];
+}
+/**
+ * Who is signed in. Never the token.
+ *
+ * A guest is an account made on the phone's first launch, before the owner
+ * has given an email. It works like any other account until it is saved.
+ * `deletes_at` is when a guest's shops will be deleted if nobody opens them,
+ * and it is null for a saved account.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "Session".
+ */
+export interface Session {
+  deletes_at: string | null;
+  email: string | null;
+  guest: boolean;
+  owner_id: string;
+  role: "owner" | "team";
+  shop_name: string;
+}
+/**
+ * A read-only report link. `path` is on the web, like "/r/<token>".
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ShareLink".
+ */
+export interface ShareLink {
+  expires_at: string;
+  path: string;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ShopRequests".
+ */
+export interface ShopRequests {
+  requests: OwnerRequest[];
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -1522,6 +1768,19 @@ export interface TextureCoverage {
   textured_fraction: number;
 }
 /**
+ * The step a running build is on and, when it works through a known number of items, how far it has got.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "TextureProgress".
+ */
+export interface TextureProgress {
+  done: number | null;
+  reported_at: string;
+  step: string;
+  step_started_at: string;
+  total: number | null;
+}
+/**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "TextureRequest".
  */
@@ -1537,6 +1796,7 @@ export interface TextureStatus {
   can_retry: boolean;
   error: string | null;
   exact: boolean;
+  progress: TextureProgress | null;
   revision: number;
   scan_id: string;
   stale_node_ids: string[];

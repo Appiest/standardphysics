@@ -26,6 +26,8 @@ from scipy.spatial import cKDTree
 from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
 
 from .project import CameraArray
+from .regions import TrianglesByCorner, VertexIndex
+from .stages import advanced
 
 OBJECT_REACH = 0.03
 """How far outside its box a scanned vertex may sit and still belong to the object."""
@@ -67,6 +69,7 @@ def seen_through_by(
     photos, nearly all of them pointed somewhere else.
     """
     rig = CameraArray(cameras)
+    stacked = _stacked(depth_buffers)
 
     def seen_through(points: np.ndarray) -> np.ndarray:
         views = np.zeros(len(points), dtype=np.int32)
@@ -74,11 +77,54 @@ def seen_through_by(
             return views >= min_views
         centre = (points.min(axis=0) + points.max(axis=0)) / 2
         radius = float(np.linalg.norm(points - centre, axis=1).max())
-        for index in rig.reaching(centre, radius):
+        reaching = rig.reaching(centre, radius)
+        if stacked is not None and len(reaching):
+            step = max(1, CAMERA_POINT_PAIRS // len(points))
+            for start in range(0, len(reaching), step):
+                views += _views_beyond(points, rig, stacked, reaching[start:start + step])
+            return views >= min_views
+        for index in reaching:
             views += _seen_beyond(points, cameras[index], depth_buffers[index])
         return views >= min_views
 
     return seen_through
+
+
+CAMERA_POINT_PAIRS = 2_000_000
+"""Camera and point pairs worked on at once, so a large object seen by hundreds of photos stays near a hundred megabytes."""
+
+
+def _stacked(depth_buffers: list[np.ndarray]) -> np.ndarray | None:
+    """The buffers as one array when they share a size, as every photo of one phone's walk does."""
+    shapes = {buffer.shape for buffer in depth_buffers}
+    return np.stack(depth_buffers) if len(shapes) == 1 else None
+
+
+def _views_beyond(points: np.ndarray, rig: CameraArray, stacked: np.ndarray, reaching: np.ndarray) -> np.ndarray:
+    """How many of the reaching cameras saw beyond each point, all cameras at once.
+
+    Mirroring asks this for every candidate plane of every object, a few
+    hundred points at a time; one camera at a time it was two hundred thousand
+    small calls on a library floor.
+    """
+    rotation, translation = rig.rotations[reaching], rig.translations[reaching]
+
+    def along(axis: int) -> np.ndarray:
+        return (rotation[:, axis, 0, None] * points[:, 0] + rotation[:, axis, 1, None] * points[:, 1]
+                + rotation[:, axis, 2, None] * points[:, 2] + translation[:, axis, None])
+
+    across, down, depth = along(0), along(1), along(2)
+    safe = np.where(np.abs(depth) < 1e-9, 1e-9, depth)
+    fx, fy, cx, cy, width, height = (column[:, None] for column in rig.lens[reaching].T)
+    columns, rows = fx * across / safe + cx, fy * down / safe + cy
+    in_view = (depth > 0.2) & (columns >= 0) & (columns < width) & (rows >= 0) & (rows < height)
+    buffer_height, buffer_width = stacked.shape[1:]
+    recorded = stacked[
+        reaching[:, None],
+        np.clip((rows * buffer_height / height).astype(np.int64), 0, buffer_height - 1),
+        np.clip((columns * buffer_width / width).astype(np.int64), 0, buffer_width - 1),
+    ]
+    return (in_view & np.isfinite(recorded) & (recorded > depth + SEEN_THROUGH_MARGIN)).sum(axis=0)
 
 
 def _seen_beyond(points: np.ndarray, camera, buffer: np.ndarray) -> np.ndarray:
@@ -138,7 +184,46 @@ def _score(own: np.ndarray, tree: cKDTree, to_room, seen_through: SeenThrough, a
     return agreement, contradiction
 
 
-def symmetry_planes(index: int, node: SceneNode, vertices: np.ndarray, seen_through: SeenThrough) -> list[MirrorPlane]:
+@dataclass(frozen=True)
+class _IndexedScan:
+    """The scan indexed once, so each object reads only the vertices and triangles around its own box.
+
+    Testing every vertex of a merged floor against every object, and building a
+    fresh search tree over the whole floor for every plane, was most of ten
+    minutes on a small server. The candidates are a superset of what each exact
+    test keeps and come back in ascending order, so every result is unchanged.
+    """
+
+    vertices: np.ndarray
+    triangles: np.ndarray
+    regions: VertexIndex
+    by_corner: TrianglesByCorner
+    tree: cKDTree
+
+    @classmethod
+    def of(cls, vertices: np.ndarray, triangles: np.ndarray) -> _IndexedScan:
+        return cls(vertices, triangles, VertexIndex(vertices), TrianglesByCorner(triangles), cKDTree(vertices))
+
+    def near(self, node: SceneNode) -> np.ndarray:
+        return self.regions.near_box(node, OBJECT_REACH)
+
+    def distance_to_surface(self, added: list[np.ndarray]) -> Callable[[np.ndarray], np.ndarray]:
+        """Distance from each point to the nearest scanned or already reflected vertex.
+
+        The nearest point of a union is the nearer of the nearest in each part,
+        so the floor's tree is built once and only the reflected vertices, which
+        are few, are searched afresh.
+        """
+        added_tree = cKDTree(np.concatenate(added)) if added else None
+
+        def distance(points: np.ndarray) -> np.ndarray:
+            nearest = self.tree.query(points)[0]
+            return nearest if added_tree is None else np.minimum(nearest, added_tree.query(points)[0])
+
+        return distance
+
+
+def symmetry_planes(index: int, node: SceneNode, scan: _IndexedScan, seen_through: SeenThrough) -> list[MirrorPlane]:
     """Every upright plane the object is symmetric across, best first, with its best offset.
 
     More than one can hold: a table is the same side to side and front to back.
@@ -146,8 +231,9 @@ def symmetry_planes(index: int, node: SceneNode, vertices: np.ndarray, seen_thro
     itself adds nothing, so all of them are returned rather than the best alone.
     """
     rotation, centre, half = _frame(node)
-    local = (vertices - centre) @ rotation
-    own = local[np.all(np.abs(local) <= half + OBJECT_REACH, axis=1) & (vertices[:, 2] > ABOVE_FLOOR)]
+    candidates = scan.vertices[scan.near(node)]
+    local = (candidates - centre) @ rotation
+    own = local[np.all(np.abs(local) <= half + OBJECT_REACH, axis=1) & (candidates[:, 2] > ABOVE_FLOOR)]
     if len(own) < MIN_POINTS:
         return []
     tree = cKDTree(own)
@@ -169,8 +255,8 @@ def symmetry_planes(index: int, node: SceneNode, vertices: np.ndarray, seen_thro
 
 
 def _reflected_triangles(
-    plane: MirrorPlane, node: SceneNode, vertices: np.ndarray, triangles: np.ndarray,
-    scanned: cKDTree, seen_through: SeenThrough,
+    plane: MirrorPlane, node: SceneNode, scan: _IndexedScan,
+    distance_to_surface: Callable[[np.ndarray], np.ndarray], seen_through: SeenThrough,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Reflected copies of the object's triangles that land where nothing was scanned or seen through.
 
@@ -178,18 +264,18 @@ def _reflected_triangles(
     to keep it facing outward.
     """
     rotation, centre, half = _frame(node)
-    local = (vertices - centre) @ rotation
-    inside = np.all(np.abs(local) <= half + OBJECT_REACH, axis=1)
-    own = triangles[inside[triangles].all(axis=1)]
+    near = scan.near(node)
+    local = (scan.vertices[near] - centre) @ rotation
+    members = near[np.all(np.abs(local) <= half + OBJECT_REACH, axis=1)]
+    own = scan.triangles[scan.by_corner.all_corners_in(members, len(scan.vertices))]
     if not len(own):
         return np.empty((0, 3)), np.empty((0, 3), dtype=np.int64), np.empty(0, dtype=np.int64)
     used = np.unique(own)
-    mirrored = _reflected(local[used], plane.axis, plane.offset) @ rotation.T + centre
-    missing = (scanned.query(mirrored)[0] > MISSING_DISTANCE) & ~seen_through(mirrored)
-    within = np.all(np.abs(_reflected(local[used], plane.axis, plane.offset)) <= half + OBJECT_REACH, axis=1)
-    position = np.full(len(vertices), -1, dtype=np.int64)
-    position[used] = np.arange(len(used))
-    corners = position[own]
+    reflected = _reflected(local[np.searchsorted(near, used)], plane.axis, plane.offset)
+    mirrored = reflected @ rotation.T + centre
+    missing = (distance_to_surface(mirrored) > MISSING_DISTANCE) & ~seen_through(mirrored)
+    within = np.all(np.abs(reflected) <= half + OBJECT_REACH, axis=1)
+    corners = np.searchsorted(used, own)
     keep = (missing & within)[corners].all(axis=1)
     return mirrored, corners[keep][:, ::-1], used
 
@@ -204,12 +290,14 @@ def mirrored_completion(
     """
     new_vertices, new_triangles, sources, planes = [], [], [], []
     next_index = len(vertices)
+    scan = _IndexedScan.of(vertices, triangles)
     for index, node in enumerate(graph.nodes):
+        advanced(index + 1, len(graph.nodes))
         if bounds_the_room(node):
             continue
-        for plane in symmetry_planes(index, node, vertices, seen_through):
-            present = cKDTree(np.concatenate([vertices, *new_vertices]))
-            mirrored, faces, used = _reflected_triangles(plane, node, vertices, triangles, present, seen_through)
+        for plane in symmetry_planes(index, node, scan, seen_through):
+            distance = scan.distance_to_surface(new_vertices)
+            mirrored, faces, used = _reflected_triangles(plane, node, scan, distance, seen_through)
             if not len(faces):
                 continue
             kept = np.unique(faces)

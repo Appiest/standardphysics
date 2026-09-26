@@ -14,14 +14,46 @@ import Security
 /// it does not belong.
 @MainActor
 final class SessionStore: ObservableObject {
+    /// Who is signed in, as the server's `Session` describes them.
+    ///
+    /// Everything past the shop name is optional on the wire: a phone that
+    /// signed in before roles existed has an owner saved without them, and an
+    /// owner is the safe reading of a missing role.
     struct Owner: Codable, Equatable, Sendable {
-        let email: String
+        enum Role: String, Codable, Sendable { case owner, team }
+
+        let email: String?
         let shopName: String
+        let role: Role
+        let guest: Bool
+        let deletesAt: String?
 
         enum CodingKeys: String, CodingKey {
             case email
             case shopName = "shop_name"
+            case role
+            case guest
+            case deletesAt = "deletes_at"
         }
+
+        init(email: String?, shopName: String, role: Role = .owner, guest: Bool = false, deletesAt: String? = nil) {
+            self.email = email
+            self.shopName = shopName
+            self.role = role
+            self.guest = guest
+            self.deletesAt = deletesAt
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            email = try container.decodeIfPresent(String.self, forKey: .email)
+            shopName = try container.decodeIfPresent(String.self, forKey: .shopName) ?? ""
+            role = (try? container.decodeIfPresent(Role.self, forKey: .role)) ?? .owner
+            guest = try container.decodeIfPresent(Bool.self, forKey: .guest) ?? false
+            deletesAt = try container.decodeIfPresent(String.self, forKey: .deletesAt)
+        }
+
+        var isTeam: Bool { role == .team }
     }
 
     enum ServerError: LocalizedError {
@@ -39,16 +71,22 @@ final class SessionStore: ObservableObject {
     }
 
     @Published private(set) var owner: Owner?
+    /// Goes up whenever this phone's token changes, so work already running
+    /// under the old one can move to the new one.
+    @Published private(set) var credentialChanges = 0
 
     private let service = "app.standardphysics.session"
     private let session: URLSession
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .api) {
         self.session = session
         owner = token == nil ? nil : storedOwner
     }
 
     var isSignedIn: Bool { token != nil }
+
+    /// Signed in to an account with an email or an Apple ID, not a guest.
+    var hasSavedAccount: Bool { owner.map { !$0.guest } ?? false }
 
     /// The bearer token for the server the phone is pointed at, if there is one.
     var token: String? {
@@ -56,24 +94,112 @@ final class SessionStore: ObservableObject {
         return Keychain.read(service: service, account: account)
     }
 
+    /// Signs in to an account that already exists.
+    ///
+    /// The guest's token rides along, so the server moves the shops walked as
+    /// a guest into the account being signed in to.
     func signIn(email: String, password: String) async throws {
-        guard let baseURL = AppEnvironment.apiBaseURL, let account = accountKey else {
-            throw ServerError.noServer
-        }
-        var request = URLRequest(url: baseURL.appendingPathComponent("api/auth/sign-in"))
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(["email": email, "password": password])
+        let request = try post("api/auth/sign-in", body: ["email": email, "password": password])
+        try await openSession(with: request, expecting: 200)
+    }
 
+    /// Makes a guest account so the first walk can upload with no sign-in.
+    ///
+    /// The server answers with whoever is already signed in when the phone
+    /// still has a token, so calling this twice is harmless.
+    func startGuest() async throws {
+        let request = try post("api/auth/guest", body: [String: String]())
+        try await openSession(with: request, expecting: 201)
+    }
+
+    /// Keeps the guest account under an email and password. The token stays
+    /// the same; only who it belongs to changes.
+    func save(email: String, password: String) async throws {
+        let request = try post("api/auth/save", body: ["email": email, "password": password])
         let (data, response) = try await dataOrUnreachable(for: request)
         guard let http = response as? HTTPURLResponse else { throw ServerError.unreachable }
+        if http.statusCode == 409 { throw SaveError.emailTaken(Self.reason(in: data, status: 409)) }
         guard http.statusCode == 200 else { throw ServerError.refused(Self.reason(in: data, status: http.statusCode)) }
+        let saved = try JSONDecoder().decode(Owner.self, from: data)
+        storedOwner = saved
+        owner = saved
+    }
 
+    /// Signs in with Apple. A guest's shops move into the Apple account, or
+    /// the guest becomes it.
+    func signInWithApple(identityToken: String, fullName: String?) async throws {
+        var body = ["identity_token": identityToken]
+        if let fullName, !fullName.isEmpty { body["full_name"] = fullName }
+        let request = try post("api/auth/apple", body: body)
+        try await openSession(with: request, expecting: 200)
+    }
+
+    enum SaveError: LocalizedError {
+        case emailTaken(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .emailTaken(let reason): reason
+            }
+        }
+    }
+
+    private func post(_ path: String, body: [String: String]) throws -> URLRequest {
+        guard let baseURL = AppEnvironment.apiBaseURL else { throw ServerError.noServer }
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        request.httpBody = try JSONEncoder().encode(body)
+        return request
+    }
+
+    /// Sends a call that answers with a `Session` and sets a new cookie, then
+    /// keeps the cookie's token as this phone's credential.
+    private func openSession(with request: URLRequest, expecting status: Int) async throws {
+        guard let account = accountKey else { throw ServerError.noServer }
+        let (data, response) = try await dataOrUnreachable(for: request)
+        guard let http = response as? HTTPURLResponse else { throw ServerError.unreachable }
+        guard http.statusCode == status else { throw ServerError.refused(Self.reason(in: data, status: http.statusCode)) }
         guard let bearer = Self.bearerToken(in: response) else { throw ServerError.unreachable }
         let signedIn = try JSONDecoder().decode(Owner.self, from: data)
         Keychain.write(bearer, service: service, account: account)
         storedOwner = signedIn
         owner = signedIn
+        credentialChanges += 1
+    }
+
+#if DEBUG
+    /// Signs this phone in with a token made elsewhere, so a Debug build can
+    /// open a real shop's screens without typing on the simulator.
+    func adoptForDebugging(token: String) {
+        guard let account = accountKey else { return }
+        Keychain.write(token, service: service, account: account)
+        Task { await refresh() }
+    }
+#endif
+
+    /// Asks the server who this token belongs to now.
+    ///
+    /// A role can change after sign-in, and a phone signed in before roles
+    /// existed has none saved. A refused token is forgotten, since every call
+    /// made with it would be refused too; a server that cannot be reached
+    /// changes nothing.
+    func refresh() async {
+        guard let baseURL = AppEnvironment.apiBaseURL, let token, let account = accountKey else { return }
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/auth/session"))
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse else { return }
+        if http.statusCode == 401 {
+            Keychain.delete(service: service, account: account)
+            storedOwner = nil
+            owner = nil
+            return
+        }
+        guard http.statusCode == 200, let current = try? JSONDecoder().decode(Owner.self, from: data) else { return }
+        storedOwner = current
+        owner = current
     }
 
     /// Ends the account on the server, then forgets it here.
@@ -99,6 +225,7 @@ final class SessionStore: ObservableObject {
         if let account = accountKey { Keychain.delete(service: service, account: account) }
         storedOwner = nil
         owner = nil
+        credentialChanges += 1
     }
 
     /// Called when the upload address changes: a token for one server is
@@ -138,7 +265,7 @@ final class SessionStore: ObservableObject {
 
     /// The API sets the session as a cookie. The phone keeps no cookie jar, so
     /// the same token is lifted out and sent back as a bearer header.
-    static func bearerToken(in response: URLResponse) -> String? {
+    nonisolated static func bearerToken(in response: URLResponse) -> String? {
         guard let http = response as? HTTPURLResponse, let url = http.url else { return nil }
         let fields = http.allHeaderFields as? [String: String] ?? [:]
         let cookies = HTTPCookie.cookies(withResponseHeaderFields: fields, for: url)
@@ -149,12 +276,29 @@ final class SessionStore: ObservableObject {
         let error: String
     }
 
-    static func reason(in data: Data, status: Int) -> String {
+    nonisolated static func reason(in data: Data, status: Int) -> String {
         if let problem = try? JSONDecoder().decode(Problem.self, from: data), !problem.error.isEmpty {
             return problem.error.prefix(1).uppercased() + problem.error.dropFirst() + "."
         }
         return status == 429 ? "Too many tries. Wait a few minutes." : "That did not work. Try again."
     }
+}
+
+extension URLSession {
+    /// Every call to our API. The token travels as a bearer header and
+    /// nowhere else.
+    ///
+    /// The shared session keeps a cookie jar, so the `sp_session` cookie from
+    /// a sign-in rode along on every later call, including after signing out:
+    /// a guest made after sign-out was answered as the account just left, and
+    /// with no new cookie the phone could not sign in at all.
+    static let api: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        return URLSession(configuration: configuration)
+    }()
 }
 
 enum Keychain {

@@ -26,7 +26,7 @@ describe("scanStatus", () => {
     expect(scanStatus(scan, null, false)).toBe("Ready");
   });
 
-  it("a scoped outcome matrix replaces the one-line pass with the counted outcomes, never a green claim", () => {
+  it("keeps the scoped-check counts, which are for the team, out of the owner's status line", () => {
     const withScope = (rows: number, outcome: string): Assessment => {
       const row = { outcome, requirement_id: "reach", requested: true, applicability: "unknown", applicability_facts: [], reason: null, evidence_refs: [], measurement: null, source_version: "rules-v1", legal_review_status: "unreviewed_preview", item: { item_id: null, item_slug: "outlet", item_kind: "class", label: "Outlets", observed: true, source: "requested_not_observed" } };
       return {
@@ -52,9 +52,11 @@ describe("scanStatus", () => {
         },
       } as unknown as Assessment;
     };
-    expect(scanStatus(scan, withScope(1, "unobserved"), true)).toContain("1 unobserved");
-    expect(scanStatus(scan, withScope(2, "satisfied"), true)).not.toContain("Everything we checked passes");
-    expect(scanStatus(scan, withScope(1, "violation"), true)).toContain("1 violation");
+    expect(scanStatus(scan, withScope(1, "unobserved"), true)).not.toContain("Scoped checks");
+    expect(scanStatus(scan, withScope(2, "satisfied"), true)).toBe("Everything we checked passes");
+    expect(scanStatus(scan, withScope(1, "violation"), false)).toBe(
+      "Everything we checked passes so far. Mark the customer route to check the paths too.",
+    );
   });
 });
 

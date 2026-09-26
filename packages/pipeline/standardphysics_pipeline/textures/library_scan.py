@@ -29,10 +29,10 @@ from scipy.spatial import KDTree
 from standardphysics_contracts import Mat4
 
 from .camera import PhotoCamera, load_cameras
+from .project import evenly_spread
 from .scan_colour import (
     MAX_PHOTOS,
     ColouredScan,
-    _evenly_spread,
     _photo,
     colour_the_scan,
     scan_geometry,
@@ -122,7 +122,7 @@ def _cameras_for(room: RoomCapture) -> list[PhotoCamera]:
     ]
     if not cameras:
         raise ValueError(f"{room.name}: no stored photo has a usable camera pose")
-    return _evenly_spread(cameras, room.max_photos)
+    return evenly_spread(cameras, room.max_photos)
 
 
 def painted_room(room: RoomCapture) -> tuple[ColouredScan, int]:

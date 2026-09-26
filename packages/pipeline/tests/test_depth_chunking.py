@@ -84,14 +84,25 @@ def test_a_mesh_larger_than_any_old_limit_is_not_refused(camera_and_faces):
 
 
 def test_drawing_small_faces_together_matches_drawing_them_one_by_one(camera_and_faces):
-    """The fast path for small faces must write the buffer the per-face loop writes, pixel for pixel."""
+    """The batched path must write the buffer the per-face loop writes, pixel for pixel, for faces of every size."""
     camera, triangles = camera_and_faces
     fast = project.triangle_depth_buffer(camera, triangles)
-    was = project.SMALL_TRIANGLE_PIXELS
-    project.SMALL_TRIANGLE_PIXELS = 0
+    was = project.SMALL_TRIANGLE_SIDES
+    project.SMALL_TRIANGLE_SIDES = (0,)
     try:
         one_by_one = project.triangle_depth_buffer(camera, triangles)
     finally:
-        project.SMALL_TRIANGLE_PIXELS = was
+        project.SMALL_TRIANGLE_SIDES = was
     assert np.isfinite(fast).any()
     assert np.array_equal(fast, one_by_one)
+
+
+def test_drawing_the_nearest_cubes_first_and_skipping_hidden_ones_draws_the_same_buffer(camera_and_faces):
+    """Dozens of layers of shelving were drawn into each photo's buffer; skipping the hidden ones must change no pixel."""
+    camera, triangles = camera_and_faces
+    triangles = triangles.astype(np.float32)
+    blocks = project.TriangleBlocks(triangles)
+    everything = project.triangle_depth_buffer(camera, triangles)
+    nearest_first = project.occluder_depth_buffer(camera, triangles, blocks)
+    assert np.isfinite(everything).any()
+    assert np.array_equal(everything, nearest_first)

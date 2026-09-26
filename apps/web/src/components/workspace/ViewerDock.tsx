@@ -4,7 +4,7 @@ import { Check, CircleNotch, Cube, DotsThree, DownloadSimple, ImageSquare, Squar
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Menu, MENU_ITEM } from "@/components/ui/Menu";
-import { textureStatusView } from "@/lib/texture-status";
+import { textureProgressView, textureStatusView } from "@/lib/texture-status";
 import type { TextureStatus } from "@/types/contracts";
 
 export type ViewMode = "overview" | "top";
@@ -142,9 +142,48 @@ type ViewerDockProps = {
   onToggleWheelchair?: () => void;
 };
 
+/** Which step a running photo build is on, a bar when the step counts its work, and the time it has left. */
+function BuildProgress({ status }: { status: TextureStatus | null }) {
+  const view = status?.state === "running" ? textureProgressView(status.progress) : null;
+  if (!view) return null;
+  return (
+    <div className="w-72 max-w-full rounded-xl bg-sheet/95 p-3 shadow-float">
+      <p role="status" className="flex items-start gap-1.5 text-sm font-medium text-ink">
+        {view.fraction === null && <CircleNotch size={16} className="mt-0.5 shrink-0 animate-spin text-ink-muted" aria-hidden />}
+        {view.label}
+      </p>
+      {view.fraction !== null && (
+        <progress
+          value={view.fraction}
+          max={1}
+          aria-label={view.label}
+          className="mt-2 block h-1.5 w-full appearance-none overflow-hidden rounded-full bg-ink/[0.08] [&::-moz-progress-bar]:bg-accent [&::-webkit-progress-bar]:bg-transparent [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-accent [&::-webkit-progress-value]:transition-[width] [&::-webkit-progress-value]:duration-700"
+        />
+      )}
+      {view.timeLeft && <p className="mt-1.5 text-sm text-ink-muted">{view.timeLeft}</p>}
+    </div>
+  );
+}
+
 export function ViewerDock({ activeMode, onView, visibility, textures, downloadUrl, wheelchairMode, onToggleWheelchair }: ViewerDockProps) {
   return (
-    <div className="absolute bottom-4 left-4 flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-2 rounded-xl bg-sheet/95 p-1.5 shadow-float">
+    <div className="absolute bottom-4 left-4 flex max-w-[calc(100%-2rem)] flex-col items-start gap-2">
+      <BuildProgress status={textures.status} />
+      <Dock>
+        <DockControls activeMode={activeMode} onView={onView} visibility={visibility} textures={textures}
+          downloadUrl={downloadUrl} wheelchairMode={wheelchairMode} onToggleWheelchair={onToggleWheelchair} />
+      </Dock>
+    </div>
+  );
+}
+
+function Dock({ children }: { children: ReactNode }) {
+  return <div className="flex max-w-full flex-wrap items-center gap-2 rounded-xl bg-sheet/95 p-1.5 shadow-float">{children}</div>;
+}
+
+function DockControls({ activeMode, onView, visibility, textures, downloadUrl, wheelchairMode, onToggleWheelchair }: ViewerDockProps) {
+  return (
+    <>
       <Segmented>
         <Choice pressed={!wheelchairMode && activeMode === "overview"} onClick={() => onView("overview")} label="3D" icon={<Cube size={16} aria-hidden />} />
         <Choice pressed={!wheelchairMode && activeMode === "top"} onClick={() => onView("top")} label="From above" icon={<SquareHalfBottom size={16} aria-hidden />} />
@@ -154,6 +193,6 @@ export function ViewerDock({ activeMode, onView, visibility, textures, downloadU
       )}
       <LookChoice textures={textures} />
       <DockMenu visibility={visibility} textures={textures} downloadUrl={downloadUrl} />
-    </div>
+    </>
   );
 }

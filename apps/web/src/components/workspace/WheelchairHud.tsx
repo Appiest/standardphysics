@@ -62,16 +62,19 @@ function dispatchKeyTap(code: string, releaseAfterMs: number, onRelease: () => v
   }, releaseAfterMs);
 }
 
-function VirtualButton({
+export function VirtualButton({
   code,
   label,
   children,
   className = "",
+  large = false,
 }: {
   code: string;
   label: string;
   children: React.ReactNode;
   className?: string;
+  /** Thumb-sized, for the owner's driving pad on a phone. */
+  large?: boolean;
 }) {
   const activePointerId = useRef<number | null>(null);
   const pointerDownAt = useRef<number | null>(null);
@@ -145,7 +148,7 @@ function VirtualButton({
       onLostPointerCapture={handlePointerUp}
       onPointerLeave={handlePointerUp}
       onClick={handleClick}
-      className={`flex h-10 w-10 touch-none select-none items-center justify-center rounded-lg bg-sheet/95 text-ink shadow-sm transition-colors hover:bg-sheet active:bg-ink active:text-sheet ${className}`}
+      className={`flex touch-none select-none items-center justify-center bg-sheet/95 text-ink transition-colors hover:bg-sheet active:bg-ink active:text-sheet ${large ? "size-14 rounded-xl shadow-float" : "h-10 w-10 rounded-lg shadow-sm"} ${className}`}
     >
       {children}
     </button>

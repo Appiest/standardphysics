@@ -251,7 +251,7 @@ QUESTIONS = {
     ),
     "door_hardware": FindingCopy(
         title="Send a photo of the front door handle",
-        detail="Straight on, close enough to see its shape. We'll check it opens with a closed fist and sits between 34 and 48 inches up.",
+        detail="Stand in front of the handle and get close enough that its shape is clear. We'll check it opens with a closed fist and sits between 34 and 48 inches up.",
     ),
     "door_opening_force": FindingCopy(
         title="Check how hard the doors inside the shop are to push open",

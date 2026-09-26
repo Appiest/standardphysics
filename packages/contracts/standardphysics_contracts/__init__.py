@@ -27,7 +27,7 @@ from .api import (
     ScanList,
     SpaceTypologyRequest,
 )
-from .findings import Annotation, AnnotationKind, Finding, Locus, Outcome
+from .findings import Annotation, AnnotationKind, Asks, Finding, Locus, Outcome
 from .geometry import CameraPose, Mat4, Vec3, to_inches, to_meters
 from .hashing import graph_hash
 from .lidar import LidarMesh, LidarMeshPart
@@ -37,6 +37,31 @@ from .measurement import (
     HeightResult,
     MeasurementProvider,
     WidthResult,
+)
+from .owner import (
+    AnswerRequest,
+    Checklist,
+    ChecklistItem,
+    ChecklistUpdate,
+    DeviceRegistration,
+    Funnel,
+    FunnelStep,
+    Journey,
+    JourneyList,
+    LayoutPlan,
+    NextStep,
+    OwnerRequest,
+    PendingReview,
+    PlanList,
+    RequestAnswer,
+    ReviewAnswer,
+    ReviewQueue,
+    RouteLeg,
+    RouteLegs,
+    SavePlanRequest,
+    Session,
+    ShareLink,
+    ShopRequests,
 )
 from .precedents import (
     CaseReference,
@@ -129,12 +154,37 @@ from .textures import (
     PoseRecord,
     TextureBuild,
     TextureCoverage,
+    TextureProgress,
     TextureRequest,
     TextureState,
     TextureStatus,
 )
 
 __all__ = [
+    "Asks",
+    "AnswerRequest",
+    "Checklist",
+    "ChecklistItem",
+    "ChecklistUpdate",
+    "DeviceRegistration",
+    "Funnel",
+    "FunnelStep",
+    "Journey",
+    "JourneyList",
+    "LayoutPlan",
+    "NextStep",
+    "OwnerRequest",
+    "PendingReview",
+    "PlanList",
+    "RequestAnswer",
+    "ReviewAnswer",
+    "ReviewQueue",
+    "RouteLeg",
+    "RouteLegs",
+    "SavePlanRequest",
+    "Session",
+    "ShareLink",
+    "ShopRequests",
     "bounds_the_room",
     "can_host_a_fitting",
     "is_fixed_to_a_surface",
@@ -255,6 +305,7 @@ __all__ = [
     "TextureCoverage",
     "TextureRequest",
     "TextureState",
+    "TextureProgress",
     "TextureStatus",
     "Tier",
     "Vec3",

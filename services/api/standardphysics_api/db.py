@@ -23,7 +23,10 @@ CREATE TABLE IF NOT EXISTS scans (
     content_hash TEXT,
     coverage_json TEXT NOT NULL DEFAULT '[]',
     owner_id TEXT REFERENCES owners(id),
-    space_typology TEXT
+    space_typology TEXT,
+    last_opened_at TEXT,
+    results_told_at TEXT,
+    replaces_scan_id TEXT
 );
 CREATE TABLE IF NOT EXISTS artifacts (
     scan_id TEXT NOT NULL REFERENCES scans(id),
@@ -92,8 +95,12 @@ CREATE TABLE IF NOT EXISTS owners (
     email TEXT NOT NULL UNIQUE,
     shop_name TEXT NOT NULL,
     password_hash TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    guest INTEGER NOT NULL DEFAULT 0,
+    apple_sub TEXT,
+    reminded_at TEXT
 );
+CREATE UNIQUE INDEX IF NOT EXISTS owners_by_apple ON owners(apple_sub) WHERE apple_sub IS NOT NULL;
 CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY,
     owner_id TEXT NOT NULL REFERENCES owners(id),
@@ -135,6 +142,50 @@ CREATE TABLE IF NOT EXISTS job_attempts (
     recorded_at TEXT NOT NULL,
     PRIMARY KEY (job_id, attempt)
 );
+CREATE TABLE IF NOT EXISTS owner_requests (
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    request_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    answer_yes INTEGER,
+    answer_number REAL,
+    photo_name TEXT,
+    answered_at TEXT,
+    review TEXT,
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    PRIMARY KEY (scan_id, request_id)
+);
+CREATE INDEX IF NOT EXISTS owner_requests_waiting ON owner_requests(status, answered_at);
+CREATE TABLE IF NOT EXISTS devices (
+    token TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES owners(id),
+    environment TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS devices_by_owner ON devices(owner_id);
+CREATE TABLE IF NOT EXISTS share_links (
+    token_hash TEXT PRIMARY KEY,
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS layout_plans (
+    id TEXT PRIMARY KEY,
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    base_revision INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    moves_json TEXT NOT NULL,
+    findings_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS checklist_items (
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    finding_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (scan_id, finding_id)
+);
 """
 
 
@@ -143,7 +194,14 @@ ADDED_COLUMNS = {
         ("cycle", "INTEGER NOT NULL DEFAULT 0"),
         ("candidate_graph_json", "TEXT"),
     ),
-    "scans": (("owner_id", "TEXT REFERENCES owners(id)"), ("space_typology", "TEXT")),
+    "scans": (
+        ("owner_id", "TEXT REFERENCES owners(id)"),
+        ("space_typology", "TEXT"),
+        ("last_opened_at", "TEXT"),
+        ("results_told_at", "TEXT"),
+        ("replaces_scan_id", "TEXT"),
+    ),
+    "owners": (("guest", "INTEGER NOT NULL DEFAULT 0"), ("apple_sub", "TEXT"), ("reminded_at", "TEXT")),
     "jobs": (
         ("input_hash", "TEXT"),
         ("note", "TEXT"),

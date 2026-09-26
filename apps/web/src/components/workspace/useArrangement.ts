@@ -10,7 +10,10 @@ const NUDGE_SETTLE_MS = 350;
 
 export type Arrangement = ReturnType<typeof useArrangement>;
 
-export function useArrangement(scanId: string, scene: SceneGraph) {
+/** Where a finished layout goes. The workspace saves it as the shop's record; the owner view saves it as a plan. */
+export type Persist = (scanId: string, baseRevision: number, moves: NodeMove[]) => Promise<unknown>;
+
+export function useArrangement(scanId: string, scene: SceneGraph, persist: Persist = saveLayout) {
   const router = useRouter();
   const [moves, setMoves] = useState<MoveSet>({});
   const [check, setCheck] = useState<LayoutCheckResult | null>(null);
@@ -92,7 +95,7 @@ export function useArrangement(scanId: string, scene: SceneGraph) {
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      await saveLayout(scanId, scene.revision, Object.values(movesRef.current));
+      await persist(scanId, scene.revision, Object.values(movesRef.current));
       reset();
       router.refresh();
       setTimeout(() => router.refresh(), 3000);
@@ -110,7 +113,7 @@ export function useArrangement(scanId: string, scene: SceneGraph) {
     } finally {
       setSaving(false);
     }
-  }, [scanId, scene.revision, reset, router]);
+  }, [scanId, scene.revision, reset, router, persist]);
 
   const hasMoves = Object.keys(moves).length > 0;
   const blockedIds = useMemo(() => new Set(check?.blocked.map((b) => b.node_id) ?? []), [check]);

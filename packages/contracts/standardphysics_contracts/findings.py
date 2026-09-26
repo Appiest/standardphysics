@@ -12,6 +12,12 @@ AnnotationKind = Literal["dimension_line", "region", "path"]
 
 Outcome = Literal["passes", "problem", "question"]
 
+Asks = Literal["photo", "owner_report", "document", "measurement", "swing", "another_look", "review"]
+"""What answers a question: a photo, the owner's word, a document, a number
+they measure, which way a door swings, or another walk past the spot.
+`review` means the owner has sent what was asked and a person on the team is
+checking it, so nothing more is needed from the owner."""
+
 
 class Annotation(BaseModel):
     kind: AnnotationKind
@@ -55,3 +61,5 @@ class Finding(BaseModel):
     required_inches: float | None = None
     citation: Citation
     locus: Locus | None = None
+    asks: Asks | None = None
+    """For a question, what would answer it. None for a pass or a problem."""

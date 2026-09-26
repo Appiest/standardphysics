@@ -12,7 +12,7 @@ import uuid
 from uuid import UUID
 
 from standardphysics_contracts import Finding, SceneGraph
-from standardphysics_contracts.findings import Outcome
+from standardphysics_contracts.findings import Asks, Outcome
 
 from .checks import roles
 from .checks.observation import Observation
@@ -50,6 +50,17 @@ def resolve(
     return outcome, describe(observation, rule)
 
 
+def asks_of(observation: Observation, rule: RuleSpec, graph: SceneGraph) -> Asks | None:
+    """What would answer this check, when it can't be settled from the scan. Mirrors `resolve`."""
+    if not rule.measurable:
+        return rule.evidence
+    if observation.asks_for:
+        return observation.asks_for
+    if roles.needs_another_look(graph, observation.relied_on):
+        return "another_look"
+    return None
+
+
 def to_finding(
     observation: Observation, rule: RuleSpec, graph: SceneGraph, scan_id: UUID
 ) -> Finding:
@@ -65,6 +76,7 @@ def to_finding(
         required_inches=observation.required_inches,
         citation=rule.citation,
         locus=observation.locus,
+        asks=asks_of(observation, rule, graph) if outcome == "question" else None,
     )
 
 

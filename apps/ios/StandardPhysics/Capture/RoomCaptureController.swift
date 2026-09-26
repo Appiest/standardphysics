@@ -45,6 +45,9 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
         view.addSubview(captureView)
         self.captureView = captureView
         recorder.onTimeLimit = { [weak self] in self?.store?.finish() }
+        recorder.onTimeWarning = { [weak self] in
+            self?.store?.didReachTimeWarning(secondsLeft: FrameRecorder.timeWarningLead)
+        }
         recorder.onObservation = { [weak self] frame in self?.observe(frame) }
         self.recorder = recorder
         detailRecorder = LidarMeshRecorder(
@@ -75,7 +78,7 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
                     self.recording = nil
                     self.processingTimeout?.cancel()
                     self.processingTimeout = nil
-                    self.failCapture("Free some space on this phone. Return to saved scans to recover your room.")
+                    self.failCapture("Free some space on this phone, then go to home to recover your room.")
                     return
                 }
                 self.recording = recovered
@@ -103,7 +106,7 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
         recorder?.cancel { [weak self] error in
             guard let self else { return }
             if error != nil {
-                self.store?.didFail("Free some space on this phone. Return to saved scans to recover your room.")
+                self.store?.didFail("Free some space on this phone, then go to home to recover your room.")
             }
         }
         detailRecorder = nil
@@ -239,7 +242,7 @@ private extension RoomCaptureSession.Instruction {
         switch self {
         case .moveCloseToWall: "Walk closer to the wall"
         case .moveAwayFromWall: "Take one step back"
-        case .slowDown: "Turn around slowly"
+        case .slowDown: "Walk a little slower"
         case .turnOnLight: "Turn on more lights"
         case .lowTexture: nil
         case .normal: nil

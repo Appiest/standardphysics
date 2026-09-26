@@ -8,8 +8,10 @@ import pathlib
 import re
 import shutil
 import tempfile
+import time
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -20,6 +22,7 @@ from standardphysics_contracts import (
     SceneGraph,
     TextureBuild,
     TextureCoverage,
+    TextureProgress,
     TextureRequest,
     TextureStatus,
 )
@@ -33,7 +36,7 @@ from standardphysics_pipeline.textures import (
     texture_build_key,
 )
 from standardphysics_pipeline.textures.scan_colour import paint_the_scan
-from standardphysics_pipeline.textures.stages import timed
+from standardphysics_pipeline.textures.stages import StepProgress, listening, timed
 from standardphysics_pipeline.textures.surface_materials import materials_digest
 
 from . import repository as repo
@@ -217,6 +220,7 @@ def _status(connection, store, scan_id, revision):
         scan_id=scan_id, revision=shown.revision, state=state, build=build,
         exact=bool(ready and ready["build_key"] == key), stale_node_ids=stale, error=error,
         can_retry=bool(inputs and state == "failed"),
+        progress=_progress(store, scan_id, key) if state == "running" else None,
     )
     return result, bake, inputs, key
 
@@ -313,6 +317,48 @@ def staged_build_dir(store, scan_id) -> pathlib.Path:
     return pathlib.Path(tempfile.mkdtemp(prefix=".bake-", dir=build_dir(store, scan_id)))
 
 
+def progress_path(store, scan_id, build_key: str) -> pathlib.Path:
+    """Where a running build says which step it is on, beside the builds rather than inside one."""
+    return build_dir(store, scan_id) / f"{build_key}.progress.json"
+
+
+def _progress(store, scan_id, build_key: str | None) -> TextureProgress | None:
+    if build_key is None:
+        return None
+    try:
+        return TextureProgress.model_validate_json(progress_path(store, scan_id, build_key).read_bytes())
+    except (OSError, ValidationError):
+        return None
+
+
+class _ProgressFile:
+    """Writes each step as it starts, and its count at most once a second, for the API to read.
+
+    The build runs in its own process, so a file is how it reaches the API. The
+    write is a rename, so a reader never sees half of one.
+    """
+
+    SECONDS_BETWEEN_COUNTS = 1.0
+
+    def __init__(self, path: pathlib.Path):
+        self.path = path
+        self.last_step: str | None = None
+        self.last_write = 0.0
+
+    def __call__(self, progress: StepProgress) -> None:
+        now = time.monotonic()
+        if progress.step == self.last_step and now - self.last_write < self.SECONDS_BETWEEN_COUNTS:
+            return
+        self.last_step, self.last_write = progress.step, now
+        report = TextureProgress(
+            step=progress.step, done=progress.done, total=progress.total,
+            step_started_at=datetime.fromtimestamp(progress.started_at, UTC), reported_at=datetime.now(UTC),
+        )
+        partial = self.path.with_suffix(".partial")
+        partial.write_text(report.model_dump_json())
+        partial.replace(self.path)
+
+
 def finish_build(staged: pathlib.Path, destination: pathlib.Path, result: TextureBuild) -> None:
     """Seal a staged build and move it into place under its own name.
 
@@ -368,7 +414,12 @@ def run_texture(database, store, stages, scan_id, build_id):
     if result_path.is_file():
         result = TextureBuild.model_validate_json(result_path.read_bytes())
     else:
-        result = _new_build(database, store, stages, scan_id, row, destination)
+        reported = progress_path(store, scan_id, row["build_key"])
+        try:
+            with listening(_ProgressFile(reported)):
+                result = _new_build(database, store, stages, scan_id, row, destination)
+        finally:
+            reported.unlink(missing_ok=True)
     with database.transaction() as connection:
         connection.execute("UPDATE texture_builds SET result_json=? WHERE id=?", (result.model_dump_json(), build_id))
 

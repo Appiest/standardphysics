@@ -488,6 +488,54 @@ final class UploadViewModelTests: XCTestCase {
         )
     }
 
+    func testASessionHandedOverMidUploadKeepsTheSameRemoteScan() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let scan = try makeScan(in: directory)
+        let remoteID = UUID()
+        var creations = 0
+        var tokensAfterHandover: Set<String> = []
+
+        UploadURLProtocolStub.handler = { request in
+            let path = request.url!.path
+            let bearer = request.value(forHTTPHeaderField: "Authorization") ?? ""
+            if bearer == "Bearer guest" && request.httpMethod == "PUT" {
+                return StubResponse(status: 401, data: Data())
+            }
+            if bearer == "Bearer owner" { tokensAfterHandover.insert(bearer) }
+            switch request.httpMethod {
+            case "POST" where path == "/api/scans":
+                creations += 1
+                return .scan(status: 201, id: remoteID, state: .uploading)
+            case "PUT":
+                return StubResponse(status: 201, data: Data("{}".utf8))
+            case "POST" where path.hasSuffix("/complete"):
+                return .scan(status: 200, id: remoteID, state: .measuring)
+            case "GET":
+                return .scan(status: 200, id: remoteID, state: .ready)
+            default:
+                return StubResponse(status: 500, data: Data())
+            }
+        }
+
+        let model = UploadViewModel(scan: scan, name: "Tea House", client: makeClient(token: "guest"),
+            pollInterval: .milliseconds(5))
+        model.start()
+        try await waitUntil { model.needsSignIn }
+
+        model.resume(with: makeClient(token: "owner"))
+        try await waitUntil { model.state == .ready && model.uploadedCount == model.totalCount }
+
+        XCTAssertEqual(creations, 1)
+        XCTAssertEqual(model.scanID, remoteID)
+        XCTAssertFalse(model.needsSignIn)
+        XCTAssertEqual(tokensAfterHandover, ["Bearer owner"])
+    }
+
+    private func makeClient(token: String) -> ScanUploadClient {
+        ScanUploadClient(baseURL: URL(string: "https://standard.physics")!, session: makeSession(), token: token)
+    }
+
     private func makeClient() -> ScanUploadClient {
         ScanUploadClient(
             baseURL: URL(string: "https://standard.physics")!,

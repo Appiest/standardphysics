@@ -38,6 +38,8 @@ type WheelchairControllerProps = {
   profile: WheelchairProfile;
   onExit?: () => void;
   initialPosition?: [number, number, number];
+  /** Which way the chair faces when it starts, in radians. Zero faces down the viewer's -z axis. */
+  initialYaw?: number;
 };
 
 function navigationKey(code: string): boolean {
@@ -56,6 +58,8 @@ function stateChanged(previous: WheelchairState, next: WheelchairState): boolean
     || Math.abs(previous.reachDistance - next.reachDistance) > 0.05;
 }
 
+const DEFAULT_START: [number, number, number] = [-3.0, 0, -3.0];
+
 export function WheelchairController({
   active,
   scene,
@@ -66,7 +70,8 @@ export function WheelchairController({
   onSelectNode,
   profile,
   onExit,
-  initialPosition = [-3.0, 0, -3.0],
+  initialPosition = DEFAULT_START,
+  initialYaw = 0,
 }: WheelchairControllerProps) {
 
   const { camera, invalidate } = useThree();
@@ -98,14 +103,14 @@ export function WheelchairController({
         return;
       }
       pos.current.set(spawn.x, profile.eyeHeight, spawn.z);
-      if (!started.current || shownScene.current !== scene) yaw.current = 0;
+      if (!started.current || shownScene.current !== scene) yaw.current = initialYaw;
       lastReport.current = null;
       shownScene.current = scene;
       appliedRadius.current = profile.collisionRadius;
       started.current = true;
     }
     pos.current.y = profile.eyeHeight;
-  }, [active, geometry, initialPosition, onExit, profile.collisionRadius, profile.eyeHeight, scene]);
+  }, [active, geometry, initialPosition, initialYaw, onExit, profile.collisionRadius, profile.eyeHeight, scene]);
 
   useEffect(() => {
     if (!active) return;

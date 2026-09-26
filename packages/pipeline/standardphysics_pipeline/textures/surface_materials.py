@@ -28,6 +28,7 @@ from PIL import Image
 from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room, stands_upright
 
 from .project import to_linear, to_srgb
+from .regions import VertexIndex
 from .scan_colour import ColouredScan, vertex_normals
 
 MATERIALS_DIR = pathlib.Path(__file__).parent / "materials"
@@ -161,16 +162,21 @@ def room_owners(
     of a cabinet pressed against a wall is not taken for the wall. Room graphs
     carry no ceiling, so a ceiling belongs to nothing. `patches` marks vertices
     that patch a hole in a wall or floor; they are that sheet by construction, so
-    the floor patched under a chair never takes the chair's fabric.
+    the floor patched under a chair never takes the chair's fabric. Each node
+    tests only the vertices around its own box, since testing a merged floor's
+    millions of vertices against every one of its hundreds of nodes took minutes.
     """
     owners = np.full(len(vertices), -1, dtype=np.int32)
     claimable = ~patches if patches is not None else np.ones(len(vertices), dtype=bool)
     objects = [(index, node) for index, node in enumerate(graph.nodes) if not _is_room_sheet(node)]
     sheets = [(index, node) for index, node in enumerate(graph.nodes) if _is_room_sheet(node)]
+    regions = VertexIndex(vertices)
     for index, node in objects:
-        owners[_inside(node, vertices, OBJECT_REACH) & (owners < 0) & claimable] = index
+        near = regions.near_box(node, OBJECT_REACH)
+        owners[near[_inside(node, vertices[near], OBJECT_REACH) & (owners[near] < 0) & claimable[near]]] = index
     for index, node in sheets:
-        owners[_on_sheet(node, vertices, normals) & (owners < 0)] = index
+        near = regions.near_box(node, SURFACE_REACH)
+        owners[near[_on_sheet(node, vertices[near], normals[near]) & (owners[near] < 0)]] = index
     return owners
 
 

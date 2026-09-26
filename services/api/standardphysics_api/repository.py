@@ -69,12 +69,13 @@ def insert_scan(
     state: str = "uploading",
 ) -> uuid.UUID:
     scan_id = scan_id or uuid.uuid4()
+    replaces = str(request.replaces) if request.replaces else None
     connection.execute(
-        "INSERT INTO scans (id, name, created_at, device_model, duration_seconds, state, owner_id, space_typology)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO scans (id, name, created_at, device_model, duration_seconds, state, owner_id, space_typology,"
+        " replaces_scan_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             str(scan_id), request.name, now(), request.device_model, request.duration_seconds, state,
-            str(owner_id), _typology_value(request.space_typology),
+            str(owner_id), _typology_value(request.space_typology), replaces,
         ),
     )
     return scan_id
@@ -115,11 +116,27 @@ def list_scans(connection: sqlite3.Connection, owner_id: uuid.UUID) -> list[Scan
     return [_scan(connection, row) for row in rows]
 
 
+def list_shops(connection: sqlite3.Connection, owner_id: uuid.UUID) -> list[Scan]:
+    """The owner's shops: every scan except one a later walk of the same shop has replaced.
+
+    A replaced scan stays listed while its replacement is still coming in, and
+    again if the replacement fails, so the owner always has results to open.
+    """
+    rows = connection.execute(
+        "SELECT * FROM scans WHERE owner_id = ? AND id NOT IN ("
+        " SELECT replaces_scan_id FROM scans WHERE replaces_scan_id IS NOT NULL AND state = 'ready'"
+        ") ORDER BY created_at DESC",
+        (str(owner_id),),
+    ).fetchall()
+    return [_scan(connection, row) for row in rows]
+
+
 def scan_exists(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
     return connection.execute("SELECT 1 FROM scans WHERE id = ?", (str(scan_id),)).fetchone() is not None
 
 
 CHILD_TABLES = (
+    "owner_requests", "checklist_items", "share_links", "layout_plans",
     "texture_builds", "simulations", "assessments", "evidence_bundles", "scenarios", "revisions",
     "job_attempts", "jobs", "artifacts",
 )
