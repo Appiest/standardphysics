@@ -1,9 +1,9 @@
 """Qwen3.8 27B on the Fireworks serverless training API as a five-loop `Sampler`, with metered spend.
 
-`base` samples the bare base model; `snapshot:<path>` samples an existing
-sampler snapshot without opening a training run (serverless training runs are
-capped per account, so parallel evaluators must share one snapshot); anything
-else is a saved training state reference. Every call adds its prompt and sampled tokens to a spend file in the
+`base` samples the bare base model; anything else is a saved training state
+reference. Each sampler opens one serverless training session, and a snapshot
+is only served through the session that made it, so every evaluator process
+holds its own session and must `close()` it: the account allows eight at once. Every call adds its prompt and sampled tokens to a spend file in the
 format `spend_watchdog` reads, priced by `progress.QWEN3P8_27B_SERVERLESS_RATES`.
 """
 
@@ -29,7 +29,7 @@ class FireworksSampler:
         tokenizer = load_tokenizer(TOKENIZER_MODEL)
         self.renderer = get_renderer(RENDERER, tokenizer)
         self.service = FiretitanServiceClient(api_key=os.environ["FIREWORKS_API_KEY"], base_url=SERVERLESS_URL)
-        snapshot = model.removeprefix("snapshot:") if model.startswith("snapshot:") else self._snapshot(model)
+        snapshot = self._snapshot(model)
         self.sampler = self.service.create_sampling_client(model_path=snapshot, tokenizer=tokenizer)
         self.params = FiretitanSamplingParams(max_tokens=max_tokens, temperature=temperature,
                                               stop=self.renderer.get_stop_sequences())

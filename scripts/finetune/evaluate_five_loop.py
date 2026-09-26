@@ -238,8 +238,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=pathlib.Path, default=DEFAULT_DATA)
     parser.add_argument("--base-url", help="an OpenAI-compatible server, such as a local MLX server")
-    parser.add_argument("--fireworks", help="sample Fireworks serverless: `base`, `snapshot:<sampler path>`, "
-                                            "or a saved training state reference")
+    parser.add_argument("--fireworks", help="sample Fireworks serverless: `base` or a saved training state reference")
     parser.add_argument("--spend-file", type=pathlib.Path, help="where --fireworks records its estimated spend")
     parser.add_argument("--model", required=True, help="label for the records; the served model name otherwise")
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
