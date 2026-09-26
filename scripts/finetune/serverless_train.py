@@ -299,7 +299,8 @@ class Trainer:
             label = f"{self.session['run_id']}-{checkpoint_prefix}"
             target = next(row for row in rows if row.get("promotable")
                           and str(row.get("name", "")).rsplit("/", 1)[-1].startswith(label))
-            model = control.promote_session_checkpoint(name=target["name"], output_model_id=output_model_id,
+            model_id = f"{output_model_id}-{self.session['run_id']}"
+            model = control.promote_session_checkpoint(name=target["name"], output_model_id=model_id,
                                                        base_model=BASE_MODEL)
         finally:
             control.close()

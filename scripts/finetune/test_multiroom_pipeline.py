@@ -2,7 +2,7 @@
 
 import json
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 from multiroom_results import build, composition, metrics, search_records
@@ -10,6 +10,7 @@ from multiroom_train_data import MultiroomData
 from progress import Progress, Spend
 from serverless_train import (
     Plan,
+    Trainer,
     expected_cost,
     promote_optional,
     rl_rows_for_step,
@@ -92,6 +93,20 @@ def test_optional_promotion_records_success(tmp_path):
     promote_optional(trainer, "promote_rl", "rl-final", "multiroom-rl")
     assert progress.get("promote_rl")["model"] == "account/model"
     assert progress.done("promote_rl")
+
+
+def test_promotion_uses_run_specific_model_id():
+    trainer = object.__new__(Trainer)
+    trainer.api_key = "unused"
+    trainer.service = SimpleNamespace(training_session_name="accounts/team/trainingSessions/session")
+    trainer.session = {"session": trainer.service.training_session_name, "run_id": "run-abc"}
+    with patch("serverless_train.FireworksClient") as control_type:
+        control = control_type.return_value
+        control.list_training_session_checkpoints.return_value = [
+            {"name": "accounts/team/trainingSessions/session/checkpoints/run-abc-sft-final-ckpt", "promotable": True}]
+        control.promote_session_checkpoint.return_value = {"name": "accounts/team/models/model"}
+        assert trainer.promote("sft-final", "multiroom-sft") == "accounts/team/models/model"
+        assert control.promote_session_checkpoint.call_args.kwargs["output_model_id"] == "multiroom-sft-run-abc"
 
 
 def test_metrics_count_rejected_samples_and_log_u_and_q_only_when_accepted():
