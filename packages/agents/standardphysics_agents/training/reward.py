@@ -14,18 +14,24 @@ Zero for:
     facing what they serve, fewer wall pieces with a clear front, or less of the
     accessible dining share (`usefulness.Usefulness.worse_than`)
 
-An accepted layout earns
+An accepted layout lands in one of two tiers, so a complete fix is the training
+objective and always outranks any partial fix:
 
-    clamp(0.15 + 0.45 * recovered + 0.10 * all_clear + 0.15 * U + 0.15 * F
-          - 0.03 * moved - 0.10 * snapped, 0.05, 1)
+    partial    clamp(0.05 + 0.30 * recovered + 0.10 * U + 0.10 * F - cost, 0.05, 0.55)
+    all clear  clamp(0.80 + 0.10 * U + 0.10 * F - cost, 0.65, 1)
+
+    cost = 0.03 * moved + 0.10 * snapped
 
     U  `usability.usability`: usable sides and seats of every table, desk and
        counter the layout affected, against the owner's layout
     F  `usefulness.Usefulness.score` after the edits
     moved    metres slid plus a fixed cost per turn, measured on the snapped layout
-             rather than the request, and not capped: more moving always costs more
+             rather than the request; it lowers the reward until the tier's floor
     snapped  mean metres the solver had to shift requests to make them legal, so
              the model still learns to ask for places that work
+
+The training checker treats uncertain scan geometry as measured, so its
+all-clear verdict is a training result, not physical verification.
 
 Q (`quality.layout_quality`) is measured and logged on every accepted layout and
 not paid for: it agreed with a person's choice in 12 of 24 rated pairs. The
@@ -50,11 +56,13 @@ from .quality import layout_quality
 from .usability import usability
 from .usefulness import usefulness
 
-ACCEPTED_FLOOR = 0.15
-RECOVERY_WEIGHT = 0.45
-ALL_CLEAR_BONUS = 0.10
-USABILITY_WEIGHT = 0.15
-USEFULNESS_WEIGHT = 0.15
+ACCEPTED_FLOOR = 0.05
+RECOVERY_WEIGHT = 0.30
+ALL_CLEAR_FLOOR = 0.80
+USABILITY_WEIGHT = 0.10
+USEFULNESS_WEIGHT = 0.10
+PARTIAL_TIER = (0.05, 0.55)
+ALL_CLEAR_TIER = (0.65, 1.0)
 MOVED_PINNED = "moved_unconfirmed_object"
 NOTHING_PLACED = "no_legal_spot_for_any_move"
 DISRUPTION_PENALTY_PER_METER = 0.03
@@ -96,10 +104,13 @@ def disruption_meters(moves) -> float:
 
 def shaped_reward(recovered: float, all_clear: bool, disruption: float, usable: float = 1.0,
                   useful: float = 1.0, snapped: float = 0.0) -> float:
-    penalty = DISRUPTION_PENALTY_PER_METER * disruption + SNAP_PENALTY_PER_METER * snapped
-    earned = (ACCEPTED_FLOOR + RECOVERY_WEIGHT * recovered + (ALL_CLEAR_BONUS if all_clear else 0.0)
-              + USABILITY_WEIGHT * _unit(usable) + USEFULNESS_WEIGHT * _unit(useful))
-    return round(max(MIN_ACCEPTED_REWARD, min(1.0, earned - penalty)), 6)
+    cost = DISRUPTION_PENALTY_PER_METER * disruption + SNAP_PENALTY_PER_METER * snapped
+    kept = USABILITY_WEIGHT * _unit(usable) + USEFULNESS_WEIGHT * _unit(useful) - cost
+    if all_clear:
+        low, high = ALL_CLEAR_TIER
+        return round(max(low, min(high, ALL_CLEAR_FLOOR + kept)), 6)
+    low, high = PARTIAL_TIER
+    return round(max(low, min(high, ACCEPTED_FLOOR + RECOVERY_WEIGHT * _unit(recovered) + kept)), 6)
 
 
 def _unit(value: float) -> float:

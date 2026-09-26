@@ -4,10 +4,19 @@ import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
 from multiroom_results import build, composition, metrics, search_records
 from multiroom_train_data import MultiroomData
 from progress import Progress, Spend
-from serverless_train import Plan, expected_cost, promote_optional, rl_rows_for_step, run_rl_phase, run_sft_phase
+from serverless_train import (
+    Plan,
+    expected_cost,
+    promote_optional,
+    rl_rows_for_step,
+    run_rl_phase,
+    run_sft_phase,
+    validate_correction_mode,
+)
 
 
 def write_rows(path, rows):
@@ -28,6 +37,14 @@ def test_pessimistic_estimate_uses_uncached_maximum_lengths():
     assert estimate["train_tokens"] == 6 * 3400 + 24 * 3512
     assert estimate["estimated_dollars"] == Spend(prefill_tokens=108000, sample_tokens=18432,
                                                   train_tokens=104688).as_dict()["estimated_dollars"]
+
+
+def test_correction_mode_cannot_change_mid_training(tmp_path):
+    progress = Progress(tmp_path / "progress.json")
+    progress.set("plan", {"include_corrections": True})
+    validate_correction_mode(progress, True)
+    with pytest.raises(ValueError, match="differs"):
+        validate_correction_mode(progress, False)
 
 
 def test_rl_batches_cover_each_room_before_repeating():

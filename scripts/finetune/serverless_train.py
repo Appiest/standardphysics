@@ -14,6 +14,9 @@ training package) with this repo's packages on PYTHONPATH:
     python scripts/finetune/serverless_train.py --dataset multiroom --data runs/finetune/multiroom/v2 \
         --run-dir runs/finetune/multiroom/qwen3p8-27b --progress runs/finetune/multiroom/PROGRESS_MULTIROOM.json \
         --plan-overrides '{"rl_steps": 20}' --max-estimate 42 --measure-tokens
+
+For a new multiroom SFT run, --include-corrections adds the separately
+generated train-only correction rows. Use a new run directory and progress file.
 """
 
 from __future__ import annotations
@@ -389,9 +392,19 @@ def transient_error(error: Exception) -> bool:
     return isinstance(error, (ConnectionError, TimeoutError)) or code in (408, 429, 500, 502, 503, 504)
 
 
+def validate_correction_mode(progress: Progress, include_corrections: bool) -> None:
+    prior = progress.state.get("plan", {}).get("include_corrections")
+    if prior is not None and prior != include_corrections:
+        raise ValueError("correction mode differs from this training run; use a fresh progress file")
+    if prior is None and include_corrections and progress.get("sft"):
+        raise ValueError("existing SFT run has unknown correction mode; use a fresh progress file")
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dataset", choices=sorted(LOADERS), default="room6")
+    parser.add_argument("--include-corrections", action="store_true",
+                        help="add generated multiroom correction rows to SFT; use a fresh run directory")
     parser.add_argument("--data", type=pathlib.Path, required=True)
     parser.add_argument("--run-dir", type=pathlib.Path, required=True)
     parser.add_argument("--progress", type=pathlib.Path, default=pathlib.Path("PROGRESS_FINETUNE.json"))
@@ -407,7 +420,12 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = _parser().parse_args()
-    plan, data, progress = Plan(**args.plan_overrides), LOADERS[args.dataset](args.data), Progress(args.progress)
+    if args.include_corrections and args.dataset != "multiroom":
+        raise ValueError("correction rows are only available for the multiroom dataset")
+    loader = LOADERS[args.dataset]
+    data = loader(args.data, include_corrections=True) if args.include_corrections else loader(args.data)
+    plan, progress = Plan(**args.plan_overrides), Progress(args.progress)
+    validate_correction_mode(progress, args.include_corrections)
     prompt_tokens, sft_tokens = (measured_tokens(data, plan) if args.measure_tokens
                                     else (args.prompt_tokens, args.answer_tokens))
     estimate = {**expected_cost(plan, data, prompt_tokens, sft_tokens),
@@ -416,6 +434,7 @@ def main() -> None:
     if args.dataset == "multiroom":
         progress.set("data_composition", composition(args.data))
     progress.set("plan", {**asdict(plan), "base_model": BASE_MODEL, "renderer": RENDERER,
+                          "include_corrections": args.include_corrections,
                           "expected_cost": estimate, "max_estimate": args.max_estimate})
     print(json.dumps(estimate), flush=True)
     if args.max_estimate is not None and estimate["estimated_dollars"] > args.max_estimate:

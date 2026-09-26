@@ -44,12 +44,26 @@ class MultiroomData:
         return self.variants[variant_id]["scan_id"]
 
 
-def load(run: pathlib.Path) -> MultiroomData:
+def load(run: pathlib.Path, include_corrections: bool = False) -> MultiroomData:
     dataset = run / "dataset"
+    rl = _rows(dataset / "rl.jsonl")
+    heldout = _rows(dataset / "heldout.jsonl")
+    sft = _rows(dataset / "sft.jsonl")
+    if include_corrections:
+        correction_files = [dataset / "corrections.jsonl", dataset / "corrections_from_trace.jsonl"]
+        if not any(path.exists() for path in correction_files):
+            raise FileNotFoundError("Generate correction rows before including them in SFT")
+        train_ids = {row["variant"] for row in rl}
+        heldout_ids = {row["variant"] for row in heldout}
+        for path in correction_files:
+            corrections = _rows(path)
+            if any(row["variant"] not in train_ids or row["variant"] in heldout_ids for row in corrections):
+                raise ValueError(f"correction rows include an unknown or held-out variant: {path}")
+            sft.extend(corrections)
     return MultiroomData(
         windows={row["window_id"]: Window.from_dict(row) for row in _rows(run / "windows.jsonl")},
         variants={row["variant_id"]: row for row in _rows(run / "variants.jsonl") if row["variant_id"]},
-        sft=_rows(dataset / "sft.jsonl"),
-        rl=_rows(dataset / "rl.jsonl"),
-        heldout=_rows(dataset / "heldout.jsonl"),
+        sft=sft,
+        rl=rl,
+        heldout=heldout,
     )
