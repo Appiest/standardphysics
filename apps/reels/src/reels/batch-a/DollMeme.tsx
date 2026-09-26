@@ -2,14 +2,14 @@ import { Sequence, useCurrentFrame } from "remotion";
 import { cue, Soundtrack } from "../../components/Cues";
 import { GlowDot } from "../../components/Glow";
 import { Impact } from "../../components/Impact";
-import { LidarRoom } from "../../components/LidarRoom";
+import { TexturedRoom } from "../../components/TexturedRoom";
 import { Grain, Paper, Vignette } from "../../components/Paper";
 import { Shot } from "../../components/Shot";
 import { progress } from "../../lib/ease";
 import { REEL } from "../../lib/timing";
 import { ExtraSounds, Slam, TapeLines } from "./kit";
 
-/** Beats follow the trend audio: the name, the "woahhh", then "I just got her two weeks ago". */
+/** Beats follow the trend audio: the name, the "woahhh", then "I just got her two weeks ago" (ours: last weekend). */
 const BEATS = { reveal: 40, name: 44, woah: 76, got: 104, proud: 196, length: 238 } as const;
 
 const SPARKLES = [
@@ -33,7 +33,7 @@ function Sparkles() {
   );
 }
 
-/** The name shouts first, then gives way to "I just got it two weeks ago" in the same place, clear of the model. */
+/** The name shouts first, then gives way to "I just got it last weekend" in the same place, clear of the model. */
 function TopLine({ frame }: { frame: number }) {
   const got = BEATS.got - BEATS.reveal;
   return (
@@ -48,7 +48,7 @@ function TopLine({ frame }: { frame: number }) {
         <Slam at={got} className="reel-copy text-headline">
           I just got it
           <br />
-          two weeks ago
+          last weekend
         </Slam>
       )}
     </div>
@@ -61,15 +61,7 @@ function ProudModel() {
   return (
     <div className="absolute inset-0 bg-night">
       <div className="absolute inset-0" style={{ transform: `scale(${1 + whip * 0.6})`, filter: `blur(${whip * 14}px)` }}>
-        <LidarRoom
-          scan="test1"
-          width={REEL.width}
-          height={REEL.height}
-          reveal={1}
-          cutaway={2.3}
-          radius={6.2}
-          camera={{ azimuth: frame * 0.045, elevation: 0.95, distance: 52 }}
-        />
+        <TexturedRoom scan="moffett" width={REEL.width} height={REEL.height} cutaway={2.3} camera={{ azimuth: frame * 0.03, elevation: 0.95, distance: 84 }} />
       </div>
       <Sparkles />
       <TopLine frame={frame} />
@@ -102,7 +94,7 @@ export function DollMeme() {
       <Impact hits={[BEATS.reveal, BEATS.woah]} strength={22}>
         <Sequence durationInFrames={BEATS.reveal} layout="none">
           <Shot clip="zihao-caught">
-            <TapeLines lines={["me showing", "everyone our", "3D model:"]} size="hook" at={-12} />
+            <TapeLines lines={["me showing", "everyone our", "library in 3D:"]} size="hook" at={-12} />
           </Shot>
         </Sequence>
         <Sequence from={BEATS.reveal} durationInFrames={BEATS.proud - BEATS.reveal} layout="none">
@@ -110,7 +102,7 @@ export function DollMeme() {
         </Sequence>
         <Sequence from={BEATS.proud} layout="none">
           <Shot clip="zihao-caught" startFrom={26}>
-            <TapeLines lines={["(it’s a room)"]} size="hook" at={4} />
+            <TapeLines lines={["(it’s a library)"]} size="hook" at={4} />
           </Shot>
         </Sequence>
       </Impact>
