@@ -75,7 +75,7 @@ final class SessionStore: ObservableObject {
     private let service = "app.standardphysics.session"
     private let session: URLSession
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .api) {
         self.session = session
         owner = token == nil ? nil : storedOwner
     }
@@ -267,6 +267,23 @@ final class SessionStore: ObservableObject {
         }
         return status == 429 ? "Too many tries. Wait a few minutes." : "That did not work. Try again."
     }
+}
+
+extension URLSession {
+    /// Every call to our API. The token travels as a bearer header and
+    /// nowhere else.
+    ///
+    /// The shared session keeps a cookie jar, so the `sp_session` cookie from
+    /// a sign-in rode along on every later call, including after signing out:
+    /// a guest made after sign-out was answered as the account just left, and
+    /// with no new cookie the phone could not sign in at all.
+    static let api: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        return URLSession(configuration: configuration)
+    }()
 }
 
 enum Keychain {

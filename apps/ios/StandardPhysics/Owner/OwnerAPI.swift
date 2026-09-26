@@ -69,7 +69,7 @@ enum OwnerAPIError: LocalizedError, Equatable {
 struct OwnerAPI: Sendable {
     let baseURL: URL
     let token: String
-    var session: URLSession = .shared
+    var session: URLSession = .api
 
     func requests(scanID: UUID) async throws -> [OwnerRequest] {
         struct Requests: Decodable { let requests: [OwnerRequest] }

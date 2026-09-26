@@ -23,7 +23,10 @@ final class ShopSetupModel: ObservableObject, Identifiable {
     @Published private(set) var step: Step = .preparing
     @Published private(set) var isSending = false
     @Published private(set) var problem: String?
-    @Published private(set) var resultsReady = false
+    /// Set once the shop has a model, which is when the web takes over: it
+    /// asks where customers pay and which path they take, then shows results.
+    @Published private(set) var handover: Journey.NextStep?
+    var isMeasured: Bool { handover != nil }
     @Published private(set) var progress = (done: 0, total: 0)
 
     private weak var app: AppModel?
@@ -105,17 +108,26 @@ final class ShopSetupModel: ObservableObject, Identifiable {
         }
     }
 
-    /// Watches for the results: the upload reaching Ready on this phone, or,
-    /// for a shop walked elsewhere, the journey moving past measuring.
+    /// Watches the shop's journey until it moves past the phone's part.
+    /// Without a journey (an older server, or no connection) the walk's own
+    /// upload reaching Checking or Ready says the same thing.
     func watchForResults() async {
 #if DEBUG
         if isDebugPreview { return }
 #endif
-        while !Task.isCancelled && !resultsReady {
-            resultsReady = await resultsAreReady()
-            if resultsReady { return }
-            do { try await Task.sleep(for: .seconds(upload == nil ? 5 : 1)) } catch { return }
+        while !Task.isCancelled && handover == nil {
+            handover = await measuredStep()
+            if handover != nil { return }
+            do { try await Task.sleep(for: .seconds(3)) } catch { return }
         }
+    }
+
+    private func measuredStep() async -> Journey.NextStep? {
+        if let scanID, let journey = try? await app?.api()?.journey(scanID: scanID) {
+            return journey.isBeforeResults ? nil : journey.nextStep
+        }
+        guard let state = upload?.state, state == .checking || state == .ready else { return nil }
+        return Journey.NextStep(kind: "results", title: "Open your shop", count: nil)
     }
 
 #if DEBUG
@@ -132,12 +144,6 @@ final class ShopSetupModel: ObservableObject, Identifiable {
     private(set) var isDebugPreview = false
     var debugPrompt: MeasuringView.Prompt?
 #endif
-
-    private func resultsAreReady() async -> Bool {
-        if let upload { return upload.state == .ready }
-        guard let scanID, let journey = try? await app?.api()?.journey(scanID: scanID) else { return false }
-        return !journey.isBeforeResults
-    }
 
     private var currentRequest: OwnerRequest? {
         switch step {

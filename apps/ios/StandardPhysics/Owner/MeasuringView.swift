@@ -5,7 +5,8 @@ import UserNotifications
 ///
 /// The wait is where saving the shop is offered, since there is nothing else
 /// to do, and right after it where notifications are. Neither blocks: "Not
-/// now" moves on, and the results open on their own when they are ready.
+/// now" moves on, and the shop opens on the web on its own once it has a
+/// model, where the owner marks the counter and the path.
 struct MeasuringView: View {
     @ObservedObject var app: AppModel
     @ObservedObject var setup: ShopSetupModel
@@ -18,9 +19,9 @@ struct MeasuringView: View {
             SketchSheet(height: 200) { RoomSketch(mode: .measuring) }
                 .padding(.top, AppTheme.Spacing.small)
             if let upload = setup.upload {
-                UploadProgressHeader(upload: upload, resultsReady: setup.resultsReady)
+                UploadProgressHeader(upload: upload, isMeasured: setup.isMeasured)
             } else {
-                MeasuringHeader(resultsReady: setup.resultsReady)
+                MeasuringHeader(isMeasured: setup.isMeasured)
             }
             promptPanel
         } actions: {
@@ -28,8 +29,8 @@ struct MeasuringView: View {
         }
         .task { await decidePrompt() }
         .task { await setup.watchForResults() }
-        .onChange(of: setup.resultsReady) { _, ready in
-            if ready, prompt == .none, let scanID = setup.scanID { app.openShop(scanID) }
+        .onChange(of: setup.isMeasured) { _, measured in
+            if measured, prompt == .none, let scanID = setup.scanID { app.openShop(scanID) }
         }
     }
 
@@ -67,8 +68,8 @@ struct MeasuringView: View {
     }
 
     @ViewBuilder private var actions: some View {
-        if setup.resultsReady, let scanID = setup.scanID {
-            Button("See your results") { app.openShop(scanID) }
+        if let handover = setup.handover, let scanID = setup.scanID {
+            Button(handover.title) { app.openShop(scanID) }
                 .buttonStyle(AppButtonStyle())
         } else if let upload = setup.upload, upload.errorMessage != nil {
             Button(upload.needsSignIn ? "Sign in and keep uploading" : "Try again") {
@@ -84,7 +85,7 @@ struct MeasuringView: View {
             Button("Not now") { finishPrompts() }
                 .buttonStyle(AppButtonStyle(.link))
         case .deciding, .none:
-            if !setup.resultsReady {
+            if !setup.isMeasured {
                 Button("Go to home") { app.showStart() }
                     .buttonStyle(AppButtonStyle(.link))
             }
@@ -120,7 +121,7 @@ struct MeasuringView: View {
     }
 
     private func openResultsIfReady() {
-        guard prompt == .none, setup.resultsReady, let scanID = setup.scanID else { return }
+        guard prompt == .none, setup.isMeasured, let scanID = setup.scanID else { return }
         app.openShop(scanID)
     }
 }
@@ -128,12 +129,12 @@ struct MeasuringView: View {
 /// Where the walk's upload is, on this phone.
 private struct UploadProgressHeader: View {
     @ObservedObject var upload: UploadViewModel
-    let resultsReady: Bool
+    let isMeasured: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
-            if resultsReady {
-                FlowTitle("Your results are ready")
+            if isMeasured {
+                FlowTitle("Your shop is measured")
             } else if let problem = upload.errorMessage {
                 FlowTitle("Your walk didn\u{2019}t finish sending")
                 FlowProblem(message: problem)
@@ -143,19 +144,19 @@ private struct UploadProgressHeader: View {
                     .tint(AppTheme.accent)
                 FlowDetail("Keep the app open until it\u{2019}s sent.")
             } else {
-                MeasuringHeader(resultsReady: false)
+                MeasuringHeader(isMeasured: false)
             }
         }
     }
 }
 
 private struct MeasuringHeader: View {
-    let resultsReady: Bool
+    let isMeasured: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.small) {
-            if resultsReady {
-                FlowTitle("Your results are ready")
+            if isMeasured {
+                FlowTitle("Your shop is measured")
             } else {
                 FlowTitle("Measuring your shop")
                 FlowDetail("This takes a few minutes.")
