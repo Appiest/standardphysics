@@ -1,6 +1,6 @@
 {
   "lane": "D",
-  "updated": "2026-09-26T16:00:00Z",
+  "updated": "2026-09-26T16:42:26Z",
   "done": [
     "contracts and fixture shop (21bbc65)",
     "Stop.anchor_node_id and WidthResult.needs_measurement (audit A-6, A-9)",
@@ -52,9 +52,10 @@
     "owner view /shops/[id] and /example (06c9b57); shared report /r/[token], privacy page, /team/reviews (891faea..8d0ee89)",
     "assessment ids are per scan: two scans of one room no longer overwrite each other (cd82c22)",
     "new walks replace a shop's scan and keep its answers (58be909); wheelchair walk-through and turning pieces for owners (e9162ca)",
-    "team tools gated by role once a team is named; guest rate limit (812868e); owner funnel /team/funnel (cc7d6a5)"
+    "team tools gated by role once a team is named; guest rate limit (812868e); owner funnel /team/funnel (cc7d6a5)",
+    "iPhone half of the owner journey on master (aa63877): first run, guest and Apple accounts, push registration, the next-step card, the web bridge, adding a room and the shared PDF. 117 simulator tests pass and the unsigned release build compiles"
   ],
-  "in_progress": "iPhone half of the owner journey (Lane A work, on branch ios-owner)",
+  "in_progress": "",
   "blocked_on": null,
   "ready_for_others": [
     "python -m standardphysics_api serves the real upload contract on :8787 (Lane A can point API_BASE_URL at the demo machine)",
@@ -86,9 +87,10 @@
   "needs_human": [
     "Record the second check on the rules (docs/handoffs/D-to-C-rule-review.md). Until then every report carries the preview notice.",
     "On the Droplet, set SP_TEAM_EMAILS to the team's emails, or developer mode and the team pages stay hidden from everyone",
-    "Make an APNs key (Apple Developer > Keys) and set SP_APNS_KEY_PATH, SP_APNS_KEY_ID and SP_APNS_TEAM_ID on the Droplet, or pushes are only logged",
+    "The APNs key (NBRZ7525RM) is made. Copy it to /mnt/standardphysics-scans/keys on the Droplet and set SP_APNS_KEY_PATH=/data/keys/AuthKey_NBRZ7525RM.p8, SP_APNS_KEY_ID and SP_APNS_TEAM_ID in .env, or pushes are only logged",
     "Enable Sign in with Apple and Push Notifications for App ID com.standardphysics.capture in the developer portal",
     "Deploy master to the Droplet after the Sep 26-27 shop visits (scripts/deploy.sh)",
+    "After the deploy, send build 7 to TestFlight with scripts/ship-ios.sh, then try Apple sign-in, a push and a real walk on a LiDAR phone",
     "Lane A: decide what the capture gate requires; PROGRESS.md A-47 has the data",
     "Decide whether dead-end turning space (304.3.1) is a recommendation, which needs a new Finding outcome in contracts",
     "Decide whether door_clearance_blocked should report the chair in the doorway as a route finding too (relabelled in 1084818)",
