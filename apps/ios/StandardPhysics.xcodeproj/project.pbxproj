@@ -57,6 +57,7 @@
 		C6FD36C26CF86B862EF78613 /* LibreFranklin-ExtraBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F9BF4F87DF3836D0AB7F4636 /* LibreFranklin-ExtraBold.ttf */; };
 		CCA06A6F9298BAF322C19D66 /* ScanUploadClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C7A6109602F424AC81F4B81 /* ScanUploadClient.swift */; };
 		D71E2E6B06C952CEC43B03CB /* LibreFranklin-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E822CFE0693E33CDA2D1BF3B /* LibreFranklin-Bold.ttf */; };
+		DEF52F2471795AF9A3180603 /* SessionOwnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 509E78F9F10F46B49C5078B2 /* SessionOwnerTests.swift */; };
 		E103411EA09E6A9164777649 /* ScannedRoomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DDE6D23EFE9CB06F4EFB539 /* ScannedRoomView.swift */; };
 		E6CC2441BE34F67E0B398083 /* Karla-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5526B07C28987E15F8C00DE /* Karla-Medium.ttf */; };
 		E77A0675C88B70CE1464835A /* UploadStatusScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F7627C4327425119C0A5877 /* UploadStatusScreen.swift */; };
@@ -96,6 +97,7 @@
 		4443BDB37BB52F3542FBC466 /* StandardPhysicsTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = StandardPhysicsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4600DB3A7BEEAEF3F23ADC57 /* StandardPhysicsApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardPhysicsApp.swift; sourceTree = "<group>"; };
 		46525BF5D2C5213EB7FED758 /* SceneCaptureConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneCaptureConfiguration.swift; sourceTree = "<group>"; };
+		509E78F9F10F46B49C5078B2 /* SessionOwnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOwnerTests.swift; sourceTree = "<group>"; };
 		52376FEBBD4E599CC43E78B9 /* ScanObjectLocatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanObjectLocatorTests.swift; sourceTree = "<group>"; };
 		5281D7312D6F754DBC7B8377 /* ScanExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanExportTests.swift; sourceTree = "<group>"; };
 		580A469595355055D93921C9 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
@@ -154,6 +156,7 @@
 				3D815183B48F2D9B575F78EE /* ScanUploadClientTests.swift */,
 				C758129B01C0A98678E154B7 /* SceneCaptureConfigurationTests.swift */,
 				C926B3CA63F6EC0109187025 /* ServiceAddressTests.swift */,
+				509E78F9F10F46B49C5078B2 /* SessionOwnerTests.swift */,
 				C1B73E7972ABEBD9BEE9AB14 /* UploadViewModelTests.swift */,
 				CB0DF9605AC317A7D73BAE94 /* WalkthroughVideoRecorderTests.swift */,
 			);
@@ -466,6 +469,7 @@
 				0CBD8766D6CD6A0CCEE98B85 /* ScanUploadClientTests.swift in Sources */,
 				3E2B82D92927A86CDA8F4168 /* SceneCaptureConfigurationTests.swift in Sources */,
 				55856F61BF5F62342954D9DF /* ServiceAddressTests.swift in Sources */,
+				DEF52F2471795AF9A3180603 /* SessionOwnerTests.swift in Sources */,
 				58500215EB25C687904FAB73 /* UploadViewModelTests.swift in Sources */,
 				BF7EDD1670A4CBAA90BDFA4B /* WalkthroughVideoRecorderTests.swift in Sources */,
 			);

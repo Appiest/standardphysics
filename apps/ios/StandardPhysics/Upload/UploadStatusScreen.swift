@@ -58,6 +58,9 @@ struct UploadStatusScreen: View {
         if uploadModel.state == .ready, let scanID = uploadModel.scanID {
             Button("Open your shop") { appModel.screen = .workspace(scanID) }
                 .buttonStyle(AppButtonStyle())
+        } else if uploadModel.needsSignIn {
+            Button("Sign in and keep uploading") { appModel.signInToContinue(uploadModel) }
+                .buttonStyle(AppButtonStyle())
         } else if uploadModel.errorMessage != nil {
             Button("Try again") { uploadModel.retry() }
                 .buttonStyle(AppButtonStyle())

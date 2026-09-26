@@ -26,6 +26,53 @@ final class AppModel: ObservableObject {
     @Published private(set) var recoveryDirectories: [URL] = []
     @Published private(set) var recoveryMessage: String?
     private var uploads: [UUID: UploadViewModel] = [:]
+    /// The upload that sent the owner to sign in, so signing in finishes it.
+    private var pendingUpload: (scan: CapturedScan, name: String)?
+
+    init() {
+        enforceDeveloperModeRole()
+        Task { await refreshSession() }
+    }
+
+    func refreshSession() async {
+        await session.refresh()
+        enforceDeveloperModeRole()
+    }
+
+    /// Developer mode is for the team. Anyone else who had it switched on
+    /// before roles existed gets it switched off.
+    private func enforceDeveloperModeRole() {
+        guard session.owner?.isTeam != true, developerMode else { return }
+        developerMode = false
+    }
+
+    func didSignIn() {
+        enforceDeveloperModeRole()
+        guard let pending = pendingUpload else {
+            showStart()
+            return
+        }
+        pendingUpload = nil
+        uploads.removeValue(forKey: pending.scan.id)?.cancel()
+        upload(scan: pending.scan, name: pending.name)
+    }
+
+    /// The server ended the session partway through an upload. Signing in
+    /// again picks the same upload back up.
+    func signInToContinue(_ upload: UploadViewModel) {
+        pendingUpload = (upload.scan, upload.name)
+        screen = .signIn
+    }
+
+    /// Back from sign-in goes to wherever sign-in interrupted.
+    func leaveSignIn() {
+        guard let pending = pendingUpload else {
+            showStart()
+            return
+        }
+        pendingUpload = nil
+        screen = .review(pending.scan)
+    }
 
     /// What the scan asks of them, before the camera covers the screen.
     ///
@@ -58,6 +105,7 @@ final class AppModel: ObservableObject {
         uploads.values.forEach { $0.cancel() }
         uploads.removeAll()
         session.signOut()
+        enforceDeveloperModeRole()
         screen = .signIn
     }
 
@@ -101,6 +149,7 @@ final class AppModel: ObservableObject {
             return
         }
         guard let token = session.token else {
+            pendingUpload = (scan, name)
             screen = .signIn
             return
         }
@@ -422,16 +471,18 @@ private struct AccountRow: View {
                     Text(owner.shopName)
                         .font(AppTheme.Typography.heading)
                         .foregroundStyle(AppTheme.ink)
-                    Text(owner.email)
+                    Text(owner.email ?? "")
                         .font(AppTheme.Typography.measurement)
                         .foregroundStyle(AppTheme.mutedInk)
                 }
                 Button("Sign out") { model.signOut() }
                     .buttonStyle(AppButtonStyle(.secondary))
-                Toggle("Developer mode", isOn: $model.developerMode)
-                    .font(AppTheme.Typography.secondary)
-                    .foregroundStyle(AppTheme.mutedInk)
-                    .tint(AppTheme.accent)
+                if owner.isTeam {
+                    Toggle("Developer mode", isOn: $model.developerMode)
+                        .font(AppTheme.Typography.secondary)
+                        .foregroundStyle(AppTheme.mutedInk)
+                        .tint(AppTheme.accent)
+                }
                 Button("Delete account") { confirmingDeletion = true }
                     .buttonStyle(AppButtonStyle(.destructive))
                 if let message = model.accountDeletionMessage {

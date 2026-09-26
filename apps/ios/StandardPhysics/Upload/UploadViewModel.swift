@@ -9,6 +9,8 @@ final class UploadViewModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var optionalUploadErrorMessage: String?
     @Published private(set) var pendingOptionalUploadCount = 0
+    /// The server ended the session, so only signing in again will help.
+    @Published private(set) var needsSignIn = false
 
     private static let coreArtifactKinds: [ArtifactKind] = [
         .roomMetadata,
@@ -18,8 +20,8 @@ final class UploadViewModel: ObservableObject {
         .roomJSON
     ]
 
-    private let scan: CapturedScan
-    private let name: String
+    let scan: CapturedScan
+    let name: String
     private let client: ScanUploadClient
     private let pollInterval: Duration
     private var uploadStore: ResumableUploadStore
@@ -138,6 +140,7 @@ final class UploadViewModel: ObservableObject {
         } catch UploadClientError.signedOut {
             guard isActive(runID) else { return }
             state = .failed
+            needsSignIn = true
             errorMessage = "Your session ended. Sign in again, then upload this scan."
             finish(runID)
         } catch UploadClientError.remoteScanMissing {
