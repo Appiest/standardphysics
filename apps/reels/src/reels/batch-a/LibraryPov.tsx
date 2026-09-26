@@ -96,7 +96,7 @@ export function LibraryPov() {
       </Sequence>
       <Sequence from={CUTS.model} durationInFrames={CUTS.caught - CUTS.model} layout="none">
         <ModelSweep>
-          <TapeLines lines={["and now the whole", "room is in 3D"]} at={24} />
+          <TapeLines lines={["and now the whole", "library is in 3D"]} at={24} />
         </ModelSweep>
       </Sequence>
       <Sequence from={CUTS.caught} durationInFrames={CUTS.end - CUTS.caught + 20} layout="none">

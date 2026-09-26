@@ -78,7 +78,7 @@ export function TherapyMeme() {
         </Sequence>
       </Sequence>
       <Sequence from={BEATS.model} durationInFrames={BEATS.dots - BEATS.model} layout="none">
-        <ModelSweep startReveal={0.25} spin={0.01} />
+        <ModelSweep startReveal={0.35} spin={0.006} paintAt={20} />
       </Sequence>
       <Sequence from={BEATS.dots} layout="none">
         <Sunflower />

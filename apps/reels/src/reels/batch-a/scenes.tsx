@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useCurrentFrame } from "remotion";
-import { LidarRoom } from "../../components/LidarRoom";
+import { ScanToPhoto } from "../../components/ScanToPhoto";
 import { Shot } from "../../components/Shot";
 import { progress, sweep } from "../../lib/ease";
 import { REEL } from "../../lib/timing";
@@ -20,22 +20,22 @@ export function PhoneDive({ clip, diveAt, children }: { clip: string; diveAt: nu
   );
 }
 
-type ModelSweepProps = { children?: ReactNode; spin?: number; startReveal?: number; radius?: number };
+type ModelSweepProps = { children?: ReactNode; spin?: number; startReveal?: number; paintAt?: number };
 
-/** The test1 LiDAR room on black, measured into view by the scan front and turning slowly. */
-export function ModelSweep({ children, spin = 0.006, startReveal = 0.5, radius = 6.2 }: ModelSweepProps) {
+/** The Moffitt floor on black: the LiDAR measures it in as clay, then the scan bar comes back and paints it with the walk's photos. */
+export function ModelSweep({ children, spin = 0.004, startReveal = 0.5, paintAt = 30 }: ModelSweepProps) {
   const frame = useCurrentFrame();
-  const reveal = startReveal + (1 - startReveal) * progress(frame, 0, 34, sweep);
+  const measured = startReveal + (1 - startReveal) * progress(frame, 0, 26, sweep);
+  const painted = progress(frame, paintAt, 26, sweep);
   return (
     <div className="absolute inset-0 bg-night">
-      <LidarRoom
-        scan="test1"
+      <ScanToPhoto
+        scan="moffett"
         width={REEL.width}
         height={REEL.height}
-        reveal={reveal}
-        cutaway={2.3}
-        radius={radius}
-        camera={{ azimuth: -0.5 + frame * spin, elevation: 0.6 + reveal * 0.3, distance: 33 - reveal * 3 }}
+        measured={measured}
+        painted={painted}
+        camera={{ azimuth: 0.4 + frame * spin, elevation: 0.72 + measured * 0.2, distance: 86 - measured * 8 }}
       />
       {children}
     </div>
