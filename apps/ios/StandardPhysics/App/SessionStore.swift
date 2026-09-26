@@ -14,14 +14,46 @@ import Security
 /// it does not belong.
 @MainActor
 final class SessionStore: ObservableObject {
+    /// Who is signed in, as the server's `Session` describes them.
+    ///
+    /// Everything past the shop name is optional on the wire: a phone that
+    /// signed in before roles existed has an owner saved without them, and an
+    /// owner is the safe reading of a missing role.
     struct Owner: Codable, Equatable, Sendable {
-        let email: String
+        enum Role: String, Codable, Sendable { case owner, team }
+
+        let email: String?
         let shopName: String
+        let role: Role
+        let guest: Bool
+        let deletesAt: String?
 
         enum CodingKeys: String, CodingKey {
             case email
             case shopName = "shop_name"
+            case role
+            case guest
+            case deletesAt = "deletes_at"
         }
+
+        init(email: String?, shopName: String, role: Role = .owner, guest: Bool = false, deletesAt: String? = nil) {
+            self.email = email
+            self.shopName = shopName
+            self.role = role
+            self.guest = guest
+            self.deletesAt = deletesAt
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            email = try container.decodeIfPresent(String.self, forKey: .email)
+            shopName = try container.decodeIfPresent(String.self, forKey: .shopName) ?? ""
+            role = (try? container.decodeIfPresent(Role.self, forKey: .role)) ?? .owner
+            guest = try container.decodeIfPresent(Bool.self, forKey: .guest) ?? false
+            deletesAt = try container.decodeIfPresent(String.self, forKey: .deletesAt)
+        }
+
+        var isTeam: Bool { role == .team }
     }
 
     enum ServerError: LocalizedError {
@@ -74,6 +106,29 @@ final class SessionStore: ObservableObject {
         Keychain.write(bearer, service: service, account: account)
         storedOwner = signedIn
         owner = signedIn
+    }
+
+    /// Asks the server who this token belongs to now.
+    ///
+    /// A role can change after sign-in, and a phone signed in before roles
+    /// existed has none saved. A refused token is forgotten, since every call
+    /// made with it would be refused too; a server that cannot be reached
+    /// changes nothing.
+    func refresh() async {
+        guard let baseURL = AppEnvironment.apiBaseURL, let token, let account = accountKey else { return }
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/auth/session"))
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse else { return }
+        if http.statusCode == 401 {
+            Keychain.delete(service: service, account: account)
+            storedOwner = nil
+            owner = nil
+            return
+        }
+        guard http.statusCode == 200, let current = try? JSONDecoder().decode(Owner.self, from: data) else { return }
+        storedOwner = current
+        owner = current
     }
 
     /// Ends the account on the server, then forgets it here.

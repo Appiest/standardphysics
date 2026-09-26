@@ -48,7 +48,12 @@ struct SignInScreen: View {
             .navigationTitle("Sign in")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Connection") { model.screen = .connection }
+                    Button("Back") { model.leaveSignIn() }
+                }
+                if !AppEnvironment.addressesAreCompiledIn {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Connection") { model.screen = .connection }
+                    }
                 }
             }
         }
@@ -61,7 +66,7 @@ struct SignInScreen: View {
             do {
                 try await session.signIn(email: email, password: password)
                 password = ""
-                model.showStart()
+                model.didSignIn()
             } catch {
                 self.error = error.localizedDescription
             }
