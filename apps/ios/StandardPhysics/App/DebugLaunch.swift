@@ -53,6 +53,7 @@ enum DebugLaunch {
         "unsupported": .unsupported,
         "signIn": .signIn,
         "example": .web(.example),
+        "capture": .capture,
     ]
 
     // MARK: Requests

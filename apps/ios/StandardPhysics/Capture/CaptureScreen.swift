@@ -17,6 +17,12 @@ struct CaptureScreen: View {
     /// an unpainted wall says where to walk and how much is left at once.
     private var painting: Bool { model.developerMode }
 
+    /// The arrow points at the nearest gap, so it waits until RoomPlan has
+    /// found a wall to point at and goes once there are no gaps.
+    private var showsArrow: Bool {
+        !painting && capture.phase == .scanning && !capture.surfaces.isEmpty && !capture.coverage.isComplete
+    }
+
     var body: some View {
         ZStack {
             if isPreview {
@@ -42,7 +48,7 @@ struct CaptureScreen: View {
             VStack(spacing: AppTheme.Spacing.control) {
                 captureHeader
                 Spacer()
-                if !painting && capture.phase == .scanning && !capture.coverage.isComplete {
+                if showsArrow {
                     GuidanceArrow(angle: capture.coverage.unfinishedDirection.radians)
                 }
                 if !painting {
