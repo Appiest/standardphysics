@@ -135,8 +135,12 @@ over a 0.7 GB base, so six times the viewer's 260,000 faces is under two
 gigabytes, where a library floor's four million had needed three."""
 MAX_BLENDER_FACES = 1_560_000
 """The most faces Blender is ever handed, which holds it under two gigabytes however large the viewer's budget."""
-VIEWER_SHARE = 4
-"""The viewer keeps about one face in this many of the scan, the thinning a single walk has always had."""
+VIEWER_SHARE = 8
+"""The viewer keeps about one face in this many of the scan.
+
+A walk painted on its own keeps about the 260,000 faces and one atlas each
+Moffitt walk had when the floor looked right; one in four gave a walk twice the
+faces spread over three small atlases, a third fewer texels in all."""
 MIN_VIEWER_FACES = 260_000
 MAX_VIEWER_FACES = 1_000_000
 """The most faces the viewer is given, which is what four walks of a library floor came to when each was painted alone."""
@@ -145,8 +149,8 @@ ATLAS_FACES = MIN_VIEWER_FACES
 
 
 def atlas_count(faces: int) -> int:
-    """How many atlases the viewer's faces are packed into, one per ATLAS_FACES."""
-    return max(1, -(-faces // ATLAS_FACES))
+    """How many atlases the viewer's faces are packed into, about one per ATLAS_FACES."""
+    return max(1, round(faces / ATLAS_FACES))
 
 
 def viewer_faces(scan: ColouredScan) -> int:
