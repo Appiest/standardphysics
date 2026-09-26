@@ -27,13 +27,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3, lies_flat, to_meters
+from standardphysics_pipeline.occupancy import reads_as_wall
+
+from ..checks.walls import is_room_shell
 
 MAX_WALL_SHIFT_INCHES = 12.0
 MAX_FIXTURE_MOVE_INCHES = 24.0
 EDGE_TOLERANCE_METERS = 0.35
 """How far a wall's centre line may sit from the floor edge and still stand on it."""
 PARALLEL_COSINE = 0.3
-CARRIED_KINDS = frozenset({"wall", "door", "window", "opening"})
 
 Side = Literal["x+", "x-", "y+", "y-"]
 SIDES: tuple[Side, ...] = ("x+", "x-", "y+", "y-")
@@ -64,7 +66,7 @@ def fixture_ids(graph: SceneGraph) -> set[UUID]:
         return any(abs(_offset(node, edge) - edge.half_extent) <= EDGE_TOLERANCE_METERS for edge in edges)
 
     return {node.id for node in graph.nodes if not node.movable and not lies_flat(node)
-            and (node.kind == "object" or (node.kind == "wall" and not on_an_edge(node)))}
+            and (not is_room_shell(node) or (reads_as_wall(node) and not on_an_edge(node)))}
 
 
 @dataclass(frozen=True)
@@ -153,12 +155,10 @@ def _offset(node: SceneNode, edge: FloorEdge) -> float:
 
 def _shifted_node(node: SceneNode, edge: FloorEdge, meters: float) -> SceneNode:
     dx, dy = edge.outward[0] * meters, edge.outward[1] * meters
-    if node.kind == "floor" or lies_flat(node):
-        return node
-    if node.kind not in CARRIED_KINDS:
+    if lies_flat(node) or not is_room_shell(node):
         return node
     offset = _offset(node, edge)
-    if node.kind == "wall":
+    if reads_as_wall(node):
         long_axis = _long_axis(node)
         direction = _unit(*_axis(node, long_axis)[:2])
         cosine = abs(direction[0] * edge.outward[0] + direction[1] * edge.outward[1])
