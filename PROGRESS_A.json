@@ -1,6 +1,6 @@
 {
   "lane": "A",
-  "updated": "2026-09-13T01:16:00Z",
+  "updated": "2026-09-26T11:40:00Z",
   "done": [
     "iOS 17 Xcode project builds on the simulator",
     "device support gate and start screen",
@@ -16,7 +16,14 @@
     "resumable checksum upload, finalization, and status polling",
     "allowlisted WebView shell and native capture bridge",
     "native-size simulator visual verification",
-    "signed device build installed and launched on the paired iPhone 17 Pro"
+    "signed device build installed and launched on the paired iPhone 17 Pro",
+    "coverage gate settled (A-47): walls by area at 70%/2 views/5 m/60 degrees, floor at half, furniture never blocks; both phone walks now finish",
+    "walk: opening coaching, a tap per finished wall, a 30 second warning before the 4 minute cap, and Done turning white at \"That's everything we need\"",
+    "sign-in has Back, resumes the upload it interrupted, and developer mode shows only to team accounts",
+    "owner first run (docs/UX.md screens 1-8): welcome, checklist, camera, guest upload, quick answers, quick photos, door push, measuring wait with save and notifications",
+    "home next-step card from GET /api/journeys; phones without LiDAR can sign in or open the example",
+    "web view bridge: standardPhysics handler, StandardPhysicsApp user agent, Safari for outside links, target=_blank, HttpOnly session cookie",
+    "live first-run test against a real API (SP_LIVE_API)"
   ],
   "in_progress": "Complete: test1 reconstruction, merged evaluation repair and regression checks verified",
   "evaluation_regression": {
@@ -71,6 +78,9 @@
   "needs_human": [
     "Inspect test1 close-up for remaining people and judge desk/TV surface quality",
     "Hand the phone to a first-time scanner and watch whether the guidance works",
-    "Time a real scan from pressing Done until its workspace is ready and confirm it stays within 60 seconds"
+    "Time a real scan from pressing Done until its workspace is ready and confirm it stays within 60 seconds",
+    "Enable Sign in with Apple and Push Notifications for App ID com.standardphysics.capture in the developer portal",
+    "Give the API an APNs .p8 key (SP_APNS_KEY_PATH, SP_APNS_KEY_ID, SP_APNS_TEAM_ID) so pushes are sent instead of logged",
+    "Try Sign in with Apple and a push on a real phone; the simulator has neither"
   ]
 }

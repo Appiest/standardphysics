@@ -69,7 +69,7 @@ struct UploadStatusScreen: View {
             Button("Retry remaining uploads") { uploadModel.retry() }
                 .buttonStyle(AppButtonStyle(.secondary))
         }
-        Button("Back to saved scans") { appModel.showStart() }
+        Button("Go to home") { appModel.showStart() }
             .buttonStyle(AppButtonStyle(.secondary))
     }
 }
