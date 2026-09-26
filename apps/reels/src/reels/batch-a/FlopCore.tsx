@@ -15,7 +15,7 @@ function RawScan() {
   const frame = useCurrentFrame();
   return (
     <div className="absolute inset-0 bg-night">
-      <LidarRoom scan="test1" width={REEL.width} height={REEL.height} reveal={1} cutaway={2.3} camera={{ azimuth: 1.2 + frame * 0.012, elevation: 0.42, distance: 24 }} />
+      <LidarRoom scan="moffett" width={REEL.width} height={REEL.height} reveal={1} cutaway={2.3} radius={40} camera={{ azimuth: 1.2 + frame * 0.008, elevation: 0.45, distance: 40, target: [22, 0.2, -10] }} />
       <TapeLines lines={["5. a raw scan", "before cleanup"]} at={4} />
     </div>
   );
