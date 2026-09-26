@@ -347,7 +347,7 @@ const ModelNode = memo(function ModelNode({ placed, ...props }: ModelNodeProps) 
       {...drag}
     >
       <DisplayMaterial source={placed.sourceMaterial} node={node} faded={faded} clipWall={clipWall} mode={props.materialMode} stale={props.staleNodeIds?.has(node.id)} coverage={props.coverage?.get(node.id)} pickOnly={props.pickOnly} />
-      {outline && !props.pickOnly && !props.lightweight && <Edges threshold={20} lineWidth={3} color={outline} renderOrder={5} clippingPlanes={clipWall ? WALL_CLIP_PLANES : null} />}
+      {outline && !props.lightweight && <Edges threshold={20} lineWidth={3} color={outline} renderOrder={5} depthTest={!props.pickOnly} clippingPlanes={clipWall ? WALL_CLIP_PLANES : null} />}
       {lockable && hovered && !props.pickOnly && <LockMark node={node} />}
     </mesh>
   );

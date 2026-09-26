@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { OwnerView } from "@/components/owner/OwnerView";
 import { RefreshWhile } from "@/components/RefreshWhile";
-import { getAssessment, getChecklist, getJourney, getPathSuggestion, getRequests, getScan, getScenario, getScene, readyGlbUrl } from "@/lib/api";
+import { getAssessment, getChecklist, getJourney, getPathSuggestion, getRequests, getScan, getScenario, getScene, getTextureStatus, readyGlbUrl } from "@/lib/api";
 import { isAppUserAgent } from "@/lib/native-bridge";
 import { defaultPlaces, isWaiting } from "@/lib/owner-journey";
 import { requireSession } from "@/lib/session";
@@ -27,6 +27,13 @@ function modelUrl(scan: Scan, scene: SceneGraph | null): Promise<string | null> 
   return scene && hasDrawnSurfaces(scan) ? readyGlbUrl(scan.id) : null;
 }
 
+/** The painted scan, which is the shop as it looks; the boxes lose most of a large room's detail. */
+async function paintedScanUrl(scan: Scan, scene: SceneGraph | null): Promise<string | null> {
+  if (!scene || !hasDrawnSurfaces(scan)) return null;
+  const status = await getTextureStatus(scan.id, scene.revision);
+  return status?.build?.scan_glb_url ?? null;
+}
+
 /** The suggested path, fetched only when the owner is about to shape it. */
 function pathToShape(scanId: string, journey: Journey, places: string[]): Promise<Scenario | null> | null {
   const shaping = journey.next_step.kind === "counter" || journey.next_step.kind === "path";
@@ -43,7 +50,7 @@ export default async function OwnerShopPage({ params }: PageProps<"/shops/[scanI
     getRequests(scanId), getScene(scanId), getAssessment(scanId), getChecklist(scanId), getScenario(scanId),
   ]);
   const places = defaultPlaces(requests);
-  const [glbUrl, suggestedPath] = await Promise.all([modelUrl(scan, scene), pathToShape(scanId, journey, places)]);
+  const [glbUrl, scanGlbUrl, suggestedPath] = await Promise.all([modelUrl(scan, scene), paintedScanUrl(scan, scene), pathToShape(scanId, journey, places)]);
   const embedded = isAppUserAgent((await headers()).get("user-agent"));
   return (
     <>
@@ -54,6 +61,7 @@ export default async function OwnerShopPage({ params }: PageProps<"/shops/[scanI
         requests={requests}
         scene={scene}
         glbUrl={glbUrl}
+        scanGlbUrl={scanGlbUrl}
         assessment={assessment}
         checklist={checklist ?? NO_CHECKLIST}
         suggestedPath={suggestedPath}

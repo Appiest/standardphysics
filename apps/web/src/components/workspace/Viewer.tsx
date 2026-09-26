@@ -122,7 +122,7 @@ function capturedRoom(props: ShopSurfacesProps, boxes: ReactNode, picking: React
   if (splatsOnScreen && splatAssets) {
     return <SplatRoom key={JSON.stringify(splatAssets)} assets={splatAssets} fallback={boxes} picking={picking} onError={props.onSplatError} />;
   }
-  if (materialMode === "scan" && scanGlbUrl) return <ScannedRoom url={scanGlbUrl} whileLoading={boxes} cutAbove={props.cutWalls ? SCAN_CUT_HEIGHT : null} />;
+  if (materialMode === "scan" && scanGlbUrl) return <ScannedRoom url={scanGlbUrl} whileLoading={boxes} picking={picking} cutAbove={props.cutWalls ? SCAN_CUT_HEIGHT : null} />;
   return null;
 }
 
@@ -196,13 +196,15 @@ function SplatRoom({ assets, fallback, picking, onError }: { assets: CapturedSpl
  *
  * Two surfaces a few centimetres apart fight over every pixel, and the boxes
  * miss the real surfaces by inches, so drawing both at once gives a room that
- * flickers. The boxes stand in only while the scan is on its way.
+ * flickers. The boxes stand in only while the scan is on its way. Once it is
+ * there they stay as invisible targets, so tapping the scanned counter still
+ * picks the counter, and a picked piece is outlined over the scan.
  */
-function ScannedRoom({ url, whileLoading, cutAbove }: { url: string; whileLoading: ReactNode; cutAbove: number | null }) {
+function ScannedRoom({ url, whileLoading, picking, cutAbove }: { url: string; whileLoading: ReactNode; picking: ReactNode; cutAbove: number | null }) {
   return (
     <group>
       <GlbFallback key={url} fallback={whileLoading}>
-        <Suspense fallback={whileLoading}><PaintedScan url={url} cutAbove={cutAbove} /></Suspense>
+        <Suspense fallback={whileLoading}><PaintedScan url={url} cutAbove={cutAbove} />{picking}</Suspense>
       </GlbFallback>
     </group>
   );

@@ -35,6 +35,8 @@ export type OwnerViewProps = {
   requests: OwnerRequest[];
   scene: SceneGraph | null;
   glbUrl: string | null;
+  /** The painted scan of the shop, when its photos have been baked onto it. */
+  scanGlbUrl?: string | null;
   assessment: Assessment | null;
   checklist: Checklist;
   suggestedPath: Scenario | null;
@@ -255,7 +257,7 @@ function OwnerShop(props: ShopProps) {
   };
 
   return (
-    <Frame shopName={scan.name} embedded={props.embedded} end={shopEnd(props)} model={<><OwnerModel scene={scene} glbUrl={props.glbUrl} setup={setup} lightweight={props.embedded} />{panel === "wheelchair" && <DrivingPad />}</>} size={modelSize(panel)} step={panel}>
+    <Frame shopName={scan.name} embedded={props.embedded} end={shopEnd(props)} model={<><OwnerModel scene={scene} glbUrl={props.glbUrl} scanGlbUrl={props.scanGlbUrl ?? null} setup={setup} lightweight={props.embedded} />{panel === "wheelchair" && <DrivingPad />}</>} size={modelSize(panel)} step={panel}>
       {content[panel]()}
       <SavePrompt open={save.open} inApp={props.embedded} onClose={save.close} />
     </Frame>
