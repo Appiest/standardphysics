@@ -18,6 +18,7 @@ struct WorkspaceScreen: View {
                         url: destination.url(on: workspaceURL),
                         allowedOrigin: origin,
                         session: appModel.session,
+                        canWalk: appModel.canScan,
                         makeBridge: { reload in
                             WebBridge(app: appModel, scanID: destination.scanID, reloadSignedIn: reload)
                         },
@@ -57,6 +58,9 @@ struct WorkspaceWebView: UIViewRepresentable {
     let url: URL
     let allowedOrigin: WebOrigin
     let session: SessionStore
+    /// A phone without LiDAR leaves out the walk's handler, so the page hides
+    /// its "Measure your shop" button instead of offering a walk it can't take.
+    let canWalk: Bool
     let makeBridge: (@escaping () -> Void) -> WebBridge
     let onFailure: (String) -> Void
 
@@ -73,7 +77,7 @@ struct WorkspaceWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let contentController = WKUserContentController()
-        contentController.add(context.coordinator, name: "nativeCapture")
+        if canWalk { contentController.add(context.coordinator, name: "nativeCapture") }
         contentController.add(context.coordinator, name: WebBridgeMessage.handlerName)
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
