@@ -185,14 +185,18 @@ class Meter:
         self.spend.sample_tokens += sample_tokens
         self.path.write_text(json.dumps(self.spend.as_dict()) + "\n")
 
+    def charge_answers(self, prompts: list, answers: list) -> None:
+        prompt_tokens = sum(prompt.length * answer.attempts for prompt, answer in zip(prompts, answers))
+        sample_tokens = sum(answer.sample_tokens + (answer.attempts - 1) * self.sample_cap for answer in answers)
+        self.charge(prompt_tokens, sample_tokens)
+
 
 def _round(model, pool, rebuilds: list[Rebuild], windows: dict, meter: Meter, loop: int) -> None:
     prompts = model.prompts([rebuild.messages for rebuild in rebuilds])
     prompt_tokens = sum(prompt.length for prompt in prompts)
     meter.reserve(prompt_tokens, len(prompts))
     answers = model.answer_all(prompts)
-    meter.charge(sum(prompt.length * answer.attempts for prompt, answer in zip(prompts, answers)),
-                 sum(answer.sample_tokens for answer in answers))
+    meter.charge_answers(prompts, answers)
     jobs = [(windows[rebuild.shuffle["window_id"]], rebuild.current, answer.text)
             for rebuild, answer in zip(rebuilds, answers)]
     for rebuild, answer, judged in zip(rebuilds, answers, pool.starmap(step, jobs)):

@@ -87,7 +87,7 @@ def test_meter_reloads_spend_and_reserves_for_a_retry(tmp_path):
     path = tmp_path / "spend.json"
     meter = Meter(path, budget=0.00005, sample_cap=2)
     meter.reserve(prompt_tokens=2, answers=1)
-    meter.charge(prompt_tokens=4, sample_tokens=2)
+    meter.charge_answers([SimpleNamespace(length=2)], [SimpleNamespace(attempts=2, sample_tokens=0)])
 
     saved = json.loads(path.read_text())
     assert saved["prefill_tokens"] == 4
