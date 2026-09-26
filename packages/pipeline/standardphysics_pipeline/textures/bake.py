@@ -26,12 +26,12 @@ from .project import (
     bilinear,
     exposure_gains,
     in_parallel,
+    occluder_depth_buffer,
     pad_gutters,
     rasterize_atlas,
     sample_surface,
     to_linear,
     to_srgb,
-    triangle_depth_buffer,
     view_samples,
 )
 from .stages import advanced, timed
@@ -357,9 +357,9 @@ def _validate_image(camera: PhotoCamera, path: pathlib.Path, image: Image.Image)
 
 
 def _depth_buffers(cameras: list[PhotoCamera], triangles: np.ndarray) -> list[np.ndarray]:
-    """Each photo's depth buffer, drawn from only the faces in cubes its frame reaches, on every core."""
+    """Each photo's depth buffer on every core, drawn from the faces in cubes its frame reaches, nearest cubes first."""
     blocks = TriangleBlocks(triangles)
-    return list(in_parallel(lambda camera: triangle_depth_buffer(camera, triangles[blocks.seen_by(camera)]), cameras))
+    return list(in_parallel(lambda camera: occluder_depth_buffer(camera, triangles, blocks), cameras))
 
 
 def _exposure_gains(world, cameras, images, clean_buffers, lidar_buffers) -> np.ndarray:
