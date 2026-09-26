@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SceneNode } from "@/types/contracts";
-import { DEFAULT_WHEELCHAIR_PROFILE, assessOutletAccessibility, collidesAt, dockPoint, sweepWheelchair, sweepWheelchairInGeometry, wheelchairMotionGeometry, wheelchairProfile, wheelchairSpawn } from "./wheelchair-motion";
+import moffittBinsCorner from "./fixtures/moffitt-bins-corner.json";
+import { DEFAULT_WHEELCHAIR_PROFILE, assessOutletAccessibility, collidesAt, dockPoint, sweepWheelchair, sweepWheelchairInGeometry, targetInView, wheelchairMotionGeometry, wheelchairProfile, wheelchairSpawn } from "./wheelchair-motion";
 
 function node({
   id,
@@ -652,5 +653,26 @@ describe("wheelchair motion geometry", () => {
       expect(res.reachStatus).toBe("needs_verification");
       expect(res.unresolvedReasons.some((r) => r.includes("position is unknown"))).toBe(true);
     });
+  });
+});
+
+describe("what the wheelchair view is facing, in a real corner of Moffitt Library", () => {
+  const geometry = wheelchairMotionGeometry(moffittBinsCorner.nodes as SceneNode[]);
+  const facing = (yawDegrees: number) => {
+    const yaw = (yawDegrees * Math.PI) / 180;
+    return { x: -Math.sin(yaw), z: -Math.cos(yaw) };
+  };
+  const seat = { x: 26.4, z: -15.1 };
+
+  it("names the row of bins straight ahead, not the nearer bench far off to one side", () => {
+    const target = targetInView(seat, facing(254), geometry);
+    expect(target?.node.id).toBe("5fd46214-4b57-5063-a4fe-dc1db0085f50");
+    expect(target?.node.label).not.toBe("Bench");
+  });
+
+  it("names the bench once the view turns to face it", () => {
+    const bench = geometry.targets.find((rect) => rect.node.id === "35bda7cd-45ff-5c9b-acbe-7350307a8fe7")!;
+    const toBench = { x: bench.center.x - seat.x, z: bench.center.z - seat.z };
+    expect(targetInView(seat, toBench, geometry)?.node.id).toBe(bench.node.id);
   });
 });

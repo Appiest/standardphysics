@@ -5,9 +5,10 @@ import { useEffect, useMemo, useRef } from "react";
 import { MathUtils, Vector3 } from "three";
 import type { SceneGraph, SceneNode } from "@/types/contracts";
 import {
-  distanceToRect,
   dockPoint,
+  LOOK_LIMIT,
   sweepWheelchairInGeometry,
+  targetInView,
   wheelchairMotionGeometry,
   wheelchairSpawn,
   type MotionPoint,
@@ -15,7 +16,6 @@ import {
 } from "@/lib/wheelchair-motion";
 
 const TURN_SPEED = 1.8;
-const REACH_LIMIT = 2.4;
 const STATE_INTERVAL_SECONDS = 0.1;
 
 export type WheelchairState = {
@@ -206,19 +206,7 @@ export function WheelchairController({
     camera.position.copy(pos.current);
     camera.lookAt(pos.current.x + forwardX * 5, pos.current.y, pos.current.z + forwardZ * 5);
 
-    let closestNode: SceneNode | null = null;
-    let minReach = REACH_LIMIT;
-    for (const target of geometry.targets) {
-      const dx = target.center.x - pos.current.x;
-      const dz = target.center.z - pos.current.z;
-      const centerDistance = Math.hypot(dx, dz);
-      const distance = distanceToRect(pos.current, target);
-      const facing = (forwardX * dx + forwardZ * dz) / Math.max(centerDistance, 0.001);
-      if (distance < minReach && facing > 0.5) {
-        closestNode = target.node;
-        minReach = distance;
-      }
-    }
+    const inView = targetInView({ x: pos.current.x, z: pos.current.z }, { x: forwardX, z: forwardZ }, geometry);
 
     const actual = { x: pos.current.x - before.x, z: pos.current.z - before.z };
     const nextState: WheelchairState = {
@@ -226,8 +214,8 @@ export function WheelchairController({
       z: pos.current.z,
       yaw: MathUtils.radToDeg(yaw.current),
       speed: Math.hypot(actual.x, actual.z) / Math.max(dt, 0.001),
-      targetedNode: closestNode,
-      reachDistance: minReach,
+      targetedNode: inView?.node ?? null,
+      reachDistance: inView?.distance ?? LOOK_LIMIT,
     };
     const previousReport = lastReport.current;
     const targetChanged = previousReport?.state.targetedNode?.id !== nextState.targetedNode?.id;
