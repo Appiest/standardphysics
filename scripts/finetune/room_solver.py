@@ -9,23 +9,18 @@ narrowed to the fewest inches that still clear. The answer is always scored by
 
 from __future__ import annotations
 
-import math
 from collections import Counter
 from dataclasses import dataclass
 
-from standardphysics_agents.fix import apply_moves, propose_fix
-from standardphysics_agents.redesign import FurnitureMove
+from standardphysics_agents.fix import propose_fix
 from standardphysics_agents.training import score_completion
 from standardphysics_agents.training.construction import MAX_WALL_SHIFT_INCHES, WallShift, floor_edges, shift_walls
-from standardphysics_agents.training.edits import TrainingEdits, edits_between, edits_json, node_moves
+from standardphysics_agents.training.edits import TrainingEdits, edits_between, edits_json
 from standardphysics_contracts import SceneGraph
 
 SHIFT_STEPS_INCHES = (1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0, MAX_WALL_SHIFT_INCHES)
 SEARCH_LIMIT = 96
 SEARCH_ROUNDS = 8
-NUDGE_METERS = (0.05, 0.1, 0.15, 0.25, 0.4, 0.6)
-NUDGE_DIRECTIONS = tuple((math.cos(math.radians(a)), math.sin(math.radians(a))) for a in range(0, 360, 45))
-NUDGE_ROUNDS = 3
 
 
 @dataclass(frozen=True)
@@ -65,45 +60,9 @@ def _furniture_layout(graph: SceneGraph, checker, rejected: Counter) -> SceneGra
     return layout
 
 
-def _nudgeable(layout: SceneGraph, checker) -> list:
-    """Movable, unpinned pieces named by a remaining fixable problem."""
-    ids = {node_id for finding in checker.fixable_problems(checker.assess(layout)) if finding.locus
-           for node_id in finding.locus.node_ids}
-    return [node for node in layout.nodes if node.id in ids and node.movable and node.id not in checker.pinned]
-
-
-def _nudge_rank(verdict) -> tuple:
-    return (verdict.fixable_left == 0, -verdict.fixable_left, verdict.shortfall_recovered, -verdict.disruption_meters)
-
-
-def _best_nudge(layout: SceneGraph, checker) -> SceneGraph | None:
-    """The single slide of one involved piece the checker likes best, or None when none is accepted."""
-    best, best_rank = None, None
-    for node in _nudgeable(layout, checker):
-        for (ux, uy) in NUDGE_DIRECTIONS:
-            for meters in NUDGE_METERS:
-                edits = TrainingEdits(moves=[FurnitureMove(node_id=node.id, dx=round(ux * meters, 3),
-                                                           dy=round(uy * meters, 3), rotation_degrees=0.0)])
-                verdict = score_completion(edits_json(edits), layout, checker)
-                if verdict.gate_accepts and (best_rank is None or _nudge_rank(verdict) > best_rank):
-                    best, best_rank = apply_moves(layout, node_moves(edits)), _nudge_rank(verdict)
-    return best
-
-
-def _nudged(layout: SceneGraph, checker) -> SceneGraph:
-    for _ in range(NUDGE_ROUNDS):
-        if not checker.fixable_problems(checker.assess(layout)):
-            break
-        step = _best_nudge(layout, checker)
-        if step is None:
-            break
-        layout = step
-    return layout
-
-
 def _attempt(graph: SceneGraph, checker, shifts: list[WallShift], rejected: Counter) -> Solution | None:
     built = shift_walls(graph, shifts)
-    layout = _nudged(_furniture_layout(built, checker, rejected), checker)
+    layout = _furniture_layout(built, checker, rejected)
     edits = TrainingEdits(moves=edits_between(built, layout).moves, wall_shifts=shifts)
     if not edits.moves and not shifts:
         return None
