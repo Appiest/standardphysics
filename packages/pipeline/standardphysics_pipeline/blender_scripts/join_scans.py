@@ -14,6 +14,17 @@ import sys
 import bpy
 from mathutils import Matrix
 
+COMPACT_SCAN = {
+    "export_normals": False,
+    "export_draco_mesh_compression_enable": True,
+    "export_draco_position_quantization": 16,
+    "export_draco_texcoord_quantization": 16,
+}
+"""A painted floor is drawn unlit, so it carries no normals, and its geometry is Draco-compressed.
+
+Every face owns its own atlas island, so no corner is shared and plain floats
+made a library floor 188 MB of geometry, which a phone downloads for minutes.
+Sixteen bits keeps a texture coordinate finer than a texel of a 4096 atlas."""
 MAX_TRIANGLES = 1_100_000
 """A whole floor of scans, thinned only past what a browser can still draw."""
 
@@ -78,7 +89,7 @@ def main() -> None:
     thin(floor, args.max_triangles)
     bpy.ops.export_scene.gltf(
         filepath=args.out, export_format="GLB", use_selection=False,
-        export_yup=True, export_apply=True,
+        export_yup=True, export_apply=True, **COMPACT_SCAN,
     )
     print("FLOOR_GLB_WRITTEN")
 
