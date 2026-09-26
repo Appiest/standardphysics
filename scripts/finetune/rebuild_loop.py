@@ -15,18 +15,18 @@ import argparse
 import json
 import os
 import pathlib
+from dataclasses import dataclass
 
 from fireworks.training.sdk import FiretitanSamplingParams, FiretitanServiceClient
 from multiroom_data import checker_for
+from rebuild_judging import refusal_message
+from serverless_train import BASE_MODEL, RENDERER, SERVERLESS_URL, TOKENIZER_MODEL, Plan
 from standardphysics_agents.training import prompt_messages, score_completion
 from standardphysics_agents.training.windows import Window
 from standardphysics_contracts import SceneGraph
 from training.renderer import get_renderer, get_text_content
 from training.utils.tokenizers import load_tokenizer
 
-SERVERLESS_URL = "https://api.fireworks.ai/training/v1/serverless"
-TOKENIZER_MODEL = "Qwen/Qwen3.8-27B"
-RENDERER = "qwen3_8_disable_thinking_interleaved"
 MAX_ATTEMPTS = 3
 TEMPERATURE = 0.7
 MAX_TOKENS = 512
@@ -36,32 +36,51 @@ def _rows(path: pathlib.Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-def refusal_message(verdict, directives) -> str:
-    lines = [f"That layout was refused: {verdict.reason}."]
-    if verdict.reason.startswith("precedent_violation"):
-        lines += [f"ADA requirement ({directive.title}): {directive.plain_english_warning}" for directive in directives]
-    lines.append("Propose a different layout that clears the problems without that. Answer with JSON only.")
-    return " ".join(lines)
+@dataclass(frozen=True)
+class Answer:
+    text: str
+    sample_tokens: int
+    attempts: int = 1
 
 
 class Model:
-    """A sampler over a saved training state; a sampler snapshot only lives as long as its session."""
+    """A sampler over a saved training state, or over the base model when there is none.
 
-    def __init__(self, state: str):
+    A sampler snapshot only lives as long as its session, so each Model makes its own.
+    """
+
+    def __init__(self, state: str | None):
         self.tokenizer = load_tokenizer(TOKENIZER_MODEL)
         self.renderer = get_renderer(RENDERER, self.tokenizer)
         self.service = FiretitanServiceClient(api_key=os.environ["FIREWORKS_API_KEY"], base_url=SERVERLESS_URL)
-        client = self.service.create_training_client_from_state(state)
+        client = (self.service.create_training_client_from_state(state) if state else
+                  self.service.create_lora_training_client(base_model=BASE_MODEL, rank=Plan.lora_rank,
+                                                           alpha=Plan.lora_alpha))
         snapshot = client.save_weights_for_sampler("rebuild-loop").result().path
         self.sampler = self.service.create_sampling_client(model_path=snapshot, tokenizer=self.tokenizer)
         self.params = FiretitanSamplingParams(max_tokens=MAX_TOKENS, temperature=TEMPERATURE,
                                               stop=self.renderer.get_stop_sequences())
 
+    def prompts(self, conversations: list[list[dict]]) -> list:
+        return [self.renderer.build_generation_prompt(messages) for messages in conversations]
+
+    def answer_all(self, prompts: list) -> list[Answer]:
+        """One answer per rendered prompt, all in flight at once; a failed request is retried once."""
+        futures = [self.sampler.sample(prompt=prompt, num_samples=1, sampling_params=self.params) for prompt in prompts]
+        return [self._answer(future, prompt) for future, prompt in zip(futures, prompts)]
+
+    def _answer(self, future, prompt) -> Answer:
+        attempts = 1
+        try:
+            result = future.result(timeout=1800)
+        except Exception:
+            attempts = 2
+            result = self.sampler.sample(prompt=prompt, num_samples=1, sampling_params=self.params).result(timeout=1800)
+        tokens = list(list(getattr(result, "sequences", []) or [])[0].tokens or [])
+        return Answer(get_text_content(self.renderer.parse_response(tokens)[0]), len(tokens), attempts)
+
     def answer(self, messages: list[dict]) -> str:
-        prompt = self.renderer.build_generation_prompt(messages)
-        result = self.sampler.sample(prompt=prompt, num_samples=1, sampling_params=self.params).result(timeout=900)
-        sequence = list(getattr(result, "sequences", []) or [])[0]
-        return get_text_content(self.renderer.parse_response(list(sequence.tokens or []))[0])
+        return self.answer_all(self.prompts([messages]))[0].text
 
     def close(self) -> None:
         self.sampler.close()

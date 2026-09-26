@@ -36,7 +36,7 @@ also carry Q and should be read with the person-rated pairs, not alone.
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 from standardphysics_contracts import SceneGraph
 
@@ -118,24 +118,36 @@ def _request_complaint(edits, room: SceneGraph, checker: TrainingChecker) -> str
     return edit_complaint(room, edits)
 
 
+@dataclass(frozen=True)
+class Judged:
+    verdict: Verdict
+    layout: SceneGraph | None = None
+    """The snapped layout, when the gate accepted it."""
+
+
 def score_completion(completion: str, room: SceneGraph, checker: TrainingChecker) -> Verdict:
+    return judge(completion, room, checker).verdict
+
+
+def judge(completion: str, room: SceneGraph, checker: TrainingChecker) -> Judged:
     edits = parse_edits(completion)
     if edits is None:
-        return Verdict(0.0, reason="unparseable")
+        return Judged(Verdict(0.0, reason="unparseable"))
     complaint = _request_complaint(edits, room, checker)
     if complaint:
-        return Verdict(0.0, parsed=True, reason=complaint)
+        return Judged(Verdict(0.0, parsed=True, reason=complaint))
     snapped = snap(room, node_moves(edits), checker.directive_rejection(room))
     placed = len(snapped.placements) - len(snapped.unplaced)
     if not placed:
-        return Verdict(0.0, parsed=True, reason=NOTHING_PLACED, unplaced=len(snapped.unplaced))
+        return Judged(Verdict(0.0, parsed=True, reason=NOTHING_PLACED, unplaced=len(snapped.unplaced)))
     broken = violations(room, snapped.graph)
     if broken:
-        return Verdict(0.0, parsed=True, reason=",".join(sorted({item.kind for item in broken})))
+        return Judged(Verdict(0.0, parsed=True, reason=",".join(sorted({item.kind for item in broken}))))
     if snapped.refused:
-        return Verdict(0.0, parsed=True, hard_constraints_pass=True, reason=snapped.refused)
+        return Judged(Verdict(0.0, parsed=True, hard_constraints_pass=True, reason=snapped.refused))
     moved = disruption_meters(node_moves(edits_between(room, snapped.graph)))
-    return _gated(room, snapped, checker, moved)
+    verdict = _gated(room, snapped, checker, moved)
+    return Judged(verdict, snapped.graph if verdict.gate_accepts else None)
 
 
 def summarize(verdicts: list[Verdict]) -> dict:
@@ -181,18 +193,18 @@ def _gated(room: SceneGraph, snapped: Snapped, checker: TrainingChecker, disrupt
     gate = accepts(before, after)
     recovered = _recovered(gate.shortfall_before, gate.shortfall_after)
     left = len(checker.fixable_problems(after))
-    common = {"parsed": True, "hard_constraints_pass": True, "shortfall_recovered": recovered, "fixable_left": left,
-              "disruption_meters": disruption, "snapped_meters": snapped.mean_snap_meters,
-              "unplaced": len(snapped.unplaced)}
+    base = Verdict(0.0, parsed=True, hard_constraints_pass=True, shortfall_recovered=recovered, fixable_left=left,
+                   disruption_meters=disruption, snapped_meters=snapped.mean_snap_meters,
+                   unplaced=len(snapped.unplaced))
     if not gate:
-        return Verdict(0.0, reason="; ".join(gate.reasons), **common)
+        return replace(base, reason="; ".join(gate.reasons))
     useful_before, useful_after = usefulness(room), usefulness(candidate)
     lost = useful_after.worse_than(useful_before)
     if lost:
-        return Verdict(0.0, reason="less_useful:" + ",".join(lost), usefulness=useful_after.as_dict(), **common)
+        return replace(base, reason="less_useful:" + ",".join(lost), usefulness=useful_after.as_dict())
     owner = checker.owner_layout or room
     quality = layout_quality(room, candidate, owner, checker.measure)
     usable = usability(room, candidate, owner, checker.scenario)
     reward = shaped_reward(recovered, left == 0, disruption, usable, useful_after.score, snapped.mean_snap_meters)
-    return Verdict(reward, gate_accepts=True, quality=quality.as_dict(), usability=usable,
-                   usefulness=useful_after.as_dict(), **common)
+    return replace(base, reward=reward, gate_accepts=True, quality=quality.as_dict(), usability=usable,
+                   usefulness=useful_after.as_dict())

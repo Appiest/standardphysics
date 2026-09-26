@@ -33,9 +33,12 @@ familiar angle, so putting them back is a tidy-up rather than a rebuild."""
 class Displacement:
     slide: float = MAX_SLIDE_METERS
     turns: tuple[float, ...] = TURNS
+    pieces: int = MAX_PIECES
 
 
 LIGHT = Displacement(LIGHT_SLIDE_METERS, LIGHT_TURNS)
+SHUFFLE = Displacement(1.5, TURNS, 6)
+"""A shuffle for benchmarks: up to six pieces, each slid up to 1.5 m and turned by any angle in `TURNS`."""
 
 
 @dataclass(frozen=True)
@@ -56,7 +59,7 @@ def floor_furniture(graph: SceneGraph) -> list[SceneNode]:
 
 
 def random_moves(pieces: list[SceneNode], rng: random.Random, how: Displacement = Displacement()) -> list[NodeMove]:
-    chosen = rng.sample(pieces, rng.randint(1, min(MAX_PIECES, len(pieces))))
+    chosen = rng.sample(pieces, rng.randint(1, min(how.pieces, len(pieces))))
     return [
         NodeMove(
             node_id=node.id,
