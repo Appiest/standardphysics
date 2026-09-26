@@ -170,14 +170,14 @@ def _previous_records(data: MultiroomData, rows: list[dict], out: pathlib.Path,
 
 def evaluate(data: MultiroomData, sampler: Sampler | None, model: str, out: pathlib.Path,
              max_attempts: int = MAX_ATTEMPTS, rows: list[dict] | None = None, solver: Solver | None = None,
-             workers: int = 1) -> dict:
+             workers: int = 1, limit: int | None = None) -> dict:
     if not 1 <= max_attempts <= MAX_ATTEMPTS:
         raise ValueError("max_attempts must be between one and five")
     out.parent.mkdir(parents=True, exist_ok=True)
     rows = data.heldout if rows is None else rows
     records_by_variant = _previous_records(data, rows, out, model, max_attempts)
     resumed = len(records_by_variant)
-    pending = [row for row in rows if row["variant"] not in records_by_variant]
+    pending = [row for row in rows if row["variant"] not in records_by_variant][:limit]
     with out.open("a") as handle, ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(evaluate_variant, data, row, sampler, model, max_attempts, solver) for row in pending]
         for future in as_completed(futures):
@@ -186,7 +186,7 @@ def evaluate(data: MultiroomData, sampler: Sampler | None, model: str, out: path
             handle.flush()
             os.fsync(handle.fileno())
             records_by_variant[record["variant"]] = record
-    records = [records_by_variant[row["variant"]] for row in rows]
+    records = [records_by_variant[row["variant"]] for row in rows if row["variant"] in records_by_variant]
     eligible = [record for record in records if record["eligible"]]
     return {"variants": len(records), "eligible_variants": len(eligible),
             "fully_cleared": sum(record["success"] for record in eligible),
@@ -247,6 +247,7 @@ def main() -> None:
                         help="evaluate held-out rooms or collect training-room correction traces")
     parser.add_argument("--out", type=pathlib.Path, required=True)
     parser.add_argument("--workers", type=int, default=1, help="rooms evaluated at once")
+    parser.add_argument("--limit", type=int, help="evaluate at most this many new rooms, then exit and free memory")
     parser.add_argument("--shard", default="0/1", help="i/n: evaluate every n-th room starting at i, for parallel processes")
     args = parser.parse_args()
     if args.mode != "solver-only" and not (args.base_url or args.fireworks):
@@ -260,7 +261,7 @@ def main() -> None:
     rows = rows[index::count]
     solver = cached_solver() if args.mode != "model" else None
     print(json.dumps(evaluate(data, _sampler(args), args.model, args.out, args.max_attempts, rows, solver,
-                              args.workers)))
+                              args.workers, args.limit)))
 
 
 if __name__ == "__main__":
