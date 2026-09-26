@@ -54,10 +54,8 @@ def _turn_between(before: SceneNode, after: SceneNode) -> float:
     return (turn + 180.0) % 360.0 - 180.0
 
 
-def edits_between(before: SceneGraph, after: SceneGraph) -> RoomEdits:
-    """The floor slides and turns that take `before` to `after`, rounded to a centimetre and a degree."""
+def _changes(before: SceneGraph, after: SceneGraph):
     originals = {node.id: node for node in before.nodes}
-    moves = []
     for node in after.nodes:
         original = originals.get(node.id)
         if original is None or node.transform.m == original.transform.m:
@@ -67,9 +65,23 @@ def edits_between(before: SceneGraph, after: SceneGraph) -> RoomEdits:
         turn = _turn_between(original, node)
         if abs(dx) < MOVE_EPSILON_METERS and abs(dy) < MOVE_EPSILON_METERS and abs(turn) < TURN_EPSILON_DEGREES:
             continue
-        moves.append(FurnitureMove(node_id=node.id, dx=round(dx, 2), dy=round(dy, 2),
-                                   rotation_degrees=float(round(turn))))
-    return RoomEdits(moves=moves)
+        yield node.id, dx, dy, turn
+
+
+def edits_between(before: SceneGraph, after: SceneGraph) -> RoomEdits:
+    """The floor slides and turns that take `before` to `after`, rounded to a centimetre and a degree."""
+    return RoomEdits(moves=[
+        FurnitureMove(node_id=node_id, dx=round(dx, 2), dy=round(dy, 2), rotation_degrees=float(round(turn)))
+        for node_id, dx, dy, turn in _changes(before, after)
+    ])
+
+
+def moves_between(before: SceneGraph, after: SceneGraph) -> list[NodeMove]:
+    """The unrounded moves that take `before` to `after`, for handing a scored layout back as edits."""
+    return node_moves(RoomEdits(moves=[
+        FurnitureMove(node_id=node_id, dx=dx, dy=dy, rotation_degrees=turn)
+        for node_id, dx, dy, turn in _changes(before, after)
+    ]))
 
 
 def edits_json(edits: RoomEdits) -> str:

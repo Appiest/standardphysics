@@ -38,11 +38,24 @@ from standardphysics_agents.precedents import rejection_for_space
 from standardphysics_contracts import Assessment, Finding, Scenario, SceneGraph, SpaceTypology, Stop, Vec3
 from standardphysics_pipeline import PipelineMeasurements, blender, parse_room_json, reconstruct
 from standardphysics_pipeline.discovery import DiscoveryError, DiscoveryInputs, DiscoveryResult, discover_objects
+from standardphysics_pipeline.discovery.mesh_surfaces import segment_surfaces
+from standardphysics_pipeline.lidar import LidarMeshError, room_faces
 from standardphysics_pipeline.textures import BakeInputs, BakeResult, bake_textures
 
 from .scope_manifest import build_scope_manifest
 
 log = logging.getLogger(__name__)
+
+
+def _measure_scan_surfaces(graph: SceneGraph, lidar_mesh_path: pathlib.Path | None) -> SceneGraph:
+    if lidar_mesh_path is None or not lidar_mesh_path.is_file() or graph.capture_to_room is None:
+        return graph
+    try:
+        surfaces = segment_surfaces(room_faces(lidar_mesh_path, graph.capture_to_room), graph)
+    except (LidarMeshError, OSError) as exc:
+        log.warning("no mesh surface measurement for %s: %s", graph.scan_id, exc)
+        return graph
+    return graph.model_copy(update={"nodes": surfaces.nodes})
 
 PREVIEW_REVIEWER = "unverified preview (development only)"
 
@@ -213,12 +226,14 @@ class Stages:
     ) -> tuple[SceneGraph, DiscoveryOutcome]:
         inputs = _discovery_inputs(graph, frame_paths, poses_path, lidar_mesh_path)
         if inputs is None:
-            return graph, DiscoveryOutcome()
+            return _measure_scan_surfaces(graph, lidar_mesh_path), DiscoveryOutcome()
         try:
             result = self.discover(inputs)
         except (DiscoveryError, OSError) as exc:
             log.warning("no object discovery for %s: %s", graph.scan_id, exc)
-            return graph, DiscoveryOutcome(attempted=True, failures=[f"discovery could not run: {exc}"])
+            return _measure_scan_surfaces(graph, lidar_mesh_path), DiscoveryOutcome(
+                attempted=True, failures=[f"discovery could not run: {exc}"]
+            )
         for failure in result.failures:
             log.info("discovery could not read a frame %s: %s", graph.scan_id, failure)
         log.info(
@@ -237,7 +252,13 @@ class Stages:
             failures=list(result.failures),
             model_requests=list(result.model_requests),
         )
-        return graph.model_copy(update={"nodes": [*preserved, *result.nodes]}), outcome
+        nodes = [*preserved, *result.nodes]
+        if result.surfaces is not None:
+            updated = {node.id: node for node in result.surfaces.nodes}
+            nodes = [updated.get(node.id, node) for node in nodes]
+            included = {node.id for node in nodes}
+            nodes.extend(node for node in result.surfaces.nodes if node.id not in included)
+        return graph.model_copy(update={"nodes": nodes}), outcome
 
     def label_scan(
         self,

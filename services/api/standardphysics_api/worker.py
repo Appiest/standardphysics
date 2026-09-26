@@ -23,6 +23,14 @@ from . import evidence
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
+from .rearrangement import (
+    INTERRUPTED,
+    REARRANGE,
+    Rearranger,
+    failure_text,
+    run_suggestion,
+    scale_down_when_idle,
+)
 from .settings import Settings
 from .simulations import SIMULATE, queue_simulation, run_simulation
 from .stages import DiscoveryOutcome, Stages
@@ -54,13 +62,14 @@ class Worker:
         store: ArtifactStore,
         stages: Stages,
         settings: Settings,
+        rearranger: Rearranger | None = None,
     ):
         self.database, self.store, self.stages = database, store, stages
         self.settings = settings
+        self.rearranger = rearranger or Rearranger.from_settings(settings)
         self._wake = threading.Event()
         self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-        self._texture_thread: threading.Thread | None = None
+        self._threads: list[threading.Thread] = []
 
     def start(self) -> None:
         with self.database.transaction() as connection:
@@ -69,24 +78,26 @@ class Worker:
                 " WHERE kind=? AND state='running'",
                 (SIMULATE,),
             )
+            connection.execute(
+                "UPDATE jobs SET state='failed', error=? WHERE kind=? AND state='running'", (INTERRUPTED, REARRANGE)
+            )
             repo.requeue_interrupted_jobs(connection)
-        self._thread = threading.Thread(target=self._loop, name="standardphysics-worker", daemon=True)
-        self._thread.start()
-        self._texture_thread = threading.Thread(
-            target=self._loop,
-            args=(True,),
-            name="standardphysics-textures",
-            daemon=True,
+        lanes = (
+            ("standardphysics-worker", (False, None)),
+            ("standardphysics-textures", (True, None)),
+            ("standardphysics-rearrange", (None, REARRANGE)),
         )
-        self._texture_thread.start()
+        self._threads = [
+            threading.Thread(target=self._loop, args=args, name=name, daemon=True) for name, args in lanes
+        ]
+        for thread in self._threads:
+            thread.start()
 
     def stop(self) -> None:
         self._stop.set()
         self._wake.set()
-        if self._thread is not None:
-            self._thread.join(timeout=5)
-        if self._texture_thread is not None:
-            self._texture_thread.join(timeout=5)
+        for thread in self._threads:
+            thread.join(timeout=5)
 
     def wake(self) -> None:
         self._wake.set()
@@ -106,9 +117,9 @@ class Worker:
         while self.run_once():
             pass
 
-    def run_once(self, texture_only: bool | None = None) -> bool:
+    def run_once(self, texture_only: bool | None = None, kind: str | None = None) -> bool:
         with self.database.transaction() as connection:
-            job = repo.claim_job(connection, texture_only)
+            job = repo.claim_job(connection, texture_only, kind=kind)
         if job is None:
             return False
         outcome = self._run(job)
@@ -133,11 +144,13 @@ class Worker:
             repo.queue_job_again(connection, scan_id, PROCESS, 0)
             self.wake()
 
-    def _loop(self, texture_only: bool = False) -> None:
+    def _loop(self, texture_only: bool | None = False, kind: str | None = None) -> None:
         while not self._stop.is_set():
-            if self.run_once(texture_only):
+            if self.run_once(texture_only, kind):
                 continue
-            if not texture_only:
+            if kind == REARRANGE:
+                scale_down_when_idle(self.database, self.rearranger)
+            elif texture_only is False:
                 self._sweep_due_settled()
             self._wake.wait(timeout=2.0)
             self._wake.clear()
@@ -182,6 +195,7 @@ class Worker:
             DISPLAY: self._display,
             SIMULATE: self._simulate,
             TEXTURE: self._texture,
+            REARRANGE: self._rearrange,
         }[job["kind"]]
         try:
             if job["kind"] == TEXTURE:
@@ -191,12 +205,14 @@ class Worker:
             return _JobOutcome(follow_up=follow_up)
         except Exception as exc:
             log.error("job %s %s failed:\n%s", job["kind"], scan_id, traceback.format_exc())
-            if job["kind"] not in (DISPLAY, SIMULATE, TEXTURE):
+            if job["kind"] not in (DISPLAY, SIMULATE, TEXTURE, REARRANGE):
                 with self.database.transaction() as connection:
                     repo.set_state(connection, scan_id, "failed")
-            if job["kind"] == SIMULATE:
-                return _JobOutcome(error="Simulation failed; check the server log and retry")
-            return _JobOutcome(error=f"{type(exc).__name__}: {exc}")
+            return _JobOutcome(error=_failure_text(job["kind"], exc))
+
+    def _rearrange(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
+        run_suggestion(self.database, self.rearranger, self.stages, scan_id, revision)
+        return False
 
     def _texture(self, scan_id, build_id, job=None) -> bool:
         if self.settings.bake_in_own_process:
@@ -382,6 +398,14 @@ class Worker:
             return "room.metadata"
         head = self.store.artifact_path(scan_id, mapping.id).read_bytes()[:8]
         return "room.metadata.plist" if head.startswith(b"bplist") else "room.metadata.json"
+
+
+def _failure_text(kind: str, exc: Exception) -> str:
+    if kind == SIMULATE:
+        return "Simulation failed; check the server log and retry"
+    if kind == REARRANGE:
+        return failure_text(exc)
+    return f"{type(exc).__name__}: {exc}"
 
 
 def in_own_process(function, *args) -> None:

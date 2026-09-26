@@ -42,7 +42,7 @@ def test_correction_prefix_matches_live_feedback_contract(monkeypatch):
     assert rows[0]["all_fixable_cleared"] is False
     assert rows[1]["all_fixable_cleared"] is True
     assert rows[1]["checker_scope"] == "trusted_geometry"
-    assert rows[1]["messages"][3] == feedback.feedback_message(
+    assert rows[1]["messages"][3] == feedback.measured_feedback_message(
         1, FakeChecker(), accepted=True, reason="", fixable_left=1,
         parsed=True, hard_constraints_pass=True, step_usability=1.0,
         candidate_baseline_usability=1.0, current_baseline_usability=1.0,
@@ -86,7 +86,7 @@ def test_rejected_model_attempt_gets_checked_search_target(monkeypatch):
     monkeypatch.setattr(data, "edits_between", lambda before, after: SimpleNamespace(moves=[after]))
     monkeypatch.setattr(data, "edits_json", lambda edits: str(edits.moves[0]))
     monkeypatch.setattr(feedback, "room_view", lambda graph, _scenario, _problems: {"remaining": graph})
-    checker_feedback = feedback.feedback_message(
+    checker_feedback = feedback.measured_feedback_message(
         2, FakeChecker(), accepted=False, reason="unparseable", fixable_left=2,
         parsed=False, hard_constraints_pass=False, step_usability=None,
         candidate_baseline_usability=None, current_baseline_usability=1.0,

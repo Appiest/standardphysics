@@ -34,7 +34,7 @@ from standardphysics_agents.fix import apply_moves
 from standardphysics_agents.precedents.verification import load_precedents
 from standardphysics_agents.training import TrainingChecker, edits_between, edits_json, prompt_messages, scramble
 from standardphysics_agents.training.edits import node_moves, parse_edits
-from standardphysics_agents.training.feedback import feedback_message
+from standardphysics_agents.training.feedback import measured_feedback_message
 from standardphysics_agents.training.reward import score_completion
 from standardphysics_agents.training.rooms import build_window, plan_scan, whole_scan
 from standardphysics_agents.training.scans import export_scan, load_export, read_only, write_export
@@ -424,7 +424,7 @@ def correction_rows(variant: dict, window: Window, max_steps: int = MAX_CORRECTI
         graph = candidate
         if verdict.fixable_left == 0:
             break
-        messages = [*messages, answer, feedback_message(
+        messages = [*messages, answer, measured_feedback_message(
             graph, checker, accepted=True, reason=verdict.reason, fixable_left=verdict.fixable_left,
             parsed=verdict.parsed, hard_constraints_pass=verdict.hard_constraints_pass,
             step_usability=step_usability, candidate_baseline_usability=baseline_usability,
@@ -446,7 +446,7 @@ def _replay_trace_attempt(attempt: dict, graph: SceneGraph, baseline: SceneGraph
         step_usability = usability(graph, candidate, graph, checker.scenario)
         candidate_usability = usability(baseline, candidate, baseline, checker.scenario)
         graph, current_usability = candidate, candidate_usability
-    feedback = feedback_message(
+    feedback = measured_feedback_message(
         graph, checker, accepted=verdict.gate_accepts, reason=verdict.reason,
         fixable_left=len(checker.fixable_problems(checker.assess(graph))), parsed=verdict.parsed,
         hard_constraints_pass=verdict.hard_constraints_pass, step_usability=step_usability,

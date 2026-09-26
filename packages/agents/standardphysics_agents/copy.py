@@ -107,7 +107,7 @@ def _counter_height(observation: Observation, rule: RuleSpec) -> FindingCopy:
     counter = observation.facts.get("counter", "counter").casefold()
     allowed = inches(rule.threshold)
     length = inches(observation.facts.get("accessible_length_inches", 36.0))
-    shown = measured(observation.measured_inches, rule.threshold)
+    shown = _height_with_uncertainty(observation, rule)
     portion = observation.facts.get("portion")
     if observation.satisfied and portion:
         return FindingCopy(
@@ -130,7 +130,7 @@ def _counter_height(observation: Observation, rule: RuleSpec) -> FindingCopy:
 def _point_of_sale(observation: Observation, rule: RuleSpec) -> FindingCopy:
     reader = observation.facts.get("reader", "card reader").casefold()
     portion = observation.facts.get("portion", "lowered section").casefold()
-    shown = measured(observation.measured_inches, rule.threshold)
+    shown = _height_with_uncertainty(observation, rule)
     allowed = inches(rule.threshold)
     if observation.satisfied:
         return FindingCopy(
@@ -142,6 +142,12 @@ def _point_of_sale(observation: Observation, rule: RuleSpec) -> FindingCopy:
         detail=f"The {reader} sits {shown} up. Ordering from a wheelchair needs {allowed} or lower.",
         fix=f"Move the {reader} to the {portion}.",
     )
+
+
+def _height_with_uncertainty(observation: Observation, rule: RuleSpec) -> str:
+    shown = measured(observation.measured_inches, rule.threshold)
+    uncertainty = observation.facts.get("uncertainty_inches")
+    return f"{shown} (uncertainty ±{inches(uncertainty)})" if uncertainty is not None else shown
 
 
 def _counter_approach(observation: Observation, rule: RuleSpec) -> FindingCopy:

@@ -365,9 +365,9 @@ def height_locus(node: SceneNode, result: HeightResult) -> Locus:
     top edge and the camera stands off to the side at eye level rather than
     looking down: from above, a vertical line is a dot.
     """
-    top = node.transform.position.z + node.dimensions.z / 2
+    top = result.measured_at.z
     face = _front_face(node)
-    start = Vec3(x=face.x, y=face.y, z=0.0)
+    start = Vec3(x=face.x, y=face.y, z=top - to_meters(result.inches))
     end = Vec3(x=face.x, y=face.y, z=top)
     subject = Vec3(x=face.x, y=face.y, z=top / 2)
 

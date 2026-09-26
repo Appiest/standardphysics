@@ -14,7 +14,7 @@ import json
 import math
 
 from standardphysics_contracts import Finding, Scenario, SceneGraph, SceneNode, bounds_the_room, lies_flat
-from standardphysics_pipeline.footprints import rotation_about_z
+from standardphysics_pipeline.footprints import floor_polygon, rotation_about_z
 from standardphysics_pipeline.occupancy import blocks_floor
 
 from ..fix.constraints import MAX_TRAVEL_METERS, interior_bounds
@@ -133,3 +133,14 @@ def prompt_messages(graph: SceneGraph, checker: TrainingChecker) -> list[dict]:
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps(view, separators=(",", ":"))},
     ]
+
+
+def openrouter_prompt_messages(graph: SceneGraph, checker: TrainingChecker) -> list[dict]:
+    """Give the general model the actual floor polygon checked by constraints."""
+    messages = prompt_messages(graph, checker)
+    view = json.loads(messages[1]["content"])
+    floor = next((node for node in graph.nodes if lies_flat(node)), None)
+    view.pop("floor_inside_walls", None)
+    view["floor_polygon"] = floor_polygon(floor) if floor is not None else None
+    messages[1]["content"] = json.dumps(view, separators=(",", ":"))
+    return messages

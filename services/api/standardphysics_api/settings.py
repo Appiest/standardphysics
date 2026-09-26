@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import pathlib
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from standardphysics_agents.tracing import ENTITY_ENV, PROJECT_ENV
 
@@ -63,6 +63,12 @@ class Settings:
     Generating it means the repository carries no password that works against
     every deployment of this server.
     """
+    secure_cookies: bool = False
+    """Mark the session cookie Secure even when the request arrived over http.
+
+    Behind Caddy and the workspace's rewrite the API only ever sees plain http,
+    so the scheme cannot tell it that the browser is on https. Production sets
+    SP_SECURE_COOKIES=1."""
     weave_project: str | None = None
     """Traces go to Weave when this is set, and nowhere when it is not. Only
     `from_environment` fills it in, so a server built in a test stays local."""
@@ -90,6 +96,23 @@ class Settings:
     not changed for this long (or an explicit /complete arrives), one semantic
     job is queued. Zero keeps the immediate per-artifact behavior for tests.
     """
+    rearrange_provider: str = "openrouter"
+    rearrange_model: str | None = None
+    """SP_REARRANGE_MODEL is the Fireworks model when that provider is selected."""
+    rearrange_openrouter_model: str = "anthropic/claude-opus-5.5"
+    rearrange_reasoning_effort: str = "low"
+    rearrange_token_cap: int = 4000
+    rearrange_cost_cap_dollars: float = 0.50
+    rearrange_deployment: str | None = None
+    """SP_REARRANGE_DEPLOYMENT: the on-demand deployment serving it, as accounts/<a>/deployments/<id>
+    or a bare id. When set, a suggestion lets it run one replica and scales it back to zero after."""
+    rearrange_keep_warm_seconds: int = 300
+    """SP_REARRANGE_KEEP_WARM_SECONDS: how long the deployment stays up after a suggestion."""
+    rearrange_fake_model: bool = False
+    """SP_REARRANGE_FAKE_MODEL=1, development only: a local stand-in answers instead of Fireworks."""
+    fireworks_api_key: str | None = field(default=None, repr=False)
+    """FIREWORKS_API_KEY, from the repo-root .env."""
+    openrouter_api_key: str | None = field(default=None, repr=False)
 
     @property
     def database_path(self) -> pathlib.Path:
@@ -102,12 +125,24 @@ class Settings:
             data_dir=pathlib.Path(os.environ.get("SP_DATA_DIR", DEFAULT_DATA_DIR)),
             preview_unverified_rules=_flag("SP_PREVIEW_UNVERIFIED_RULES"),
             seed_sample_shop=_flag("SP_SEED_SAMPLE_SHOP"),
+            secure_cookies=_flag("SP_SECURE_COOKIES"),
             seed_owner_email=os.environ.get("SP_SEED_OWNER_EMAIL", "demo@standardphysics.app"),
             seed_owner_password=os.environ.get("SP_SEED_OWNER_PASSWORD") or secrets.token_urlsafe(12),
             weave_project=os.environ.get(PROJECT_ENV) or None,
             weave_entity=os.environ.get(ENTITY_ENV) or None,
             auto_deep_simulation=_flag("SP_AUTO_DEEP_SIMULATION"),
             bake_in_own_process=not _flag("SP_BAKE_IN_PROCESS"),
+            rearrange_provider=os.environ.get("SP_REARRANGE_PROVIDER", "openrouter"),
+            rearrange_model=os.environ.get("SP_REARRANGE_MODEL") or None,
+            rearrange_openrouter_model=os.environ.get("SP_REARRANGE_OPENROUTER_MODEL", "anthropic/claude-opus-5.5"),
+            rearrange_reasoning_effort=os.environ.get("SP_REARRANGE_REASONING_EFFORT", "low"),
+            rearrange_token_cap=_bounded_integer("SP_REARRANGE_TOKEN_CAP", 4000, 1024, 16000),
+            rearrange_cost_cap_dollars=float(os.environ.get("SP_REARRANGE_COST_CAP_DOLLARS", "0.50")),
+            rearrange_deployment=os.environ.get("SP_REARRANGE_DEPLOYMENT") or None,
+            rearrange_keep_warm_seconds=_bounded_integer("SP_REARRANGE_KEEP_WARM_SECONDS", 300, 0, 3600),
+            rearrange_fake_model=_flag("SP_REARRANGE_FAKE_MODEL"),
+            fireworks_api_key=os.environ.get("FIREWORKS_API_KEY") or None,
+            openrouter_api_key=os.environ.get("OPENROUTER_API_KEY") or None,
             evidence_settle_seconds=_bounded_integer(
                 "SP_EVIDENCE_SETTLE_SECONDS", 30, 0, 86_400
             ),

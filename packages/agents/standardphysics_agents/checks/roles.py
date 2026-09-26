@@ -15,6 +15,7 @@ SERVICE_COUNTER_LABELS = frozenset(
     {
         "ordering counter", "service counter", "counter", "checkout counter",
         "cash wrap", "register counter", "sales counter", "bar", "front desk", "reception desk",
+        "pos counter", "payment counter",
     }
 )
 
@@ -44,7 +45,7 @@ POINT_OF_SALE_LABELS = frozenset(
         "cash register",
         "point of sale",
         "payment terminal",
-        "card machine",
+        "card machine", "cash drawer", "pos terminal",
     }
 )
 

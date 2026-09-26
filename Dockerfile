@@ -12,7 +12,6 @@ WORKDIR /app/apps/web
 COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci --no-audit --no-fund --loglevel=error
 COPY apps/web ./
-# Only the rewrite destination is baked in, and the entrypoint overrides it.
 # The deck imports fixture JSON through the @fixtures monorepo alias in
 # tsconfig; the build needs those files where the alias points.
 COPY packages/fixtures/standardphysics_fixtures/data /app/packages/fixtures/standardphysics_fixtures/data

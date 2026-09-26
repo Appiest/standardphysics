@@ -1,0 +1,32 @@
+Fixture classification status — 2026-09-24
+
+Built
+LiDAR faces are assigned to the smallest matching existing object or room surface. Horizontal faces are separated by height, and disconnected unclaimed horizontal, sloped, and vertical patches become bounded, nonmovable, review-needed candidate nodes. The existing photo discovery path supplies semantic names where detections and mesh carving support them. Unknown candidates do not count as classified area and cannot silently become ADA passes. Measured tops use observed mesh face heights relative to the scanned floor, with explicit uncertainty or an unknown result; inferred render patches and RoomPlan box tops are not used as LiDAR measurements. Service/POS and dining checks consume these measurements. A synthetic POS counter at 40.0 in with uncertainty below the 4.0 in excess is a problem against the pack's 36.0 in limit; uncertain boundary and absent top measurements become questions. Findings include the uncertainty in the response and detail.
+
+Scan -> original LiDAR faces -> existing labelled nodes + spatial unknown candidates -> measured top heights -> existing rule checks -> findings.
+                                                |                                   |
+                                                |                                   -> fixture and keep-clear constraints -> drag/fix/training
+                                                -> unidentified area remains outside classification coverage
+
+Existing identification inventory
+RoomPlan ingest creates walls, floors, doors, windows, openings, and coarse furniture/object boxes with raw categories. Discovery projects photo detections through camera poses and a LiDAR depth buffer, removes people, carves unclaimed points into boxes, merges views, and attaches outlets/televisions to measured walls. Taxonomy conservatively separates outlets from switches, televisions from monitors, and uncertain counter/restroom roles from confirmed ones. Secondary corrections require photos for sofa/table identity and whiteboards; outlet reconciliation de-duplicates attachments. New photo prompt includes cash drawers and ramps. It does not infer a cash drawer or ramp from geometry alone.
+
+Offline area audit
+Read-only SQLite: /Users/yanzihao/Documents/standardphysics/services/api/var/standardphysics.sqlite3. Read existing room_json and lidar_mesh artifacts only; parsed RoomPlan from room_json and measured original room-frame LiDAR triangles, not filled render patches. Baseline = faces claimed by original graph with the existing box-claiming policy; after = faces assigned to a known node or measured floor/ceiling. An unknown candidate is excluded. These are geometry-only percentages before paid photo inference; they are not an accuracy claim for photo discovery. Reported areas include all original faces in each denominator.
+scan name | scan UUID | mesh area m2 | labelled before | labelled after | still unassigned | review candidates
+bread test | 5067a214-1b87-4460-82f7-10b08a9e44be | 208.87 | 23.55% | 44.86% | 55.14% | 80 (capped)
+ravida | af42f6cd-d228-4dd8-8790-aff0890fee5b | 259.82 | 19.66% | 44.79% | 55.21% | 80 (capped)
+room 6 | cdb7ced5-b67f-4f94-8639-0257a1dd8e9a | 73.47 | 54.79% | 76.75% | 23.25% | 21
+test1 | 731cc48e-bd67-4402-b33d-6a696a30754f | 323.53 | 22.75% | 44.58% | 55.42% | 80 (capped)
+
+Boba-shop finding
+Sample boba shop, f68aa174-0c9d-534e-9283-644eb66bc62e, has neither room_json nor lidar_mesh in the local DB; its stored graph has no capture_to_room transform. The actual cash drawer and POS height cannot be measured or verified here. The synthetic fixture's 47 in counter models a different case and is not Happy Lemon evidence. No real-scan cash drawer, POS counter, or ramp finding is claimed. Do not describe the promised 4 in excess as a verified scan measurement.
+
+Shared fix constraints
+Recognized counter/POS/cash-drawer/ramp/landing labels cannot move even if a movable flag is wrong. Keep-clear checks reject new floor-level obstructions over ramp and landing footprints and the rule-pack-sized POS approach patch, preserving pre-existing obstructions for review rather than pretending a rearrangement caused them. The same constraints govern candidate moves for drag, typed requests, fix search, and training. Reward unchanged; no reward formula is proposed.
+
+Remaining gaps and safe choices
+This is not near-complete classification: 23–55% of mesh area remains unnamed, and candidate identity requires photo/owner confirmation. Candidate cap prevents flooding the scene. Small objects, disconnected fragments, and objects too close to coarse boxes can remain unseen; room-surface assignment is geometric and not a semantic ground truth. The slope orientation test does not reliably distinguish a gentle accessible ramp from a flat surface without photo evidence. The rule pack has no ramp-slope, cross-slope, landing-size, or landing-clearance rules. ADA 2010 405.2, 405.3, 405.7 and 405.7.4 are the applicable sections to add only after legal review; no slope threshold was invented. Existing reach_range, protruding_objects, entrance_threshold, door, dining, and service/POS checks still require their own labelled nodes and evidence. No paid model calls; $0 spent. No Moffett data touched, no compute-box access, no push.
+
+Verification and commit
+Ruff (including C90), compileall, and git diff --check passed. Final isolated suites: pipeline 436 passed, 36 skipped; agents 875 passed; API 255 passed. Suites run separately to avoid duplicate test_ask.py collection. No Python static typechecker is configured or installed. Boris's mesh/rendering commits reviewed: 666047e, f42f8f2, c0dab1c, e4ed52d, 5b5918d, 1c6c977. This feature's commit message is "Classify LiDAR surfaces and protect accessible fixtures"; obtain its SHA with git log (a commit cannot include its own SHA). No subagents were used (delegation cost $0); scoped implementation and verification stayed local on the frontier tier because measurement correctness and cross-package contracts were involved.

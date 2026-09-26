@@ -35,7 +35,7 @@ def _portion_for(graph, counter, rule: RuleSpec) -> SceneNode | None:
     min_length = rule.parameter("accessible_length_min_inches")
     counter_foot = footprint(counter)
     for node in roles.lowered_sections(graph):
-        height = to_inches(node.dimensions.z)
+        height = _upper_height(node)
         length = to_inches(max(node.dimensions.x, node.dimensions.y))
         if height > max_height or length < min_length:
             continue
@@ -43,6 +43,14 @@ def _portion_for(graph, counter, rule: RuleSpec) -> SceneNode | None:
             continue
         return node
     return None
+
+
+def _upper_height(node: SceneNode) -> float:
+    if node.top_surface is None:
+        return to_inches(node.dimensions.z)
+    if node.top_surface.height_m is None:
+        return float("inf")
+    return to_inches(node.top_surface.height_m + node.top_surface.uncertainty_m)
 
 
 def _section_under(item: SceneNode, surfaces: list[SceneNode]) -> SceneNode | None:
@@ -66,23 +74,35 @@ def service_counter_height(ctx: CheckContext) -> list[Observation]:
         observations.append(
             Observation(
                 rule_id=HEIGHT_RULE,
-                satisfied=rule.satisfied_by(result.inches),
-                measured_inches=result.inches,
+                satisfied=_height_satisfied(rule, result),
+                measured_inches=None if result.needs_measurement else result.inches,
                 required_inches=rule.threshold,
                 relied_on=relied_on,
-                locus=height_locus(target, result),
+                locus=mounted_locus(target) if result.needs_measurement else height_locus(target, result),
                 facts={
                     "counter": counter.label,
                     "portion": None if portion is None else portion.label,
                     "accessible_length_inches": rule.parameter(
                         "accessible_length_min_inches"
                     ),
+                    "uncertainty_inches": result.uncertainty_inches,
                 },
                 dedupe_key=(HEIGHT_RULE, str(counter.id)),
-                reason="measured",
+                reason="measured" if not result.needs_measurement else "unmeasured_mesh_top",
+                asks_for="a measured counter surface" if result.needs_measurement or _height_ambiguous(rule, result) else None,
             )
         )
     return observations
+
+
+def _height_satisfied(rule: RuleSpec, result) -> bool:
+    return not result.needs_measurement and rule.satisfied_by(result.inches + (result.uncertainty_inches or 0.0))
+
+
+def _height_ambiguous(rule: RuleSpec, result) -> bool:
+    if result.needs_measurement or result.uncertainty_inches is None:
+        return False
+    return result.inches - result.uncertainty_inches <= rule.threshold < result.inches + result.uncertainty_inches
 
 
 @traced("checks.service_counter_approach")
@@ -164,8 +184,8 @@ def point_of_sale_height(ctx: CheckContext) -> list[Observation]:
         observations.append(
             Observation(
                 rule_id=POS_RULE,
-                satisfied=rule.satisfied_by(result.inches),
-                measured_inches=result.inches,
+                satisfied=_height_satisfied(rule, result),
+                measured_inches=None if result.needs_measurement else result.inches,
                 required_inches=rule.threshold,
                 relied_on=(reader.id, surface.id),
                 locus=mounted_locus(reader),
@@ -173,9 +193,11 @@ def point_of_sale_height(ctx: CheckContext) -> list[Observation]:
                     "reader": reader.label,
                     "counter": surface.label,
                     "portion": portions[0].label,
+                    "uncertainty_inches": result.uncertainty_inches,
                 },
                 dedupe_key=(POS_RULE, str(reader.id)),
-                reason="measured",
+                reason="measured" if not result.needs_measurement else "unmeasured_mesh_top",
+                asks_for="a measured payment surface" if result.needs_measurement or _height_ambiguous(rule, result) else None,
             )
         )
     return observations

@@ -36,6 +36,8 @@ from standardphysics_contracts import (
     ManualMarkRequest,
     ProposalRequest,
     ProposalResult,
+    RearrangementRequest,
+    RearrangementStatus,
     RebuildRequest,
     Report,
     SaveLayoutRequest,
@@ -68,6 +70,8 @@ from .loop_run import run as run_loop_on
 from .loop_run import stream as stream_loop_on
 from .proposals import propose
 from .questions import answer_question
+from .rearrangement import Rearranger, queue_suggestion, suggestion_status
+from .rearrangement_data import record_outcome
 from .replays import install_replay_routes
 from .report import build_report
 from .route import confirm, suggestion
@@ -119,13 +123,18 @@ def _install_error_handlers(app: FastAPI) -> None:
         return _problem_response(ApiProblem(exc.status_code, str(exc.detail).lower()))
 
 
-def create_app(settings: Settings | None = None, stages: Stages | None = None, run_worker: bool = True) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    stages: Stages | None = None,
+    run_worker: bool = True,
+    rearranger: Rearranger | None = None,
+) -> FastAPI:
     settings = settings or Settings.from_environment()
     if stages is None:
         stages = Stages(ledger_factory=preview_ledger) if settings.preview_unverified_rules else Stages()
     database = Database(settings.database_path)
     store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes)
-    worker = Worker(database, store, stages, settings)
+    worker = Worker(database, store, stages, settings, rearranger)
 
     @contextlib.asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -148,7 +157,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     app = FastAPI(title="Standard Physics API", version="0.1.0", lifespan=lifespan)
     app.state.database, app.state.store, app.state.worker = database, store, worker
     _install_error_handlers(app)
-    install_auth(app, database, store)
+    install_auth(app, database, store, settings.secure_cookies)
     install_architecture_export_routes(app, database)
     _install_scan_routes(app, database, store)
     _install_upload_routes(app, database, store, worker, settings)
@@ -158,6 +167,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     _install_layout_routes(app, database, stages, worker)
     _install_route_routes(app, database, stages, worker)
     _install_simulation_routes(app, database, stages, worker)
+    _install_rearrangement_routes(app, database, worker)
     install_replay_routes(app, database, store)
     install_texture_routes(app, database, store, worker)
     install_splat_routes(app, database, store)
@@ -663,6 +673,27 @@ def _install_file_routes(app: FastAPI, database: Database, store: ArtifactStore)
             content=store.artifact_path(scan_id, artifact.id).read_bytes(),
             media_type="image/jpeg",
         )
+
+
+def _install_rearrangement_routes(app: FastAPI, database: Database, worker: Worker) -> None:
+    path = "/api/scans/{scan_id}/rearrangement-suggestion"
+
+    @app.post(path, response_model=RearrangementStatus, status_code=202)
+    def suggest_rearrangement(scan_id: uuid.UUID, body: RearrangementRequest) -> RearrangementStatus:
+        """Queue a model suggestion. Never save a layout automatically."""
+        return queue_suggestion(database, worker, worker.rearranger, scan_id, body)
+
+    @app.get(path, response_model=RearrangementStatus)
+    def rearrangement_suggestion(scan_id: uuid.UUID, revision: int) -> RearrangementStatus:
+        """Whether suggestions are available, and the latest one for this revision."""
+        return suggestion_status(database, worker.rearranger, scan_id, revision)
+
+    @app.post(path + "/{suggestion_id}/put-back")
+    def put_back_suggestion(scan_id: uuid.UUID, suggestion_id: str, revision: int) -> dict:
+        with database.transaction() as connection:
+            if not record_outcome(connection, scan_id, revision, suggestion_id, "put_back"):
+                raise ApiProblem(404, "no such suggestion")
+        return {}
 
 
 def _install_simulation_routes(app: FastAPI, database: Database, stages: Stages, worker: Worker) -> None:

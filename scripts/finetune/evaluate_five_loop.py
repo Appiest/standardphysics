@@ -23,7 +23,7 @@ from collections.abc import Callable
 from multiroom_train_data import MultiroomData, load
 from standardphysics_agents.fix import apply_moves
 from standardphysics_agents.training.edits import node_moves, parse_edits
-from standardphysics_agents.training.feedback import feedback_message
+from standardphysics_agents.training.feedback import measured_feedback_message
 from standardphysics_agents.training.prompt import prompt_messages
 from standardphysics_agents.training.reward import score_completion
 from standardphysics_agents.training.usability import usability
@@ -59,7 +59,7 @@ def _attempt(completion, baseline, current, checker, index, current_baseline_usa
     if accepted:
         assert candidate_baseline_usability is not None
         current_baseline_usability = candidate_baseline_usability
-    feedback = feedback_message(
+    feedback = measured_feedback_message(
         updated, checker, accepted=accepted, reason=verdict.reason, fixable_left=_fixable_left(updated, checker),
         parsed=verdict.parsed, hard_constraints_pass=verdict.hard_constraints_pass,
         step_usability=step_usability, candidate_baseline_usability=candidate_baseline_usability,

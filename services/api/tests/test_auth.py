@@ -34,6 +34,15 @@ def test_the_session_cookie_is_not_readable_by_scripts(make_client):
     assert "SameSite=lax" in cookie
 
 
+def test_production_marks_the_session_cookie_secure_behind_a_plain_http_proxy(make_client):
+    with make_client(sign_in_as_owner=False, secure_cookies=True) as fresh:
+        response = fresh.post(
+            "/api/auth/sign-up",
+            json={"email": "secure@example.com", "password": "a-long-enough-password", "shop_name": "Secure"},
+        )
+    assert "Secure" in response.headers["set-cookie"]
+
+
 def test_the_token_is_never_in_the_response_body(client):
     assert "token" not in client.get("/api/auth/session").text.lower()
 
