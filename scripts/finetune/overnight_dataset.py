@@ -130,7 +130,19 @@ def run_train(real: pathlib.Path, synthetic: pathlib.Path, trace: pathlib.Path |
               "real_copies": real_copies, "synthetic": len(synthetic_sft), "rl_prompts": len(rl),
               "heldout": len(heldout)}
     (out / "composition.json").write_text(json.dumps(counts, indent=2))
+    _write_report(real, out, counts, len(synthetic_windows))
     return counts
+
+
+def _write_report(real: pathlib.Path, out: pathlib.Path, counts: dict, synthetic_windows: int) -> None:
+    """The report `multiroom_results.composition` reads when the trainer records its data."""
+    real_report = json.loads((real / "report.json").read_text())
+    report = {"windows": [*real_report["windows"], *({"scan": "synthetic"} for _ in range(synthetic_windows))],
+              "split": {"totals": {"train": counts["rl_prompts"], "heldout": counts["heldout"]}, "by_scan": {},
+                        "held_out": real_report["split"]["held_out"]},
+              "variants": {"total": len(_rows(out / "variants.jsonl"))}, "targets": counts}
+    (out / "report.json").write_text(json.dumps(report, indent=2))
+    (out / "windows_log.jsonl").write_text("")
 
 
 def run_test(source: pathlib.Path) -> dict:
