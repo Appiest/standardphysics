@@ -13,6 +13,9 @@ import simd
 @MainActor
 enum DebugLaunch {
     static func apply(to model: AppModel) -> Bool {
+        if let token = ProcessInfo.processInfo.environment["SP_DEBUG_TOKEN"] {
+            model.session.adoptForDebugging(token: token)
+        }
         guard let value = ProcessInfo.processInfo.environment["SP_DEBUG_SCREEN"] else { return false }
         let parts = value.split(separator: ":", maxSplits: 1).map(String.init)
         guard let screen = screen(parts[0], argument: parts.count > 1 ? parts[1] : nil, model: model) else { return false }
@@ -30,6 +33,13 @@ enum DebugLaunch {
             return .setup(setup(name, argument: argument, model: model))
         case "walk":
             return .walkPreview(walk(argument ?? "progress"))
+        case "setup":
+            return argument.flatMap(UUID.init(uuidString:)).map { .setup(ShopSetupModel(scanID: $0, app: model)) }
+        case "shop":
+            return argument.flatMap(UUID.init(uuidString:)).map { .web(.owner($0)) }
+        case "live":
+            Task { await model.refreshJourneys() }
+            return .home
         default:
             return nil
         }

@@ -9,6 +9,8 @@ import UserNotifications
 @MainActor
 enum PushRegistration {
     static let deviceTokenArrived = Notification.Name("StandardPhysicsDeviceTokenArrived")
+    /// The owner tapped a notification about one shop.
+    static let shopOpened = Notification.Name("StandardPhysicsShopOpened")
 
     /// Which of Apple's push servers the token belongs to. A Debug build is
     /// signed for development and gets sandbox tokens.
@@ -48,7 +50,28 @@ enum PushRegistration {
     }
 }
 
-final class AppDelegate: NSObject, UIApplicationDelegate {
+/// Pushes carry the shop's `scan_id` beside the alert (notifications.py on
+/// the server), so tapping one opens that shop.
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let info = response.notification.request.content.userInfo
+        guard let text = info["scan_id"] as? String, let scanID = UUID(uuidString: text) else { return }
+        await MainActor.run {
+            NotificationCenter.default.post(name: PushRegistration.shopOpened, object: scanID)
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
+
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         NotificationCenter.default.post(name: PushRegistration.deviceTokenArrived, object: PushRegistration.hex(deviceToken))
     }
