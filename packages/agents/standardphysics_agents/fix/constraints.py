@@ -74,6 +74,11 @@ class Violation:
     """What the moved piece ran into, when something did."""
 
 
+def describe(violation: Violation) -> str:
+    """One broken constraint as the model reads it: what broke, which piece, and what it ran into."""
+    return f"{violation.kind}: {violation.detail} [{violation.node_id}]"
+
+
 def _moved_nodes(base: SceneGraph, candidate: SceneGraph) -> list[SceneNode]:
     before = {node.id: node for node in base.nodes}
     return [
@@ -258,7 +263,7 @@ class _Scene:
         return _overlapping(node, other)
 
 
-def _on_a_surface(graph: SceneGraph) -> set:
+def on_a_surface(graph: SceneGraph) -> set:
     """Pieces the scan found standing on another piece, such as a register on a counter.
 
     They take no floor, but a card reader slid along the counter still cannot
@@ -273,7 +278,7 @@ def _on_a_surface(graph: SceneGraph) -> set:
 def _collisions(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode]) -> list[Violation]:
     moved_ids = {node.id for node in moved}
     wall_ids = {node.id for node in upright_walls(candidate)}
-    surface_ids = frozenset(_on_a_surface(base))
+    surface_ids = frozenset(on_a_surface(base))
     obstacles = [
         node
         for node in candidate.nodes

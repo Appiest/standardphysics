@@ -14,6 +14,7 @@ from standardphysics_agents.fix import (
     propose_fix,
     violations,
 )
+from standardphysics_agents.training.prompt import room_view
 from standardphysics_contracts import (
     Mat4,
     NodeMove,
@@ -549,6 +550,12 @@ class TestMovingThingsThatShareFloorSpace:
     def test_a_card_reader_cannot_be_set_down_on_the_register_beside_it(self):
         graph, reader = self._counter_with_register()
         assert "collided" in _kinds(graph, self._slide(graph, reader, 0.6))
+
+    def test_the_register_on_the_counter_is_shown_to_the_model(self):
+        graph, _ = self._counter_with_register()
+        scenario = Scenario(name="Walk", stops=[Stop(name=name, position=Vec3(x=2.0, y=y, z=0.0)) for name, y in (("In", 2.0), ("Out", -2.0))])
+        fixed = room_view(graph, scenario, [])["fixed_objects"]
+        assert [piece["label"] for piece in fixed if piece.get("on_a_counter")] == ["Cash register"]
 
     def test_a_card_reader_can_slide_to_open_counter(self):
         graph, reader = self._counter_with_register()

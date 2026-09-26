@@ -13,6 +13,7 @@ from standardphysics_agents.training import (
     shaped_reward,
     trusted_geometry,
 )
+from standardphysics_agents.training.prompt import room_view
 from standardphysics_agents.training.reward import summarize
 from standardphysics_agents.training.scramble import floor_furniture
 from standardphysics_fixtures import node_id
@@ -72,7 +73,7 @@ def _slide_counter(dx_inches, dy_inches):
 def test_a_relocated_fixture_cannot_land_on_furniture(graph, scenario, pipeline, pack, ledger):
     checker = checker_for(scenario, pipeline, pack, ledger)
     verdict = score_completion(_slide_counter(20, -20), graph, checker)
-    assert not verdict.hard_constraints_pass and "collided" in verdict.reason
+    assert not verdict.hard_constraints_pass and "collided: Ordering counter into Chair" in verdict.reason
 
 
 def test_a_relocated_fixture_may_slide_onto_open_floor(graph, scenario, pipeline, pack, ledger):
@@ -123,3 +124,10 @@ def test_summary_reports_rates(graph, scenario, pipeline, pack, ledger):
     checker = checker_for(scenario, pipeline, pack, ledger)
     report = summarize([score_completion("nonsense", graph, checker)])
     assert report["parse_rate"] == 0.0 and report["mean_reward"] == 0.0 and report["samples"] == 1
+
+
+def test_the_model_is_told_the_outline_of_every_piece_and_what_a_door_keeps_clear(graph, scenario):
+    view = room_view(graph, scenario, [])
+    pieces = [*view["doors"], *view["fixed_objects"], *view["movable_objects"]]
+    assert all(len(piece["corners"]) == 4 for piece in pieces)
+    assert all(len(door["keep_clear"]) == 4 for door in view["doors"])

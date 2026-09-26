@@ -1,9 +1,11 @@
 """The room as a model sees it in training: compact JSON and one instruction.
 
 The instruction and the answer schema come from `redesign.py`. The room keeps
-only what a rearrangement needs: walls as segments, doors, fixed obstacles,
-movable furniture with its size and heading, the route stops, and the
-furniture-fixable problems the checker measured.
+only what a rearrangement needs: walls as segments, doors with the floor their
+swing keeps clear, fixed obstacles including what stands on counters, movable
+furniture, the route stops, and the furniture-fixable problems the checker
+measured. Every piece carries its footprint corners, so the model never has to
+turn a centre, size and heading into an outline itself.
 """
 
 from __future__ import annotations
@@ -12,10 +14,10 @@ import json
 import math
 
 from standardphysics_contracts import Finding, Scenario, SceneGraph, SceneNode, bounds_the_room, lies_flat
-from standardphysics_pipeline.footprints import rotation_about_z
+from standardphysics_pipeline.footprints import footprint, rotation_about_z
 from standardphysics_pipeline.occupancy import blocks_floor
 
-from ..fix.constraints import MAX_TRAVEL_METERS, interior_bounds
+from ..fix.constraints import MAX_TRAVEL_METERS, door_keep_clear, interior_bounds, on_a_surface
 from ..fix.moves import measured_position
 from ..redesign import INSTRUCTION
 from .checker import TrainingChecker
@@ -28,7 +30,8 @@ ANSWER_FORMAT = (
     "is now; rotation_degrees turns it about its own centre. A piece may end at most "
     f"{MAX_TRAVEL_METERS:.2f} m from where the scan found it (`travel_left_m` says how much it has left). "
     "Clear every problem in `problems` if you can, move as little as possible, keep every table and seat "
-    "usable, and never push anything into a wall, a door swing or another object. Only when furniture alone "
+    "usable, and never push anything into a wall, a door's `keep_clear` area or another object, including the "
+    "things standing on counters. `corners` is each piece's outline on the floor. Only when furniture alone "
     'cannot clear a problem, you may also add "wall_shifts":[{"side":"<side from walls_you_can_move>",'
     f'"inches":<1 to {MAX_WALL_SHIFT_INCHES:.0f}>}}] to push that side of the room outward, or '
     '"fixture_moves":[{"node_id":"<id from fixed_objects>","dx_inches":<inches>,"dy_inches":<inches>}] '
@@ -66,7 +69,21 @@ def _placed(node: SceneNode) -> dict:
         "center": [_r(centre.x), _r(centre.y)],
         "size": [_r(node.dimensions.x), _r(node.dimensions.y), _r(node.dimensions.z)],
         "heading_degrees": round(yaw_degrees(node)),
+        "corners": _corners(footprint(node)),
     }
+
+
+def _corners(polygon) -> list[list[float]]:
+    return [[_r(x), _r(y)] for x, y in polygon]
+
+
+def _door(node: SceneNode) -> dict:
+    return {**_placed(node), "keep_clear": _corners(door_keep_clear(node))}
+
+
+def _fixed(node: SceneNode, fixtures: set, on_counters: set) -> dict:
+    entry = {"id": str(node.id), **_placed(node)} if node.id in fixtures else _placed(node)
+    return {**entry, "on_a_counter": True} if node.id in on_counters else entry
 
 
 def _movable(node: SceneNode) -> dict:
@@ -91,16 +108,17 @@ def _problem(finding: Finding, graph: SceneGraph) -> dict:
 
 
 def room_view(graph: SceneGraph, scenario: Scenario, problems: list[Finding]) -> dict:
-    fixed = [node for node in graph.nodes if not node.movable and not bounds_the_room(node) and blocks_floor(node)]
+    on_counters = on_a_surface(graph)
+    fixed = [node for node in graph.nodes if not node.movable and not bounds_the_room(node)
+             and (blocks_floor(node) or node.id in on_counters)]
     fixtures = fixture_ids(graph)
     bounds = interior_bounds(graph)
     return {
         "units": "metres and degrees; x and y lie on the floor",
         "floor_inside_walls": None if bounds is None else [_r(value) for value in bounds],
         "walls": [_wall(node) for node in graph.nodes if node.kind == "wall" and not lies_flat(node)],
-        "doors": [_placed(node) for node in graph.nodes if node.kind == "door"],
-        "fixed_objects": [{"id": str(node.id), **_placed(node)} if node.id in fixtures else _placed(node)
-                          for node in fixed],
+        "doors": [_door(node) for node in graph.nodes if node.kind == "door"],
+        "fixed_objects": [_fixed(node, fixtures, on_counters) for node in fixed],
         "movable_objects": [_movable(node) for node in graph.nodes if node.movable and not bounds_the_room(node)],
         "route_stops": [
             {"name": stop.name, "at": [_r(stop.position.x), _r(stop.position.y)]} for stop in scenario.stops
