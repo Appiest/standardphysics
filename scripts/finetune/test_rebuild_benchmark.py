@@ -7,7 +7,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from rebuild_benchmark import Meter, Rebuild, _model, _shuffle_task, _trial_seed, summarize
+from rebuild_benchmark import Meter, Rebuild, _has_recovery_witness, _model, _shuffle_task, _trial_seed, summarize
 
 
 def test_shuffle_excludes_rooms_with_preexisting_measured_failures(monkeypatch):
@@ -29,6 +29,7 @@ def test_seeded_shuffles_are_distinct_reproducible_trials(monkeypatch):
     monkeypatch.setattr("rebuild_benchmark.measured_failures", lambda graph, *_: [] if graph is base else [
         SimpleNamespace(key="route")])
     monkeypatch.setattr("rebuild_benchmark.measures", lambda *_: {})
+    monkeypatch.setattr("rebuild_benchmark._has_recovery_witness", lambda *_: True)
 
     def fake_scramble(_graph, _checker, _tries, *, seed, how):
         node = SimpleNamespace(id=seed, transform=SimpleNamespace(m=[seed]), movable=True)
@@ -44,6 +45,47 @@ def test_seeded_shuffles_are_distinct_reproducible_trials(monkeypatch):
     assert all(row["shuffle_attempt"] == "v000" for row in rows)
     assert len({row["shuffle_id"] for row in rows}) == 3
     assert _trial_seed(42, "room", 0) != _trial_seed(43, "room", 0)
+
+
+def test_shuffle_skips_a_failure_that_cannot_be_recovered(monkeypatch):
+    base = object()
+    window = SimpleNamespace(window_id="room", graph=base)
+    monkeypatch.setattr("rebuild_benchmark.room", lambda _: (window, object()))
+    monkeypatch.setattr("rebuild_benchmark.ledger", lambda *_: SimpleNamespace(
+        measured_unknown=[], accept_for_final_layout=False))
+    monkeypatch.setattr("rebuild_benchmark.measured_failures", lambda graph, *_: [] if graph is base else [
+        SimpleNamespace(key="route")])
+    monkeypatch.setattr("rebuild_benchmark.measures", lambda *_: {})
+
+    def fake_scramble(*_args, **_kwargs):
+        for index in range(2):
+            node = SimpleNamespace(id=index, transform=SimpleNamespace(m=[index]), movable=True)
+            graph = SimpleNamespace(nodes=[node], model_dump=lambda **_: {"variant": index})
+            yield SimpleNamespace(name=f"v{index:03d}", graph=graph)
+
+    monkeypatch.setattr("rebuild_benchmark.scramble", fake_scramble)
+    monkeypatch.setattr("rebuild_benchmark._has_recovery_witness", lambda _, graph, __: graph.nodes[0].id == 1)
+
+    status, rows = _shuffle_task(({"window_id": "room"}, 42, 1))
+
+    assert status == "qualified"
+    assert len(rows) == 1
+    assert rows[0]["shuffle_attempt"] == "v001"
+    assert rows[0]["graph"] == {"variant": 1}
+
+
+def test_recovery_witness_requires_an_accepted_layout_with_no_ledger_failures(monkeypatch):
+    shuffled = SimpleNamespace(model_dump=lambda **_: {"shuffled": True})
+    monkeypatch.setattr("rebuild_benchmark.edits_between", lambda *_: object())
+    monkeypatch.setattr("rebuild_benchmark.edits_json", lambda _: "return")
+    monkeypatch.setattr("rebuild_benchmark.step", lambda *_: {"layout": {}, "failing": ["route"]})
+    assert not _has_recovery_witness({}, shuffled, object())
+
+    monkeypatch.setattr("rebuild_benchmark.step", lambda *_: {"failing": []})
+    assert not _has_recovery_witness({}, shuffled, object())
+
+    monkeypatch.setattr("rebuild_benchmark.step", lambda *_: {"layout": {}, "failing": []})
+    assert _has_recovery_witness({}, shuffled, object())
 
 
 def test_rebuild_continues_until_every_measured_failure_is_clear():

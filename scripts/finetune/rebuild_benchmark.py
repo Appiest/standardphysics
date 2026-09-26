@@ -4,7 +4,8 @@ The ledger reports measured failures, unknown measurements, and legal sign-off s
 not described as verified ADA-compliant unless the ledger accepts it for a final layout.
 
     shuffles   for each measured-clear held-out room, generate independent seeded shuffles of up to six pieces.
-               Keep a seed only when its layout passes hard constraints and adds a measured failure (CPU only)
+               Keep a seed only when it adds a measured failure and returning toward the owner layout passes
+               the actual move pipeline and clears the ledger (CPU only)
     run        each model rebuilds every shuffle in up to `MAX_LOOPS` loops. A loop is one answer: an answer the
                gate accepts becomes the room, and the next loop starts from a fresh prompt of it plus what the
                ledger still fails; a refused answer gets a reply saying why, plus what the ledger still fails.
@@ -35,6 +36,7 @@ from progress import Spend
 from rebuild_judging import feedback, ledger, measured_failures, measures, room, step, with_note
 from rebuild_judging import final as final_measures
 from standardphysics_agents.training import prompt_messages, scramble
+from standardphysics_agents.training.edits import edits_between, edits_json
 from standardphysics_agents.training.scramble import SHUFFLE
 from standardphysics_contracts import SceneGraph
 
@@ -67,6 +69,12 @@ def _trial_seed(master_seed: int, window_id: str, index: int) -> int:
     return zlib.crc32(f"{master_seed}:{window_id}:{index}".encode())
 
 
+def _has_recovery_witness(window_row: dict, shuffled: SceneGraph, owner: SceneGraph) -> bool:
+    answer = edits_json(edits_between(shuffled, owner))
+    judged = step(window_row, shuffled.model_dump(mode="json"), answer)
+    return "layout" in judged and not judged["failing"]
+
+
 def _shuffle_task(task: tuple[dict, int, int]) -> tuple[str, list[dict]]:
     window_row, master_seed, seeds_per_room = task
     window, checker = room(window_row)
@@ -84,6 +92,8 @@ def _shuffle_task(task: tuple[dict, int, int]) -> tuple[str, list[dict]]:
                 continue
             start_failures = measured_failures(variant.graph, window, checker)
             if not start_failures:
+                continue
+            if not _has_recovery_witness(window_row, variant.graph, window.graph):
                 continue
             seen.add(signature)
             made.append({"shuffle_id": f"{window.window_id}:seed{master_seed}:{index:03d}",
@@ -122,6 +132,7 @@ def shuffles(run: pathlib.Path, out: pathlib.Path, workers: int, seeds_per_room:
         rooms[row["group"]].add(row["window_id"])
     eligible_rooms = sum(status != "preexisting_measured_failures" for status, _ in outcomes)
     summary = {"held_out_rooms": len(windows), "shuffles": len(made), "master_seed": master_seed,
+               "qualification": "accepted return-to-owner move clears the measured ledger",
                "seeds_per_room": seeds_per_room, "eligible_seed_slots": eligible_rooms * seeds_per_room,
                "room_selection": dict(Counter(status for status, _ in outcomes)),
                "rooms_with_a_shuffle": {group: len(ids) for group, ids in sorted(rooms.items())}}
