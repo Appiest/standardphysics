@@ -247,6 +247,7 @@ def main() -> None:
                         help="evaluate held-out rooms or collect training-room correction traces")
     parser.add_argument("--out", type=pathlib.Path, required=True)
     parser.add_argument("--workers", type=int, default=1, help="rooms evaluated at once")
+    parser.add_argument("--shard", default="0/1", help="i/n: evaluate every n-th room starting at i, for parallel processes")
     args = parser.parse_args()
     if args.mode != "solver-only" and not (args.base_url or args.fireworks):
         parser.error("--base-url or --fireworks is required unless --mode solver-only")
@@ -255,6 +256,8 @@ def main() -> None:
 
     data = load(args.data)
     rows = data.rl if args.split == "train" else data.heldout
+    index, count = (int(part) for part in args.shard.split("/"))
+    rows = rows[index::count]
     solver = cached_solver() if args.mode != "model" else None
     print(json.dumps(evaluate(data, _sampler(args), args.model, args.out, args.max_attempts, rows, solver,
                               args.workers)))
