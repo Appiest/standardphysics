@@ -149,9 +149,9 @@ enum DebugLaunch {
                 viewpointCount: index < finished ? 3 : 1, highConfidence: true, area: surface.width * 2.8)
         }
         var snapshot = CoverageSnapshot(surfaces: coverage)
-        snapshot.unfinishedDirection = CoverageAngle(radians: .pi / 3)
-        snapshot.instruction = state == "start"
-            ? CoverageSnapshot.openingInstruction : "Point the phone at the wall to your right."
+        let started = state == "start"
+        snapshot.unfinishedDirection = CoverageAngle(radians: started ? 0 : .pi)
+        snapshot.instruction = started ? CoverageSnapshot.openingInstruction : "Point the phone at the wall behind you."
         let store = CaptureSessionStore()
         store.showForDebugging(coverage: snapshot, surfaces: surfaces, secondsLeft: state == "warning" ? 24 : nil)
         return store

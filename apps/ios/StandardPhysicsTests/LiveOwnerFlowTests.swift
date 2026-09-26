@@ -43,6 +43,14 @@ final class LiveOwnerFlowTests: XCTestCase {
         XCTAssertEqual(journeys.first?.scanID, scanID)
         try await api.registerDevice(String(repeating: "ab", count: 32), environment: PushRegistration.environment)
 
+        let second = try await uploadPhoneWalk(token: token, joining: scanID)
+        let again = ShopSetupModel(scanID: second, app: app)
+        await again.refresh()
+        XCTAssertNotEqual(again.step, .question(try XCTUnwrap(requests.first { $0.id == "restroom" })),
+            "a walk that joins the shop keeps its answers")
+        let carried = try await api.requests(scanID: second)
+        XCTAssertNotEqual(carried.first { $0.id == "restroom" }?.status, "open")
+
         let email = "phone-\(UUID().uuidString.prefix(8).lowercased())@example.com"
         try await session.save(email: email, password: "a long password")
         XCTAssertTrue(session.hasSavedAccount)
@@ -103,11 +111,11 @@ final class LiveOwnerFlowTests: XCTestCase {
     }
 
     /// The test1 walk from datasets/phone, uploaded the way the phone does.
-    private func uploadPhoneWalk(token: String) async throws -> UUID {
+    private func uploadPhoneWalk(token: String, joining shop: UUID? = nil) async throws -> UUID {
         let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("../../../datasets/phone/test1").standardizedFileURL
         let client = ScanUploadClient(baseURL: server, token: token)
-        let remote = try await client.createScan(name: "Tea House", duration: 120)
+        let remote = try await client.createScan(name: "Tea House", duration: 120, replaces: shop)
         let artifacts: [(String, ArtifactKind, String)] = [
             ("room-metadata", .roomMetadata, "room.metadata.plist"),
             ("poses", .poses, "poses.json"),
@@ -120,5 +128,29 @@ final class LiveOwnerFlowTests: XCTestCase {
         }
         _ = try await client.complete(scanID: remote.id)
         return remote.id
+    }
+}
+
+/// The PDF the share sheet carries, made from a real report link. Skipped
+/// unless a report link on a running web is named:
+///
+///     TEST_RUNNER_SP_LIVE_REPORT=http://127.0.0.1:3398/r/<token> xcodebuild test ...
+@MainActor
+final class LiveReportPDFTests: XCTestCase {
+    func testAReportLinkPrintsToAPDF() async throws {
+        guard let address = ProcessInfo.processInfo.environment["SP_LIVE_REPORT"], let url = URL(string: address) else {
+            throw XCTSkip("Set SP_LIVE_REPORT to a report link to run")
+        }
+        let pdf = try await XCTUnwrapAsync(await LinkPDFRenderer().pdf(of: url))
+
+        XCTAssertEqual(String(decoding: pdf.prefix(4), as: UTF8.self), "%PDF")
+        XCTAssertGreaterThan(pdf.count, 10_000)
+        if let out = ProcessInfo.processInfo.environment["SP_LIVE_REPORT_OUT"] {
+            try pdf.write(to: URL(fileURLWithPath: out))
+        }
+    }
+
+    private func XCTUnwrapAsync<T>(_ value: T?) async throws -> T {
+        try XCTUnwrap(value)
     }
 }

@@ -18,7 +18,7 @@ struct FlowPage<Content: View, Actions: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, AppTheme.Spacing.page)
                     .padding(.top, back == nil ? AppTheme.Spacing.page : AppTheme.Spacing.small)
-                    .padding(.bottom, AppTheme.Spacing.section)
+                    .padding(.bottom, AppTheme.Spacing.section * 2)
                 }
                 .scrollBounceBehavior(.basedOnSize)
             }

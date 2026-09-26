@@ -53,6 +53,39 @@ final class ScanUploadClientTests: XCTestCase {
         XCTAssertEqual(completed.state, .measuring)
     }
 
+    func testAWalkThatJoinsAShopNamesTheScanItReplaces() async throws {
+        let shop = UUID(uuidString: "2F1D6E1E-8D0B-4C54-9E0A-3C6B1B8F2A10")!
+        var bodies: [[String: Any]] = []
+        URLProtocolStub.handler = { request in
+            let body = request.httpBody ?? request.httpBodyStream.map(Self.read) ?? Data()
+            bodies.append((try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:])
+            return (201, #"{"id":"\#(UUID().uuidString)","state":"uploading"}"#.data(using: .utf8)!)
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [URLProtocolStub.self]
+        let client = ScanUploadClient(baseURL: URL(string: "https://standard.physics")!,
+            session: URLSession(configuration: configuration))
+
+        _ = try await client.createScan(name: "Tea House", duration: 30, replaces: shop)
+        _ = try await client.createScan(name: "Corner Books", duration: 30)
+
+        XCTAssertEqual(bodies.first?["replaces"] as? String, "2f1d6e1e-8d0b-4c54-9e0a-3c6b1b8f2a10")
+        XCTAssertNil(bodies.last?["replaces"])
+    }
+
+    private static func read(_ stream: InputStream) -> Data {
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data
+    }
+
     func testRejectsMalformedRemoteIdentifier() async throws {
         URLProtocolStub.handler = { _ in
             (201, #"{"id":"not-a-uuid","state":"uploading"}"#.data(using: .utf8)!)

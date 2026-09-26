@@ -75,7 +75,7 @@ struct CaptureScreen: View {
     }
 
     private var captureHeader: some View {
-        HStack(spacing: AppTheme.Spacing.compact) {
+        HStack(alignment: .top, spacing: AppTheme.Spacing.compact) {
             Button {
                 capture.cancel()
                 model.showStart()

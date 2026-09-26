@@ -16,7 +16,7 @@ struct MeasuringView: View {
 
     var body: some View {
         FlowPage {
-            SketchSheet(height: 200) { RoomSketch(mode: .measuring) }
+            SketchSheet(height: 200) { RoomSketch(mode: setup.isMeasured ? .measured : .measuring) }
                 .padding(.top, AppTheme.Spacing.small)
             if let upload = setup.upload {
                 UploadProgressHeader(upload: upload, isMeasured: setup.isMeasured)
@@ -62,7 +62,7 @@ struct MeasuringView: View {
                         finishPrompts()
                     }
                 }
-                .buttonStyle(AppButtonStyle(.secondary))
+                .buttonStyle(AppButtonStyle(setup.isMeasured ? .secondary : .primary))
             }
             .padding(.top, AppTheme.Spacing.small)
             .transition(.opacity)
@@ -82,12 +82,14 @@ struct MeasuringView: View {
             .buttonStyle(AppButtonStyle())
         }
         switch prompt {
-        case .save:
+        case .save where !setup.isMeasured:
             Button("Not now") { Task { await afterSaving() } }
                 .buttonStyle(AppButtonStyle(.link))
-        case .notifications:
+        case .notifications where !setup.isMeasured:
             Button("Not now") { finishPrompts() }
                 .buttonStyle(AppButtonStyle(.link))
+        case .save, .notifications:
+            EmptyView()
         case .deciding, .none:
             if !setup.isMeasured {
                 Button("Go to home") { app.showStart() }

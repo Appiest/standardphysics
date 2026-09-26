@@ -119,14 +119,16 @@ struct CameraAccessScreen: View {
     private var isRefused: Bool { status == .denied || status == .restricted }
 
     var body: some View {
-        FlowPage(back: { model.startWalk() }) {
+        FlowPage(back: { model.screen = .beforeYouWalk }) {
             SketchSheet(height: 220) {
                 ZStack {
                     CameraSketch(allowed: !isRefused)
                     if isRefused {
                         Image(systemName: "video.slash")
-                            .font(.system(size: 44, weight: .semibold))
+                            .font(.system(size: 36, weight: .semibold))
                             .foregroundStyle(AppTheme.mutedInk)
+                            .frame(width: 84, height: 84)
+                            .background(Circle().fill(AppTheme.Sketch.paper))
                             .accessibilityHidden(true)
                     }
                 }
@@ -176,8 +178,9 @@ struct UnsupportedDeviceScreen: View {
         FlowPage {
             SketchSheet(height: 220) { RoomSketch() }
                 .padding(.top, AppTheme.Spacing.small)
-            FlowTitle("To walk a shop, use an iPhone Pro or Pro Max with LiDAR (12 or later), or an iPad Pro with LiDAR (2020 or later).")
-            FlowDetail("On this phone you can open the results of a shop you walked on another one.")
+            FlowTitle("Measure your shop with an iPhone Pro")
+            FlowDetail("Walking a shop takes an iPhone Pro or Pro Max from the 12 on, or an iPad Pro from 2020 on. "
+                + "On this phone you can open the results of a shop you walked on one.")
         } actions: {
             Button("Sign in to see your results") { model.screen = .signIn }
                 .buttonStyle(AppButtonStyle())

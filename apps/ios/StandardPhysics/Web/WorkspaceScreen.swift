@@ -7,6 +7,11 @@ struct WorkspaceScreen: View {
     let destination: WebDestination
     @State private var message: String?
 
+    /// The shop's own name once the account's shops are known.
+    private var title: String {
+        appModel.journeys.first { $0.scanID == destination.scanID }?.shopName ?? destination.title
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -40,8 +45,10 @@ struct WorkspaceScreen: View {
                 }
             }
             .ignoresSafeArea(edges: .bottom)
-            .navigationTitle(destination.title)
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppTheme.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { appModel.showStart() } label: {

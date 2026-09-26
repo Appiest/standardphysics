@@ -27,8 +27,12 @@ struct CapturedScan: Identifiable, Codable {
     let artifacts: [CaptureArtifact]
     let name: String?
     var captureNotice: String? = nil
+    /// The shop scan this walk joins, when the owner walked the shop again or
+    /// added a room from the web. The server moves the owner's answers over
+    /// and swaps this walk in once it's measured.
+    var replaces: UUID? = nil
 
-    func renamed(_ name: String) throws -> CapturedScan {
+    func renamed(_ name: String, replacing replaced: UUID? = nil) throws -> CapturedScan {
         var uploadArtifacts = artifacts
         let meshURL = directory.appendingPathComponent("lidar-mesh.json")
         if !uploadArtifacts.contains(where: { $0.kind == .lidarMesh }),
@@ -49,7 +53,8 @@ struct CapturedScan: Identifiable, Codable {
             duration: duration,
             artifacts: uploadArtifacts,
             name: name,
-            captureNotice: captureNotice
+            captureNotice: captureNotice,
+            replaces: replaced ?? replaces
         )
         try JSONEncoder.standardPhysics.encode(updated).write(
             to: directory.appendingPathComponent("capture.json"),

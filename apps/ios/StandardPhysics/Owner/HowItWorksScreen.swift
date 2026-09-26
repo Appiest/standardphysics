@@ -30,8 +30,8 @@ struct HowItWorksScreen: View {
                 Advice(
                     symbol: "tortoise",
                     title: "Go slower than feels necessary",
-                    detail: "About one step a second. Walking at normal pace is the most "
-                        + "common reason a scan comes out thin."
+                    detail: "Take about one step a second. Walking at normal pace is the "
+                        + "most common reason a scan comes out thin."
                 )
                 Advice(
                     symbol: "checkmark.circle",
@@ -42,7 +42,7 @@ struct HowItWorksScreen: View {
             }
         } actions: {
             if model.canScan {
-                Button("Walk your shop") { model.startWalk() }
+                Button("Walk your shop") { model.screen = .beforeYouWalk }
                     .buttonStyle(AppButtonStyle(.secondary))
             }
         }
