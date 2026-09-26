@@ -38,11 +38,15 @@ struct MeasuringView: View {
         switch prompt {
         case .save:
             VStack(alignment: .leading, spacing: AppTheme.Spacing.compact) {
-                Text("Save your shop while you wait, and we\u{2019}ll let you know when it\u{2019}s ready.")
+                Text(setup.isMeasured
+                    ? "Save your shop so you can open it on any phone or on the web."
+                    : "Save your shop while you wait, and we\u{2019}ll let you know when it\u{2019}s ready.")
                     .font(AppTheme.Typography.heading)
                     .foregroundStyle(AppTheme.ink)
                     .fixedSize(horizontal: false, vertical: true)
-                SaveShopOptions(session: app.session) { Task { await afterSaving() } }
+                SaveShopOptions(session: app.session, isSecondary: setup.isMeasured) {
+                    Task { await afterSaving() }
+                }
             }
             .padding(.top, AppTheme.Spacing.small)
             .transition(.opacity)
@@ -92,8 +96,14 @@ struct MeasuringView: View {
         }
     }
 
+    /// A shop measured before the owner reached this screen goes straight to
+    /// the web: saving is asked again there at the first check-off or share.
     private func decidePrompt() async {
         guard prompt == .deciding else { return }
+        if setup.isMeasured {
+            finishPrompts()
+            return
+        }
 #if DEBUG
         if let debugPrompt = setup.debugPrompt {
             prompt = debugPrompt

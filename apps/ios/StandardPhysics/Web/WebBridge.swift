@@ -105,7 +105,7 @@ final class WebBridge {
     func handle(_ message: WebBridgeMessage, in webView: WKWebView) {
         switch message {
         case .takePhoto(let requestID): takePhoto(for: requestID, in: webView)
-        case .addRoom: app?.startWalk()
+        case .addRoom: scanRequested()
         case .saveReport: saveReport(in: webView)
         case .share(let url, let title): share(url, title: title, from: webView)
         case .openLink(let url): UIApplication.shared.open(url)
@@ -113,9 +113,12 @@ final class WebBridge {
         }
     }
 
-    /// The old home page's "Scan your shop".
+    /// The old home page's "Scan your shop", and adding a room. For now a
+    /// room is a new walk of its own: joining it to the same shop needs the
+    /// server to accept a second walk for one scan.
     func scanRequested() {
-        app?.startWalk()
+        guard let app, app.canScan else { return }
+        app.startWalk()
     }
 
     private func takePhoto(for requestID: String, in webView: WKWebView) {

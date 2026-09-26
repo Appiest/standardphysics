@@ -64,6 +64,9 @@ final class AppleSignInPrompt: NSObject, ASAuthorizationControllerDelegate,
 /// a password. Used during the measuring wait and on home.
 struct SaveShopOptions: View {
     @ObservedObject var session: SessionStore
+    /// White rather than black, when another step on screen is the one to
+    /// take first.
+    var isSecondary = false
     let saved: () -> Void
     @State private var savingWithEmail = false
     @State private var problem: String?
@@ -75,7 +78,9 @@ struct SaveShopOptions: View {
             } onCompletion: { result in
                 finishApple(result)
             }
-            .signInWithAppleButtonStyle(.black)
+            .signInWithAppleButtonStyle(isSecondary ? .white : .black)
+            // The system button takes its style once, when it is made.
+            .id(isSecondary)
             .frame(height: 52)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.control, style: .continuous))
             Button("Save with email") { savingWithEmail = true }
