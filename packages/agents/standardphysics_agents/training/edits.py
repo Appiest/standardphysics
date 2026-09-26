@@ -6,11 +6,13 @@ import json
 import math
 import re
 
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 from standardphysics_contracts import NodeMove, SceneGraph, SceneNode
 from standardphysics_pipeline.footprints import rotation_about_z
 
+from ..fix import apply_moves
 from ..redesign import FurnitureMove, RoomEdits, _edit_complaint, _moves_of
+from .construction import SIDES, WallShift, shift_walls
 
 THINKING = re.compile(r"<think>.*?</think>", re.DOTALL)
 FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
@@ -28,16 +30,33 @@ def _json_text(completion: str) -> str:
     return visible[start:end + 1] if start >= 0 and end > start else visible
 
 
-def parse_edits(completion: str) -> RoomEdits | None:
-    """The edits a completion proposes, or None when it is not valid `RoomEdits` JSON."""
+class TrainingEdits(RoomEdits):
+    """Furniture moves, plus the construction a room may need when furniture alone cannot clear it."""
+
+    moves: list[FurnitureMove] = Field(default_factory=list, max_length=64)
+    wall_shifts: list[WallShift] = Field(default_factory=list, max_length=len(SIDES))
+
+
+def parse_edits(completion: str) -> TrainingEdits | None:
+    """The edits a completion proposes, or None when it is not valid edits JSON."""
     try:
-        return RoomEdits.model_validate(json.loads(_json_text(completion)))
+        return TrainingEdits.model_validate(json.loads(_json_text(completion)))
     except (ValueError, ValidationError):
         return None
 
 
 def edit_complaint(graph: SceneGraph, edits: RoomEdits) -> str | None:
+    shifts = getattr(edits, "wall_shifts", [])
+    if len({shift.side for shift in shifts}) != len(shifts):
+        return "duplicate_wall_sides"
+    if shifts and not edits.moves:
+        return None
     return _edit_complaint(graph, edits)
+
+
+def apply_edits(graph: SceneGraph, edits: RoomEdits) -> SceneGraph:
+    """The room after its construction, then its furniture moves."""
+    return apply_moves(shift_walls(graph, getattr(edits, "wall_shifts", [])), node_moves(edits))
 
 
 def node_moves(edits: RoomEdits) -> list[NodeMove]:
@@ -73,4 +92,7 @@ def edits_between(before: SceneGraph, after: SceneGraph) -> RoomEdits:
 
 
 def edits_json(edits: RoomEdits) -> str:
-    return json.dumps(edits.model_dump(mode="json"), separators=(",", ":"))
+    payload = edits.model_dump(mode="json")
+    if not payload.get("wall_shifts"):
+        payload.pop("wall_shifts", None)
+    return json.dumps(payload, separators=(",", ":"))

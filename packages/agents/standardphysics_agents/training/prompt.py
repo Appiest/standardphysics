@@ -19,6 +19,7 @@ from ..fix.constraints import MAX_TRAVEL_METERS, interior_bounds
 from ..fix.moves import measured_position
 from ..redesign import INSTRUCTION
 from .checker import TrainingChecker
+from .construction import MAX_WALL_SHIFT_INCHES, floor_edges
 from .edits import yaw_degrees
 
 ANSWER_FORMAT = (
@@ -27,7 +28,10 @@ ANSWER_FORMAT = (
     "is now; rotation_degrees turns it about its own centre. A piece may end at most "
     f"{MAX_TRAVEL_METERS:.2f} m from where the scan found it (`travel_left_m` says how much it has left). "
     "Clear every problem in `problems` if you can, move as little as possible, keep every table and seat "
-    "usable, and never push anything into a wall, a door swing or another object."
+    "usable, and never push anything into a wall, a door swing or another object. Only when furniture alone "
+    'cannot clear a problem, you may also add "wall_shifts":[{"side":"<side from walls_you_can_move>",'
+    f'"inches":<1 to {MAX_WALL_SHIFT_INCHES:.0f}>}}] to push that side of the room outward; this is construction, '
+    "so use the fewest inches that work."
 )
 
 TRAINING_INSTRUCTION = INSTRUCTION.split(" Use `actionable_failures`")[0] + (
@@ -44,8 +48,11 @@ def _r(value: float) -> float:
 
 
 def _wall(node: SceneNode) -> list[float]:
+    """The wall's centre line, along whichever horizontal extent is its length."""
     cos_t, sin_t = rotation_about_z(node)
-    centre, half = node.transform.position, node.dimensions.x / 2
+    if node.dimensions.y > node.dimensions.x:
+        cos_t, sin_t = -sin_t, cos_t
+    centre, half = node.transform.position, max(node.dimensions.x, node.dimensions.y) / 2
     return [_r(centre.x - cos_t * half), _r(centre.y - sin_t * half),
             _r(centre.x + cos_t * half), _r(centre.y + sin_t * half)]
 
@@ -95,6 +102,10 @@ def room_view(graph: SceneGraph, scenario: Scenario, problems: list[Finding]) ->
             {"name": stop.name, "at": [_r(stop.position.x), _r(stop.position.y)]} for stop in scenario.stops
         ],
         "problems": [_problem(finding, graph) for finding in problems],
+        "walls_you_can_move": [
+            {"side": edge.side, "outward": [_r(edge.outward[0]), _r(edge.outward[1])], "edge": edge.segment()}
+            for edge in floor_edges(graph)
+        ],
     }
 
 
