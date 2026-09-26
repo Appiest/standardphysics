@@ -48,6 +48,15 @@ POINT_OF_SALE_LABELS = frozenset(
     }
 )
 
+OPERABLE_PART_LABELS = frozenset(
+    {
+        "light switch", "switch", "thermostat", "soap dispenser", "paper towel dispenser",
+        "towel dispenser", "hand dryer", "hand sanitizer", "sanitizer dispenser", "coat hook",
+        "call button", "intercom", "door bell", "bell", "fire alarm", "fire extinguisher",
+    }
+)
+"""Things a customer works with a hand while standing or sitting where they are, ADA 2010 309 and 308."""
+
 
 def _normalized(label: str) -> str:
     return label.strip().casefold()
@@ -91,6 +100,14 @@ def lowered_sections(graph: SceneGraph) -> list[SceneNode]:
         node
         for node in graph.nodes
         if not bounds_the_room(node) and _normalized(node.label) in LOWERED_SECTION_LABELS
+    ]
+
+
+def operable_parts(graph: SceneGraph) -> list[SceneNode]:
+    return [
+        node
+        for node in graph.nodes
+        if not bounds_the_room(node) and _normalized(node.label) in OPERABLE_PART_LABELS
     ]
 
 

@@ -224,9 +224,13 @@ def run_windows(run: pathlib.Path, workers: int, progress: Progress) -> None:
     progress.finish("windows", kept=len(_rows(run / "windows.jsonl")))
 
 
+TRAINING_SCOPE = os.environ.get("TRAINING_SCOPE", "layout")
+"""`fittings` also asks about counter, table and reach heights; `layout` keeps the furniture-only checker."""
+
+
 def checker_for(window: Window) -> TrainingChecker:
     return TrainingChecker(window.scenario, pinned=frozenset(uuid.UUID(i) for i in window.pinned),
-                           owner_layout=window.graph)
+                           owner_layout=window.graph, scope=TRAINING_SCOPE)
 
 
 def _variant_task(row: dict) -> list[dict]:

@@ -34,7 +34,7 @@ class SearchTarget:
 
 def _one_round(layout: SceneGraph, checker: TrainingChecker) -> SceneGraph | None:
     current = checker.assess(layout)
-    fixable = checker.fixable_problems(current)
+    fixable = checker.rearrangeable_problems(current)
     if not fixable:
         return None
     outcome = propose_fix(

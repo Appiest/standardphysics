@@ -45,7 +45,7 @@ def _floor_nodes(graph: SceneGraph) -> list[SceneNode]:
     return roles.floors(graph)[:1]
 
 
-def _no_nodes(graph: SceneGraph) -> list[SceneNode]:
+def no_nodes(graph: SceneGraph) -> list[SceneNode]:
     return []
 
 
@@ -54,8 +54,7 @@ ASK_ABOUT: tuple[tuple[str, NodeFinder], ...] = (
     ("door_hardware", _entrance_nodes),
     ("door_opening_force", _inside_door_nodes),
     ("floor_surface", _floor_nodes),
-    ("restroom_turning_space", _no_nodes),
-    ("reach_range", _no_nodes),
+    ("restroom_turning_space", no_nodes),
 )
 
 RULE_IDS = frozenset(rule_id for rule_id, _ in ASK_ABOUT)
@@ -63,10 +62,10 @@ RULE_IDS = frozenset(rule_id for rule_id, _ in ASK_ABOUT)
 
 @traced("checks.scan_cannot_see")
 def scan_cannot_see(ctx: CheckContext) -> list[Observation]:
-    return [_ask(ctx, rule_id, finder) for rule_id, finder in ASK_ABOUT]
+    return [ask(ctx, rule_id, finder) for rule_id, finder in ASK_ABOUT]
 
 
-def _ask(ctx: CheckContext, rule_id: str, finder: NodeFinder) -> Observation:
+def ask(ctx: CheckContext, rule_id: str, finder: NodeFinder) -> Observation:
     rule = ctx.rule(rule_id)
     nodes = finder(ctx.graph)
     return Observation(

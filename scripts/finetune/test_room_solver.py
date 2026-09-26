@@ -2,10 +2,16 @@ from types import SimpleNamespace
 
 import pytest
 import room_solver
+import standardphysics_fixtures.shop as shop_fixture
+from fitting_candidates import fitting_candidates
 from shop_generator import generate
 from standardphysics_agents.fix import apply_moves
-from standardphysics_agents.training.edits import node_moves
-from standardphysics_contracts import Vec3, to_meters
+from standardphysics_agents.redesign import FurnitureMove
+from standardphysics_agents.training import TrainingChecker
+from standardphysics_agents.training.edits import TrainingEdits, apply_edits, node_moves
+from standardphysics_agents.training.fittings import HeightChange
+from standardphysics_contracts import Mat4, SceneNode, Vec3, to_meters
+from standardphysics_fixtures import build_graph, build_scenario, node_id
 from standardphysics_pipeline.footprints import footprint
 
 
@@ -50,3 +56,34 @@ def test_a_pinned_piece_inside_the_circle_means_no_push():
     chair = next(node for node in graph.nodes if node.movable and node.label == "Chair")
     finding = _circle_over(chair, inside_inches=6)
     assert room_solver._circle_push(graph, _Checker(finding, pinned=frozenset({chair.id}))) is None
+
+
+def _demo_room():
+    """The boba shop: a 47 in ordering counter with the register on it, and a 31 in pinch on the way in."""
+    graph = build_graph()
+    register = SceneNode(id=node_id("register"), kind="object", label="Cash register", raw_category="electronics",
+                         dimensions=Vec3(x=0.35, y=0.28, z=0.25),
+                         transform=Mat4.translation(0.3, 3.42, to_meters(47.0) + 0.125), movable=False)
+    return graph.model_copy(update={"nodes": [*graph.nodes, register]})
+
+
+def test_a_counter_too_high_is_cleared_by_a_lowered_section_with_the_register_carried():
+    checker = TrainingChecker(build_scenario(), scope="fittings")
+    solution, _ = room_solver.solve(_demo_room(), checker)
+    edits = TrainingEdits.model_validate_json(solution.completion)
+    assert solution.clears
+    assert [section.carry for section in edits.add_lowered_section] == [[node_id("register")]]
+    assert not (edits.wall_shifts or edits.fixture_moves or edits.height_changes or edits.replacements)
+
+
+def test_a_room_with_nothing_to_fix_gets_no_construction():
+    checker = TrainingChecker(build_scenario(), scope="fittings")
+    fixed = shop_fixture.build_graph()
+    fixed = apply_edits(fixed, TrainingEdits(
+        moves=[FurnitureMove(node_id=node_id("case_east"), dx=to_meters(shop_fixture.FIX_SHIFT_INCHES), dy=0.0,
+                             rotation_degrees=0.0)],
+        height_changes=[HeightChange(node_id=node_id("counter"), top_inches=36.0)]))
+    assert not checker.fixable_problems(checker.assess(fixed))
+    assert fitting_candidates(fixed, checker) == []
+    solution, _ = room_solver.solve(fixed, checker)
+    assert solution is None

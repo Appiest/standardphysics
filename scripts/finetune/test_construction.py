@@ -12,7 +12,8 @@ from standardphysics_agents.training.construction import (
     move_fixtures,
     shift_walls,
 )
-from standardphysics_agents.training.edits import edits_json, parse_edits
+from standardphysics_agents.training.edits import edit_complaint, edits_json, parse_edits
+from standardphysics_agents.training.prices import wall_shift_price
 from standardphysics_agents.training.prompt import _wall, room_view
 from standardphysics_agents.training.reward import shaped_reward
 from standardphysics_contracts import Mat4, SceneNode, Vec3, to_meters
@@ -79,8 +80,19 @@ def test_prompt_lists_the_sides_a_model_may_push():
 
 
 def test_construction_pays_less_than_the_same_fix_without_it():
-    assert shaped_reward(1.0, True, 0.5, 1.0, construction=6) < shaped_reward(1.0, True, 0.5, 1.0)
-    assert shaped_reward(1.0, True, 0.5, 1.0, construction=12) > shaped_reward(0.9, False, 0.0, 1.0)
+    six_inches = wall_shift_price(6)
+    assert shaped_reward(1.0, True, 0.5, 1.0, construction_cost=six_inches) < shaped_reward(1.0, True, 0.5, 1.0)
+    assert shaped_reward(1.0, True, 0.5, 1.0, construction_cost=wall_shift_price(12)) > shaped_reward(0.9, False, 0.0, 1.0)
+
+
+def test_fitting_edits_round_trip_and_refuse_refitting_one_piece_twice():
+    table = "00000000-0000-0000-0000-000000000003"
+    answer = ('{"height_changes":[{"node_id":"%s","top_inches":30}],'
+              '"replacements":[{"node_id":"%s","catalog_item":"accessible_two_top"}]}' % (table, table))
+    edits = parse_edits(answer)
+    assert edits is not None and parse_edits(edits_json(edits)) == edits
+    assert edit_complaint(shop(), edits) == "duplicate_refits"
+    assert "add_lowered_section" not in edits_json(edits)
 
 
 def test_fixture_moves_slide_built_ins_and_refuse_furniture():

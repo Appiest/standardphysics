@@ -30,6 +30,7 @@ from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3, lies_fl
 from standardphysics_pipeline.occupancy import reads_as_wall
 
 from ..checks.walls import is_room_shell
+from .fittings import HeightChange, LoweredSection, Replacement, fit
 
 MAX_WALL_SHIFT_INCHES = 12.0
 MAX_FIXTURE_MOVE_INCHES = 24.0
@@ -210,9 +211,11 @@ def move_fixtures(graph: SceneGraph, moves: list[FixtureMove]) -> SceneGraph:
     return graph.model_copy(update={"nodes": nodes, "revision": graph.revision + 1, "base_hash": None})
 
 
-def build(graph: SceneGraph, shifts: list[WallShift], fixtures: list[FixtureMove]) -> SceneGraph:
-    """The room after all its construction: walls pushed out first, then fixtures relocated."""
-    return move_fixtures(shift_walls(graph, shifts), fixtures)
+def build(graph: SceneGraph, shifts: list[WallShift], fixtures: list[FixtureMove],
+          heights: list[HeightChange] = (), replacements: list[Replacement] = (),
+          sections: list[LoweredSection] = ()) -> SceneGraph:
+    """The room after all its construction: walls pushed out, fixtures relocated, then pieces refitted."""
+    return fit(move_fixtures(shift_walls(graph, shifts), fixtures), list(heights), list(replacements), list(sections))
 
 
 def construction_inches(shifts: list[WallShift], fixtures: list[FixtureMove] = ()) -> float:

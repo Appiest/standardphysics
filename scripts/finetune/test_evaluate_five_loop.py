@@ -9,6 +9,7 @@ from standardphysics_agents.training.reward import Verdict
 
 class FakeChecker:
     scenario = "route"
+    scope = "layout"
 
     def assess(self, graph):
         return graph
@@ -41,7 +42,7 @@ def setup_loop(monkeypatch, baseline=2, *, low_usability=()):
     monkeypatch.setattr(evaluator, "apply_edits", lambda graph, edits: 0 if edits == "clear" else graph - 1)
     monkeypatch.setattr(evaluator, "usability", lambda _before, _after, _owner, _: 0.5
                         if scored[-1][0] in low_usability else 1.0)
-    monkeypatch.setattr(feedback, "room_view", lambda graph, _scenario, _problems: {"remaining": graph})
+    monkeypatch.setattr(feedback, "room_view", lambda graph, _scenario, _problems, _scope="layout": {"remaining": graph})
     return data, scored
 
 

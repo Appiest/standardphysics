@@ -6,9 +6,10 @@ the wrong furniture, a layout that breaks a hard constraint, or one the gate
 rejects. An accepted partial fix earns at most 0.55; a fix clearing every
 fixable finding earns at least 0.65. Recovery helps rank partial fixes, while
 usability and movement break ties within each tier. This makes a complete fix
-the training objective without paying for rejected layouts. A fix that needs
-construction (a wall shift or a relocated fixture) pays a little less per inch moved, so a furniture-only
-fix of the same room always ranks above it.
+the training objective without paying for rejected layouts. Every edit is
+priced from the one table in `prices.py`, so the cheapest legitimate fix of a
+room ranks first: a furniture-only fix above one that changes a height, and
+that above one that relocates a built-in or moves a wall.
 
 The training checker treats uncertain scan geometry as measured. Its all-clear
 verdict is therefore a training result, not physical verification. Q
@@ -26,8 +27,10 @@ from ..evaluation.gate import accepts
 from ..fix import apply_moves, relocation_violations, violations
 from ..fix.strategies import TURN_DISRUPTION_METERS
 from .checker import TrainingChecker
-from .construction import build, construction_inches
-from .edits import edit_complaint, node_moves, parse_edits
+from .construction import construction_inches
+from .edits import built_room, edit_complaint, node_moves, parse_edits
+from .fittings import fitted_ids
+from .prices import capped_construction, construction_price, furniture_price
 from .quality import layout_quality
 from .usability import usability
 
@@ -36,12 +39,8 @@ RECOVERY_WEIGHT = 0.30
 ALL_CLEAR_FLOOR = 0.80
 USABILITY_WEIGHT = 0.20
 MOVED_PINNED = "moved_unconfirmed_object"
-DISRUPTION_PENALTY_PER_METER = 0.03
-MAX_DISRUPTION_PENALTY = 0.15
 MIN_ACCEPTED_REWARD = 0.05
 TURN_THRESHOLD_DEGREES = 1.0
-CONSTRUCTION_PENALTY_PER_INCH = 0.01
-MAX_CONSTRUCTION_PENALTY = 0.12
 
 
 @dataclass(frozen=True)
@@ -59,7 +58,9 @@ class Verdict:
     usability: float | None = None
     """U, for gate-accepted layouts."""
     construction_inches: float = 0.0
-    """Total wall shift the edits ask for; zero for a furniture-only answer."""
+    """Total wall shift and fixture slide the edits ask for; zero for a furniture-only answer."""
+    construction_cost: float = 0.0
+    """What the construction edits cost in reward before the cap, from `prices.py`; zero for furniture only."""
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -72,9 +73,8 @@ def disruption_meters(moves) -> float:
 
 
 def shaped_reward(recovered: float, all_clear: bool, disruption: float, usable: float = 1.0,
-                  construction: float = 0.0) -> float:
-    penalty = min(MAX_DISRUPTION_PENALTY, DISRUPTION_PENALTY_PER_METER * disruption)
-    penalty += min(MAX_CONSTRUCTION_PENALTY, CONSTRUCTION_PENALTY_PER_INCH * construction)
+                  construction_cost: float = 0.0) -> float:
+    penalty = furniture_price(disruption) + capped_construction(construction_cost)
     usability_credit = USABILITY_WEIGHT * max(0.0, min(1.0, usable))
     earned = (ALL_CLEAR_FLOOR if all_clear else ACCEPTED_FLOOR + RECOVERY_WEIGHT * max(0.0, min(1.0, recovered)))
     earned += usability_credit
@@ -91,22 +91,30 @@ def score_completion(completion: str, room: SceneGraph, checker: TrainingChecker
     edits = parse_edits(completion)
     if edits is None:
         return Verdict(0.0, reason="unparseable")
-    if any(move.node_id in checker.pinned for move in [*edits.moves, *edits.fixture_moves]):
+    if _touched(edits) & checker.pinned:
         return Verdict(0.0, parsed=True, reason=MOVED_PINNED)
     complaint = edit_complaint(room, edits)
     if complaint:
         return Verdict(0.0, parsed=True, reason=complaint)
     moves = node_moves(edits)
     try:
-        built = build(room, edits.wall_shifts, edits.fixture_moves)
+        built = built_room(room, edits)
     except ValueError:
         return Verdict(0.0, parsed=True, reason="unbuildable_construction")
     candidate = apply_moves(built, moves)
-    relocated = {move.node_id for move in edits.fixture_moves}
+    relocated = {move.node_id for move in edits.fixture_moves} | fitted_ids(room, built)
     broken = [*violations(built, candidate), *relocation_violations(room, candidate, relocated)]
     if broken:
         return Verdict(0.0, parsed=True, reason=",".join(sorted({item.kind for item in broken})))
-    return _gated(room, candidate, checker, disruption_meters(moves), construction_inches(edits.wall_shifts, edits.fixture_moves))
+    return _gated(room, candidate, checker, disruption_meters(moves), _Construction(
+        construction_inches(edits.wall_shifts, edits.fixture_moves), construction_price(room, edits)))
+
+
+def _touched(edits) -> set:
+    """Every piece an answer moves, refits or carries."""
+    carried = [node_id for section in edits.add_lowered_section for node_id in section.carry]
+    return {edit.node_id for edit in [*edits.moves, *edits.fixture_moves, *edits.height_changes, *edits.replacements]
+            } | {section.counter_id for section in edits.add_lowered_section} | set(carried)
 
 
 def summarize(verdicts: list[Verdict]) -> dict:
@@ -137,21 +145,27 @@ def _mean_of(values: list) -> float | None:
     return round(sum(values) / len(values), 4) if values else None
 
 
+@dataclass(frozen=True)
+class _Construction:
+    inches: float = 0.0
+    cost: float = 0.0
+
+
 def _gated(room: SceneGraph, candidate: SceneGraph, checker: TrainingChecker, disruption: float,
-           construction: float = 0.0) -> Verdict:
+           construction: _Construction = _Construction()) -> Verdict:
     before, after = checker.assess(room), checker.assess(candidate)
     gate = accepts(before, after)
     recovered = _recovered(gate.shortfall_before, gate.shortfall_after)
     left = len(checker.fixable_problems(after))
+    built = {"construction_inches": construction.inches, "construction_cost": construction.cost}
     if not gate:
         return Verdict(0.0, parsed=True, hard_constraints_pass=True, shortfall_recovered=recovered,
-                       fixable_left=left, disruption_meters=disruption, reason="; ".join(gate.reasons),
-                       construction_inches=construction)
+                       fixable_left=left, disruption_meters=disruption, reason="; ".join(gate.reasons), **built)
     owner = checker.owner_layout or room
     quality = layout_quality(room, candidate, owner, checker.measure)
     usable = usability(room, candidate, owner, checker.scenario)
     return Verdict(
-        shaped_reward(recovered, left == 0, disruption, usable, construction), parsed=True, hard_constraints_pass=True,
-        gate_accepts=True, shortfall_recovered=recovered, fixable_left=left, disruption_meters=disruption,
-        quality=quality.as_dict(), usability=usable, construction_inches=construction,
+        shaped_reward(recovered, left == 0, disruption, usable, construction.cost), parsed=True,
+        hard_constraints_pass=True, gate_accepts=True, shortfall_recovered=recovered, fixable_left=left,
+        disruption_meters=disruption, quality=quality.as_dict(), usability=usable, **built,
     )

@@ -1,5 +1,10 @@
 """Deterministic repair search: furniture first, then the least construction that clears the room.
 
+Problems only a fitting edit clears (a counter too high, tables at the wrong
+height, a control out of reach) are fitted before any wall or fixture moves:
+for each, the candidates in `fitting_candidates` are scored alone and the best
+one kept, and everything later builds on the fitted room.
+
 The furniture search is the bounded `propose_fix` loop the ceiling uses. When
 it cannot clear every fixable problem, a turning circle that is too tight is
 cleared directly: every object reaching inside the required circle is pushed
@@ -20,6 +25,7 @@ import time
 from collections import Counter
 from dataclasses import dataclass
 
+from fitting_candidates import fitting_candidates
 from standardphysics_agents.fix import propose_fix
 from standardphysics_agents.redesign import FurnitureMove
 from standardphysics_agents.training import score_completion
@@ -28,11 +34,11 @@ from standardphysics_agents.training.construction import (
     MAX_WALL_SHIFT_INCHES,
     FixtureMove,
     WallShift,
-    build,
     fixture_ids,
     floor_edges,
 )
-from standardphysics_agents.training.edits import TrainingEdits, edits_between, edits_json
+from standardphysics_agents.training.edits import TrainingEdits, built_room, combined, edits_between, edits_json
+from standardphysics_agents.training.prices import construction_price
 from standardphysics_contracts import SceneGraph, lies_flat, to_inches, to_meters
 from standardphysics_pipeline import contains_point
 from standardphysics_pipeline.footprints import footprint
@@ -44,6 +50,7 @@ FIXTURE_STEPS_INCHES = (3.0, 6.0, 12.0, 18.0, 24.0)
 FIXTURE_DIRECTIONS = tuple((math.cos(math.radians(angle)), math.sin(math.radians(angle)))
                            for angle in range(0, 360, 45))
 FIXTURE_FINALISTS = 3
+FITTING_ALTERNATIVES = 4
 CIRCLE_CHECKS = frozenset({"turning_space"})
 PUSH_MARGIN_INCHES = 1.5
 BUDGET_SECONDS = float(os.environ.get("SOLVER_BUDGET_SECONDS", "inf"))
@@ -62,7 +69,7 @@ class Solution:
     @property
     def rank(self) -> tuple:
         verdict = self.verdict
-        return (verdict["gate_accepts"], verdict["fixable_left"] == 0, -verdict["construction_inches"],
+        return (verdict["gate_accepts"], verdict["fixable_left"] == 0, -verdict["construction_cost"],
                 verdict["shortfall_recovered"], verdict["reward"])
 
 
@@ -74,7 +81,7 @@ def _furniture_layout(graph: SceneGraph, checker, rejected: Counter) -> SceneGra
     layout = graph
     for _ in range(SEARCH_ROUNDS):
         before = checker.assess(layout)
-        problems = checker.fixable_problems(before)
+        problems = checker.rearrangeable_problems(before)
         if not problems:
             break
         outcome = propose_fix(layout, checker.scenario, checker.measure, problems, rules=checker.rules,
@@ -87,15 +94,23 @@ def _furniture_layout(graph: SceneGraph, checker, rejected: Counter) -> SceneGra
     return layout
 
 
-def _attempt(graph: SceneGraph, checker, shifts: list[WallShift], rejected: Counter,
-             fixtures: list[FixtureMove] = ()) -> Solution | None:
-    built = build(graph, shifts, list(fixtures))
-    layout = _furniture_layout(built, checker, rejected)
-    edits = TrainingEdits(moves=edits_between(built, layout).moves, wall_shifts=shifts, fixture_moves=list(fixtures))
-    if not edits.moves and not shifts and not fixtures:
-        return None
+def _scored(graph: SceneGraph, checker, edits: TrainingEdits) -> Solution:
     completion = edits_json(edits)
     return Solution(completion, score_completion(completion, graph, checker).as_dict())
+
+
+def _attempt(graph: SceneGraph, checker, shifts: list[WallShift], rejected: Counter,
+             fixtures: list[FixtureMove] = (), fittings: TrainingEdits = TrainingEdits()) -> Solution | None:
+    construction = combined(TrainingEdits(wall_shifts=shifts, fixture_moves=list(fixtures)), fittings)
+    try:
+        built = built_room(graph, construction)
+    except ValueError:
+        return None
+    layout = _furniture_layout(built, checker, rejected)
+    edits = combined(construction, TrainingEdits(moves=edits_between(built, layout).moves))
+    if edits == TrainingEdits():
+        return None
+    return _scored(graph, checker, edits)
 
 
 def _narrowed(graph: SceneGraph, checker, side, cleared: Solution, rejected: Counter) -> Solution:
@@ -196,7 +211,7 @@ def _circle_options(graph: SceneGraph, checker, rejected: Counter) -> list[Solut
 
 def _blocking_fixtures(graph: SceneGraph, checker) -> list:
     fixtures = fixture_ids(graph) - set(checker.pinned)
-    named = [node_id for finding in checker.fixable_problems(checker.assess(graph)) if finding.locus
+    named = [node_id for finding in checker.rearrangeable_problems(checker.assess(graph)) if finding.locus
              for node_id in finding.locus.node_ids if node_id in fixtures]
     return list(dict.fromkeys(named))
 
@@ -227,12 +242,70 @@ def _fixture_options(graph: SceneGraph, checker, rejected: Counter) -> list[Solu
     return options
 
 
+def _fitting_rank(solution: Solution) -> tuple:
+    verdict = solution.verdict
+    left = verdict["fixable_left"] if verdict["fixable_left"] is not None else math.inf
+    return (verdict["hard_constraints_pass"], verdict["gate_accepts"], -left, -verdict["construction_cost"])
+
+
+def _best_fitting(graph: SceneGraph, checker, chosen: TrainingEdits, candidates: list[TrainingEdits]) -> list:
+    """This problem's candidates that break no hard constraint on top of what is chosen, best first."""
+    scored = [(_scored(graph, checker, combined(chosen, candidate)), candidate) for candidate in candidates]
+    kept = [pair for pair in scored if pair[0].verdict["hard_constraints_pass"]]
+    return [candidate for _, candidate in sorted(kept, key=lambda pair: _fitting_rank(pair[0]), reverse=True)]
+
+
+def _fitting_options(graph: SceneGraph, checker, rejected: Counter) -> tuple[TrainingEdits, list[Solution]]:
+    """The fittings chosen greedily problem by problem, and the answers built on them with furniture on top."""
+    chosen, alternatives = TrainingEdits(), []
+    for candidates in fitting_candidates(graph, checker):
+        ranked = _best_fitting(graph, checker, chosen, candidates)
+        if ranked:
+            alternatives += [(chosen, other) for other in ranked[1:]]
+            chosen = combined(chosen, ranked[0])
+    if chosen == TrainingEdits():
+        return chosen, []
+    options = [_scored(graph, checker, chosen)]
+    if not options[0].clears:
+        options.append(_attempt(graph, checker, [], rejected, fittings=chosen))
+    for before, other in alternatives[:FITTING_ALTERNATIVES]:
+        trial = combined(before, other)
+        if construction_price(graph, trial) < _cheapest_clear(options):
+            options.append(_attempt(graph, checker, [], rejected, fittings=trial))
+    return chosen, [option for option in options if option is not None]
+
+
+def _cheapest_clear(options: list[Solution | None]) -> float:
+    return min((option.verdict["construction_cost"] for option in options if option is not None and option.clears),
+               default=math.inf)
+
+
+def _on_top_of(graph: SceneGraph, checker, fitted: TrainingEdits, option: Solution) -> Solution:
+    """An answer found on the fitted room, with the fittings put back in front of it."""
+    return _scored(graph, checker, combined(fitted, TrainingEdits.model_validate_json(option.completion)))
+
+
 def solve(graph: SceneGraph, checker, allow_construction: bool = True) -> tuple[Solution | None, Counter]:
-    """The best checker-scored repair found, preferring furniture only, then the smallest construction."""
+    """The best checker-scored repair found, preferring furniture only, then the cheapest construction."""
     rejected: Counter = Counter()
+    if not checker.fixable_problems(checker.assess(graph)):
+        return None, rejected
     options = [option for option in [_attempt(graph, checker, [], rejected)] if option is not None]
     if (options and options[0].clears) or not allow_construction:
         return (max(options, key=lambda option: option.rank) if options else None), rejected
+    fitted, fitting_options = _fitting_options(graph, checker, rejected)
+    options.extend(fitting_options)
+    if not any(option.clears for option in options):
+        room = graph if fitted == TrainingEdits() else built_room(graph, fitted)
+        layout_options = _layout_construction(room, checker, rejected)
+        options.extend(option if room is graph else _on_top_of(graph, checker, fitted, option)
+                       for option in layout_options)
+    return (max(options, key=lambda option: option.rank) if options else None), rejected
+
+
+def _layout_construction(graph: SceneGraph, checker, rejected: Counter) -> list[Solution]:
+    """Turning-circle pushes, fixture slides and wall shifts, stopping at the first that clears."""
+    options: list[Solution] = []
     deadline = time.monotonic() + BUDGET_SECONDS
     options.extend(_circle_options(graph, checker, rejected))
     if not any(option.clears for option in options):
@@ -244,4 +317,4 @@ def solve(graph: SceneGraph, checker, allow_construction: bool = True) -> tuple[
         if widest is None:
             continue
         options.append(_narrowed(graph, checker, edge.side, widest, rejected) if widest.clears else widest)
-    return (max(options, key=lambda option: option.rank) if options else None), rejected
+    return options

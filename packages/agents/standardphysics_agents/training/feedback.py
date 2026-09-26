@@ -36,6 +36,6 @@ def feedback_message(
             "candidate_baseline_usability": candidate_baseline_usability,
             "current_baseline_usability": current_baseline_usability,
         },
-        "room": room_view(graph, checker.scenario, problems),
+        "room": room_view(graph, checker.scenario, problems, checker.scope),
     }
     return {"role": "user", "content": json.dumps(feedback, separators=(",", ":"))}
