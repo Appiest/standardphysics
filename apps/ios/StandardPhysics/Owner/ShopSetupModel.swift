@@ -116,10 +116,20 @@ final class ShopSetupModel: ObservableObject, Identifiable {
         if isDebugPreview { return }
 #endif
         while !Task.isCancelled && handover == nil {
+            if await pickUpLateScan() { return }
             handover = await measuredStep()
             if handover != nil { return }
             do { try await Task.sleep(for: .seconds(3)) } catch { return }
         }
+    }
+
+    /// A walk whose upload only got going on a retry from the wait screen
+    /// still has its questions to ask, so the flow goes back to them.
+    private func pickUpLateScan() async -> Bool {
+        guard scanID == nil, let found = upload?.scanID else { return false }
+        scanID = found
+        await refresh()
+        return step != .measuring
     }
 
     private func measuredStep() async -> Journey.NextStep? {
