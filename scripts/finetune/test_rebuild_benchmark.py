@@ -7,7 +7,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from rebuild_benchmark import Meter, Rebuild, _model, _shuffle_task, summarize
+from rebuild_benchmark import Meter, Rebuild, _model, _shuffle_task, _trial_seed, summarize
 
 
 def test_shuffle_excludes_rooms_with_preexisting_measured_failures(monkeypatch):
@@ -16,7 +16,34 @@ def test_shuffle_excludes_rooms_with_preexisting_measured_failures(monkeypatch):
     monkeypatch.setattr("rebuild_benchmark.ledger", lambda *_: object())
     monkeypatch.setattr("rebuild_benchmark.measured_failures", lambda *_: [SimpleNamespace(key="fixed counter")])
 
-    assert _shuffle_task({"window_id": "room"}) == ("preexisting_measured_failures", [])
+    assert _shuffle_task(({"window_id": "room"}, 42, 3)) == ("preexisting_measured_failures", [])
+
+
+def test_seeded_shuffles_are_distinct_reproducible_trials(monkeypatch):
+    base = object()
+    window = SimpleNamespace(window_id="room", graph=base)
+    checker = object()
+    monkeypatch.setattr("rebuild_benchmark.room", lambda _: (window, checker))
+    monkeypatch.setattr("rebuild_benchmark.ledger", lambda *_: SimpleNamespace(
+        measured_unknown=[], accept_for_final_layout=False))
+    monkeypatch.setattr("rebuild_benchmark.measured_failures", lambda graph, *_: [] if graph is base else [
+        SimpleNamespace(key="route")])
+    monkeypatch.setattr("rebuild_benchmark.measures", lambda *_: {})
+
+    def fake_scramble(_graph, _checker, _tries, *, seed, how):
+        node = SimpleNamespace(id=seed, transform=SimpleNamespace(m=[seed]), movable=True)
+        graph = SimpleNamespace(nodes=[node], model_dump=lambda **_: {"seed": seed})
+        return [SimpleNamespace(name="v000", graph=graph)]
+
+    monkeypatch.setattr("rebuild_benchmark.scramble", fake_scramble)
+    status, rows = _shuffle_task(({"window_id": "room"}, 42, 3))
+
+    assert status == "qualified"
+    assert len(rows) == 3
+    assert [row["seed"] for row in rows] == [_trial_seed(42, "room", index) for index in range(3)]
+    assert all(row["shuffle_attempt"] == "v000" for row in rows)
+    assert len({row["shuffle_id"] for row in rows}) == 3
+    assert _trial_seed(42, "room", 0) != _trial_seed(43, "room", 0)
 
 
 def test_rebuild_continues_until_every_measured_failure_is_clear():

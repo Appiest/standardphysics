@@ -3,8 +3,8 @@
 The ledger reports measured failures, unknown measurements, and legal sign-off separately. A cleared room is
 not described as verified ADA-compliant unless the ledger accepts it for a final layout.
 
-    shuffles   for every held-out room, up to `SHUFFLES_PER_ROOM` shuffles of up to six pieces that pass every
-               hard constraint and add a measured failure to the owner's layout (CPU only)
+    shuffles   for each measured-clear held-out room, generate independent seeded shuffles of up to six pieces.
+               Keep a seed only when its layout passes hard constraints and adds a measured failure (CPU only)
     run        each model rebuilds every shuffle in up to `MAX_LOOPS` loops. A loop is one answer: an answer the
                gate accepts becomes the room, and the next loop starts from a fresh prompt of it plus what the
                ledger still fails; a refused answer gets a reply saying why, plus what the ledger still fails.
@@ -12,7 +12,8 @@ not described as verified ADA-compliant unless the ledger accepts it for a final
                and a round that could pass `--budget` is not started
     report     per model and room group
 
-    python scripts/finetune/rebuild_benchmark.py shuffles --run runs/finetune/arkit --out runs/finetune/arkit/rebuild
+    python scripts/finetune/rebuild_benchmark.py shuffles --run runs/finetune/arkit \\
+        --out runs/finetune/arkit/rebuild --seeds-per-room 5 --seed 42
     python scripts/finetune/rebuild_benchmark.py run --out runs/finetune/arkit/rebuild --model base \\
         --model sft=<training state reference> --budget 20
     python scripts/finetune/rebuild_benchmark.py report --out runs/finetune/arkit/rebuild
@@ -37,7 +38,7 @@ from standardphysics_agents.training import prompt_messages, scramble
 from standardphysics_agents.training.scramble import SHUFFLE
 from standardphysics_contracts import SceneGraph
 
-SHUFFLES_PER_ROOM = 2
+DEFAULT_SEEDS_PER_ROOM = 5
 SHUFFLE_TRIES = 6
 MAX_LOOPS = 5
 
@@ -62,41 +63,56 @@ def _write(path: pathlib.Path, rows: list[dict]) -> None:
 # --- shuffles ---------------------------------------------------------------
 
 
-def _shuffle_task(window_row: dict) -> tuple[str, list[dict]]:
+def _trial_seed(master_seed: int, window_id: str, index: int) -> int:
+    return zlib.crc32(f"{master_seed}:{window_id}:{index}".encode())
+
+
+def _shuffle_task(task: tuple[dict, int, int]) -> tuple[str, list[dict]]:
+    window_row, master_seed, seeds_per_room = task
     window, checker = room(window_row)
     owner_result = ledger(window.graph, window, checker)
     owner_failures = {failure.key for failure in measured_failures(window.graph, window, checker)}
     if owner_failures:
         return "preexisting_measured_failures", []
     made = []
-    seed = zlib.crc32(window.window_id.encode())
-    for variant in scramble(window.graph, checker, SHUFFLE_TRIES, seed=seed, how=SHUFFLE):
-        start_failures = measured_failures(variant.graph, window, checker)
-        added = [failure for failure in start_failures if failure.key not in owner_failures]
-        if not added:
-            continue
-        made.append({"shuffle_id": f"{window.window_id}:{variant.name}", "window_id": window.window_id,
-                     "group": source_of(window.window_id), "owner_failures": sorted(owner_failures),
-                     "owner_measured_unknown": list(owner_result.measured_unknown),
-                     "owner_verified_for_final_layout": owner_result.accept_for_final_layout,
-                     "added": [failure.key for failure in added],
-                     "start_failing": [failure.key for failure in start_failures],
-                     "graph": variant.graph.model_dump(mode="json"),
-                     "start": measures(window.graph, variant.graph, checker)})
-        if len(made) == SHUFFLES_PER_ROOM:
+    seen = set()
+    for index in range(seeds_per_room):
+        seed = _trial_seed(master_seed, window.window_id, index)
+        for variant in scramble(window.graph, checker, SHUFFLE_TRIES, seed=seed, how=SHUFFLE):
+            signature = tuple((str(node.id), tuple(node.transform.m)) for node in variant.graph.nodes if node.movable)
+            if signature in seen:
+                continue
+            start_failures = measured_failures(variant.graph, window, checker)
+            if not start_failures:
+                continue
+            seen.add(signature)
+            made.append({"shuffle_id": f"{window.window_id}:seed{master_seed}:{index:03d}",
+                         "window_id": window.window_id, "group": source_of(window.window_id),
+                         "master_seed": master_seed, "seed_index": index, "seed": seed,
+                         "shuffle_attempt": variant.name,
+                         "owner_failures": sorted(owner_failures),
+                         "owner_measured_unknown": list(owner_result.measured_unknown),
+                         "owner_verified_for_final_layout": owner_result.accept_for_final_layout,
+                         "added": [failure.key for failure in start_failures],
+                         "start_failing": [failure.key for failure in start_failures],
+                         "graph": variant.graph.model_dump(mode="json"),
+                         "start": measures(window.graph, variant.graph, checker)})
             break
     return ("qualified" if made else "no_qualifying_shuffle"), made
 
 
-def shuffles(run: pathlib.Path, out: pathlib.Path, workers: int) -> dict:
+def shuffles(run: pathlib.Path, out: pathlib.Path, workers: int, seeds_per_room: int, master_seed: int) -> dict:
+    if seeds_per_room <= 0:
+        raise ValueError("--seeds-per-room must be positive")
     if not (run / "dataset" / "heldout.jsonl").exists() or not (run / "windows.jsonl").exists():
         raise FileNotFoundError("the training run needs dataset/heldout.jsonl and windows.jsonl")
     if any(path.stem not in {"shuffles", "windows"} for path in out.glob("*.jsonl")):
         raise ValueError("this output already has model results; use a fresh --out to regenerate shuffles")
     held = {row["window"] for row in _rows(run / "dataset" / "heldout.jsonl")}
     windows = [row for row in _rows(run / "windows.jsonl") if row["window_id"] in held]
+    tasks = [(window, master_seed, seeds_per_room) for window in windows]
     with multiprocessing.get_context("spawn").Pool(workers) as pool:
-        outcomes = list(pool.imap_unordered(_shuffle_task, windows))
+        outcomes = list(pool.imap_unordered(_shuffle_task, tasks))
     made = [row for _, rows in outcomes for row in rows]
     made.sort(key=lambda row: row["shuffle_id"])
     _write(out / "windows.jsonl", windows)
@@ -104,9 +120,13 @@ def shuffles(run: pathlib.Path, out: pathlib.Path, workers: int) -> dict:
     rooms = defaultdict(set)
     for row in made:
         rooms[row["group"]].add(row["window_id"])
-    return {"held_out_rooms": len(windows), "shuffles": len(made),
-            "room_selection": dict(Counter(status for status, _ in outcomes)),
-            "rooms_with_a_shuffle": {group: len(ids) for group, ids in sorted(rooms.items())}}
+    eligible_rooms = sum(status != "preexisting_measured_failures" for status, _ in outcomes)
+    summary = {"held_out_rooms": len(windows), "shuffles": len(made), "master_seed": master_seed,
+               "seeds_per_room": seeds_per_room, "eligible_seed_slots": eligible_rooms * seeds_per_room,
+               "room_selection": dict(Counter(status for status, _ in outcomes)),
+               "rooms_with_a_shuffle": {group: len(ids) for group, ids in sorted(rooms.items())}}
+    (out / "selection.json").write_text(json.dumps(summary, indent=2) + "\n")
+    return summary
 
 
 # --- run --------------------------------------------------------------------
@@ -207,6 +227,8 @@ def prompt_messages_for(row: dict, windows: dict) -> list[dict]:
 def _record(model_name: str, state: str | None, rebuild: Rebuild, finished: dict) -> dict:
     row = rebuild.shuffle
     return {"model": model_name, "state": state, "shuffle_id": row["shuffle_id"],
+            "master_seed": row["master_seed"], "seed_index": row["seed_index"], "seed": row["seed"],
+            "shuffle_attempt": row["shuffle_attempt"],
             "window_id": row["window_id"],
             "group": row["group"], "owner_failures": row["owner_failures"],
             "owner_measured_unknown": row["owner_measured_unknown"],
@@ -305,6 +327,8 @@ def summarize(rows: list[dict]) -> dict:
 
 def report(out: pathlib.Path) -> dict:
     result: dict[str, object] = {}
+    selection = out / "selection.json"
+    result["selection"] = json.loads(selection.read_text()) if selection.exists() else None
     for path in sorted(out.glob("*.jsonl")):
         if path.stem in {"shuffles", "windows"}:
             continue
@@ -337,11 +361,13 @@ def main() -> None:
                         help="NAME for the base model or NAME=STATE for a saved training state")
     parser.add_argument("--budget", type=float, help="maximum estimated sampling spend in US dollars")
     parser.add_argument("--workers", type=int, default=max(1, multiprocessing.cpu_count() - 1))
+    parser.add_argument("--seeds-per-room", type=int, default=DEFAULT_SEEDS_PER_ROOM)
+    parser.add_argument("--seed", type=int, default=0, help="master seed for reproducible room shuffles")
     args = parser.parse_args()
     if args.stage == "shuffles":
         if args.run is None:
             parser.error("shuffles requires --run")
-        print(json.dumps(shuffles(args.run, args.out, args.workers), indent=2))
+        print(json.dumps(shuffles(args.run, args.out, args.workers, args.seeds_per_room, args.seed), indent=2))
     elif args.stage == "run":
         if args.budget is None:
             parser.error("run requires an explicit --budget")
