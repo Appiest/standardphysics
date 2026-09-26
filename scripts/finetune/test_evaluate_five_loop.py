@@ -38,8 +38,7 @@ def setup_loop(monkeypatch, baseline=2, *, low_usability=()):
         {"role": "system", "content": "fix room"}, {"role": "user", "content": str(graph)},
     ])
     monkeypatch.setattr(evaluator, "parse_edits", lambda completion: completion)
-    monkeypatch.setattr(evaluator, "node_moves", lambda edits: edits)
-    monkeypatch.setattr(evaluator, "apply_moves", lambda graph, moves: 0 if moves == "clear" else graph - 1)
+    monkeypatch.setattr(evaluator, "apply_edits", lambda graph, edits: 0 if edits == "clear" else graph - 1)
     monkeypatch.setattr(evaluator, "usability", lambda _before, _after, _owner, _: 0.5
                         if scored[-1][0] in low_usability else 1.0)
     monkeypatch.setattr(feedback, "room_view", lambda graph, _scenario, _problems: {"remaining": graph})
@@ -119,7 +118,7 @@ def test_jsonl_output_has_one_record_per_variant_and_a_fixed_model_id(monkeypatc
     summary = evaluator.evaluate(data, lambda _: "clear", "fake-qwen", output)
     row = json.loads(output.read_text().strip())
     assert summary == {"variants": 1, "eligible_variants": 1, "fully_cleared": 1,
-                       "fully_cleared_with_full_usability": 1, "abstained": 0,
+                       "fully_cleared_with_full_usability": 1, "cleared_with_construction": 0, "abstained": 0,
                        "resumed_variants": 0, "records": str(output)}
     assert row["model"] == "fake-qwen" and row["variant"] == "v"
     assert row["attempts"][0]["feedback"]["checker_feedback"]["fixable_left"] == 0
