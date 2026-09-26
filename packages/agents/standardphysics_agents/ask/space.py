@@ -14,6 +14,7 @@ is a wrong answer about a different couch.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Iterator
 
@@ -31,7 +32,7 @@ from standardphysics_contracts.rules import Tier
 
 from ..assess import Pass, assess
 from ..evaluation.gate import accepts
-from ..fix.constraints import Violation, interior_bounds, violations
+from ..fix.constraints import Violation, interior_polygon, violations
 from ..numbers import by_size, size
 from ..rules import AgentRulePack, VerificationLedger
 from ..tracing import traced
@@ -127,31 +128,28 @@ def _wall_placements(
     would find placements nobody would ever choose and take four times as long
     to do it.
     """
-    bounds = interior_bounds(graph)
-    if bounds is None:
+    corners = interior_polygon(graph)
+    if corners is None:
         return
-    min_x, min_y, max_x, max_y = bounds
-    depth = to_meters(request.depth_inches or 0.0)
-    inset = depth / 2 + WALL_CLEARANCE
-
-    yield from _along(min_x, max_x, min_y + inset, 0.0, horizontal=True)
-    yield from _along(min_x, max_x, max_y - inset, 180.0, horizontal=True)
-    yield from _along(min_y, max_y, min_x + inset, 90.0, horizontal=False)
-    yield from _along(min_y, max_y, max_x - inset, 270.0, horizontal=False)
+    inset = to_meters(request.depth_inches or 0.0) / 2 + WALL_CLEARANCE
+    for start, end in zip(corners, [*corners[1:], corners[0]]):
+        yield from _along(start, end, inset)
 
 
-def _along(
-    low: float, high: float, fixed: float, degrees: float, horizontal: bool
-) -> Iterator[tuple[Vec3, float]]:
-    steps = max(int((high - low) / PLACEMENT_STEP), 1)
-    for index in range(steps + 1):
-        moving = low + index * PLACEMENT_STEP
-        centre = (
-            Vec3(x=moving, y=fixed, z=0.0)
-            if horizontal
-            else Vec3(x=fixed, y=moving, z=0.0)
-        )
-        yield centre, degrees
+def _along(start, end, inset: float) -> Iterator[tuple[Vec3, float]]:
+    """Positions a step apart along one wall, `inset` in from it, turned to run with it.
+
+    The corners run counter-clockwise, so the room is on the left of each wall.
+    """
+    length = math.dist(start, end)
+    if length == 0:
+        return
+    along_x, along_y = (end[0] - start[0]) / length, (end[1] - start[1]) / length
+    degrees = math.degrees(math.atan2(along_y, along_x))
+    for index in range(max(int(length / PLACEMENT_STEP), 1) + 1):
+        travelled = index * PLACEMENT_STEP
+        yield Vec3(x=start[0] + along_x * travelled - along_y * inset,
+                   y=start[1] + along_y * travelled + along_x * inset, z=0.0), degrees
 
 
 def _first_blocker(broken: list[Violation]) -> str | None:

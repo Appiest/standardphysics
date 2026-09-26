@@ -4,7 +4,7 @@ The plan is drawn only from `room_view` output, never from the scene graph, so
 an image-conditioned model is shown exactly the facts the text gives it. Any
 difference it makes is the difference seeing them makes.
 
-Movable pieces are orange and tagged with the start of their id. Fixed pieces
+The standable floor is shaded. Movable pieces are orange and tagged with the start of their id. Fixed pieces
 are grey, darker when they stand on a counter. A door's keep-clear area is
 tinted teal. Problems are red: a circle the size of the clear space the rule
 asks for, centred where the checker measured it. Grid lines are one metre
@@ -25,7 +25,7 @@ MARGIN = 40
 INCH = 0.0254
 TAG_LENGTH = 4
 PALETTE = {
-    "background": "#f7f6f2", "grid": "#d4d0c6", "axis_text": "#6b6a66",
+    "background": "#f7f6f2", "floor": "#ebe8e0", "grid": "#d4d0c6", "axis_text": "#6b6a66",
     "wall": "#2e3336", "door": "#3f8f89", "keep_clear": "#bfe0dc", "fixed": "#9aa3a1",
     "on_counter": "#5f6866", "movable": "#e07b28", "tag": "#1d1d1b", "stop": "#2a62c9", "problem": "#d6312b",
 }
@@ -83,6 +83,11 @@ def _grid(canvas: _Canvas) -> None:
         canvas.draw.text((MARGIN / 2, y), f"y={metre}", fill=PALETTE["axis_text"], font=canvas.font, anchor="mm")
 
 
+def _floor(canvas: _Canvas, view: dict) -> None:
+    if view.get("floor_inside_walls"):
+        canvas.polygon(view["floor_inside_walls"], PALETTE["floor"])
+
+
 def _centre(corners) -> tuple[float, float]:
     return sum(x for x, _ in corners) / len(corners), sum(y for _, y in corners) / len(corners)
 
@@ -122,6 +127,7 @@ def _marks(canvas: _Canvas, view: dict) -> None:
 def render(view: dict) -> Image.Image:
     canvas = _Canvas(view)
     _grid(canvas)
+    _floor(canvas, view)
     _pieces(canvas, view)
     _marks(canvas, view)
     return canvas.image

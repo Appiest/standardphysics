@@ -126,41 +126,62 @@ def _inventory_changes(
     ]
 
 
-def floor_bounds(graph: SceneGraph) -> tuple[float, float, float, float] | None:
-    for node in graph.nodes:
-        if lies_flat(node):
-            return polygon_bounds(floor_polygon(node))
-    return None
+WALL_ON_EDGE_METERS = 0.35
+"""How far a wall's middle may sit from the floor's edge and still be that edge's wall, not a partition."""
 
 
-def interior_bounds(graph: SceneGraph) -> tuple[float, float, float, float] | None:
-    """The floor somebody can actually stand on, inside the walls.
+def _floor_heading(outline: Polygon) -> float:
+    """The direction of the floor outline's longest edge, in radians: the room's own x axis."""
+    start, end = max(zip(outline, [*outline[1:], outline[0]]), key=lambda edge: math.dist(*edge))
+    return math.atan2(end[1] - start[1], end[0] - start[0])
+
+
+def _turned(points, radians: float) -> Polygon:
+    cos_t, sin_t = math.cos(radians), math.sin(radians)
+    return [(x * cos_t - y * sin_t, x * sin_t + y * cos_t) for x, y in points]
+
+
+def _trimmed_to_wall(bounds: tuple, wall: Polygon) -> tuple:
+    """`bounds` with the side this wall stands on pulled in to its inner face; a partition changes nothing."""
+    min_x, min_y, max_x, max_y = bounds
+    low_x, low_y, high_x, high_y = polygon_bounds(wall)
+    middle_x, middle_y = (low_x + high_x) / 2, (low_y + high_y) / 2
+    if high_y - low_y >= high_x - low_x:
+        if abs(middle_x - min_x) <= WALL_ON_EDGE_METERS:
+            return max(min_x, high_x), min_y, max_x, max_y
+        if abs(middle_x - max_x) <= WALL_ON_EDGE_METERS:
+            return min_x, min_y, min(max_x, low_x), max_y
+        return bounds
+    if abs(middle_y - min_y) <= WALL_ON_EDGE_METERS:
+        return min_x, max(min_y, high_y), max_x, max_y
+    if abs(middle_y - max_y) <= WALL_ON_EDGE_METERS:
+        return min_x, min_y, max_x, min(max_y, low_y)
+    return bounds
+
+
+def interior_polygon(graph: SceneGraph) -> Polygon | None:
+    """The floor somebody can actually stand on, inside the walls, as four corners counter-clockwise.
 
     The floor node and the walls overlap: a wall straddles the edge of the
     floor it stands on, so half its thickness is inside the room. Placing
     furniture against the floor boundary puts it inside a wall, which is why
-    this trims each side back to the wall's inner face.
-    """
-    bounds = floor_bounds(graph)
-    if bounds is None:
-        return None
-    min_x, min_y, max_x, max_y = bounds
-    centre_x, centre_y = (min_x + max_x) / 2, (min_y + max_y) / 2
+    each side is trimmed back to its wall's inner face.
 
+    Scans are rarely square to the world, and a box aligned to the world's
+    axes around a turned room takes in floor outside its walls. The trimming
+    therefore happens in the floor's own frame, along its longest edge, and
+    the corners are turned back afterwards.
+    """
+    floor = next((node for node in graph.nodes if lies_flat(node)), None)
+    outline = floor_polygon(floor) if floor else []
+    if len(outline) < 3:
+        return None
+    heading = _floor_heading(outline)
+    bounds = polygon_bounds(_turned(outline, -heading))
     for wall in upright_walls(graph):
-        shape = footprint(wall)
-        low_x, high_x = min(x for x, _ in shape), max(x for x, _ in shape)
-        low_y, high_y = min(y for _, y in shape), max(y for _, y in shape)
-        if high_y - low_y >= high_x - low_x:
-            if (low_x + high_x) / 2 < centre_x:
-                min_x = max(min_x, high_x)
-            else:
-                max_x = min(max_x, low_x)
-        elif (low_y + high_y) / 2 < centre_y:
-            min_y = max(min_y, high_y)
-        else:
-            max_y = min(max_y, low_y)
-    return min_x, min_y, max_x, max_y
+        bounds = _trimmed_to_wall(bounds, _turned(footprint(wall), -heading))
+    min_x, min_y, max_x, max_y = bounds
+    return _turned([(min_x, min_y), (max_x, min_y), (max_x, max_y), (min_x, max_y)], heading)
 
 
 def _outside_by(boundary: Polygon, node: SceneNode) -> float:

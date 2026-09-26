@@ -11,7 +11,7 @@ from .constraints import (
     collision_shape,
     describe,
     door_keep_clear,
-    interior_bounds,
+    interior_polygon,
     is_allowed,
     on_a_surface,
     relocation_violations,
@@ -44,7 +44,7 @@ from .strategies import Candidate, candidates
 __all__ = [
     "CANDIDATE_LIMIT", "Candidate", "FixOutcome", "Pinch", "Relaxation",
     "Violation", "apply_moves", "candidates", "collision_shape", "describe",
-    "door_keep_clear", "interior_bounds", "is_allowed", "move_node", "on_a_surface",
+    "door_keep_clear", "interior_polygon", "is_allowed", "move_node", "on_a_surface",
     "pinch_from", "proposal_id", "propose_fix", "relocation_violations", "unlocked", "violations",
     "without",
     "ApproachResult", "ReachRecord", "evaluate_approach", "suggestion_stop",

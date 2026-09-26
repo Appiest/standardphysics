@@ -17,7 +17,7 @@ from standardphysics_contracts import Finding, Scenario, SceneGraph, SceneNode, 
 from standardphysics_pipeline.footprints import footprint, rotation_about_z
 from standardphysics_pipeline.occupancy import blocks_floor
 
-from ..fix.constraints import MAX_TRAVEL_METERS, door_keep_clear, interior_bounds, on_a_surface
+from ..fix.constraints import MAX_TRAVEL_METERS, door_keep_clear, interior_polygon, on_a_surface
 from ..fix.moves import measured_position
 from ..redesign import INSTRUCTION
 from .checker import TrainingChecker
@@ -112,10 +112,10 @@ def room_view(graph: SceneGraph, scenario: Scenario, problems: list[Finding]) ->
     fixed = [node for node in graph.nodes if not node.movable and not bounds_the_room(node)
              and (blocks_floor(node) or node.id in on_counters)]
     fixtures = fixture_ids(graph)
-    bounds = interior_bounds(graph)
+    inside = interior_polygon(graph)
     return {
         "units": "metres and degrees; x and y lie on the floor",
-        "floor_inside_walls": None if bounds is None else [_r(value) for value in bounds],
+        "floor_inside_walls": None if inside is None else _corners(inside),
         "walls": [_wall(node) for node in graph.nodes if node.kind == "wall" and not lies_flat(node)],
         "doors": [_door(node) for node in graph.nodes if node.kind == "door"],
         "fixed_objects": [_fixed(node, fixtures, on_counters) for node in fixed],
