@@ -113,21 +113,22 @@ def _write(path: pathlib.Path, rows: list[dict]) -> None:
 
 
 def run_train(real: pathlib.Path, synthetic: pathlib.Path, trace: pathlib.Path | None, out: pathlib.Path,
-              rooms: int) -> dict:
+              rooms: int, real_copies: int = 1) -> dict:
     real_sft, rl, heldout = _real_rows(real, out, trace)
     synthetic_sft, synthetic_windows, synthetic_variants = _synthetic_rows(synthetic, rooms)
     heldout_windows = {row["window"] for row in heldout}
     if any(row["window"] in heldout_windows for row in real_sft + rl):
         raise ValueError("a training row shares a window with the held-out set")
     (out / "dataset").mkdir(parents=True, exist_ok=True)
-    _write(out / "dataset/sft.jsonl", real_sft + synthetic_sft)
+    _write(out / "dataset/sft.jsonl", real_sft * real_copies + synthetic_sft)
     _write(out / "dataset/rl.jsonl", rl)
     _write(out / "dataset/heldout.jsonl", heldout)
     _write(out / "windows.jsonl", [*_rows(real / "windows.jsonl"), *synthetic_windows])
     _write(out / "variants.jsonl", [*_rows(real / "variants.jsonl"), *synthetic_variants])
     counts = {"real_solver": sum(r["source"] == "real-solver" for r in real_sft),
               "correction": sum(r["source"] == "correction" for r in real_sft),
-              "synthetic": len(synthetic_sft), "rl_prompts": len(rl), "heldout": len(heldout)}
+              "real_copies": real_copies, "synthetic": len(synthetic_sft), "rl_prompts": len(rl),
+              "heldout": len(heldout)}
     (out / "composition.json").write_text(json.dumps(counts, indent=2))
     return counts
 
@@ -158,11 +159,13 @@ def main() -> None:
     parser.add_argument("--out", type=pathlib.Path)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--synthetic-rooms", type=int, default=400)
+    parser.add_argument("--real-copies", type=int, default=1, help="repeat real rows so they are not outweighed")
     args = parser.parse_args()
     if args.command == "solve":
         run_solve(args.data, args.out, args.workers)
     elif args.command == "train":
-        print(json.dumps(run_train(args.real, args.synthetic, args.trace, args.out, args.synthetic_rooms)))
+        print(json.dumps(run_train(args.real, args.synthetic, args.trace, args.out, args.synthetic_rooms,
+                                   args.real_copies)))
     else:
         print(json.dumps(run_test(args.source)))
 
