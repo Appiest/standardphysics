@@ -38,7 +38,7 @@ struct SketchSpace {
 /// its own and the loop's last frame is its first: an empty sheet, reached at
 /// 7.8 seconds and held until the loop restarts at 8.
 struct RoomSketch: View {
-    enum Mode { case story, measuring }
+    enum Mode { case story, measuring, measured }
 
     var mode: Mode = .story
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -75,6 +75,8 @@ struct RoomSketch: View {
                 + "One table moves over and the aisle measures 48 inches in green."
         case .measuring:
             "A floor plan of a shop with a line sweeping across it."
+        case .measured:
+            "A floor plan of a shop with every wall measured."
         }
     }
 }
@@ -104,6 +106,8 @@ struct RoomDrawing {
             drawStory(at: t < 0 ? t + RoomSketch.storyLength : t, in: &context)
         case .measuring:
             drawMeasuring(at: time, in: &context)
+        case .measured:
+            drawMeasured(in: &context)
         }
     }
 
@@ -265,6 +269,19 @@ struct RoomDrawing {
         sweep.move(to: space.point(sweepX, room.top - 3))
         sweep.addLine(to: space.point(sweepX, room.bottom + 3))
         context.stroke(sweep, with: .color(AppTheme.accent.opacity(t < 2.6 ? 1 : 0)), lineWidth: 2)
+    }
+
+    /// The same shop with the sweep finished: shaded, ticked and still.
+    private func drawMeasured(in context: inout GraphicsContext) {
+        let room = Plan.room
+        let whole = space.rect(room.left, room.top, room.right - room.left, room.bottom - room.top)
+        context.fill(Path(whole), with: .color(AppTheme.accent.opacity(0.07)))
+        drawWalls(progress: 1, in: &context)
+        drawDoorSwing(opacity: 1, in: &context)
+        for piece in [Plan.counter, Plan.tableA, Plan.tableB] {
+            drawFurniture(space.rect(piece.x, piece.y, piece.width, piece.height), shown: 1, in: &context)
+        }
+        drawTicks(upTo: room.right, fading: 1, in: &context)
     }
 
     private func drawTicks(upTo sweepX: CGFloat, fading opacity: Double, in context: inout GraphicsContext) {

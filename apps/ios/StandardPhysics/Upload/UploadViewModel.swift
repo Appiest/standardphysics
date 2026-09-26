@@ -188,7 +188,7 @@ final class UploadViewModel: ObservableObject {
             return existing
         }
 
-        let remote = try await client.createScan(name: name, duration: scan.duration)
+        let remote = try await client.createScan(name: name, duration: scan.duration, replaces: scan.replaces)
         try requireActive(runID)
         if uploadStore.scanID == nil {
             try uploadStore.begin(scanID: remote.id, apiBaseURL: client.baseURL)

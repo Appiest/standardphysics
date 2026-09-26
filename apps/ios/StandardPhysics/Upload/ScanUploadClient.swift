@@ -29,11 +29,13 @@ struct ScanUploadClient {
         let name: String
         let deviceModel: String
         let durationSeconds: TimeInterval
+        let replaces: String?
 
         enum CodingKeys: String, CodingKey {
             case name
             case deviceModel = "device_model"
             case durationSeconds = "duration_seconds"
+            case replaces
         }
     }
 
@@ -56,13 +58,14 @@ struct ScanUploadClient {
         return request
     }
 
-    func createScan(name: String, duration: TimeInterval) async throws -> RemoteScan {
+    func createScan(name: String, duration: TimeInterval, replaces: UUID? = nil) async throws -> RemoteScan {
         var request = authorized(baseURL.appendingPathComponent("api/scans"), method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(CreateScanRequest(
             name: name,
             deviceModel: DeviceModel.current,
-            durationSeconds: duration
+            durationSeconds: duration,
+            replaces: replaces?.uuidString.lowercased()
         ))
         return try await send(request, expectedStatus: 201)
     }

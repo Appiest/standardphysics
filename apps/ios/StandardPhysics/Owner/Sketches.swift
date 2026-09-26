@@ -25,7 +25,7 @@ struct WalkPlan: View {
             context.fill(Path(counter), with: .color(AppTheme.Sketch.furnitureFill))
             context.stroke(Path(counter), with: .color(AppTheme.ink), lineWidth: AppTheme.Sketch.furniture)
 
-            let walk = room.insetBy(dx: room.width * 0.17, dy: room.height * 0.20)
+            let walk = room.insetBy(dx: room.width * 0.17, dy: room.height * 0.32)
             context.stroke(
                 Path(walk),
                 with: .color(AppTheme.accent),
@@ -103,10 +103,14 @@ struct SketchPen {
         context.stroke(arc, with: .color(colour.opacity(0.7)), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
     }
 
+    /// Measurements are set in the measuring face; a word like "step" is not
+    /// a measurement and is set in the body face.
     func label(_ text: String, at x: CGFloat, _ y: CGFloat, colour: Color = AppTheme.accent,
-               anchor: UnitPoint = .center) {
+               anchor: UnitPoint = .center, isMeasurement: Bool = true) {
         context.draw(
-            Text(text).font(AppTheme.Typography.measurement).foregroundStyle(colour),
+            Text(text)
+                .font(isMeasurement ? AppTheme.Typography.measurement : AppTheme.Typography.secondary)
+                .foregroundStyle(colour),
             at: space.point(x, y),
             anchor: anchor
         )
@@ -169,7 +173,7 @@ struct QuestionSketch: View {
         drawShell(pen)
         pen.wall([(62, 6), (62, 24)])
         pen.wall([(62, 38), (62, 66)])
-        pen.doorSwing(hinge: (62, 38), width: 14, from: .degrees(90), to: .degrees(180), colour: AppTheme.accent,
+        pen.doorSwing(hinge: (62, 38), width: 14, from: .degrees(-90), to: .degrees(0), colour: AppTheme.accent,
             clockwise: false)
         pen.box(14, 12, 20, 8)
         pen.box(20, 34, 16, 14)
@@ -211,7 +215,7 @@ struct PushGaugeSketch: View {
             width: 3, colour: AppTheme.accent)
         pen.oval(dial.0 - 7, dial.1 - 7, 14, 14, fill: AppTheme.Sketch.paper, stroke: AppTheme.ink)
         pen.line([dial, (dial.0 + 3.5, dial.1 - 4)], width: 2, colour: AppTheme.problem)
-        pen.label("lb", at: dial.0 + 10, dial.1, colour: AppTheme.ink, anchor: .leading)
+        pen.label("lb", at: dial.0 + 10, dial.1, colour: AppTheme.ink, anchor: .leading, isMeasurement: false)
     }
 
     private func point(from start: (CGFloat, CGFloat), _ direction: (Double, Double), _ distance: CGFloat,

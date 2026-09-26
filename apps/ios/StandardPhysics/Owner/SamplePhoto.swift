@@ -72,7 +72,7 @@ struct SamplePhoto: View {
         pen.line([(36, 56), (36, 60)], width: 2, colour: AppTheme.accent)
         pen.line([(34, 56), (38, 56)], width: 2, colour: AppTheme.accent)
         pen.line([(34, 60), (38, 60)], width: 2, colour: AppTheme.accent)
-        pen.label("step", at: 32, 52, anchor: .trailing)
+        pen.label("step", at: 32, 52, anchor: .trailing, isMeasurement: false)
     }
 
     private static func drawDoorHandle(_ pen: SketchPen) {
@@ -92,8 +92,8 @@ struct SamplePhoto: View {
         pen.wall([(0, 30), (100, 30)])
         pen.box(38, 4, 24, 26, fill: AppTheme.Sketch.paper)
         pen.line([(38, 30), (62, 30)], width: 3, colour: AppTheme.ink)
-        pen.line([(0, 30), (-10, 72)], width: 1, colour: AppTheme.faintInk)
-        pen.line([(100, 30), (110, 72)], width: 1, colour: AppTheme.faintInk)
+        pen.line([(4, 30), (-2, 64)], width: 1, colour: AppTheme.faintInk)
+        pen.line([(96, 30), (102, 64)], width: 1, colour: AppTheme.faintInk)
         let mat: [(CGFloat, CGFloat)] = [(34, 36), (66, 36), (74, 62), (26, 62), (34, 36)]
         pen.line(mat, width: 2, colour: AppTheme.accent)
         for step in 1..<6 {
@@ -104,10 +104,10 @@ struct SamplePhoto: View {
 
     private static func drawRestroomFromTheDoorway(_ pen: SketchPen) {
         pen.line([(30, 14), (70, 14), (70, 46), (30, 46), (30, 14)], width: 2)
-        pen.line([(30, 14), (0, 0)], width: 2)
-        pen.line([(70, 14), (100, 0)], width: 2)
-        pen.line([(30, 46), (0, 72)], width: 2)
-        pen.line([(70, 46), (100, 72)], width: 2)
+        pen.line([(30, 14), (12, 5.6)], width: 2)
+        pen.line([(70, 14), (88, 5.6)], width: 2)
+        pen.line([(30, 46), (12, 61.6)], width: 2)
+        pen.line([(70, 46), (88, 61.6)], width: 2)
         pen.box(34, 28, 9, 8)
         pen.oval(33, 36, 11, 8)
         pen.box(60, 30, 9, 4)

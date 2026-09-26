@@ -62,13 +62,7 @@ struct ReviewScreen: View {
                         .font(AppTheme.Typography.title)
                     TextField(model.defaultShopName, text: $name)
                         .textInputAutocapitalization(.words)
-                        .font(AppTheme.Typography.body)
-                        .padding(AppTheme.Spacing.control)
-                        .background(AppTheme.panel)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: AppTheme.Radius.field, style: .continuous)
-                                .stroke(AppTheme.fieldOutline, lineWidth: 1)
-                        }
+                        .fieldSurface()
                     Button("Upload scan") {
                         do {
                             model.upload(scan: try scan.renamed(shopName), name: shopName)

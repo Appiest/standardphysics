@@ -7,7 +7,7 @@ struct AppRootView: View {
     var body: some View {
         AppScreens(model: model)
             .tint(AppTheme.accent)
-            .preferredColorScheme(.light)
+            .preferredColorScheme(model.isOnCamera ? .dark : .light)
     }
 }
 

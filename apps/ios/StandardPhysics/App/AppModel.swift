@@ -47,6 +47,9 @@ final class AppModel: ObservableObject {
     private var uploads: [UUID: UploadViewModel] = [:]
     /// The upload that sent the owner to sign in, so signing in finishes it.
     private var pendingUpload: (scan: CapturedScan, name: String)?
+    /// The shop the next walk joins, when the web asked for another room or
+    /// another walk of the same shop.
+    private var walkJoins: UUID?
     private var subscriptions: Set<AnyCancellable> = []
 
     init(canScan: Bool) {
@@ -228,11 +231,23 @@ final class AppModel: ObservableObject {
 
     // MARK: Navigation
 
+    /// The walk draws over the live camera, so the status bar goes light.
+    var isOnCamera: Bool {
+        switch screen {
+        case .capture: true
+#if DEBUG
+        case .walkPreview: true
+#endif
+        default: false
+        }
+    }
+
     var hasShops: Bool { !journeys.isEmpty || !savedScans.isEmpty || FirstRun.hasStartedAShop }
 
     /// Home once there is a shop to show, and the start of the first run
     /// before that.
     func showStart() {
+        walkJoins = nil
         savedScans = CaptureLibrary.all()
         if hasShops {
             screen = .home
@@ -242,7 +257,8 @@ final class AppModel: ObservableObject {
         Task { await refreshJourneys() }
     }
 
-    func startWalk() {
+    func startWalk(joining shop: UUID? = nil) {
+        walkJoins = shop
         screen = .beforeYouWalk
     }
 
@@ -304,9 +320,12 @@ final class AppModel: ObservableObject {
     }
 
     private func startSetup(for scan: CapturedScan) async {
+        let joins = walkJoins
+        walkJoins = nil
+        let name = scan.name ?? joins.flatMap(shopName(of:)) ?? defaultShopName
         let named: CapturedScan
         do {
-            named = try scan.renamed(scan.name ?? defaultShopName)
+            named = try scan.renamed(name, replacing: joins)
         } catch {
             walkProblem = "Free some space on this phone, then save again."
             screen = .review(scan)
@@ -317,6 +336,10 @@ final class AppModel: ObservableObject {
         FirstRun.hasStartedAShop = true
         savedScans = CaptureLibrary.all()
         screen = .setup(ShopSetupModel(upload: model, app: self))
+    }
+
+    private func shopName(of scanID: UUID) -> String? {
+        journeys.first { $0.scanID == scanID }?.shopName
     }
 
     func upload(scan: CapturedScan, name: String) {

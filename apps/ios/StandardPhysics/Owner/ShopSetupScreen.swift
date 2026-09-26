@@ -117,7 +117,7 @@ private struct DoorPushView: View {
             FlowTitle(request.title)
             FlowDetail(request.detail)
             HStack(alignment: .firstTextBaseline, spacing: AppTheme.Spacing.small) {
-                TextField("5", text: $pounds)
+                TextField("", text: $pounds)
                     .keyboardType(.decimalPad)
                     .font(AppTheme.Typography.title)
                     .monospacedDigit()
@@ -128,12 +128,8 @@ private struct DoorPushView: View {
                     .foregroundStyle(AppTheme.mutedInk)
                     .accessibilityHidden(true)
             }
-            .padding(AppTheme.Spacing.control)
-            .background(AppTheme.panel)
-            .overlay {
-                RoundedRectangle(cornerRadius: AppTheme.Radius.field, style: .continuous)
-                    .stroke(fieldFocused ? AppTheme.accent : AppTheme.fieldOutline, lineWidth: 1)
-            }
+            .fieldSurface(focused: fieldFocused)
+            .onAppear { fieldFocused = true }
             if let problem = setup.problem { FlowProblem(message: problem) }
         } actions: {
             Button(setup.isSending ? "Saving" : "Save") {

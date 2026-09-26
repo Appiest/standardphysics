@@ -94,6 +94,7 @@ final class WebBridge {
     private let scanID: UUID?
     private let reloadSignedIn: () -> Void
     private let appleSignIn = AppleSignInPrompt()
+    private let pdfRenderer = LinkPDFRenderer()
     private var photoPicker: PhotoPickerDelegate?
 
     init(app: AppModel, scanID: UUID?, reloadSignedIn: @escaping () -> Void) {
@@ -105,7 +106,7 @@ final class WebBridge {
     func handle(_ message: WebBridgeMessage, in webView: WKWebView) {
         switch message {
         case .takePhoto(let requestID): takePhoto(for: requestID, in: webView)
-        case .addRoom: scanRequested()
+        case .addRoom(let shop): startWalk(joining: shop ?? scanID)
         case .saveReport: saveReport(in: webView)
         case .share(let url, let title): share(url, title: title, from: webView)
         case .openLink(let url): UIApplication.shared.open(url)
@@ -113,12 +114,18 @@ final class WebBridge {
         }
     }
 
-    /// The old home page's "Scan your shop", and adding a room. For now a
-    /// room is a new walk of its own: joining it to the same shop needs the
-    /// server to accept a second walk for one scan.
+    /// The old home page's "Scan your shop": a walk of a new shop.
     func scanRequested() {
+        startWalk(joining: nil)
+    }
+
+    /// Another room, or the shop walked again to clear "Needs another look".
+    /// The walk's scan replaces the shop's once it's measured, and the
+    /// owner's answers and photos carry over, so the quick questions are
+    /// skipped when they're already answered.
+    private func startWalk(joining shop: UUID?) {
         guard let app, app.canScan else { return }
-        app.startWalk()
+        app.startWalk(joining: shop)
     }
 
     private func takePhoto(for requestID: String, in webView: WKWebView) {
@@ -161,12 +168,14 @@ final class WebBridge {
         }
     }
 
-    /// The report link, with a PDF of the page beside it for anyone who
-    /// wants a file rather than a link.
+    /// The report link, with a PDF of the report beside it for anyone who
+    /// wants a file rather than a link. The PDF is made from the link itself,
+    /// a printable page that needs no sign-in, not from the owner view on
+    /// screen with its 3D model. When it can't be made, the link goes alone.
     private func share(_ url: URL, title: String, from webView: WKWebView) {
         Task {
             var items: [Any] = [url]
-            if let pdf = try? await webView.pdf(), let file = try? ReportPDF.write(pdf, named: title) {
+            if isOurs(url), let pdf = await pdfRenderer.pdf(of: url), let file = try? ReportPDF.write(pdf, named: title) {
                 items.append(file)
             }
             guard let presenter = webView.window?.rootViewController?.topmostPresented else { return }
@@ -178,6 +187,10 @@ final class WebBridge {
             }
             presenter.present(activity, animated: true)
         }
+    }
+
+    private func isOurs(_ url: URL) -> Bool {
+        AppEnvironment.workspaceBaseURL.flatMap(WebOrigin.init(url:))?.contains(url) ?? false
     }
 
     private func present(problem: String, over webView: WKWebView) {
@@ -200,6 +213,56 @@ final class PhotoPickerDelegate: NSObject, UIImagePickerControllerDelegate, UINa
 
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
         finish(nil)
+    }
+}
+
+/// Loads a page in a web view nobody sees and prints it to a PDF.
+@MainActor
+final class LinkPDFRenderer: NSObject, WKNavigationDelegate {
+    /// US Letter, so the file prints on the paper a landlord or inspector has.
+    private static let pageSize = CGSize(width: 612, height: 792)
+    private static let settleTime: Duration = .milliseconds(800)
+    private static let timeout: Duration = .seconds(20)
+
+    private var webView: WKWebView?
+    private var continuation: CheckedContinuation<Data?, Never>?
+
+    func pdf(of url: URL) async -> Data? {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        let view = WKWebView(frame: CGRect(origin: .zero, size: Self.pageSize), configuration: configuration)
+        view.navigationDelegate = self
+        webView = view
+        return await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            view.load(URLRequest(url: url))
+            Task {
+                try? await Task.sleep(for: Self.timeout)
+                self.finish(nil)
+            }
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        Task {
+            try? await Task.sleep(for: Self.settleTime)
+            finish(try? await webView.pdf())
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        finish(nil)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        finish(nil)
+    }
+
+    private func finish(_ data: Data?) {
+        continuation?.resume(returning: data)
+        continuation = nil
+        webView?.navigationDelegate = nil
+        webView = nil
     }
 }
 
