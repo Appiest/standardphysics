@@ -12,6 +12,8 @@ is always scored by `score_completion`, the same checker the model is judged by.
 from __future__ import annotations
 
 import math
+import os
+import time
 from collections import Counter
 from dataclasses import dataclass
 
@@ -35,6 +37,8 @@ FIXTURE_STEPS_INCHES = (3.0, 6.0, 12.0, 18.0, 24.0)
 FIXTURE_DIRECTIONS = tuple((math.cos(math.radians(angle)), math.sin(math.radians(angle)))
                            for angle in range(0, 360, 45))
 FIXTURE_FINALISTS = 3
+BUDGET_SECONDS = float(os.environ.get("SOLVER_BUDGET_SECONDS", "inf"))
+"""Wall-clock budget for construction search per room; the best answer found so far is returned when it runs out."""
 
 
 @dataclass(frozen=True)
@@ -138,8 +142,11 @@ def solve(graph: SceneGraph, checker, allow_construction: bool = True) -> tuple[
     options = [option for option in [_attempt(graph, checker, [], rejected)] if option is not None]
     if (options and options[0].clears) or not allow_construction:
         return (max(options, key=lambda option: option.rank) if options else None), rejected
+    deadline = time.monotonic() + BUDGET_SECONDS
     options.extend(_fixture_options(graph, checker, rejected))
     for edge in floor_edges(graph):
+        if time.monotonic() > deadline or any(option.clears for option in options):
+            break
         widest = _attempt(graph, checker, [WallShift(side=edge.side, inches=MAX_WALL_SHIFT_INCHES)], rejected)
         if widest is None:
             continue
