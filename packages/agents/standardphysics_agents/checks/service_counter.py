@@ -95,15 +95,37 @@ def service_counter_approach(ctx: CheckContext) -> list[Observation]:
     measured in front of that section. Measuring in front of the middle of the
     whole counter tested floor by the high part, where nobody in a wheelchair
     is served.
+
+    Nothing asks for the space to be centred. It may sit anywhere along the
+    face as long as it runs alongside 36 inches of that counter, so a sign at
+    one end of a long counter does not fail it while the middle is clear. The
+    forward approach of 904.4.2 is not searched: it needs knee and toe space
+    under the counter, which a scan does not show.
     """
     rule = ctx.rule(APPROACH_RULE)
     height_rule = ctx.rule(HEIGHT_RULE)
     observations = []
     for counter in roles.service_counters(ctx.graph):
         at = _portion_for(ctx.graph, counter, height_rule) or counter
-        result = ctx.measure.counter_approach(ctx.graph, at.id)
+        slide = _slide_meters(at, rule, height_rule)
+        result = ctx.measure.counter_approach(ctx.graph, at.id, slide_meters=slide)
         observations.append(_approach(ctx, rule, counter, at, result))
     return observations
+
+
+def _slide_meters(at: SceneNode, rule: RuleSpec, height_rule: RuleSpec) -> float:
+    """How far off the face centre the space may sit and still run alongside
+    the 36 inch portion.
+
+    The space's long side lies along the face, so it overlaps the face by at
+    least the portion's length while its centre stays within half the face plus
+    half the space, less that length, of the face centre. A face shorter than
+    the portion has to be covered whole.
+    """
+    face = at.dimensions.x
+    portion = min(to_meters(height_rule.parameter("accessible_length_min_inches")), face)
+    space = to_meters(rule.parameter("clear_width_min_inches"))
+    return max(0.0, (face + space) / 2 - portion)
 
 
 def _approach(ctx: CheckContext, rule: RuleSpec, counter, at, result) -> Observation:
@@ -111,6 +133,7 @@ def _approach(ctx: CheckContext, rule: RuleSpec, counter, at, result) -> Observa
     required_deep = rule.parameter("clear_depth_min_inches")
     satisfied = fits_rectangle(result, required_wide, required_deep)
     beside = frozenset({counter.id, at.id})
+    rotation = facing(ctx.graph, at)
     return Observation(
         rule_id=APPROACH_RULE,
         satisfied=satisfied,
@@ -119,10 +142,9 @@ def _approach(ctx: CheckContext, rule: RuleSpec, counter, at, result) -> Observa
         relied_on=(counter.id,) if at is counter else (counter.id, at.id),
         locus=region_locus(result, [at.id, *(
             intruders(ctx.graph, rectangle(
-                result.center, to_meters(required_wide), to_meters(required_deep),
-                facing(ctx.graph, at),
+                result.center, to_meters(required_wide), to_meters(required_deep), rotation,
             ), ignoring=beside) if not satisfied else []
-        )], rotation=facing(ctx.graph, at)),
+        )], rotation=rotation),
         facts={
             "counter": counter.label,
             "measured_wide": result.inches_wide,
