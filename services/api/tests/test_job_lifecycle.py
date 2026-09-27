@@ -877,6 +877,25 @@ def test_a_simulation_past_its_deadline_is_stopped_and_says_so(make_client):
     assert state.get("result") is None
 
 
+def test_a_restart_queues_interrupted_jobs_again_but_fails_an_interrupted_simulation(make_client):
+    import uuid
+
+    from standardphysics_api import repository as repo
+
+    with make_client() as client:
+        scan_id = create_scan(client)
+        with client.app.state.database.transaction() as connection:
+            for kind in ("process", "display", "simulate"):
+                repo.enqueue_job(connection, uuid.UUID(scan_id), kind, 1)
+            connection.execute("UPDATE jobs SET state = 'running' WHERE scan_id = ?", (scan_id,))
+        client.app.state.worker._recover_interrupted_jobs()
+        states = {kind: _job_of_kind(client, scan_id, kind) for kind in ("process", "display", "simulate")}
+    assert states["simulate"]["state"] == "failed"
+    assert states["simulate"]["error"] == repo.INTERRUPTED_SIMULATION
+    assert states["process"]["state"] == "queued"
+    assert states["display"]["state"] == "queued"
+
+
 def test_every_job_kind_has_a_configurable_deadline(monkeypatch):
     from standardphysics_api.settings import Settings
 

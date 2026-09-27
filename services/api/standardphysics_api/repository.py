@@ -506,6 +506,23 @@ def retry_failed_jobs(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Non
     )
 
 
+INTERRUPTED_SIMULATION = "Simulation interrupted; start a new run to continue"
+
+
+def fail_interrupted_simulations(connection: sqlite3.Connection) -> None:
+    """Fail every simulation a stopped process left running, rather than queueing it again.
+
+    A simulation spends paid TypeSafe and Astra calls against a per-run budget
+    that lives only in the process running it. Queued again, it would start
+    from nothing with a fresh budget and could spend the owner's limit a second
+    time without anyone asking, so the owner starts the new run.
+    """
+    connection.execute(
+        "UPDATE jobs SET state = 'failed', error = ? WHERE kind = 'simulate' AND state = 'running'",
+        (INTERRUPTED_SIMULATION,),
+    )
+
+
 def requeue_interrupted_jobs(connection: sqlite3.Connection) -> None:
     connection.execute("UPDATE jobs SET state = 'queued', queued_at = ? WHERE state = 'running'", (now(),))
 

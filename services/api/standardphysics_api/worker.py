@@ -4,8 +4,9 @@ Run one API process per database. Before it touches the queue the worker takes
 an exclusive lock on a file beside the database; a second process finds the
 lock held, says so in the log, and serves requests without running any job.
 Jobs are claimed atomically, and at startup every job left running is queued
-again. The lock is what makes that safe: no other live process can be running
-one of them.
+again, except a simulation, which is failed so that a restart never spends a
+second budget of paid model calls (`repo.fail_interrupted_simulations`). The
+lock is what makes that safe: no other live process can be running one of them.
 
 Neither loop stops on an error. A job's own failure is recorded on its row; an
 error outside any job, such as a database that stays locked, is logged and the
@@ -207,11 +208,7 @@ class Worker:
 
     def _recover_interrupted_jobs(self) -> None:
         with self.database.transaction() as connection:
-            connection.execute(
-                "UPDATE jobs SET state='failed', error='Simulation interrupted; start a new run to continue'"
-                " WHERE kind=? AND state='running'",
-                (SIMULATE,),
-            )
+            repo.fail_interrupted_simulations(connection)
             repo.requeue_interrupted_jobs(connection)
 
     def stop(self) -> None:
