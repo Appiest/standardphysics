@@ -401,9 +401,11 @@ class Worker:
             assessment = repo.assessment_for_revision(connection, scan_id, revision)
             usdz = repo.artifact_of_kind(connection, scan_id, "room_usdz")
             mapping = repo.artifact_of_kind(connection, scan_id, "room_metadata")
+            lidar = repo.artifact_of_kind(connection, scan_id, "lidar_mesh")
         revision_dir = self.store.scan_dir(scan_id) / "revisions" / str(revision)
         if not has_glb:
-            self._store_geometry(scan_id, graph, revision_dir, usdz, mapping)
+            lidar_path = self.store.artifact_path(scan_id, lidar.id) if lidar is not None else None
+            self._store_geometry(scan_id, graph, revision_dir, usdz, mapping, lidar_path)
         if assessment is not None:
             rendered = self.stages.renders(
                 graph,
@@ -415,11 +417,11 @@ class Worker:
                 repo.save_assessment(connection, rendered)
         return False
 
-    def _store_geometry(self, scan_id, graph, revision_dir, usdz, mapping) -> None:
+    def _store_geometry(self, scan_id, graph, revision_dir, usdz, mapping, lidar_mesh=None) -> None:
         inputs = revision_dir / "inputs"
         usdz_path = self._named_input(scan_id, usdz, inputs, "room.usdz")
         mapping_path = self._named_input(scan_id, mapping, inputs, self._mapping_name(scan_id, mapping))
-        glb = self.stages.geometry(graph, revision_dir / "scene.glb", usdz_path, mapping_path)
+        glb = self.stages.geometry(graph, revision_dir / "scene.glb", usdz_path, mapping_path, lidar_mesh)
         if glb is not None:
             with self.database.transaction() as connection:
                 repo.set_glb_path(connection, scan_id, graph.revision, str(glb))

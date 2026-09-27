@@ -2,20 +2,23 @@
 
     blender --background --python build_glb.py -- --graph g.json --out scene.glb
 
-Geometry comes from the SceneGraph rather than from the scanned mesh, so the
-thing the viewer draws is the thing the checks measured. A scanned USDZ is
-prettier; it is also a separate surface that can disagree with the numbers.
+Geometry comes from the SceneGraph, so the thing the viewer draws is the thing
+the checks measured. An object's shape may come from the scan, but only the
+part of the scanned surface inside its measured box, already cut out and
+passed in with --shapes; an object without one is drawn as a stand-in.
 
 glTF node names are arbitrary strings, so unlike USD these carry the node UUID
 directly and the viewer can select by it with no mapping file.
 """
 
 import argparse
+import base64
 import json
 import sys
 from math import cos, pi, radians
 
 import bpy
+import numpy
 from mathutils import Matrix, Vector
 
 KIND_ORDER = ["floor", "wall", "window", "opening", "door", "object"]
@@ -24,6 +27,7 @@ MAX_DISPLAY_WALL_HEIGHT = 2.8
 PORTAL_TOLERANCE = 0.12
 PORTAL_ALIGNMENT = cos(radians(45))
 MATERIALS: dict[str, object] = {}
+SHAPES: dict[str, dict] = {}
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--graph", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--shapes")
     return parser.parse_args(argv)
 
 
@@ -273,47 +278,97 @@ def wall_parts(wall: dict, portals: list[dict]) -> list:
     return parts
 
 
+def scanned_shape(node: dict, shape: dict):
+    """The object's own scanned surface, in its own frame, placed by its transform.
+
+    Corners arrive as little-endian float32 and faces as int32, base64 encoded,
+    so a floor of objects crosses into Blender without a Python number apiece.
+    """
+    vertices = numpy.frombuffer(base64.b64decode(shape["vertices"]), dtype="<f4")
+    faces = numpy.frombuffer(base64.b64decode(shape["faces"]), dtype="<i4")
+    mesh = bpy.data.meshes.new(node["id"])
+    mesh.vertices.add(len(vertices) // 3)
+    mesh.vertices.foreach_set("co", vertices)
+    mesh.loops.add(len(faces))
+    mesh.loops.foreach_set("vertex_index", faces)
+    mesh.polygons.add(len(faces) // 3)
+    mesh.polygons.foreach_set("loop_start", numpy.arange(0, len(faces), 3, dtype="<i4"))
+    mesh.polygons.foreach_set("loop_total", numpy.full(len(faces) // 3, 3, dtype="<i4"))
+    mesh.update()
+    mesh.validate()
+    obj = bpy.data.objects.new(node["id"], mesh)
+    bpy.context.collection.objects.link(obj)
+    obj.matrix_world = node_matrix(node)
+    obj.data.materials.append(material_for(node))
+    return obj
+
+
 def furniture_parts(node: dict) -> list:
+    if node["id"] in SHAPES:
+        return [scanned_shape(node, SHAPES[node["id"]])]
     reconstruction = node.get("reconstruction")
     if reconstruction and reconstruction.get("parts"):
         return [add_reconstruction_part(node, part) for part in reconstruction["parts"]]
-    width, depth, height = node_dimensions(node)
-    category = node.get("raw_category")
+    stand_in = STAND_INS.get(node.get("raw_category"), block_parts)
+    return stand_in(node, *node_dimensions(node))
+
+
+def table_parts(node: dict, width: float, depth: float, height: float) -> list:
     floor = -height / 2
-    if category == "table":
-        top = min(0.12, height * 0.18)
-        leg = min(0.08, width / 5, depth / 5)
-        parts = [add_box(node, (0, 0, height / 2 - top / 2), (width, depth, top))]
-        for x in (-width / 2 + leg / 2, width / 2 - leg / 2):
-            for y in (-depth / 2 + leg / 2, depth / 2 - leg / 2):
-                parts.append(add_box(node, (x, y, floor + (height - top) / 2), (leg, leg, height - top)))
-        return parts
-    if category == "chair":
-        seat = min(0.12, height * 0.2)
-        leg = min(0.06, width / 6, depth / 6)
-        seat_height = floor + height * 0.48
-        parts = [add_box(node, (0, 0, seat_height), (width, depth, seat))]
-        for x in (-width / 2 + leg / 2, width / 2 - leg / 2):
-            for y in (-depth / 2 + leg / 2, depth / 2 - leg / 2):
-                parts.append(add_box(node, (x, y, floor + (seat_height - floor) / 2), (leg, leg, seat_height - floor)))
-        parts.append(add_box(node, (0, depth / 2 - seat / 2, seat_height + (height / 2 - seat_height) / 2), (width, seat, height / 2 - seat_height)))
-        return parts
-    if category == "sofa":
-        arm = min(0.18, width / 5)
-        base = min(0.22, height * 0.35)
-        return [
-            add_box(node, (0, 0, floor + base / 2), (width, depth, base)),
-            add_box(node, (0, depth / 2 - arm / 2, base / 2), (width, arm, height - base)),
-            add_box(node, (-width / 2 + arm / 2, 0, floor + (height - base) / 2), (arm, depth, height - base)),
-            add_box(node, (width / 2 - arm / 2, 0, floor + (height - base) / 2), (arm, depth, height - base)),
-        ]
-    if category in {"storage", "counter"}:
-        body = min(0.12, height * 0.15)
-        return [
-            add_box(node, (0, 0, 0), (width, depth, height - body)),
-            add_box(node, (0, 0, height / 2 - body / 2), (width, depth, body)),
-        ]
+    top = min(0.12, height * 0.18)
+    leg = min(0.08, width / 5, depth / 5)
+    parts = [add_box(node, (0, 0, height / 2 - top / 2), (width, depth, top))]
+    for x in (-width / 2 + leg / 2, width / 2 - leg / 2):
+        for y in (-depth / 2 + leg / 2, depth / 2 - leg / 2):
+            parts.append(add_box(node, (x, y, floor + (height - top) / 2), (leg, leg, height - top)))
+    return parts
+
+
+def chair_parts(node: dict, width: float, depth: float, height: float) -> list:
+    floor = -height / 2
+    seat = min(0.12, height * 0.2)
+    leg = min(0.06, width / 6, depth / 6)
+    seat_height = floor + height * 0.48
+    parts = [add_box(node, (0, 0, seat_height), (width, depth, seat))]
+    for x in (-width / 2 + leg / 2, width / 2 - leg / 2):
+        for y in (-depth / 2 + leg / 2, depth / 2 - leg / 2):
+            parts.append(add_box(node, (x, y, floor + (seat_height - floor) / 2), (leg, leg, seat_height - floor)))
+    parts.append(add_box(node, (0, depth / 2 - seat / 2, seat_height + (height / 2 - seat_height) / 2), (width, seat, height / 2 - seat_height)))
+    return parts
+
+
+def sofa_parts(node: dict, width: float, depth: float, height: float) -> list:
+    floor = -height / 2
+    arm = min(0.18, width / 5)
+    base = min(0.22, height * 0.35)
+    return [
+        add_box(node, (0, 0, floor + base / 2), (width, depth, base)),
+        add_box(node, (0, depth / 2 - arm / 2, base / 2), (width, arm, height - base)),
+        add_box(node, (-width / 2 + arm / 2, 0, floor + (height - base) / 2), (arm, depth, height - base)),
+        add_box(node, (width / 2 - arm / 2, 0, floor + (height - base) / 2), (arm, depth, height - base)),
+    ]
+
+
+def cabinet_parts(node: dict, width: float, depth: float, height: float) -> list:
+    body = min(0.12, height * 0.15)
+    return [
+        add_box(node, (0, 0, 0), (width, depth, height - body)),
+        add_box(node, (0, 0, height / 2 - body / 2), (width, depth, body)),
+    ]
+
+
+def block_parts(node: dict, width: float, depth: float, height: float) -> list:
     return [add_box(node, (0, 0, 0), (width, depth, height))]
+
+
+STAND_INS = {
+    "table": table_parts,
+    "chair": chair_parts,
+    "sofa": sofa_parts,
+    "storage": cabinet_parts,
+    "counter": cabinet_parts,
+}
+"""What an object the scan barely saw is drawn as, by the category RoomPlan gave it."""
 
 
 def add_node(node: dict, portals: list[dict]) -> None:
@@ -330,6 +385,8 @@ def add_node(node: dict, portals: list[dict]) -> None:
 def main() -> None:
     args = parse_args()
     graph = json.loads(open(args.graph).read())
+    if args.shapes:
+        SHAPES.update(json.loads(open(args.shapes).read()))
     clear()
 
     nodes = sorted(

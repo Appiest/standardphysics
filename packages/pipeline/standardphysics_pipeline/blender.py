@@ -7,6 +7,7 @@ arguments after a bare `--`.
 
 from __future__ import annotations
 
+import base64
 import json
 import pathlib
 import subprocess
@@ -16,6 +17,7 @@ from typing import NamedTuple
 from standardphysics_contracts import SceneGraph
 
 from .check_blender import blender_path
+from .object_shapes import scanned_shapes_from
 
 SCRIPTS = pathlib.Path(__file__).parent / "blender_scripts"
 
@@ -39,23 +41,38 @@ def _run(script: str, args: list[str]) -> str:
     return result.stdout
 
 
-def export_glb(graph: SceneGraph, out_path: pathlib.Path) -> pathlib.Path:
+def export_glb(graph: SceneGraph, out_path: pathlib.Path, lidar_mesh: pathlib.Path | None = None) -> pathlib.Path:
     """Display geometry for the viewer, named by node ID.
 
     glTF node names take a UUID directly, so the viewer selects by the same ID
-    the checks reason about with no mapping file in between.
+    the checks reason about with no mapping file in between. With the scan's
+    LiDAR mesh, each object is drawn from its own scanned surface.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
-        handle.write(display_graph(graph).model_dump_json())
-        graph_path = handle.name
-
-    output = _run("build_glb.py", ["--graph", graph_path, "--out", str(out_path)])
-    pathlib.Path(graph_path).unlink(missing_ok=True)
+    graph_path = _write_temp(display_graph(graph).model_dump_json())
+    shapes_path = _write_temp(json.dumps(_shapes_payload(graph, lidar_mesh)))
+    try:
+        output = _run("build_glb.py", ["--graph", graph_path, "--out", str(out_path), "--shapes", shapes_path])
+    finally:
+        pathlib.Path(graph_path).unlink(missing_ok=True)
+        pathlib.Path(shapes_path).unlink(missing_ok=True)
 
     if "GLB_WRITTEN" not in output:
         raise BlenderError(f"export did not report success:\n{output[-2000:]}")
     return out_path
+
+
+def _shapes_payload(graph: SceneGraph, lidar_mesh: pathlib.Path | None) -> dict[str, dict]:
+    """Shapes cut from the measured graph: the display copy thickens sheets, and a thickened floor reads as an object."""
+    if lidar_mesh is None:
+        return {}
+    return {
+        node_id: {
+            "vertices": base64.b64encode(shape.vertices.astype("<f4").tobytes()).decode(),
+            "faces": base64.b64encode(shape.faces.astype("<i4").tobytes()).decode(),
+        }
+        for node_id, shape in scanned_shapes_from(graph, lidar_mesh).items()
+    }
 
 
 class ConversionResult(NamedTuple):
