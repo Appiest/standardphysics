@@ -1,5 +1,5 @@
 import { readLines } from "@/lib/ndjson";
-import type { AskAnswer, LayoutCheckResult, LoopEvent, NodeMove, ProposalResult, Scenario, SceneGraph } from "@/types/contracts";
+import type { AskAnswer, LayoutCheckResult, LoopEvent, NodeMove, OwnerWish, ProposalResult, Scan, Scenario, SceneGraph } from "@/types/contracts";
 
 export class ApiRefusal extends Error {
   constructor(readonly status: number, readonly error: string) {
@@ -50,6 +50,11 @@ export function saveCombine(scanId: string, baseRevision: number, rooms: Combine
 
 export function proposeFix(scanId: string, baseRevision: number, findingIds: string[]) {
   return sendJson<ProposalResult>(`/api/scans/${scanId}/proposals`, { base_revision: baseRevision, finding_ids: findingIds });
+}
+
+/** Saves everything the owner wants kept in this shop; every later proposal is held to it. */
+export function saveOwnerWishes(scanId: string, wishes: OwnerWish[]) {
+  return sendJson<Scan>(`/api/scans/${scanId}/owner-wishes`, { wishes }, "PUT");
 }
 
 /** Runs the loop and hands over each event as the server sends it; resolves when the stream closes. */
