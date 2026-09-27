@@ -56,6 +56,7 @@ from .people import without_people
 from .reconcile import reconcile_outlets
 from .semantic_corrections import apply_secondary_semantic_corrections
 from .surface_attach import attach_detection_to_surface
+from .worktops import measure_worktops
 
 log = logging.getLogger(__name__)
 
@@ -154,6 +155,8 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
         points, graph,
         [(camera, detections.get(camera.frame_id, []), buffers[camera.frame_id]) for camera in cameras],
     )
+    worktops = measure_worktops(graph, removal.points)
+    graph = _with_replaced(graph, worktops)
     unclaimed = removal.points[~claimed_by_any(removal.points, graph)]
     candidates = _carve_all(cameras, detections, unclaimed, buffers)
     found = [
@@ -182,10 +185,10 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
             )
             attached_nodes.append(node)
 
-    existing_attachments = [n for n in graph.nodes if n.attachment is not None]
+    existing_attachments = [n for n in inputs.graph.nodes if n.attachment is not None]
     reconciled_nodes = reconcile_outlets(existing_attachments + attached_nodes, cam_by_id)
 
-    discovery_nodes = {node.id: node for node in [*carved_nodes, *reconciled_nodes]}
+    discovery_nodes = {node.id: node for node in [*worktops, *carved_nodes, *reconciled_nodes]}
     for node in _semantic_corrections(graph, carved_nodes, detections, cameras):
         discovery_nodes[node.id] = node
 
@@ -199,6 +202,12 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
         model_requests=requests,
     )
 
+
+def _with_replaced(graph: SceneGraph, nodes: list[SceneNode]) -> SceneGraph:
+    """The graph with these nodes swapped in by id, and any it did not hold added."""
+    replacing = {node.id: node for node in nodes}
+    kept = [replacing.pop(node.id, node) for node in graph.nodes]
+    return graph.model_copy(update={"nodes": [*kept, *replacing.values()]})
 
 
 def _mesh_points(inputs: DiscoveryInputs) -> np.ndarray:
