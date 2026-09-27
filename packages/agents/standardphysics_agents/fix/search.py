@@ -42,11 +42,12 @@ from .moves import apply_moves, unlocked, without
 from .pinch import Pinch, pinch_from
 from .placement import placements
 from .strategies import Candidate, candidates
-from .surfaces import lower_surface_moves
+from .surfaces import SurfaceMove, lower_surface_moves
 
 PROPOSAL_NAMESPACE = uuid.UUID("7b3c1f04-5e2a-4c6b-9d18-000000000004")
 
 CANDIDATE_LIMIT = 24
+SET_DOWN_LIMIT = 6
 
 RELAXATION_LIMIT = 6
 """A smaller ladder when testing whether a relaxation would even help."""
@@ -164,8 +165,14 @@ class _Search:
         return self.check(pinch.finding_id, candidates(pinch, limit))
 
     def set_down(self, finding: Finding) -> tuple[Candidate, SceneGraph] | None:
-        """An item that sits too high, carried to a lower surface: no floor space opens, so no pinch exists."""
-        return self.check(finding.id, (move.candidate for move in lower_surface_moves(self.graph, finding)))
+        """An item that sits too high, carried to a lower surface: no floor space opens, so no pinch exists.
+
+        The nearest spot on each surface comes first, then the next nearest, and
+        only SET_DOWN_LIMIT are measured: neighbouring spots on one surface almost
+        always measure alike, and each costs a full assessment.
+        """
+        spots = _surface_by_surface(lower_surface_moves(self.graph, finding))[:SET_DOWN_LIMIT]
+        return self.check(finding.id, (move.candidate for move in spots))
 
     def check(self, finding_id: UUID, guesses: Iterable[Candidate]) -> tuple[Candidate, SceneGraph] | None:
         from ..evaluation.gate import accepts
@@ -259,6 +266,17 @@ def propose_fix(
         relaxation=relaxation,
         targets=target_ids,
     )
+
+
+def _surface_by_surface(moves: list[SurfaceMove]) -> list[SurfaceMove]:
+    """Nearest-first moves reordered so each surface's nearest spot comes before any surface's second."""
+    rank: dict[UUID, int] = {}
+    ordered = []
+    for index, move in enumerate(moves):
+        turn = rank.get(move.surface.id, 0)
+        rank[move.surface.id] = turn + 1
+        ordered.append((turn, index, move))
+    return [move for _, _, move in sorted(ordered, key=lambda entry: entry[:2])]
 
 
 def _found(graph: SceneGraph, search: _Search, result: tuple[Candidate, SceneGraph],
