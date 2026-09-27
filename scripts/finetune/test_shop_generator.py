@@ -2,7 +2,7 @@ import functools
 import math
 
 import pytest
-from shop_generator import FOOD_KINDS, SHOP_TYPES, generate
+from shop_generator import FOOD_KINDS, SHOP_TYPES, circulation_problems, generate
 from shop_geometry import Rect, outline
 from shop_restroom import turning_circle_fits
 from shop_shells import available_scans
@@ -229,3 +229,9 @@ def test_turning_circle_needs_sixty_inches_clear():
     assert turning_circle_fits(1.6, 1.6, [])
     assert not turning_circle_fits(1.5, 2.0, [])
     assert not turning_circle_fits(1.6, 1.6, [(0.7, 0.7, 0.9, 0.9)])
+
+
+@pytest.mark.parametrize("index", [713, 728])
+def test_a_generated_room_can_be_got_around_before_any_scramble(index):
+    graph, scenario, _ = generate(index)
+    assert circulation_problems(graph, scenario) == []

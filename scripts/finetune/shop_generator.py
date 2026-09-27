@@ -48,6 +48,7 @@ from shop_room import (
 from shop_service import build_counter, cashier, menu_board_on_the_route, menu_boards_behind, service_stops
 from shop_shells import RectShell, ScanShell
 from standardphysics_agents.fix.moves import RESTING_GAP
+from standardphysics_agents.training.checker import TrainingChecker
 from standardphysics_contracts import Mat4, Scenario, SceneGraph, SceneNode, Stop, Vec3
 from standardphysics_pipeline import gap_between
 
@@ -610,9 +611,25 @@ def build_room(name: str, shop: ShopType, rng: random.Random,
     return room.graph(), Scenario(name=shop.errand, stops=room.stops)
 
 
+CIRCULATION_RULES = frozenset({
+    "route_clear_width", "turn_clear_width", "passing_space", "turning_space",
+    "service_counter_approach", "exit_path", "restroom_turning_space",
+})
+"""Rules about getting around the room. A generated room is the owner's working layout, so it must pass
+these before any scramble; a counter or dispenser at the wrong height is left in on purpose."""
+
+
+def circulation_problems(graph: SceneGraph, scenario: Scenario) -> list[str]:
+    checker = TrainingChecker(scenario)
+    return sorted({finding.check_id for finding in checker.assess(graph).problems
+                   if finding.check_id in CIRCULATION_RULES})
+
+
 def generate(index: int, attempts: int = 30) -> tuple[SceneGraph, Scenario, ShopType]:
     """The room for this index. Whether it starts from a scan is settled once per index, so the scan
-    share holds even though scan shells fail more draws; after half the attempts it falls back to rectangles."""
+    share holds even though scan shells fail more draws; after half the attempts it falls back to rectangles.
+    A draw whose own layout already blocks a route or a turn is discarded, so every circulation problem a
+    scramble produces is one the scramble caused."""
     shop = SHOP_TYPES[index % len(SHOP_TYPES)]
     wants_scan = random.Random(index).random() < SCAN_SHARE
     for attempt in range(attempts):
@@ -621,6 +638,6 @@ def generate(index: int, attempts: int = 30) -> tuple[SceneGraph, Scenario, Shop
             made = build_room(f"generated-{index:05d}", shop, random.Random(index * 7919 + attempt), from_scan)
         except Unbuildable:
             continue
-        if made is not None:
+        if made is not None and not circulation_problems(*made):
             return (*made, shop)
     raise RuntimeError(f"could not generate a room for index {index}")
