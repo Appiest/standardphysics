@@ -7,12 +7,15 @@ from standardphysics_agents.training import TrainingChecker, score_completion, s
 from standardphysics_agents.training.phantoms import phantoms, pin, scan_errors, without_unmeasured
 from standardphysics_agents.training.quality import (
     SIGHT_BLOCKING_HEIGHT_METERS,
+    _nearest_wall,
+    _xy,
     front_heading_degrees,
     layout_quality,
     pair_term,
     relation_score,
     sight_term,
     viewpoint,
+    wall_segments,
     wall_term,
 )
 from standardphysics_agents.training.reward import MOVED_PINNED, USABILITY_WEIGHT
@@ -178,6 +181,56 @@ def test_a_45_degree_turn_halves_the_wall_angle_score():
     angle_part = (wall - 1 / 3) / (2 / 3)
     assert relation_score(45.0, 0.0) == pytest.approx(2 / 3 * 0.5 + 1 / 3)
     assert angle_part == pytest.approx(0.5, abs=0.02)
+
+
+def doorway_room() -> SceneGraph:
+    """A 20 by 8 m room with a long south wall and a 0.3 m stub perpendicular to it
+    at x=5, the way a doorway frame stands proud of the wall it is cut into. A
+    display case sits well clear of the stub, close enough to its own long wall
+    that a small slide leaves the stub as its nearest wall even though the case
+    never turns towards it."""
+    nodes = [
+        piece("doorway_floor", "Floor", (10.0, 0.0, 0.0), (20.0, 8.0, 0.0), False, "floor"),
+        piece("doorway_wall_south", "Wall", (10.0, -4.0, 1.25), (20.0, 0.02, 2.5), False, "wall"),
+        piece("doorway_wall_north", "Wall", (10.0, 4.0, 1.25), (20.0, 0.02, 2.5), False, "wall"),
+        piece("doorway_stub", "Wall", (5.0, -3.85, 1.25), (0.001, 0.3, 2.5), False, "wall"),
+        piece("doorway_case", "Display case", (5.42, -3.6, 0.9), (1.2, 0.5, 1.8)),
+    ]
+    return SceneGraph(scan_id=node_id("multiroom_doorway"), nodes=nodes)
+
+
+THREE_INCHES_METERS = 0.0762
+
+
+def test_a_slide_toward_a_stub_keeps_its_wall_score_near_one():
+    """The case slides 3 inches along its own long wall, ending up nearer a short
+    perpendicular stub than the wall it actually runs along and never turned
+    towards. It should still be measured against its own wall, so the score
+    stays close to 1 instead of reading as a 90 degree turn."""
+    owner = doorway_room()
+    case = owner.by_id(node_id("multiroom_doorway_case"))
+    walls = wall_segments(owner)
+    after = replaced(owner, turned(case, 0.0, dx=-THREE_INCHES_METERS))
+    slid = after.by_id(case.id)
+    assert _nearest_wall(_xy(case), walls) != _nearest_wall(_xy(slid), walls), \
+        "the slide should cross into the stub's reach, or the test proves nothing"
+    assert wall_term(owner, after, {case.id}) == pytest.approx(1.0, abs=0.01)
+
+
+def test_turning_the_same_case_90_degrees_in_place_scores_low():
+    owner = doorway_room()
+    case = owner.by_id(node_id("multiroom_doorway_case"))
+    after = replaced(owner, turned(case, 90.0))
+    assert wall_term(owner, after, {case.id}) == pytest.approx(1 / 3, abs=0.02)
+
+
+def test_moving_well_away_from_the_wall_scores_lower_than_staying_put():
+    owner = doorway_room()
+    case = owner.by_id(node_id("multiroom_doorway_case"))
+    unmoved = replaced(owner, turned(case, 0.0))
+    far = replaced(owner, turned(case, 0.0, dy=2.0))
+    assert wall_term(owner, unmoved, {case.id}) == pytest.approx(1.0)
+    assert wall_term(owner, far, {case.id}) < wall_term(owner, unmoved, {case.id})
 
 
 def test_turning_a_chair_away_from_its_table_lowers_pairs():
