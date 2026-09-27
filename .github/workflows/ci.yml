@@ -23,3 +23,21 @@ jobs:
       - run: python -m ruff check --config services/api/pyproject.toml services/api/
       - run: python -m pytest
       - run: python -m pytest services/api/tests -q
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # The Blender download and the Next build dominate a cold build, so every
+      # layer is cached in GitHub's cache and a code-only change rebuilds just
+      # the layers after the source is copied.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: standardphysics:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - run: scripts/smoke_image.sh standardphysics:ci
