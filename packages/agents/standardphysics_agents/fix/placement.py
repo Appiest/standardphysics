@@ -18,8 +18,9 @@ import numpy as np
 from standardphysics_contracts import Finding, NodeMove, SceneGraph, SceneNode, Vec3, to_meters
 from standardphysics_pipeline import build_grid, clearance_map, footprint, gap_between
 from standardphysics_pipeline.footprints import Polygon, polygon_bounds, rotation_about_z
+from standardphysics_pipeline.occupancy import CELL_SIZE
 
-from ..checks.rectangles import rectangle
+from ..checks.rectangles import intruders, rectangle
 from ..rules import AgentRulePack
 from .constraints import violations
 from .moves import apply_moves, carried_by_hand, move_node, without
@@ -30,6 +31,8 @@ ANGLES = (0.0, -30.0, 30.0, -45.0, 45.0, -60.0, 60.0, -90.0, 90.0, 180.0)
 OPTIONS_PER_PIECE = 8
 BEAM_WIDTH = 16
 MAX_PIECES = 8
+RECTANGLE_RULE = "service_counter_approach"
+"""The one rule whose required space is a rectangle placed exactly, rather than a square around a circle."""
 FREE_SPOTS = 6
 """Places anywhere in the room tried for each hand-carried piece."""
 FREE_SPOT_MARGIN = 0.05
@@ -41,16 +44,16 @@ wall or a fixture, which is where staff put a sign they have moved."""
 FREE_SPOT_SPACING = 0.5
 
 
-def _space(finding: Finding, graph: SceneGraph, rules: AgentRulePack) -> Polygon:
-    """The required region, rather than the undersized region that was measured."""
+def _space(finding: Finding, graph: SceneGraph, rules: AgentRulePack, inset: float = 0.0) -> Polygon:
+    """The required region, rather than the undersized region that was measured, pulled in by `inset`."""
     rule = rules.by_id(finding.check_id)
     width = depth = to_meters(finding.required_inches)
     rotation = (1.0, 0.0)
-    if finding.check_id == "service_counter_approach":
+    if finding.check_id == RECTANGLE_RULE:
         width = to_meters(rule.parameter("clear_width_min_inches"))
         depth = to_meters(rule.parameter("clear_depth_min_inches"))
         rotation = rotation_about_z(graph.by_id(finding.locus.node_ids[0]))
-    return rectangle(finding.locus.point, width, depth, rotation)
+    return rectangle(finding.locus.point, width - 2 * inset, depth - 2 * inset, rotation)
 
 
 def _candidate(moves: list[NodeMove]) -> Candidate:
@@ -190,4 +193,20 @@ def placements(graph: SceneGraph, pinch: Pinch, finding: Finding,
     spots = {node.id: _free_spots(graph, node, space) for node in carried}
     found += _beams(graph, _one_or_all(carried), spots, limit - len(found))
     found += _beams(graph, _together(pieces), options, limit - len(found))
-    return found[:limit]
+    found = found[:limit]
+    if finding.check_id != RECTANGLE_RULE:
+        return found
+    return _emptiest_first(graph, found, _space(finding, graph, rules, inset=CELL_SIZE))
+
+
+def _emptiest_first(graph: SceneGraph, found: list[Candidate], space: Polygon) -> list[Candidate]:
+    """Candidates that leave fewer pieces standing in the space are measured first.
+
+    A candidate that leaves a piece in the space cannot clear it, and measuring
+    one costs a whole assessment. The order within each count stays least
+    disruptive first. Only the counter's 30 by 48 inch space is drawn exactly;
+    the square standing in for a turning circle counts pieces in its corners
+    that the circle does not reach. The space is pulled in by a grid cell, the
+    resolution the measurement itself works at.
+    """
+    return sorted(found, key=lambda candidate: len(intruders(apply_moves(graph, candidate.moves), space)))

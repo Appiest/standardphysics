@@ -9,6 +9,7 @@ threshold check cannot afford that.
 from __future__ import annotations
 
 from collections import OrderedDict
+from dataclasses import dataclass, field
 from uuid import UUID
 
 import numpy as np
@@ -52,7 +53,14 @@ COUNTER_CLEAR_DEPTH = to_meters(30.0)
 48 in side running along the counter."""
 COUNTER_SLIDE_STEP = to_meters(2.0)
 """Spacing of the positions tried along a counter face for its clear floor space."""
-MAX_CACHED_ROUTE_PATHS = 5_000
+LAYOUTS_KEPT = 8
+"""Layouts whose grid and routes are kept.
+
+A repair search alternates between a room and its candidates, so keeping a few
+saves rebuilding the room's grid every other question. Routes belong to their
+layout and go with it: each one holds two grid-sized arrays, and a cache of
+routes across thousands of candidate layouts grew past 20 GB.
+"""
 
 MAX_SQUARE = 3.0
 """Metres of side past which a clear square stops being measured."""
@@ -209,29 +217,42 @@ def _approach_at(grid: Grid, origin: Vec3, outward, along) -> ClearFloorResult:
     )
 
 
+@dataclass
+class _Layout:
+    grid: Grid
+    clearance: np.ndarray
+    paths: dict[tuple, PathResult] = field(default_factory=dict)
+
+
 class PipelineMeasurements:
     """Implements MeasurementProvider against real geometry."""
 
     def __init__(self, cell_size: float = CELL_SIZE) -> None:
         self.cell_size = cell_size
-        self._cache: dict[tuple, tuple[Grid, np.ndarray]] = {}
-        self._paths: OrderedDict[tuple, PathResult] = OrderedDict()
+        self._layouts: OrderedDict[tuple, _Layout] = OrderedDict()
+
+    def _layout(self, graph: SceneGraph) -> _Layout:
+        key = _signature(graph)
+        layout = self._layouts.get(key)
+        if layout is None:
+            grid = build_grid(graph, self.cell_size)
+            layout = _Layout(grid, clearance_map(grid))
+            self._layouts[key] = layout
+            if len(self._layouts) > LAYOUTS_KEPT:
+                self._layouts.popitem(last=False)
+        self._layouts.move_to_end(key)
+        return layout
 
     def _field(self, graph: SceneGraph) -> tuple[Grid, np.ndarray]:
-        key = _signature(graph)
-        if key not in self._cache:
-            grid = build_grid(graph, self.cell_size)
-            self._cache = {key: (grid, clearance_map(grid))}
-        return self._cache[key]
+        layout = self._layout(graph)
+        return layout.grid, layout.clearance
 
     def _widest(self, graph, grid, clearance, start, goal, anchors) -> PathResult:
-        key = (_signature(graph), start, goal, anchors)
-        if key not in self._paths:
-            self._paths[key] = widest_path(grid, clearance, start, goal, anchors=anchors)
-            if len(self._paths) > MAX_CACHED_ROUTE_PATHS:
-                self._paths.popitem(last=False)
-        self._paths.move_to_end(key)
-        return self._paths[key]
+        paths = self._layout(graph).paths
+        key = (start, goal, anchors)
+        if key not in paths:
+            paths[key] = widest_path(grid, clearance, start, goal, anchors=anchors)
+        return paths[key]
 
     def _leg(
         self, graph: SceneGraph, scenario: Scenario, leg_index: int

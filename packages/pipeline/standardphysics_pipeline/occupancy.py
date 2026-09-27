@@ -7,6 +7,7 @@ rather than by an axis-aligned bounding box that would eat the corners.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -281,9 +282,19 @@ def _mark(
     cell_size: float,
 ) -> None:
     """Occupy every cell whose centre lies inside this node's oriented box."""
-    inside = _solid_cells(node, world_x, world_y, cell_size)
-    owner[inside & ~occupied] = index
-    occupied |= inside
+    window = _window(node, world_x, world_y, cell_size)
+    inside = _solid_cells(node, world_x[window], world_y[window], cell_size)
+    owner[window][inside & ~occupied[window]] = index
+    occupied[window] |= inside
+
+
+def _window(node: SceneNode, world_x: np.ndarray, world_y: np.ndarray, cell_size: float) -> tuple[slice, slice]:
+    """The rows and columns a node can fill, grown by the thickest barrier, so the rest of the grid is not tested."""
+    p = node.transform.position
+    reach = math.hypot(node.dimensions.x / 2, node.dimensions.y / 2) + THINNEST_WALL + THINNEST_BARRIER_CELLS * cell_size
+    cols = np.searchsorted(world_x[0], (p.x - reach, p.x + reach))
+    rows = np.searchsorted(world_y[:, 0], (p.y - reach, p.y + reach))
+    return slice(int(rows[0]), int(rows[1])), slice(int(cols[0]), int(cols[1]))
 
 
 def _solid_cells(

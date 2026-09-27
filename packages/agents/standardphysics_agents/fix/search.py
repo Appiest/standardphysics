@@ -12,6 +12,8 @@ could allow, tested first so the offer is real.
 
 from __future__ import annotations
 
+import math
+import time
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -152,6 +154,8 @@ class _Search:
     max_tier: Tier
     baseline: Pass
     candidate_rejection: CandidateRejection | None = None
+    deadline: float = math.inf
+    """`time.monotonic()` past which no more candidates are measured."""
     measured: int = 0
     rejected: list[str] = field(default_factory=list)
 
@@ -163,6 +167,8 @@ class _Search:
 
         known = {finding.id for finding in self.baseline.problems}
         for candidate in guesses:
+            if time.monotonic() > self.deadline:
+                return None
             rearranged = apply_moves(self.graph, candidate.moves)
             broken = violations(self.graph, rearranged)
             if broken:
@@ -202,8 +208,13 @@ def propose_fix(
     limit: int = CANDIDATE_LIMIT,
     offer_relaxation: bool = True,
     candidate_rejection: CandidateRejection | None = None,
+    deadline: float = math.inf,
 ) -> FixOutcome:
-    """One arrangement that clears a named finding, or one thing to ask about."""
+    """One arrangement that clears a named finding, or one thing to ask about.
+
+    Past `deadline`, a `time.monotonic()` value, nothing more is measured and
+    the search reports what it found by then.
+    """
     problems = [finding for finding in targets if finding.outcome == "problem"
                 and rules.by_id(finding.check_id).rearrangeable]
     before = baseline or assess(
@@ -213,11 +224,11 @@ def propose_fix(
 
     search = _Search(
         graph, scenario, measure, rules, ledger, max_tier,
-        baseline=before, candidate_rejection=candidate_rejection,
+        baseline=before, candidate_rejection=candidate_rejection, deadline=deadline,
     )
     for pinch in _pinches(problems, graph):
         result = search.run(pinch, limit)
-        if result is None and limit > 0:
+        if result is None and limit > 0 and time.monotonic() <= deadline:
             finding = next(f for f in problems if f.id == pinch.finding_id)
             result = search.check(pinch, placements(graph, pinch, finding, rules, limit * 4))
         if result is None:

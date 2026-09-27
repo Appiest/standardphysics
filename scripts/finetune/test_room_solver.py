@@ -120,3 +120,14 @@ def test_a_dispenser_over_a_lavatory_is_rehung_not_refused_as_resting_on_it():
     slid = [edits for edits in groups if edits.fixture_moves and edits.height_changes]
     assert apply_edits(graph, lowered).by_id(node_id("towels")) is not None
     assert slid, "a control over a basin gets candidates that slide it along its wall before lowering it"
+
+
+def test_an_exhausted_budget_returns_the_best_answer_already_scored():
+    """With no time for any furniture or construction search, what comes back is still a checker verdict."""
+    checker = TrainingChecker(build_scenario(), scope="fittings")
+    graph = _demo_room()
+    solution, _ = room_solver.solve(graph, checker, budget_seconds=0.0)
+    edits = TrainingEdits.model_validate_json(solution.completion)
+    assert not (edits.moves or edits.wall_shifts or edits.fixture_moves)
+    assert solution.verdict == room_solver.score_completion(solution.completion, graph, checker).as_dict()
+

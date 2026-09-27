@@ -16,19 +16,27 @@ read from the rule pack rather than restated here.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from uuid import UUID
 
 from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, to_meters
-from standardphysics_pipeline import footprint, gap_between
-from standardphysics_pipeline.footprints import Polygon, distance_outside, floor_polygon, rotation_about_z
-from standardphysics_pipeline.occupancy import blocks_floor
+from standardphysics_pipeline import footprint
+from standardphysics_pipeline.footprints import (
+    Polygon,
+    bounds_meet,
+    distance_outside,
+    floor_polygon,
+    polygon_bounds,
+    rotation_about_z,
+    touching,
+)
+from standardphysics_pipeline.occupancy import blocks_floor, reads_as_wall
 
 from ..checks import roles
 from ..checks.rectangles import EDGE_TOLERANCE, rectangle
-from ..checks.walls import upright_walls
 from ..rules import load_pack
+from .moves import per_layout
 
 CLEAR_FLOOR_RULE = "service_counter_approach"
 """The rule that carries 305.3's 30 by 48 inch clear floor space."""
@@ -63,33 +71,48 @@ def reach(role: roles.UsedFromTheFloor) -> float:
     return max(approach.out for approach in _approaches()[role])
 
 
+Obstacle = tuple[UUID, Polygon, tuple[float, float, float, float]]
+
+
+def _obstacle(node: SceneNode) -> Obstacle | None:
+    if not (reads_as_wall(node) or blocks_floor(node)) or roles.is_seating(node):
+        return None
+    shape = footprint(node)
+    return node.id, shape, polygon_bounds(shape)
+
+
 @dataclass(frozen=True)
 class Room:
     """What can stand in a patch of clear floor, gathered once per layout."""
 
-    obstacles: tuple[tuple[UUID, Polygon], ...]
+    obstacles: tuple[Obstacle, ...]
     floor: Polygon | None
+    by_object: dict = field(default_factory=dict, compare=False, repr=False)
+    """Each node object's obstacle entry, so a layout differing by a few moved pieces reuses the rest."""
 
     @classmethod
-    def of(cls, graph: SceneGraph) -> Room:
-        walls = {node.id for node in upright_walls(graph)}
-        obstacles = tuple(
-            (node.id, footprint(node))
-            for node in graph.nodes
-            if (node.id in walls or blocks_floor(node)) and not roles.is_seating(node)
-        )
+    def of(cls, graph: SceneGraph, reusing: Room | None = None) -> Room:
+        known = reusing.by_object if reusing is not None else {}
+        by_object = {id(node): known[id(node)] if id(node) in known else _obstacle(node) for node in graph.nodes}
         floor = next((floor_polygon(node) for node in graph.nodes if lies_flat(node)), None)
-        return cls(obstacles=obstacles, floor=floor)
+        obstacles = tuple(entry for entry in by_object.values() if entry is not None)
+        return cls(obstacles=obstacles, floor=floor, by_object=by_object)
 
     def clear(self, patch: Polygon, ignoring: UUID) -> bool:
+        box = polygon_bounds(patch)
         return self._on_the_floor(patch) and not any(
-            gap_between(shape, patch) == 0.0 for node_id, shape in self.obstacles if node_id != ignoring
+            bounds_meet(bounds, box) and touching(shape, patch)
+            for node_id, shape, bounds in self.obstacles if node_id != ignoring
         )
 
     def _on_the_floor(self, patch: Polygon) -> bool:
         if self.floor is None:
             return True
         return all(distance_outside(self.floor, corner, FLOOR_EDGE_SLACK) == 0.0 for corner in patch)
+
+
+room_of = per_layout(Room.of)
+"""`Room.of` for a base layout that many candidates are checked against."""
 
 
 def patch(node: SceneNode, outward: tuple[float, float], approach: Approach) -> Polygon:
