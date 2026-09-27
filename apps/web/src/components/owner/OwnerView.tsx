@@ -11,7 +11,7 @@ import { proposeFix } from "@/lib/layout-client";
 import { inApp, listenToApp, tellApp } from "@/lib/native-bridge";
 import { markStatus, savePlan, walkingRoute } from "@/lib/owner-client";
 import { type ChecklistStatus, checklistRows, type Destination, followUps, isFixing, type Panel, panelFor, pieceToTry, requestsForStep } from "@/lib/owner-journey";
-import type { Assessment, Checklist, Finding, Journey, OwnerRequest, Scan, Scenario, SceneGraph, Vec3 } from "@/types/contracts";
+import type { Assessment, Checklist, Finding, Journey, OwnerRequest, Scan, Scenario, SceneGraph, SceneNode, Vec3 } from "@/types/contracts";
 import { CounterStep } from "./CounterStep";
 import { OwnerModel } from "./OwnerModel";
 import { PathStep } from "./PathStep";
@@ -23,6 +23,8 @@ import { SharePanel } from "./SharePanel";
 import { StepHeading } from "./StepHeading";
 import { StillToCheck } from "./StillToCheck";
 import { ToolsPanel } from "./ToolsPanel";
+import { FoundLegend, FoundSection } from "./FoundList";
+import { foundInModel, showsFound, useFoundObjects } from "./useFoundObjects";
 import { guessCounter, useOwnerModel } from "./useOwnerModel";
 import { usePathEditor } from "./usePathEditor";
 import { WaitingPanel } from "./WaitingPanel";
@@ -174,57 +176,77 @@ function currentPanel(journey: Journey, counterSkipped: boolean, tool: Tool | nu
   return panel === "counter" && counterSkipped ? "path" : panel;
 }
 
-function OwnerShop(props: ShopProps) {
-  const { scan, scene, journey, assessment, checklist, guest, readOnly = false } = props;
-  const [selected, setSelected] = useState<Finding | null>(null);
-  const [counter, setCounter] = useState<string | null>(() => guessCounter(scene));
-  const [counterSkipped, setCounterSkipped] = useState(false);
+/** Tapping a piece in the model: it becomes the counter while choosing one, and picks its found row where those show. */
+function useNodePicker(panel: Panel | Tool, scene: SceneGraph, foundShown: boolean, pickFoundNode: (nodeId: string) => void, setCounter: (nodeId: string) => void) {
+  return useCallback((nodeId: string) => {
+    if (panel !== "counter") {
+      if (foundShown) pickFoundNode(nodeId);
+      return;
+    }
+    const node = scene.nodes.find((candidate) => candidate.id === nodeId);
+    if (node && canBeCounter(node)) setCounter(nodeId);
+  }, [panel, scene, foundShown, pickFoundNode, setCounter]);
+}
+
+/** The tools draw on the results view's model: planning moves pieces, the walk-through drives through them. */
+function modelPanel(panel: Panel | Tool): Panel {
+  return panel === "plan" || panel === "wheelchair" ? "results" : panel;
+}
+
+/** The two tools, started from the results: planning opens on the piece most worth moving, the walk-through fetches its route. */
+function useTools(scanId: string, scenario: Scenario | null, arrangement: ReturnType<typeof useArrangement>, tryPiece: SceneNode | null) {
   const [tool, setTool] = useState<Tool | null>(null);
   const [walkedLegs, setWalkedLegs] = useState<Vec3[][]>([]);
-  const [fixingHere, setFixingHere] = useState(false);
-  const save = useSaveAsk(guest);
-  const statuses = useStatuses(scan.id, guest, save.ask);
-  const path = usePathEditor(scan.id, props.suggestedPath, props.defaultPlaces);
-  const arrangement = useArrangement(scan.id, scene, savePlan);
-  const panel = currentPanel(journey, counterSkipped, tool, readOnly);
-  const groups = useMemo(() => groupFindings(assessment?.findings ?? []), [assessment]);
-  const problems = groups.problems;
-  const rows: Row[] = useMemo(
-    () => checklistRows(problems, checklist).map((row) => ({ ...row, status: statuses.overrides[row.finding.id] ?? row.status })),
-    [problems, checklist, statuses.overrides],
-  );
-
-  const pickNode = useCallback((nodeId: string) => {
-    const node = scene.nodes.find((candidate) => candidate.id === nodeId);
-    if (panel === "counter" && node && canBeCounter(node)) setCounter(nodeId);
-  }, [panel, scene]);
-  const setup = useOwnerModel(
-    {
-      panel: panel === "plan" || panel === "wheelchair" ? "results" : panel, scene, selected, counter,
-      path: panel === "path" ? path : null, arrangement: panel === "plan" ? arrangement : null, wheelchair: panel === "wheelchair",
-      scenario: props.scenario, walkedLegs,
-    },
-    pickNode,
-    () => setSelected(null),
-  );
-
-  const tryPiece = useMemo(() => pieceToTry(problems, scene), [problems, scene]);
   const startWheelchair = () => {
     setTool("wheelchair");
-    if (props.scenario) {
-      walkingRoute(scan.id, props.scenario).then((walked) => setWalkedLegs(walked.legs.map((leg) => leg.path))).catch(() => setWalkedLegs([]));
-    }
+    if (!scenario) return;
+    walkingRoute(scanId, scenario).then((walked) => setWalkedLegs(walked.legs.map((leg) => leg.path))).catch(() => setWalkedLegs([]));
   };
   const startPlanning = () => {
     setTool("plan");
     if (tryPiece) arrangement.setActiveId(tryPiece.id);
   };
+  return { tool, setTool, walkedLegs, startWheelchair, startPlanning };
+}
+
+function OwnerShop(props: ShopProps) {
+  const { scan, scene, journey, assessment, guest, readOnly = false } = props;
+  const [selected, setSelected] = useState<Finding | null>(null);
+  const [counter, setCounter] = useState<string | null>(() => guessCounter(scene));
+  const [counterSkipped, setCounterSkipped] = useState(false);
+  const [fixingHere, setFixingHere] = useState(false);
+  const save = useSaveAsk(guest);
+  const statuses = useStatuses(scan.id, guest, save.ask);
+  const path = usePathEditor(scan.id, props.suggestedPath, props.defaultPlaces);
+  const arrangement = useArrangement(scan.id, scene, savePlan);
+  const groups = useMemo(() => groupFindings(assessment?.findings ?? []), [assessment]);
+  const problems = groups.problems;
+  const tryPiece = useMemo(() => pieceToTry(problems, scene), [problems, scene]);
+  const tools = useTools(scan.id, props.scenario, arrangement, tryPiece);
+  const panel = currentPanel(journey, counterSkipped, tools.tool, readOnly);
+  const letGoOfFinding = useCallback(() => setSelected(null), []);
+  const found = useFoundObjects(scene, letGoOfFinding);
+  const foundShown = showsFound(panel);
+  const pickNode = useNodePicker(panel, scene, foundShown, found.pickNode, setCounter);
+  const setup = useOwnerModel(
+    {
+      panel: modelPanel(panel), scene, selected, counter,
+      path: panel === "path" ? path : null, arrangement: panel === "plan" ? arrangement : null, wheelchair: panel === "wheelchair",
+      scenario: props.scenario, walkedLegs: tools.walkedLegs, ...foundInModel(found, foundShown),
+    },
+    pickNode,
+    () => { setSelected(null); found.clear(); },
+  );
 
   const planFor = async (finding: Finding) => {
-    setTool("plan");
+    tools.setTool("plan");
     setSelected(null);
     const result = await proposeFix(scan.id, scene.revision, [finding.id]).catch(() => null);
     if (result?.proposal) arrangement.load(result.proposal.moves);
+  };
+  const show = (finding: Finding) => {
+    found.clear();
+    setSelected(finding.id === selected?.id ? null : finding);
   };
 
   const content: Record<Panel | Tool, () => ReactNode> = {
@@ -234,33 +256,66 @@ function OwnerShop(props: ShopProps) {
     counter: () => <CounterStep scanId={scan.id} scene={scene} picked={counter} onSkip={() => setCounterSkipped(true)} />,
     path: () => <PathStep path={path} />,
     follow_ups: () => <FollowUpPanel scanId={scan.id} journey={journey} requests={props.requests} />,
-    plan: () => <PlanPanel arrangement={arrangement} before={problems.length} pieceName={pieceLabel(scene, arrangement.activeId) ?? tryPiece?.label ?? null} onDone={() => { arrangement.reset(); setTool(null); }} />,
-    wheelchair: () => <WheelchairPanel onDone={() => setTool(null)} />,
+    plan: () => <PlanPanel arrangement={arrangement} before={problems.length} pieceName={pieceLabel(scene, arrangement.activeId) ?? tryPiece?.label ?? null} onDone={() => { arrangement.reset(); tools.setTool(null); }} />,
+    wheelchair: () => <WheelchairPanel onDone={() => tools.setTool(null)} />,
     results: () => (
-      <ResultsPanel
-        rows={rows}
-        scene={scene}
-        selectedId={selected?.id ?? null}
-        fixing={isFixing(checklist, fixingHere) && !readOnly}
-        saving={statuses.saving}
-        readOnly={readOnly}
-        onStartFixing={() => setFixingHere(true)}
-        footer={props.footer}
-        stillToCheck={<StillToCheck scanId={scan.id} questions={readOnly ? [] : groups.questions} requests={props.requests} />}
-        pending={groups.questions.length}
-        actions={{ onShow: (finding) => setSelected(finding.id === selected?.id ? null : finding), onStatus: statuses.set, onPlan: planFor }}
-      >
-        {!readOnly && <SharePanel scanId={scan.id} shopName={scan.name} onShared={save.ask} />}
-        {!readOnly && journey.tools_unlocked && <ToolsPanel scanId={scan.id} inApp={inApp()} onPlan={startPlanning} onWheelchair={startWheelchair} />}
-      </ResultsPanel>
+      <ResultsStep shop={props} groups={groups} statuses={statuses} selectedId={selected?.id ?? null} onShow={show} onPlan={planFor}
+        fixingHere={fixingHere} onStartFixing={() => setFixingHere(true)} onShared={save.ask} onStartPlanning={tools.startPlanning} onStartWheelchair={tools.startWheelchair} />
     ),
   };
 
+  const model = (
+    <>
+      <OwnerModel scene={scene} glbUrl={props.glbUrl} scanGlbUrl={props.scanGlbUrl ?? null} setup={setup} lightweight={props.embedded} />
+      {panel === "wheelchair" && <DrivingPad />}
+      <FoundLegend list={found} shown={foundShown} />
+    </>
+  );
   return (
-    <Frame shopName={scan.name} embedded={props.embedded} end={shopEnd(props)} model={<><OwnerModel scene={scene} glbUrl={props.glbUrl} scanGlbUrl={props.scanGlbUrl ?? null} setup={setup} lightweight={props.embedded} />{panel === "wheelchair" && <DrivingPad />}</>} size={modelSize(panel)} step={panel}>
+    <Frame shopName={scan.name} embedded={props.embedded} end={shopEnd(props)} model={model} size={modelSize(panel)} step={panel}>
       {content[panel]()}
+      <FoundSection list={found} shown={foundShown} />
       <SavePrompt open={save.open} inApp={props.embedded} onClose={save.close} />
     </Frame>
+  );
+}
+
+/** The results and checklist, with sharing and the tools under them once the owner can use them. */
+function ResultsStep({ shop, groups, statuses, selectedId, fixingHere, onStartFixing, onShow, onPlan, onShared, onStartPlanning, onStartWheelchair }: {
+  shop: ShopProps;
+  groups: ReturnType<typeof groupFindings>;
+  statuses: ReturnType<typeof useStatuses>;
+  selectedId: string | null;
+  fixingHere: boolean;
+  onStartFixing: () => void;
+  onShow: (finding: Finding) => void;
+  onPlan: (finding: Finding) => void;
+  onShared: () => void;
+  onStartPlanning: () => void;
+  onStartWheelchair: () => void;
+}) {
+  const { scan, scene, journey, checklist, readOnly = false } = shop;
+  const rows: Row[] = useMemo(
+    () => checklistRows(groups.problems, checklist).map((row) => ({ ...row, status: statuses.overrides[row.finding.id] ?? row.status })),
+    [groups.problems, checklist, statuses.overrides],
+  );
+  return (
+    <ResultsPanel
+      rows={rows}
+      scene={scene}
+      selectedId={selectedId}
+      fixing={isFixing(checklist, fixingHere) && !readOnly}
+      saving={statuses.saving}
+      readOnly={readOnly}
+      onStartFixing={onStartFixing}
+      footer={shop.footer}
+      stillToCheck={<StillToCheck scanId={scan.id} questions={readOnly ? [] : groups.questions} requests={shop.requests} />}
+      pending={groups.questions.length}
+      actions={{ onShow, onStatus: statuses.set, onPlan }}
+    >
+      {!readOnly && <SharePanel scanId={scan.id} shopName={scan.name} onShared={onShared} />}
+      {!readOnly && journey.tools_unlocked && <ToolsPanel scanId={scan.id} inApp={inApp()} onPlan={onStartPlanning} onWheelchair={onStartWheelchair} />}
+    </ResultsPanel>
   );
 }
 
