@@ -13,7 +13,10 @@
 # inspected at any time without touching what is running.
 #
 # Exits 1 when the copy fails or the database is damaged, and 2 when the
-# database is sound but some artifacts it lists have no file.
+# database is sound but some artifacts it lists have no file. An artifact
+# whose scan was deleted while the backup ran is listed with no file too;
+# backup.sh names those in artifacts-deleted-during-backup.txt, and they are
+# reported on their own lines without counting as lost.
 set -euo pipefail
 
 CALLER_DIRECTORY="$PWD"
@@ -30,16 +33,22 @@ import sqlite3
 import sys
 
 root = pathlib.Path(sys.argv[1])
+deletion_manifest = root / sys.argv[3]
+deleted_during_backup = set(deletion_manifest.read_text().split()) if deletion_manifest.is_file() else set()
 database = sqlite3.connect(f"file:{root / sys.argv[2]}?mode=ro", uri=True)
 integrity = database.execute("PRAGMA integrity_check").fetchone()[0]
 scans = database.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
 listed = database.execute("SELECT scan_id, id FROM artifacts").fetchall()
-missing = [f"{scan}/{artifact}" for scan, artifact in listed
-           if not (root / "scans" / scan / "artifacts" / artifact).is_file()]
+absent = [f"{scan}/{artifact}" for scan, artifact in listed
+          if not (root / "scans" / scan / "artifacts" / artifact).is_file()]
+missing = [name for name in absent if name not in deleted_during_backup]
 files = sum(1 for path in root.glob("scans/*/artifacts/*") if path.is_file())
 print(f"integrity check: {integrity}")
 print(f"scans:           {scans}")
 print(f"artifacts:       {len(listed)} listed, {files} files")
+for name in absent:
+    if name in deleted_during_backup:
+        print(f"deleted by its owner while the backup ran: {name}")
 for name in missing:
     print(f"missing file:    {name}")
 if integrity != "ok":
@@ -89,7 +98,7 @@ main() {
   rsync -a "$SP_BACKUP_DEST/$snapshot/" "$target/"
   [ -f "$target/$DATABASE_NAME" ] || die "The snapshot $snapshot has no $DATABASE_NAME."
   echo "Restored $snapshot into $target"
-  "$PYTHON" -c "$CHECK_SCRIPT" "$target" "$DATABASE_NAME"
+  "$PYTHON" -c "$CHECK_SCRIPT" "$target" "$DATABASE_NAME" "$DELETED_DURING_BACKUP"
 }
 
 main "$@"

@@ -18,6 +18,7 @@
 
 # shellcheck disable=SC2034  # read by the scripts that source this
 DATABASE_NAME=standardphysics.sqlite3
+DELETED_DURING_BACKUP=artifacts-deleted-during-backup.txt
 SNAPSHOT_NAME_PATTERN='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z$'
 
 die() {

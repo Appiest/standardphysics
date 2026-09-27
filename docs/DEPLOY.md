@@ -261,9 +261,27 @@ How it works, and why:
   for the UTC time, like `2026-09-27T103000Z`. A file that has not changed
   since the previous snapshot becomes a hard link to it, so each snapshot is a
   complete tree that costs only the space of what changed.
+- The database goes first because an upload writes its file before it
+  commits its row. Every artifact the database copy lists therefore already
+  has its file on disk when rsync reads the volume. Copying the files first
+  would miss the file of any upload that landed in between, and uploads are
+  far more common than deletions.
+- A deletion runs the other way round: the API commits the rows gone, then
+  removes the files. A scan deleted after the database copy is still listed
+  in the snapshot, with its files already gone. So after the copy, every
+  listed artifact without a file is looked up in the live database. If its
+  row has gone there too, it was deleted during the backup, and its name goes
+  into `artifacts-deleted-during-backup.txt` in the snapshot. If its row is
+  still there, the file is really missing: the backup keeps the snapshot,
+  deletes no older one, since an older one may hold the only copy, names the
+  files and exits 2, which fails the systemd unit.
 - A snapshot is written as `<name>.partial` and renamed when it finishes, so
   a backup that dies halfway never looks like a good one.
 - After a snapshot finishes, all but the newest `SP_BACKUP_KEEP` are deleted.
+- One backup runs at a time, serialised with `flock` on
+  `/var/lock/standardphysics-backup`. A second one, such as the timer
+  catching up while a manual run is going, exits 75 without touching
+  anything.
 
 Run `backup.sh` by hand before anything risky, such as a rollback past a
 release that changed stored data.
@@ -286,8 +304,9 @@ cd /root/standardphysics/deploy/digitalocean
 It prints SQLite's integrity check, the number of scans, and the number of
 artifacts the database lists against the number of files. It exits 1 if the
 database is damaged, and 2 if some listed artifact has no file, naming each
-one. A scan uploaded while the backup ran can show up as a file the database
-does not list yet, which is harmless.
+one. Artifacts the backup recorded as deleted while it ran are printed on
+their own lines and do not count as missing. A scan uploaded while the backup
+ran can show up as a file the database does not list yet, which is harmless.
 
 To put a checked copy back under the API:
 
