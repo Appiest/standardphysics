@@ -295,7 +295,18 @@ def _run_accessibility_loop(
     )
 
 
-def run_simulation(database, store, stages, scan_id: UUID, revision: int) -> None:
+def _no_checkpoint() -> None:
+    return None
+
+
+def run_simulation(
+    database, store, stages, scan_id: UUID, revision: int, checkpoint: Callable[[], None] = _no_checkpoint
+) -> None:
+    """Run one queued simulation and save its result.
+
+    `checkpoint` is called between redesign rounds and before each long step
+    that follows them, and raises to stop a run that has passed its deadline.
+    """
     with database.connect() as connection:
         row = connection.execute(
             "SELECT * FROM simulations WHERE scan_id=? AND revision=?",
@@ -337,6 +348,7 @@ def run_simulation(database, store, stages, scan_id: UUID, revision: int) -> Non
     )
 
     def publish_candidate(cycle: int, candidate: SceneGraph) -> None:
+        checkpoint()
         with database.transaction() as connection:
             connection.execute(
                 "UPDATE simulations SET completed=0, cycle=?, candidate_graph_json=?"
@@ -402,6 +414,7 @@ def run_simulation(database, store, stages, scan_id: UUID, revision: int) -> Non
 
     exhaustive_count = 0
     exhaustive_outcomes: dict[str, int] = {}
+    checkpoint()
     if request.exhaustive_evaluations:
         campaign_budget = TypeSafeCallBudget(campaign_reserve)
         campaign_path = (
@@ -467,6 +480,7 @@ def run_simulation(database, store, stages, scan_id: UUID, revision: int) -> Non
             "limitations": limitations,
         }
     )
+    checkpoint()
     with database.transaction() as connection:
         connection.execute(
             "UPDATE simulations SET result_json=?, completed=?"

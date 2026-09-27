@@ -7,6 +7,7 @@ import logging
 import sqlite3
 import threading
 import time
+import urllib.error
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -305,3 +306,59 @@ def test_settling_an_interrupted_job_waits_out_a_locked_database(make_client, mo
         with pytest.raises(KeyboardInterrupt):
             client.app.state.worker.run_once()
         assert _job_row(client, scan_id)["state"] == "failed"
+
+
+def _counting_stage(errors: list[BaseException | None]):
+    """A stage that raises each error in turn, then succeeds; None in the list is a success."""
+    calls = {"count": 0}
+
+    def stage(self, scan_id, revision, job=None) -> bool:
+        calls["count"] += 1
+        error = errors[calls["count"] - 1] if calls["count"] <= len(errors) else None
+        if error is not None:
+            raise error
+        return False
+
+    return stage, calls
+
+
+def test_a_job_that_meets_a_locked_database_is_tried_again(make_client, monkeypatch):
+    _fast_retries(monkeypatch)
+    stage, calls = _counting_stage([sqlite3.OperationalError("database is locked")])
+    monkeypatch.setattr(Worker, "_simulate", stage)
+    with _one_queued_job(make_client) as (client, scan_id):
+        client.app.state.worker.run_once()
+        assert _job_row(client, scan_id)["state"] == "done"
+    assert calls["count"] == 2
+
+
+def test_a_provider_timeout_is_tried_again(make_client, monkeypatch):
+    _fast_retries(monkeypatch)
+    stage, calls = _counting_stage([urllib.error.URLError(TimeoutError("timed out"))])
+    monkeypatch.setattr(Worker, "_simulate", stage)
+    with _one_queued_job(make_client) as (client, scan_id):
+        client.app.state.worker.run_once()
+        assert _job_row(client, scan_id)["state"] == "done"
+    assert calls["count"] == 2
+
+
+def test_transient_retries_are_bounded(make_client, monkeypatch):
+    _fast_retries(monkeypatch)
+    stage, calls = _counting_stage([TimeoutError("read timed out")] * 10)
+    monkeypatch.setattr(Worker, "_assess", stage)
+    with _one_queued_job(make_client, "assess") as (client, scan_id):
+        client.app.state.worker.run_once()
+        job = _job_row(client, scan_id, "assess")
+    assert job["state"] == "failed"
+    assert "read timed out" in job["error"]
+    assert calls["count"] == worker_module.TRANSIENT_ATTEMPTS
+
+
+def test_an_ordinary_failure_is_not_tried_again(make_client, monkeypatch):
+    _fast_retries(monkeypatch)
+    stage, calls = _counting_stage([ValueError("bad input"), sqlite3.OperationalError("no such table: x")])
+    monkeypatch.setattr(Worker, "_assess", stage)
+    with _one_queued_job(make_client, "assess") as (client, scan_id):
+        client.app.state.worker.run_once()
+        assert _job_row(client, scan_id, "assess")["state"] == "failed"
+    assert calls["count"] == 1

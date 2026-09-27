@@ -7,6 +7,7 @@ never appear in a response, a log line or the web build.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import pathlib
 import secrets
@@ -123,6 +124,26 @@ class Settings:
     fifteen minutes, so three times that only ever stops a bake that has hung.
     SP_BAKE_TIMEOUT_SECONDS changes it.
     """
+    process_timeout_seconds: float = 60 * 60
+    """How long a process job (ingest, discovery and the first check) may run, from SP_PROCESS_TIMEOUT_SECONDS.
+
+    These four deadlines are for jobs that run on the worker's own thread,
+    where Python can't be interrupted from outside. The job checks its deadline
+    at each stage boundary and fails there once it is past, discarding what the
+    late stage produced; /health/ready reports a job past its deadline as
+    degraded while it is still inside a stage. Each default sits far above what
+    the job's slowest step is allowed on its own: a model request here gives up
+    after two minutes and a Blender run after five.
+    """
+    assess_timeout_seconds: float = 20 * 60
+    """How long an assess job (the rule check and its model calls) may run, from SP_ASSESS_TIMEOUT_SECONDS."""
+    display_timeout_seconds: float = 30 * 60
+    """How long a display job may run, from SP_DISPLAY_TIMEOUT_SECONDS. It runs Blender once for the
+    geometry and once per finding for its still, each run killed after five minutes."""
+    simulate_timeout_seconds: float = 4 * 60 * 60
+    """How long a simulation may run, from SP_SIMULATE_TIMEOUT_SECONDS. A deep one runs its trials, a
+    thousand by default, once for each of up to nine redesign rounds. The job checks its deadline
+    between rounds, so a run past it stops after the round in progress."""
     team_emails: frozenset[str] = frozenset()
     """The team's emails before the team was a role, from SP_TEAM_EMAILS (comma separated).
 
@@ -157,6 +178,19 @@ class Settings:
     def database_path(self) -> pathlib.Path:
         return self.data_dir / "standardphysics.sqlite3"
 
+    def job_deadline_seconds(self, kind: str) -> float:
+        """How long a job of this kind may run. A photo bake's deadline is its kill timeout.
+
+        A kind with no deadline gets none; the worker fails such a job as soon as it runs it.
+        """
+        return {
+            "process": self.process_timeout_seconds,
+            "assess": self.assess_timeout_seconds,
+            "display": self.display_timeout_seconds,
+            "simulate": self.simulate_timeout_seconds,
+            "texture": self.bake_timeout_seconds,
+        }.get(kind, math.inf)
+
     @classmethod
     def from_environment(cls) -> Settings:
         load_dotenv(REPO_ROOT / ".env")
@@ -171,6 +205,10 @@ class Settings:
             auto_deep_simulation=_flag("SP_AUTO_DEEP_SIMULATION"),
             bake_in_own_process=not _flag("SP_BAKE_IN_PROCESS"),
             bake_timeout_seconds=_bounded_integer("SP_BAKE_TIMEOUT_SECONDS", 45 * 60, 60, 86_400),
+            process_timeout_seconds=_bounded_integer("SP_PROCESS_TIMEOUT_SECONDS", 60 * 60, 60, 86_400),
+            assess_timeout_seconds=_bounded_integer("SP_ASSESS_TIMEOUT_SECONDS", 20 * 60, 60, 86_400),
+            display_timeout_seconds=_bounded_integer("SP_DISPLAY_TIMEOUT_SECONDS", 30 * 60, 60, 86_400),
+            simulate_timeout_seconds=_bounded_integer("SP_SIMULATE_TIMEOUT_SECONDS", 4 * 60 * 60, 60, 7 * 86_400),
             team_emails=_email_set("SP_TEAM_EMAILS"),
             apns_key=_secret("SP_APNS_KEY", "SP_APNS_KEY_PATH"),
             apns_key_id=os.environ.get("SP_APNS_KEY_ID") or None,
