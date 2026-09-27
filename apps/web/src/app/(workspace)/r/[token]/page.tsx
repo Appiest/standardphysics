@@ -5,12 +5,13 @@ import { ReportDocument } from "@/components/report/ReportDocument";
 import { SharedReportGone } from "@/components/report/SharedReportGone";
 import { readSharedReport } from "@/components/report/sharedReport";
 import { Wordmark } from "@/components/report/Wordmark";
+import { fetchApi } from "@/lib/api-fetch";
 import { API_ORIGIN } from "@/lib/api-origin";
 
 export const dynamic = "force-dynamic";
 
 const loadSharedReport = cache(async (token: string) =>
-  readSharedReport(await fetch(`${API_ORIGIN}/api/shared/${encodeURIComponent(token)}`, { cache: "no-store" })),
+  readSharedReport(await fetchApi(`${API_ORIGIN}/api/shared/${encodeURIComponent(token)}`, { cache: "no-store" })),
 );
 
 /** The token is the whole key to the report, so the page stays out of search and never sends itself as a referrer. */
