@@ -1,4 +1,4 @@
-"""Where a carved object really is: part of a scanned piece, on one, or on the floor.
+"""Where a carved object really is: part of a scanned piece, on one, on the floor, or outside.
 
 Carving keeps what the camera saw, which for a counter is its lid and its
 front edge: the scanned box below already owns the rest. Left alone, each of
@@ -15,6 +15,10 @@ top, not a few inches into it where the carve reached down its front edge.
 that only saw its top, it is extended down when the mesh shows a solid body
 below it, and dropped when nothing holds it up, since then it is a sign or a
 shelf the detector called a counter.
+
+**Outside.** Through a shop window the camera sees the street. What lies past
+the room's walls, doors and windows from where it was photographed is not in
+the room, whatever the detector named it.
 """
 
 from __future__ import annotations
@@ -22,9 +26,9 @@ from __future__ import annotations
 from dataclasses import replace
 
 import numpy as np
-from standardphysics_contracts import SceneGraph, bounds_the_room
+from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room, stands_upright
 
-from .boxes import RESTING_GAP, resting_parent, share_within, top_of
+from .boxes import RESTING_GAP, _frame, resting_parent, share_within, top_of
 from .carve import MIN_EXTENT, CarvedBox
 from .merge import DiscoveredObject
 from .semantic_corrections import is_work_surface, same_furniture
@@ -33,6 +37,10 @@ REACH = 0.10
 """How far past a scanned piece's footprint a fragment of it may reach: a backrest's lean, a counter's lip."""
 PART_OF = 0.5
 """Share of a carved object that must lie within a scanned piece of its own kind for it to be that piece."""
+BEYOND = 0.5
+"""Share of an object's points past the room's shell before it is outside the room."""
+PAST_THE_SHEET = 0.05
+"""Metres a point must lie beyond a wall line to count as past it, so a sign on the glass stays in."""
 BODY_STEP = 0.05
 BODY_POINTS = 3
 SOLID_BENEATH = 0.6
@@ -55,6 +63,18 @@ def part_of_a_scanned_piece(object_: DiscoveredObject, graph: SceneGraph) -> boo
         for node in graph.nodes
         if not bounds_the_room(node)
     )
+
+
+def seen_through_the_shell(box: CarvedBox, graph: SceneGraph, viewpoints: np.ndarray) -> bool:
+    """Whether most of the object lies past a wall, door or window from where it was photographed."""
+    if not len(viewpoints) or not len(box.points):
+        return False
+    eye = viewpoints.mean(axis=0)
+    beyond = np.zeros(len(box.points), dtype=bool)
+    for node in graph.nodes:
+        if stands_upright(node):
+            beyond |= _past_the_sheet(eye, box.points, node)
+    return float(beyond.mean()) > BEYOND
 
 
 def standing_on_the_floor(object_: DiscoveredObject, graph: SceneGraph, points: np.ndarray) -> DiscoveredObject | None:
@@ -134,3 +154,24 @@ def _spread_across(local: np.ndarray, box: CarvedBox) -> bool:
         return False
     spans = (local.max(axis=0) - local.min(axis=0)) / np.asarray(box.dimensions[:2])
     return bool(spans.max() >= SPREAD)
+
+
+def _past_the_sheet(eye: np.ndarray, points: np.ndarray, sheet: SceneNode) -> np.ndarray:
+    """Which points the sight line from `eye` reaches only by crossing this upright sheet."""
+    rotation, origin, half = _frame(sheet)
+    along = int(np.argmax(half[:2]))
+    reach = rotation[:, along] * half[along]
+    start, end = origin[:2] - reach[:2], origin[:2] + reach[:2]
+    sight = points[:, :2] - eye[:2]
+    wall = end - start
+    denominator = sight[:, 0] * wall[1] - sight[:, 1] * wall[0]
+    safe = np.where(np.abs(denominator) < 1e-9, np.nan, denominator)
+    to_start = start - eye[:2]
+    t = (to_start[0] * wall[1] - to_start[1] * wall[0]) / safe
+    s = (to_start[0] * sight[:, 1] - to_start[1] * sight[:, 0]) / safe
+    height = eye[2] + t * (points[:, 2] - eye[2])
+    past = (1.0 - t) * np.linalg.norm(sight, axis=1) > PAST_THE_SHEET
+    return (
+        (t > 0) & (t < 1) & (s >= 0) & (s <= 1) & past
+        & (height >= origin[2] - half[2]) & (height <= origin[2] + half[2])
+    )

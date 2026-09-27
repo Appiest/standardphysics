@@ -29,6 +29,7 @@ import logging
 import os
 import pathlib
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 
 import numpy as np
@@ -53,7 +54,7 @@ from .detect import (
 )
 from .merge import Candidate, DiscoveredObject, merge_candidates
 from .people import without_people
-from .placement import part_of_a_scanned_piece, seated, standing_on_the_floor
+from .placement import part_of_a_scanned_piece, seated, seen_through_the_shell, standing_on_the_floor
 from .reconcile import reconcile_outlets
 from .semantic_corrections import apply_secondary_semantic_corrections
 from .surface_attach import attach_detection_to_surface
@@ -210,7 +211,7 @@ def _carved_objects(
     return [
         (replace(standing, box=seated(standing.box, graph, loose)), viewpoints)
         for object_, viewpoints in found
-        if _worth_keeping(object_, graph, viewpoints)
+        if _worth_keeping(object_, graph, viewpoints, cameras)
         for standing in [standing_on_the_floor(object_, graph, loose)]
         if standing is not None
     ]
@@ -398,12 +399,18 @@ def _viewpoints(object_: DiscoveredObject, cameras: list[PhotoCamera]) -> int:
     return len(kept)
 
 
-def _worth_keeping(object_: DiscoveredObject, graph: SceneGraph, viewpoints: int) -> bool:
+def _worth_keeping(
+    object_: DiscoveredObject, graph: SceneGraph, viewpoints: int, cameras: Sequence[PhotoCamera] = (),
+) -> bool:
     if object_.name.strip().lower() in ALREADY_THE_ROOM or viewpoints < MIN_VIEWS:
         return False
     if object_.box.volume < MIN_VOLUME or object_.box.floor_clearance > MAX_FLOOR_CLEARANCE:
         return False
-    return not (_already_measured(object_, graph) or part_of_a_scanned_piece(object_, graph))
+    return not (
+        _already_measured(object_, graph)
+        or part_of_a_scanned_piece(object_, graph)
+        or seen_through_the_shell(object_.box, graph, _positions(object_, cameras))
+    )
 
 
 def _already_measured(object_: DiscoveredObject, graph: SceneGraph) -> bool:
@@ -412,6 +419,12 @@ def _already_measured(object_: DiscoveredObject, graph: SceneGraph) -> bool:
         for node in graph.nodes
         if not bounds_the_room(node)
     )
+
+
+def _positions(object_: DiscoveredObject, cameras: Sequence[PhotoCamera]) -> np.ndarray:
+    """Where the phone stood for each photo of this object."""
+    seen = set(object_.frame_ids)
+    return np.asarray([camera.position for camera in cameras if camera.frame_id in seen], dtype=np.float64)
 
 
 def _semantic_corrections(

@@ -2,8 +2,8 @@
 
 A café scan put every one of these wrong at once: RoomPlan's counter lid an
 inch high, the counter itself filed as storage, its carved lid floating as a
-second counter at chest height, and a card reader sunk into the counter's
-edge.
+second counter at chest height, a card reader sunk into the counter's edge,
+and a car parked in the room because the camera saw it through the window.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from standardphysics_pipeline.discovery.merge import DiscoveredObject
 from standardphysics_pipeline.discovery.placement import (
     part_of_a_scanned_piece,
     seated,
+    seen_through_the_shell,
     standing_on_the_floor,
 )
 from standardphysics_pipeline.discovery.semantic_corrections import apply_secondary_semantic_corrections
@@ -43,6 +44,16 @@ def piece(label, centre, size, *, yaw=0.0) -> SceneNode:
         dimensions=Vec3(x=size[0], y=size[1], z=size[2]),
         transform=Mat4(m=[cos_t, -sin_t, 0.0, centre[0], sin_t, cos_t, 0.0, centre[1],
                           0.0, 0.0, 1.0, centre[2], 0.0, 0.0, 0.0, 1.0]),
+    )
+
+
+def wall(centre, length, *, yaw=0.0) -> SceneNode:
+    cos_t, sin_t = math.cos(yaw), math.sin(yaw)
+    return SceneNode(
+        id=uuid.uuid4(), kind="wall", label="Wall", raw_category="wall",
+        dimensions=Vec3(x=length, y=0.0, z=3.0),
+        transform=Mat4(m=[cos_t, -sin_t, 0.0, centre[0], sin_t, cos_t, 0.0, centre[1],
+                          0.0, 0.0, 1.0, 1.5, 0.0, 0.0, 0.0, 1.0]),
     )
 
 
@@ -211,6 +222,29 @@ class TestATerminalSitsOnTheCounter:
     def test_something_on_the_floor_is_not_moved(self):
         bin_ = carved("bin", slab((2.0, 0.0, 0.3), (0.4, 0.4, 0.6))).box
         assert seated(bin_, graph_of(), slab((2.0, 0.0, 0.0), (1.0, 1.0, 0.0))) == bin_
+
+
+class TestWhatIsOutsideTheRoom:
+    """A shop window 4 m from the phone, running along y."""
+
+    def shop(self):
+        return graph_of(wall((4.0, 0.0), 6.0, yaw=math.pi / 2))
+
+    def test_a_car_seen_through_the_window_is_outside(self):
+        car = carved("car", slab((5.5, 0.0, 0.7), (1.2, 0.4, 0.8)))
+        assert seen_through_the_shell(car.box, self.shop(), np.asarray([[0.0, 0.0, 1.4], [0.5, 1.0, 1.4]]))
+
+    def test_a_kiosk_inside_the_window_is_inside(self):
+        kiosk = carved("kiosk", slab((3.6, 0.0, 0.7), (0.4, 0.4, 1.2)))
+        assert not seen_through_the_shell(kiosk.box, self.shop(), np.asarray([[0.0, 0.0, 1.4]]))
+
+    def test_a_decal_on_the_glass_is_inside(self):
+        decal = carved("window sign", slab((4.02, 0.0, 1.5), (0.04, 0.6, 0.4)))
+        assert not seen_through_the_shell(decal.box, self.shop(), np.asarray([[0.0, 0.0, 1.4]]))
+
+    def test_without_a_viewpoint_nothing_is_called_outside(self):
+        car = carved("car", slab((5.5, 0.0, 0.7), (1.2, 0.4, 0.8)))
+        assert not seen_through_the_shell(car.box, self.shop(), np.zeros((0, 3)))
 
 
 def test_a_box_stood_on_a_height_keeps_its_top():
