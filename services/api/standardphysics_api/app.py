@@ -8,6 +8,8 @@ import logging
 import pathlib
 import re
 import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import FastAPI, Header, Request, Response
@@ -47,6 +49,7 @@ from standardphysics_contracts import (
     SceneGraph,
     SimulationRequest,
     SimulationStatus,
+    SurfaceCoverage,
     graph_hash,
 )
 from standardphysics_contracts.textures import FRAME_ID_PATTERN
@@ -64,7 +67,7 @@ from .errors import ApiProblem
 from .evidence import evidence_status_for, maybe_queue_semantic, record_closure
 from .labels import mark_counter, mark_observation, review_outlet, unmark_counter
 from .layout import check_layout, save_layout
-from .lidar_mesh import InvalidLidarMesh, validate_lidar_mesh
+from .lidar_mesh import MAX_LIDAR_MESH_BYTES, InvalidLidarMesh, validate_lidar_mesh
 from .loop_run import run as run_loop_on
 from .loop_run import stream as stream_loop_on
 from .notifications import notifier_from
@@ -83,10 +86,10 @@ from .sharing import install_share_routes
 from .simulations import queue_simulation, simulation_status
 from .splats import install_splat_routes
 from .stages import Stages, preview_ledger
-from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId, ScanFull, ScanQuota
+from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId, ScanFull, ScanQuota, StagedUpload
 from .team import adopt_allowlist
-from .textures import install_texture_routes, maybe_queue_texture, validate_manifest
-from .usdz_validation import InvalidUsdz, validate_room_usdz
+from .textures import MAX_METADATA_BYTES, install_texture_routes, maybe_queue_texture, validate_manifest
+from .usdz_validation import MAX_ARCHIVE_BYTES, InvalidUsdz, validate_room_usdz
 from .worker import ASSESS, PROCESS, Worker
 
 PLACES = {*DESTINATIONS, "pickup"}
@@ -280,24 +283,19 @@ def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore)
 
 
 def _accept_staged(database, store, scan_id, artifact_id, kind, claimed, staged) -> tuple[int, Artifact]:
+    """Store a staged upload, or refuse it. The caller discards whatever is still staged afterwards."""
     if staged.sha256 != claimed.lower():
-        store.discard(staged)
         raise ApiProblem(400, "checksum mismatch")
     with database.transaction() as connection:
         _scan_or_404(connection, scan_id)
         existing = repo.find_artifact(connection, scan_id, artifact_id)
         if existing is not None:
-            store.discard(staged)
             if existing.kind != kind:
                 raise ApiProblem(409, "artifact already stored with different kind")
             if existing.sha256 != staged.sha256:
                 raise ApiProblem(409, "artifact already stored with different content")
             return 200, existing
-        try:
-            _admit(connection, store, scan_id, staged.bytes)
-        except ApiProblem:
-            store.discard(staged)
-            raise
+        _admit(connection, store, scan_id, staged.bytes)
         artifact = Artifact(id=artifact_id, kind=kind, sha256=staged.sha256, bytes=staged.bytes)
         repo.insert_artifact(connection, scan_id, artifact)
         store.commit(staged, store.artifact_path(scan_id, artifact_id))
@@ -320,6 +318,14 @@ def _refuse_a_full_scan_early(database: Database, store: ArtifactStore, scan_id:
             _admit(connection, store, scan_id, 0)
 
 
+def _coverage_of(store: ArtifactStore, scan: Scan) -> list[SurfaceCoverage]:
+    """The phone's coverage.json, or none. Coverage never blocks a scan, so an oversized file is skipped unread."""
+    artifact = next((a for a in scan.artifacts if a.kind == "coverage"), None)
+    if artifact is None or artifact.bytes > MAX_METADATA_BYTES:
+        return []
+    return parse_coverage(store.artifact_path(scan.id, artifact.id).read_bytes())
+
+
 def _finalize(database: Database, store: ArtifactStore, scan_id: uuid.UUID) -> tuple[Scan, bool]:
     with database.transaction() as connection:
         scan = _scan_or_404(connection, scan_id)
@@ -331,34 +337,49 @@ def _finalize(database: Database, store: ArtifactStore, scan_id: uuid.UUID) -> t
         missing = repo.missing_required(scan)
         if missing:
             raise ApiProblem(409, "missing artifacts", need=missing)
-        coverage_artifact = next((a for a in scan.artifacts if a.kind == "coverage"), None)
-        coverage = (
-            parse_coverage(store.artifact_path(scan_id, coverage_artifact.id).read_bytes())
-            if coverage_artifact else []
-        )
-        repo.mark_finalized(connection, scan, coverage)
+        repo.mark_finalized(connection, scan, _coverage_of(store, scan))
         record_closure(connection, scan)
         repo.enqueue_job(connection, scan_id, PROCESS, 0)
         return _scan_or_404(connection, scan_id), True
 
 
-STAGED_VALIDATORS = {
-    "lidar_mesh": (validate_lidar_mesh, InvalidLidarMesh, "invalid lidar mesh"),
-    "photo_manifest": (validate_manifest, ValueError, "invalid photo manifest"),
-    "room_usdz": (validate_room_usdz, InvalidUsdz, "invalid usdz archive"),
+@dataclass(frozen=True)
+class StagedCheck:
+    """How an artifact kind is checked before it is stored: its size cap, the check, what it raises, the 400."""
+
+    max_bytes: int
+    validate: Callable[[pathlib.Path], object]
+    invalid: type[Exception]
+    message: str
+
+
+def _lidar_mesh_file(path: pathlib.Path) -> object:
+    return validate_lidar_mesh(path.read_bytes())
+
+
+def _photo_manifest_file(path: pathlib.Path) -> object:
+    return validate_manifest(path.read_bytes())
+
+
+STAGED_CHECKS = {
+    "lidar_mesh": StagedCheck(MAX_LIDAR_MESH_BYTES, _lidar_mesh_file, InvalidLidarMesh, "invalid lidar mesh"),
+    "photo_manifest": StagedCheck(MAX_METADATA_BYTES, _photo_manifest_file, ValueError, "invalid photo manifest"),
+    "room_usdz": StagedCheck(MAX_ARCHIVE_BYTES, validate_room_usdz, InvalidUsdz, "invalid usdz archive"),
 }
-"""Artifact kinds whose bytes are checked before they are stored: the check, what it raises, and the 400 to send."""
+"""Artifact kinds whose bytes are checked before they are stored. The size is
+compared from the staged file's length, so an oversized one is never read."""
 
 
-def _validate_staged(store: ArtifactStore, staged, kind: str) -> None:
-    if kind not in STAGED_VALIDATORS:
+def _validate_staged(staged: StagedUpload, kind: str) -> None:
+    check = STAGED_CHECKS.get(kind)
+    if check is None:
         return
-    validate, invalid, message = STAGED_VALIDATORS[kind]
+    if staged.bytes > check.max_bytes:
+        raise ApiProblem(413, f"{kind} is larger than {check.max_bytes} bytes")
     try:
-        validate(staged.temp_path.read_bytes())
-    except invalid:
-        store.discard(staged)
-        raise ApiProblem(400, message) from None
+        check.validate(staged.temp_path)
+    except check.invalid:
+        raise ApiProblem(400, check.message) from None
 
 
 async def _stage_upload(store: ArtifactStore, scan_id: uuid.UUID, artifact_id: str, request: Request):
@@ -416,10 +437,13 @@ def _install_upload_routes(
     ):
         _refuse_a_full_scan_early(database, store, scan_id, artifact_id)
         staged = await _stage_upload(store, scan_id, artifact_id, request)
-        _validate_staged(store, staged, x_artifact_kind)
-        status, artifact = _accept_staged(
-            database, store, scan_id, artifact_id, x_artifact_kind, x_checksum_sha256, staged
-        )
+        try:
+            _validate_staged(staged, x_artifact_kind)
+            status, artifact = _accept_staged(
+                database, store, scan_id, artifact_id, x_artifact_kind, x_checksum_sha256, staged
+            )
+        finally:
+            store.discard(staged)
         if _queue_for_arrival(
             database, store, worker, scan_id, x_artifact_kind, settings.evidence_settle_seconds
         ):
