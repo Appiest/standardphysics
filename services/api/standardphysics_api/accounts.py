@@ -11,6 +11,7 @@ no live session.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import hmac
 import secrets
@@ -105,6 +106,12 @@ def _scrypt(
         maxmem=256 * 1024 * 1024,
         dklen=32,
     )
+
+
+@functools.cache
+def _stand_in_hash() -> str:
+    """A digest no password matches, made once, for a missing email to be checked against."""
+    return hash_password(secrets.token_hex(16))
 
 
 def _now() -> datetime:
@@ -225,13 +232,13 @@ def register(connection: sqlite3.Connection, email: str, password: str, shop_nam
 def authenticate(connection: sqlite3.Connection, email: str, password: str) -> Owner | None:
     """The owner behind these credentials, or None.
 
-    A missing email still pays for one scrypt call. Answering "no such account"
-    faster than "wrong password" would tell an attacker which emails are worth
-    guessing at.
+    A missing email pays for exactly one scrypt call, the same as a wrong
+    password. Answering "no such account" faster, or slower, than "wrong
+    password" would tell an attacker which emails are worth guessing at.
     """
     row = connection.execute("SELECT * FROM owners WHERE email = ?", (normalize_email(email),)).fetchone()
     if row is None:
-        verify_password(password, hash_password(secrets.token_hex(8)))
+        verify_password(password, _stand_in_hash())
         return None
     return _owner(row) if verify_password(password, row["password_hash"]) else None
 
