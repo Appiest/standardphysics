@@ -53,7 +53,7 @@ const cues = [
   cue(BEATS.therapy, "hit", 0.5),
   cue(BEATS.therapy + 4, "scratch", 0.4),
   ...repeatCue(BEATS.ruler, BEATS.ruler + 36, 3, "tick", 0.3),
-  cue(BEATS.ruler + 38, "boom", 0.6),
+  cue(BEATS.ruler + 38, "m-vine-boom", 0.8),
   cue(BEATS.model, "scan", 0.8),
   cue(BEATS.model + 20, "scan", 0.5),
   ...repeatCue(BEATS.dots, BEATS.dots + 60, 3, "pop", 0.18),

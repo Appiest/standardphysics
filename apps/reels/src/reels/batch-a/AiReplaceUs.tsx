@@ -24,6 +24,7 @@ function ThePromise() {
 const cues = [
   cue(16, "tape", 0.6),
   ...[CUTS.us, CUTS.ceiling, CUTS.dinner, CUTS.phone].map((at) => cue(at, "hit", 0.55)),
+  cue(CUTS.us, "m-record-stop", 1),
   cue(CUTS.us + 4, "tape", 0.6),
   cue(CUTS.us + 8, "tape", 0.5),
   cue(CUTS.ceiling + 6, "tape", 0.6),
@@ -33,6 +34,7 @@ const cues = [
   cue(CUTS.phone + 44, "riser", 0.7),
   cue(CUTS.model, "boom", 0.9),
   cue(CUTS.model + 2, "scan", 0.8),
+  cue(CUTS.model + 24, "m-vine-boom", 0.9),
   cue(CUTS.model + 26, "tape", 0.7),
   cue(CUTS.model + 30, "tape", 0.6),
   cue(CUTS.end, "whoosh-down", 0.6),

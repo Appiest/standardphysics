@@ -101,7 +101,7 @@ function Caught() {
   );
 }
 
-const freezeCues = (at: number) => [cue(at + FREEZE_AT, "shutter", 0.9), cue(at + FREEZE_AT + 2, "scan", 0.7), cue(at + FREEZE_AT + 14, "scratch", 0.55)];
+const freezeCues = (at: number) => [cue(at + FREEZE_AT, "shutter", 0.9), cue(at + FREEZE_AT + 2, "scan", 0.7), cue(at + FREEZE_AT, "m-record-stop", 1)];
 
 const cues = [
   cue(0, "hit", 0.6),
@@ -113,6 +113,7 @@ const cues = [
   ...freezeCues(CUTS.studiers),
   cue(CUTS.ceiling + 6, "whoosh", 0.5),
   cue(CUTS.ceiling + 20, "tape", 0.6),
+  cue(CUTS.ceiling + 22, "m-gasp", 0.6),
   cue(CUTS.dinner + 6, "tape", 0.6),
   ...freezeCues(CUTS.dinner),
   cue(CUTS.phone + 8, "tape", 0.6),
@@ -120,6 +121,7 @@ const cues = [
   cue(CUTS.model, "boom", 0.9),
   cue(CUTS.model + 2, "scan", 0.8),
   cue(CUTS.model + 30, "tape", 0.6),
+  cue(CUTS.model + 30, "m-vine-boom", 0.9),
   cue(CUTS.model + 35, "tape", 0.5),
   cue(CUTS.caught + 8, "tape", 0.6),
   cue(CUTS.end, "whoosh-down", 0.6),

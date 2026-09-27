@@ -55,6 +55,7 @@ const cues = [
   cue(0, "scratch", 0.7),
   cue(T.tiltStart, "whoosh", 0.6),
   ...repeatCue(T.riseStart, T.riseStart + 20, 2, "pop", 0.25),
+  cue(T.riseStart, "m-boing", 0.45),
   cue(T.checkStart, "whoosh", 0.45),
   cue(T.checkStart + T.zoomFrames, "scan", 0.7),
   cue(T.checkStart + 70, "scan", 0.5),

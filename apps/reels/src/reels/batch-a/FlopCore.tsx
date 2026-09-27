@@ -42,6 +42,7 @@ const cues = [
   ...[CUTS.floor, CUTS.ready, CUTS.white, CUTS.raw, CUTS.works].map((at) => cue(at, "hit", 0.55)),
   cue(CUTS.floor + 4, "tape", 0.6),
   cue(CUTS.floor + 22, "tape", 0.7),
+  cue(CUTS.floor + 24, "m-buzzer", 0.5),
   cue(CUTS.ready + 4, "tape", 0.6),
   cue(CUTS.ready + 26, "tape", 0.6),
   cue(CUTS.white + 4, "tape", 0.6),
@@ -49,16 +50,15 @@ const cues = [
   cue(CUTS.raw + 4, "tape", 0.6),
   cue(CUTS.works + 2, "tape", 0.7),
   cue(CUTS.works + 22, "tape", 0.5),
+  cue(CUTS.works + 24, "m-boing", 0.5),
+  cue(76, "m-trombone", 0.6),
+  cue(CUTS.ready + 34, "m-clown-horn", 0.55),
+  cue(CUTS.white + WHITE_PAGE_AT + 8, "m-vine-boom", 0.9),
   cue(CUTS.end, "whoosh-down", 0.6),
   cue(CUTS.end + 10, "hit", 0.5),
 ];
 
-const womps: ExtraCue[] = [
-  { at: 76, sound: "a-womp", volume: 0.55 },
-  { at: CUTS.ready + 34, sound: "a-womp", volume: 0.5 },
-  { at: CUTS.white + WHITE_PAGE_AT + 8, sound: "a-womp", volume: 0.6 },
-  { at: CUTS.works + 4, sound: "a-ding", volume: 0.6 },
-];
+const dings: ExtraCue[] = [{ at: CUTS.works + 4, sound: "a-ding", volume: 0.6 }];
 
 export const FLOP_LENGTH = CUTS.length;
 
@@ -104,7 +104,7 @@ export function FlopCore() {
         </PaperWipe>
       </Sequence>
       <Soundtrack bed="bed-pov" bedVolume={0.35} cues={cues} />
-      <ExtraSounds cues={womps} />
+      <ExtraSounds cues={dings} />
       <Vignette strength={0.3} />
       <Grain strength={0.1} />
     </Paper>

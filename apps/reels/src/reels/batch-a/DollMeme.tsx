@@ -77,12 +77,13 @@ function ProudModel() {
 const cues = [
   cue(0, "tape", 0.7),
   cue(4, "tape", 0.6),
-  cue(BEATS.reveal, "boom", 0.9),
+  cue(BEATS.reveal, "m-vine-boom", 0.9),
   cue(BEATS.reveal, "whoosh", 0.6),
   cue(BEATS.name, "hit", 0.7),
   cue(BEATS.woah, "hit", 0.8),
+  cue(BEATS.woah, "m-gasp", 0.7),
   cue(BEATS.got, "hit", 0.6),
-  cue(BEATS.proud, "hit", 0.5),
+  cue(BEATS.proud, "m-record-stop", 1),
   cue(BEATS.proud + 6, "tape", 0.7),
 ];
 

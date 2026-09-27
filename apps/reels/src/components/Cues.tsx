@@ -1,6 +1,9 @@
 import { Audio, interpolate, Sequence, staticFile, useVideoConfig } from "remotion";
 
-export type Sound = "boom" | "hit" | "whoosh" | "whoosh-down" | "riser" | "tick" | "tape" | "shutter" | "scan" | "scratch" | "pop";
+/** The meme one-shots from scripts/sound_memes.py. */
+type MemeSound = "m-vine-boom" | "m-trombone" | "m-buzzer" | "m-record-stop" | "m-gasp" | "m-laugh" | "m-cheer" | "m-splat" | "m-clown-horn" | "m-boing";
+
+export type Sound = "boom" | "hit" | "whoosh" | "whoosh-down" | "riser" | "tick" | "tape" | "shutter" | "scan" | "scratch" | "pop" | MemeSound;
 
 export type Cue = { at: number; sound: Sound; volume?: number };
 
