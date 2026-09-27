@@ -83,7 +83,9 @@ These cases are synthetic variants of one modelled shop, generated so that the c
 
 **Uploads are resumable and verified.** The phone keeps its upload progress on disk ([`ResumableUploadStore.swift`](apps/ios/StandardPhysics/Upload/ResumableUploadStore.swift)), every artifact carries a SHA-256 the server checks, files are written atomically, and a repeated upload is idempotent ([`store.py`](services/api/standardphysics_api/store.py)).
 
-**Inputs are bounded.** Each scan has a cap on artifact count and total bytes, a `room.usdz` is refused if it expands too far or holds too many entries ([`usdz_validation.py`](services/api/standardphysics_api/usdz_validation.py)), and sign-up, sign-in and guest creation are throttled per network.
+**Inputs are bounded.** Each scan has a cap on artifact count and total bytes, each account on scans and stored bytes, and the queue on waiting jobs. New uploads are refused with a 507 before the data volume runs out of space, and every upload's size is checked before it is read. A `room.usdz` is opened from disk and refused if it expands too far or holds too many entries ([`usdz_validation.py`](services/api/standardphysics_api/usdz_validation.py)).
+
+**Sign-in is throttled before any password work.** Each server process allows 10 sign-in attempts per email and 30 per client address in five minutes, 10 sign-ups per address an hour and 20 guest accounts per address an hour ([`attempt_limiter.py`](services/api/standardphysics_api/attempt_limiter.py)). An unknown email costs the same single scrypt call as a wrong password, so timing does not reveal which accounts exist.
 
 **Access is explicit.** Passwords use scrypt and session tokens are stored hashed ([`accounts.py`](services/api/standardphysics_api/accounts.py)). Every scan route checks ownership, and team tools require a granted role that nobody gets by signing up ([`team.py`](services/api/standardphysics_api/team.py)).
 
