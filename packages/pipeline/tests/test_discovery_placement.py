@@ -255,6 +255,12 @@ class TestACarvedWorkSurfaceAtItsSurface:
         run_on = np.vstack([slab((1.9, 0.0, COUNTER_TOP), (2.4, 0.7, 0.0)), slab((1.9, -0.34, 0.43), (2.4, 0.0, 0.86))])
         assert at_its_surface(carved("counter", run_on), graph_of(bar), run_on).name == "counter"
 
+    def test_a_counter_whose_surface_is_a_bench_seat_is_no_counter(self):
+        seat = slab((3.0, 0.0, 0.42), (2.0, 0.45, 0.0))
+        wall_stuff = slab((3.0, 0.3, 0.9), (2.0, 0.0, 0.8))
+        mash = carved("counter", np.vstack([seat, wall_stuff]))
+        assert at_its_surface(mash, graph_of(), np.vstack([seat, wall_stuff])) is None
+
     def test_anything_else_is_left_as_it_is(self):
         reader = carved("card reader", slab((0.4, 0.0, 0.93), (0.1, 0.15, 0.12)))
         assert at_its_surface(reader, graph_of(), reader.box.points) is reader

@@ -229,10 +229,14 @@ def _carved_objects(
     return [
         (replace(standing, box=seated(standing.box, graph, loose)), _viewpoints(standing, cameras))
         for object_ in measured
-        for standing in [standing_on_the_floor(object_, graph, loose)]
+        for standing in [_standing_at_its_surface(object_, graph, loose)]
         if standing is not None
-        for standing in [at_its_surface(standing, graph, loose)]
     ]
+
+
+def _standing_at_its_surface(object_: DiscoveredObject, graph: SceneGraph, loose: np.ndarray) -> DiscoveredObject | None:
+    standing = standing_on_the_floor(object_, graph, loose)
+    return None if standing is None else at_its_surface(standing, graph, loose)
 
 
 def _attached_targets(
