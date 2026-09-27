@@ -98,11 +98,23 @@ def node_dimensions(node: dict) -> tuple[float, float, float]:
     return dimensions["x"], thickness, height
 
 
+UNIT_CUBE_CORNERS = [
+    (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5),
+    (-0.5, -0.5, 0.5), (0.5, -0.5, 0.5), (0.5, 0.5, 0.5), (-0.5, 0.5, 0.5),
+]
+UNIT_CUBE_FACES = [(0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
+"""A unit cube wound to face outward, built as data rather than through an operator.
+
+Every operator refreshes the whole scene, so adding a box by operator costs more
+as the scene fills, and a floor of seven hundred pieces took longer to export
+than Blender is given."""
+
+
 def add_box(node: dict, center: tuple[float, float, float], size: tuple[float, float, float]):
-    bpy.ops.mesh.primitive_cube_add(
-        size=1.0
-    )
-    obj = bpy.context.active_object
+    mesh = bpy.data.meshes.new("part")
+    mesh.from_pydata(UNIT_CUBE_CORNERS, [], UNIT_CUBE_FACES)
+    obj = bpy.data.objects.new("part", mesh)
+    bpy.context.collection.objects.link(obj)
     obj.matrix_world = node_matrix(node) @ Matrix.Translation(center) @ Matrix.Diagonal((*size, 1.0))
     obj.data.materials.append(material_for(node))
     return obj
@@ -166,12 +178,13 @@ def join(parts: list, node: dict) -> None:
     if not parts:
         add_empty(node)
         return
-    bpy.ops.object.select_all(action="DESELECT")
     for part in parts:
         part.select_set(True)
     bpy.context.view_layer.objects.active = parts[0]
-    bpy.ops.object.join()
+    if len(parts) > 1:
+        bpy.ops.object.join()
     obj = bpy.context.active_object
+    obj.select_set(False)
     obj.name = node["id"]
     obj.data.name = node["id"]
     obj["kind"] = node["kind"]
