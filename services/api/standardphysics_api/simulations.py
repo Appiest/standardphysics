@@ -20,6 +20,7 @@ from standardphysics_agents.evaluation.scan_campaign import run_campaign
 from standardphysics_agents.evaluation.scan_tasks import choose_task, propose_tasks
 from standardphysics_agents.mesh_collision import MeshCollisionIndex
 from standardphysics_agents.router import LocalPolicyRouter, TypeSafeRouter
+from standardphysics_agents.scenario_suggestion import suggest_scenario
 from standardphysics_agents.simulation_report import simulation_result
 from standardphysics_agents.workflows import (
     DEFAULT_PROFILES,
@@ -43,7 +44,6 @@ from standardphysics_pipeline import PipelineMeasurements
 
 from . import repository as repo
 from .errors import ApiProblem
-from .scenario import suggest_scenario
 
 SIMULATE = "simulate"
 

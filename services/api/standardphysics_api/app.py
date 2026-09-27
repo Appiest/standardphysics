@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from PIL import Image as PILImage
 from pydantic import BaseModel
 from standardphysics_agents import init_tracing, project_url, shutdown_tracing
+from standardphysics_agents.scenario_suggestion import DESTINATIONS
 from standardphysics_contracts import (
     ApproachReport,
     ApproachRequest,
@@ -76,7 +77,6 @@ from .questions import answer_question
 from .replays import install_replay_routes
 from .report import build_report
 from .route import confirm, legs, suggestion
-from .scenario import DESTINATIONS
 from .seed import seed_sample_shop
 from .settings import Settings
 from .sharing import install_share_routes

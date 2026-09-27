@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from ...models import OpenRouter
+from ...scenario_suggestion import suggest_scenario
 from .judge import Verdict, judge
 from .questions import Question, write
 from .scenes import Scene, real_scenes, scramble, split
@@ -173,13 +174,7 @@ def _answer(question: Question, scene: Scene):
 
 
 def _scenario(scene: Scene):
-    """The route the app would lay over this room in production.
-
-    Imported here rather than at the top because the API owns it and this package
-    must not depend on the API to be imported.
-    """
-    from standardphysics_api.scenario import suggest_scenario
-
+    """The route the app would lay over this room in production."""
     return suggest_scenario(scene.graph)
 
 
