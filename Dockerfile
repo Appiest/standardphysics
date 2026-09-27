@@ -78,15 +78,23 @@ ENV PATH="/opt/venv/bin:$PATH" \
 
 WORKDIR /app
 
+# Every third-party version comes from the lock, and it installs before the
+# source is copied so an edit to the code reuses this layer. The lock carries
+# the observability extra: without weave in the image, WANDB_PROJECT would be
+# set in production and nothing would ever be traced.
+COPY requirements.lock ./
+RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
+ && /opt/venv/bin/pip install --no-cache-dir -r requirements.lock
+
 COPY pyproject.toml ./
 COPY src ./src
 COPY packages ./packages
 COPY services ./services
 COPY scripts ./scripts
-RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
- && /opt/venv/bin/pip install --no-cache-dir \
+RUN /opt/venv/bin/pip install --no-cache-dir --no-deps \
       -e . -e packages/contracts -e packages/fixtures -e packages/pipeline \
-      -e packages/agents -e services/api
+      -e "packages/agents[observability]" -e services/api \
+ && /opt/venv/bin/pip check
 
 COPY --from=web /app/apps/web/.next ./apps/web/.next
 COPY --from=web /app/apps/web/node_modules ./apps/web/node_modules
