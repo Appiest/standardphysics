@@ -27,7 +27,15 @@ from standardphysics_pipeline.occupancy import blocks_floor
 from ..checks import roles
 from ..checks.walls import upright_walls
 from ..hashing import inventory
-from .moves import floor_height, measured_position, rests_on_something, surface_under, top_of, underside
+from .moves import (
+    carried_by_hand,
+    floor_height,
+    measured_position,
+    rests_on_something,
+    surface_under,
+    top_of,
+    underside,
+)
 from .use_space import Room, has_room_to_use, reach
 
 FLOOR_MARGIN = 0.01
@@ -62,6 +70,10 @@ fix, and it lands on floor the scan only ever saw around something else.
 It is measured from `SceneNode.measured_position`, which every move carries
 forward, so a run of small moves across rounds or saved revisions adds up
 against it exactly as one long move would.
+
+A piece staff carry by hand, such as a sign stand or a bin, has no limit: it
+has no place in the layout to keep, and setting it down on free floor anywhere
+is an ordinary thing to ask. Where it lands is still held to every other rule.
 """
 
 
@@ -308,7 +320,7 @@ def _travelled_too_far(base: SceneGraph, moved: list[SceneNode]) -> list[Violati
     """
     before = {node.id: node for node in base.nodes}
     found = []
-    for node in moved:
+    for node in (piece for piece in moved if not carried_by_hand(piece)):
         origin, now = measured_position(before[node.id]), node.transform.position
         travelled = math.hypot(now.x - origin.x, now.y - origin.y)
         if travelled > MAX_TRAVEL_METERS:
