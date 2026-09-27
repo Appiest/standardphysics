@@ -51,7 +51,7 @@ from .detect import (
     detect_objects,
 )
 from .merge import Candidate, DiscoveredObject, merge_candidates
-from .people import without_people
+from .people import PersonVolume, without_people
 from .placement import part_of_a_scanned_piece, seated, seen_through_the_shell, standing_on_the_floor
 from .reconcile import reconcile_outlets
 from .semantic_corrections import apply_secondary_semantic_corrections
@@ -165,7 +165,7 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
     graph = _with_replaced(graph, worktops)
     renamed = _semantic_corrections(graph, detections, cameras)
     graph = _with_replaced(graph, renamed)
-    kept = _carved_objects(graph, cameras, detections, removal.points)
+    kept = _carved_objects(graph, cameras, detections, removal.points, removal.volumes)
     objects = [object_ for object_, _ in kept]
     carved_nodes = [_node_for(object_, graph, viewpoints) for object_, viewpoints in kept]
     attached_nodes = _attached_targets(inputs, graph, cameras, detections, buffers)
@@ -198,6 +198,7 @@ def _carved_objects(
     cameras: list[PhotoCamera],
     detections: dict[str, list[Detection]],
     points: np.ndarray,
+    people: Sequence[PersonVolume] = (),
 ) -> list[tuple[DiscoveredObject, int]]:
     """Every object worth a node, with how many separate places it was seen from.
 
@@ -205,7 +206,8 @@ def _carved_objects(
     already taken out. A customer standing at the till leaves a body in the
     mesh, and a buffer built with it hides the till behind that body in every
     frame of the walk, including the frames the detector saw the till in
-    because the customer had stepped away.
+    because the customer had stepped away. Whatever is still carved where a
+    person stood is a leftover piece of them, not an object.
     """
     clear_view = {camera.frame_id: depth_buffer(camera, points) for camera in cameras}
     unclaimed = points[~claimed_by_any(points, graph)]
@@ -215,7 +217,7 @@ def _carved_objects(
     return [
         (replace(standing, box=seated(standing.box, graph, loose)), viewpoints)
         for object_, viewpoints in found
-        if _worth_keeping(object_, graph, viewpoints, cameras)
+        if _worth_keeping(object_, graph, viewpoints, cameras, people)
         for standing in [standing_on_the_floor(object_, graph, loose)]
         if standing is not None
     ]
@@ -432,7 +434,11 @@ def _viewpoints(object_: DiscoveredObject, cameras: list[PhotoCamera]) -> int:
 
 
 def _worth_keeping(
-    object_: DiscoveredObject, graph: SceneGraph, viewpoints: int, cameras: Sequence[PhotoCamera] = (),
+    object_: DiscoveredObject,
+    graph: SceneGraph,
+    viewpoints: int,
+    cameras: Sequence[PhotoCamera] = (),
+    people: Sequence[PersonVolume] = (),
 ) -> bool:
     if object_.name.strip().lower() in ALREADY_THE_ROOM or viewpoints < MIN_VIEWS:
         return False
@@ -442,6 +448,7 @@ def _worth_keeping(
         _already_measured(object_, graph)
         or part_of_a_scanned_piece(object_, graph)
         or seen_through_the_shell(object_.box, graph, _positions(object_, cameras))
+        or any(person.holds(object_.box) for person in people)
     )
 
 
