@@ -6,20 +6,45 @@ themselves. The checks are enforced by re-running them. Everything else is
 enforced here, before a candidate is measured at all, because a candidate that
 puts a display case inside a wall has an excellent clear width and is not a
 rearrangement anybody can carry out.
+
+Two more keep a candidate honest about what it is for. A piece may not travel
+far from where the scan found it, and a table or counter has to keep room for
+somebody to pull up to it. Without them a table shoved flush into a corner
+widens the aisle beside it, the checks see an improvement, and nobody can sit
+at the table.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat
+from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, to_meters
 from standardphysics_pipeline import footprint, gap_between
-from standardphysics_pipeline.footprints import Polygon, distance_outside, floor_polygon, polygon_bounds
+from standardphysics_pipeline.footprints import (
+    Polygon,
+    bounds_meet,
+    distance_outside,
+    floor_polygon,
+    polygon_bounds,
+    touching,
+)
 from standardphysics_pipeline.occupancy import blocks_floor
 
+from ..checks import roles
 from ..checks.walls import upright_walls
 from ..hashing import inventory
-from .moves import floor_height, rests_on_something, top_of, underside
+from .moves import (
+    carried_by_hand,
+    floor_height,
+    measured_position,
+    per_layout,
+    rests_on_something,
+    surface_under,
+    top_of,
+    underside,
+)
+from .use_space import Room, has_room_to_use, reach, room_of
 
 FLOOR_MARGIN = 0.01
 """A centimetre of slack at the floor edge, for arithmetic rather than for room."""
@@ -39,6 +64,25 @@ VERTICAL_TOLERANCE = 0.02
 """How far a piece may sink into the one under it and still count as resting on it."""
 
 SWING_KINDS = frozenset({"door"})
+
+MAX_TRAVEL_METERS = to_meters(60.0)
+"""How far a piece may end up from where the scan found it: 60 inches.
+
+60 inches is the largest clear space any rule a rearrangement can fix asks
+for: the turning circle of ADA 2010 304.3.1 and the passing space of 403.5.3.
+Getting a piece out of such a space never needs it to travel further than the
+space is wide. A piece carried further than that has been relocated to another
+part of the room, which is a redesign for the owner to choose rather than a
+fix, and it lands on floor the scan only ever saw around something else.
+
+It is measured from `SceneNode.measured_position`, which every move carries
+forward, so a run of small moves across rounds or saved revisions adds up
+against it exactly as one long move would.
+
+A piece staff carry by hand, such as a sign stand or a bin, has no limit: it
+has no place in the layout to keep, and setting it down on free floor anywhere
+is an ordinary thing to ask. Where it lands is still held to every other rule.
+"""
 
 
 @dataclass(frozen=True)
@@ -193,20 +237,21 @@ def _one_above_the_other(a: SceneNode, b: SceneNode) -> bool:
     return underside(a) >= top_of(b) - VERTICAL_TOLERANCE or underside(b) >= top_of(a) - VERTICAL_TOLERANCE
 
 
-def _overlapping(a: SceneNode, b: SceneNode) -> bool:
+def _footprints_meet(a: SceneNode, b: SceneNode) -> bool:
     # Each shape gives up half the tolerance, so together the two may
     # interpenetrate by OVERLAP_TOLERANCE and no more. Pulling both in by the
     # whole of it allowed twice that: a case slid 9 mm into a wall passed.
     half = OVERLAP_TOLERANCE / 2
-    return (
-        gap_between(collision_shape(a, half), collision_shape(b, half)) == 0.0
-        and not _one_above_the_other(a, b)
-    )
+    return touching(collision_shape(a, half), collision_shape(b, half))
+
+
+def _overlapping(a: SceneNode, b: SceneNode) -> bool:
+    return _footprints_meet(a, b) and not _one_above_the_other(a, b)
 
 
 def _in_swing(node: SceneNode, keep_clear: Polygon, floor_z: float) -> bool:
     """Only something standing on the floor gets in the way of a door."""
-    return not rests_on_something(node, floor_z) and gap_between(collision_shape(node), keep_clear) == 0.0
+    return not rests_on_something(node, floor_z) and touching(collision_shape(node), keep_clear)
 
 
 @dataclass(frozen=True)
@@ -215,39 +260,136 @@ class _Scene:
 
     before: dict
     floor_z: float
+    on_surfaces: frozenset = frozenset()
 
     def already(self, clash, node: SceneNode, other: SceneNode) -> bool:
         was, other_was = self.before.get(node.id), self.before.get(other.id, other)
         return was is not None and clash(was, other_was)
 
+    def collide(self, node: SceneNode, other: SceneNode) -> bool:
+        """Two pieces that both stood on a surface clash wherever their footprints meet.
+
+        A moved piece settles onto whatever is under it where it lands, so a
+        card reader slid onto a register would rest on top of it and pass the
+        height test. A counter is somewhere to put things; a register is not.
+        """
+        if node.id in self.on_surfaces and other.id in self.on_surfaces:
+            return _footprints_meet(node, other)
+        return _overlapping(node, other)
+
+
+@per_layout
+def _on_a_surface(graph: SceneGraph) -> frozenset:
+    """Pieces the scan found standing on another piece, such as a register on a counter.
+
+    They take no floor, but a card reader slid along the counter still cannot
+    land where the register stands. A socket or a wall cabinet also sits above
+    the floor, with nothing under it, so it is not one of these.
+    """
+    floor_z = floor_height(graph)
+    return frozenset(node.id for node in graph.nodes
+                     if rests_on_something(node, floor_z) and surface_under(graph, node, floor_z) > floor_z)
+
+
+@per_layout
+def _unmoved_bounds(graph: SceneGraph) -> dict:
+    """Each piece's footprint box, by the node object it was computed from."""
+    return {id(node): polygon_bounds(footprint(node)) for node in graph.nodes}
+
+
+def _near(node: SceneNode, others: list[SceneNode], known: dict) -> list[SceneNode]:
+    """The others whose footprint box reaches the node's: nothing further off can touch it."""
+    box = polygon_bounds(footprint(node))
+    return [other for other in others
+            if bounds_meet(box, known.get(id(other)) or polygon_bounds(footprint(other)))]
+
 
 def _collisions(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode]) -> list[Violation]:
     moved_ids = {node.id for node in moved}
     wall_ids = {node.id for node in upright_walls(candidate)}
+    surface_ids = _on_a_surface(base)
     obstacles = [
         node
         for node in candidate.nodes
         if node.id not in moved_ids
-        and (blocks_floor(node) or node.id in wall_ids)
+        and (blocks_floor(node) or node.id in wall_ids or node.id in surface_ids)
     ]
     swings = [node for node in candidate.nodes if node.kind in SWING_KINDS]
-    scene = _Scene(before={node.id: node for node in base.nodes}, floor_z=floor_height(base))
+    scene = _Scene(before={node.id: node for node in base.nodes}, floor_z=floor_height(base), on_surfaces=surface_ids)
 
+    known = _unmoved_bounds(base)
     found = []
     for index, node in enumerate(moved):
-        found.extend(_overlaps(node, [*obstacles, *moved[index + 1:]], swings, scene))
+        found.extend(_overlaps(node, _near(node, [*obstacles, *moved[index + 1:]], known), swings, scene))
     return found
 
 
 def _overlaps(node: SceneNode, obstacles, swings, scene: _Scene) -> list[Violation]:
     for other in obstacles:
-        if _overlapping(node, other) and not scene.already(_overlapping, node, other):
+        if scene.collide(node, other) and not scene.already(scene.collide, node, other):
             return [Violation("collided", str(node.id), f"{node.label} into {other.label}", blocker=other.label)]
     for door in swings:
         clash = lambda piece, swing: _in_swing(piece, door_keep_clear(swing), scene.floor_z)
         if clash(node, door) and not scene.already(clash, node, door):
             return [Violation("blocked_a_door", str(node.id), f"{node.label} into the {door.label}", blocker=door.label)]
     return []
+
+
+def _travelled_too_far(base: SceneGraph, moved: list[SceneNode]) -> list[Violation]:
+    """Pieces that ended up more than `MAX_TRAVEL_METERS` from where they were measured.
+
+    The starting point comes from the base layout, not the candidate, so a
+    candidate cannot move the goalposts by rewriting its own record.
+    """
+    before = {node.id: node for node in base.nodes}
+    found = []
+    for node in (piece for piece in moved if not carried_by_hand(piece)):
+        origin, now = measured_position(before[node.id]), node.transform.position
+        travelled = math.hypot(now.x - origin.x, now.y - origin.y)
+        if travelled > MAX_TRAVEL_METERS:
+            found.append(Violation("moved_too_far", str(node.id), node.label))
+    return found
+
+
+def _near_a_move(node: SceneNode, role: roles.UsedFromTheFloor, checked: list[SceneNode]) -> bool:
+    shape, within = footprint(node), reach(role)
+    return any(
+        other.id == node.id or gap_between(shape, footprint(other)) < within for other in checked
+    )
+
+
+def _could_lose_room(candidate: SceneGraph, checked: list[SceneNode]) -> list[tuple[SceneNode, roles.UsedFromTheFloor]]:
+    """Pieces used from the floor that moved, or that something moved next to."""
+    found = []
+    for node in candidate.nodes:
+        role = roles.used_from_the_floor(node)
+        if role is not None and _near_a_move(node, role, checked):
+            found.append((node, role))
+    return found
+
+
+def _lost_room_to_use(base: SceneGraph, candidate: SceneGraph, checked: list[SceneNode]) -> list[Violation]:
+    """Tables and counters a move leaves nobody room to pull up to.
+
+    Like a collision, only a loss the move caused counts. A table the scan
+    found wedged in already may still be moved, because the move takes no room
+    from it that it had. A piece that is new has to arrive with room.
+    """
+    at_risk = _could_lose_room(candidate, checked)
+    if not at_risk:
+        return []
+    before = {node.id: node for node in base.nodes}
+    room_before = room_of(base)
+    room_after = Room.of(candidate, reusing=room_before)
+    return [
+        Violation("no_room_to_use", str(node.id), node.label)
+        for node, role in at_risk
+        if _had_room(room_before, before.get(node.id), role) and not has_room_to_use(room_after, node, role)
+    ]
+
+
+def _had_room(room: Room, node: SceneNode | None, role: roles.UsedFromTheFloor) -> bool:
+    return node is None or has_room_to_use(room, node, role)
 
 
 def violations(
@@ -260,16 +402,33 @@ def violations(
     they are checked for collisions and floor bounds exactly like a piece that
     moved: a candidate nobody tested for collisions fits everywhere.
     """
-    checked = [
-        *_moved_nodes(base, candidate),
-        *[node for node in candidate.nodes if node.id in added],
-    ]
+    moved = _moved_nodes(base, candidate)
+    checked = [*moved, *[node for node in candidate.nodes if node.id in added]]
     return [
         *_locked_moves(base, candidate),
         *_resizes(base, candidate),
         *_inventory_changes(base, candidate, added),
         *_off_the_floor(base, candidate, checked),
         *_collisions(base, candidate, checked),
+        *_travelled_too_far(base, moved),
+        *_lost_room_to_use(base, candidate, checked),
+    ]
+
+
+def relocation_violations(original: SceneGraph, candidate: SceneGraph, relocated) -> list[Violation]:
+    """What a built-in fixture that construction slid across the floor may not do.
+
+    Construction relocates the fixture before any furniture moves, so to
+    `violations` the fixture looks like it was always there. Measured against
+    the room as scanned, it is held to the same rules as a moved piece: it may
+    not land on another piece or a wall, leave the floor, or take the room
+    somebody needs to use a table or counter.
+    """
+    checked = [node for node in candidate.nodes if node.id in relocated]
+    return [
+        *_off_the_floor(original, candidate, checked),
+        *_collisions(original, candidate, checked),
+        *_lost_room_to_use(original, candidate, checked),
     ]
 
 

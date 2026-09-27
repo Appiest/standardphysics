@@ -1,0 +1,1020 @@
+{
+  "models": {
+    "base": {
+      "heldout": {
+        "samples": 260,
+        "parse_rate": 0.9923,
+        "hard_constraint_pass_rate": 0.4231,
+        "gate_acceptance": 0.2038,
+        "mean_shortfall_recovered": 0.1638,
+        "share_clearing_every_fixable": 0.1462,
+        "mean_usability_accepted": 0.8734,
+        "mean_quality_accepted_logged_only": 0.8646,
+        "mean_reward": 0.1663,
+        "heldout_variants": 65,
+        "physical_rooms": 10,
+        "variant_best_of_k_accepted": 0.4462,
+        "room_best_of_k_accepted": 1.0,
+        "variant_best_of_k_fully_cleared": 0.3231,
+        "room_best_of_k_fully_cleared": 0.8
+      },
+      "ravida": {
+        "samples": 36,
+        "parse_rate": 1.0,
+        "hard_constraint_pass_rate": 0.6111,
+        "gate_acceptance": 0.1944,
+        "mean_shortfall_recovered": 0.0303,
+        "share_clearing_every_fixable": 0.0,
+        "mean_usability_accepted": 0.9337,
+        "mean_quality_accepted_logged_only": 0.8969,
+        "mean_reward": 0.0755,
+        "heldout_variants": 9,
+        "physical_rooms": 1,
+        "variant_best_of_k_accepted": 0.4444,
+        "room_best_of_k_accepted": 1.0,
+        "variant_best_of_k_fully_cleared": 0.0,
+        "room_best_of_k_fully_cleared": 0.0
+      }
+    },
+    "run1_best": {
+      "heldout": {
+        "samples": 260,
+        "parse_rate": 1.0,
+        "hard_constraint_pass_rate": 0.6923,
+        "gate_acceptance": 0.3154,
+        "mean_shortfall_recovered": 0.1888,
+        "share_clearing_every_fixable": 0.1115,
+        "mean_usability_accepted": 0.9131,
+        "mean_quality_accepted_logged_only": 0.8905,
+        "mean_reward": 0.2038,
+        "heldout_variants": 65,
+        "physical_rooms": 10,
+        "variant_best_of_k_accepted": 0.3846,
+        "room_best_of_k_accepted": 0.9,
+        "variant_best_of_k_fully_cleared": 0.1846,
+        "room_best_of_k_fully_cleared": 0.7
+      },
+      "ravida": {
+        "samples": 36,
+        "parse_rate": 1.0,
+        "hard_constraint_pass_rate": 0.7222,
+        "gate_acceptance": 0.3333,
+        "mean_shortfall_recovered": 0.0562,
+        "share_clearing_every_fixable": 0.0,
+        "mean_usability_accepted": 0.9524,
+        "mean_quality_accepted_logged_only": 0.9246,
+        "mean_reward": 0.128,
+        "heldout_variants": 9,
+        "physical_rooms": 1,
+        "variant_best_of_k_accepted": 0.3333,
+        "room_best_of_k_accepted": 1.0,
+        "variant_best_of_k_fully_cleared": 0.0,
+        "room_best_of_k_fully_cleared": 0.0
+      }
+    },
+    "run2_sft": {
+      "heldout": {
+        "samples": 260,
+        "parse_rate": 0.9962,
+        "hard_constraint_pass_rate": 0.7192,
+        "gate_acceptance": 0.2923,
+        "mean_shortfall_recovered": 0.1347,
+        "share_clearing_every_fixable": 0.0692,
+        "mean_usability_accepted": 0.9184,
+        "mean_quality_accepted_logged_only": 0.859,
+        "mean_reward": 0.171,
+        "heldout_variants": 65,
+        "physical_rooms": 10,
+        "variant_best_of_k_accepted": 0.5385,
+        "room_best_of_k_accepted": 1.0,
+        "variant_best_of_k_fully_cleared": 0.1846,
+        "room_best_of_k_fully_cleared": 0.6
+      },
+      "ravida": {
+        "samples": 36,
+        "parse_rate": 1.0,
+        "hard_constraint_pass_rate": 0.8611,
+        "gate_acceptance": 0.3611,
+        "mean_shortfall_recovered": 0.0368,
+        "share_clearing_every_fixable": 0.0,
+        "mean_usability_accepted": 0.9386,
+        "mean_quality_accepted_logged_only": 0.912,
+        "mean_reward": 0.1389,
+        "heldout_variants": 9,
+        "physical_rooms": 1,
+        "variant_best_of_k_accepted": 0.5556,
+        "room_best_of_k_accepted": 1.0,
+        "variant_best_of_k_fully_cleared": 0.0,
+        "room_best_of_k_fully_cleared": 0.0
+      }
+    },
+    "run2_rl": {
+      "heldout": {
+        "samples": 260,
+        "parse_rate": 1.0,
+        "hard_constraint_pass_rate": 0.7115,
+        "gate_acceptance": 0.2808,
+        "mean_shortfall_recovered": 0.1082,
+        "share_clearing_every_fixable": 0.05,
+        "mean_usability_accepted": 0.9152,
+        "mean_quality_accepted_logged_only": 0.8455,
+        "mean_reward": 0.1496,
+        "heldout_variants": 65,
+        "physical_rooms": 10,
+        "variant_best_of_k_accepted": 0.4923,
+        "room_best_of_k_accepted": 0.9,
+        "variant_best_of_k_fully_cleared": 0.1385,
+        "room_best_of_k_fully_cleared": 0.6
+      },
+      "ravida": {
+        "samples": 36,
+        "parse_rate": 1.0,
+        "hard_constraint_pass_rate": 0.8889,
+        "gate_acceptance": 0.3889,
+        "mean_shortfall_recovered": 0.0407,
+        "share_clearing_every_fixable": 0.0,
+        "mean_usability_accepted": 0.938,
+        "mean_quality_accepted_logged_only": 0.9514,
+        "mean_reward": 0.1497,
+        "heldout_variants": 9,
+        "physical_rooms": 1,
+        "variant_best_of_k_accepted": 0.5556,
+        "room_best_of_k_accepted": 1.0,
+        "variant_best_of_k_fully_cleared": 0.0,
+        "room_best_of_k_fully_cleared": 0.0
+      }
+    }
+  },
+  "ceiling": {
+    "variants": 65,
+    "fixable": 36,
+    "share_fixable": 0.5538,
+    "per_variant": [
+      {
+        "variant_id": "f143082d:w07:v003",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w07:v001",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w07:v006",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w07:v007",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w13:v000",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "left_the_floor": 1,
+          "collided": 1,
+          "moved_too_far": 1,
+          "no_room_to_use": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w13:v001",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "left_the_floor": 1,
+          "collided": 1,
+          "moved_too_far": 1,
+          "no_room_to_use": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w13:v003",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w07:v002",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "left_the_floor": 1,
+          "collided": 1,
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w07:v000",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "no_room_to_use": 1,
+          "left_the_floor": 1,
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w07:v004",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1,
+          "left_the_floor": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w13:v005",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "left_the_floor": 1,
+          "collided": 1,
+          "moved_too_far": 1,
+          "no_room_to_use": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w13:v002",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "left_the_floor": 1,
+          "collided": 1,
+          "moved_too_far": 1,
+          "no_room_to_use": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w13:v006",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "left_the_floor": 1,
+          "collided": 1,
+          "moved_too_far": 1,
+          "no_room_to_use": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w13:v007",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1,
+          "no_room_to_use": 1
+        }
+      },
+      {
+        "variant_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b:whole:owner",
+        "scan_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b",
+        "fixable": true,
+        "best_shortfall_recovered": 0.1687456937129671,
+        "all_clear": false,
+        "reason": null,
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "collided": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w13:v004",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "left_the_floor": 1,
+          "moved_too_far": 1,
+          "no_room_to_use": 1
+        }
+      },
+      {
+        "variant_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b:whole:v000",
+        "scan_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b",
+        "fixable": true,
+        "best_shortfall_recovered": 0.2682699029441206,
+        "all_clear": false,
+        "reason": null,
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1,
+          "left_the_floor": 1
+        }
+      },
+      {
+        "variant_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b:whole:v001",
+        "scan_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b",
+        "fixable": true,
+        "best_shortfall_recovered": 0.25135516723239615,
+        "all_clear": false,
+        "reason": null,
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "collided": 2
+        }
+      },
+      {
+        "variant_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b:whole:v002",
+        "scan_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b",
+        "fixable": true,
+        "best_shortfall_recovered": 0.3842530751444343,
+        "all_clear": false,
+        "reason": null,
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "collided": 2
+        }
+      },
+      {
+        "variant_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b:whole:v003",
+        "scan_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b",
+        "fixable": true,
+        "best_shortfall_recovered": 0.1687456937129671,
+        "all_clear": false,
+        "reason": null,
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "collided": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w20:v002",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "left_the_floor": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w20:v000",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "left_the_floor": 1,
+          "moved_too_far": 1,
+          "no_room_to_use": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w20:v003",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w20:v005",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w20:v006",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "left_the_floor": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w33:owner",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w33:v000",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w33:v001",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w33:v002",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b:whole:v007",
+        "scan_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b",
+        "fixable": true,
+        "best_shortfall_recovered": 0.1687456937129671,
+        "all_clear": false,
+        "reason": null,
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "collided": 1
+        }
+      },
+      {
+        "variant_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b:whole:v004",
+        "scan_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b",
+        "fixable": true,
+        "best_shortfall_recovered": 0.2682699029441206,
+        "all_clear": false,
+        "reason": null,
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1,
+          "left_the_floor": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w33:v003",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w33:v004",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w33:v005",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w33:v006",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w11:v004",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w33:v007",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 0.1947124162685142,
+        "all_clear": false,
+        "reason": null,
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w35:v000",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w20:v007",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "left_the_floor": 1,
+          "collided": 1,
+          "moved_too_far": 1,
+          "no_room_to_use": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w35:v001",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "left_the_floor": 1,
+          "moved_too_far": 1,
+          "no_room_to_use": 1
+        }
+      },
+      {
+        "variant_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b:whole:v006",
+        "scan_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b",
+        "fixable": true,
+        "best_shortfall_recovered": 0.15740568274601138,
+        "all_clear": false,
+        "reason": null,
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "collided": 3
+        }
+      },
+      {
+        "variant_id": "f143082d:w35:v004",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w35:v002",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1,
+          "left_the_floor": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w35:v005",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1,
+          "left_the_floor": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w35:v003",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "moved_too_far": 1,
+          "left_the_floor": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w35:v007",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1,
+          "left_the_floor": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w35:v006",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "moved_too_far": 1,
+          "left_the_floor": 1,
+          "collided": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w29:v001",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w29:v002",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w11:v003",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "left_the_floor": 1,
+          "moved_too_far": 1,
+          "no_room_to_use": 1,
+          "collided": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w29:v003",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w29:v004",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w29:v005",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w30:v002",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w30:v003",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w29:v000",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "moved_too_far": 1,
+          "collided": 1,
+          "left_the_floor": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w30:v007",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w26:v000",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {}
+      },
+      {
+        "variant_id": "f143082d:w26:v003",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w26:v006",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w29:v007",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "moved_too_far": 1,
+          "left_the_floor": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w26:v005",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": true,
+        "best_shortfall_recovered": 1.0,
+        "all_clear": true,
+        "reason": null,
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "moved_too_far": 1,
+          "left_the_floor": 1,
+          "blocked_a_door": 1,
+          "collided": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w30:v004",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "no accepted route under the bounded search; not a proof of impossibility",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "no_room_to_use": 1,
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "f143082d:w26:v007",
+        "scan_id": "f143082d-f529-494b-b80d-97729234e334",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 1,
+        "rejections": {
+          "collided": 1,
+          "left_the_floor": 1,
+          "moved_too_far": 1
+        }
+      },
+      {
+        "variant_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b:whole:v005",
+        "scan_id": "af42f6cd-d228-4dd8-8790-aff0890fee5b",
+        "fixable": false,
+        "best_shortfall_recovered": 0,
+        "all_clear": false,
+        "reason": "60 in cap or floor boundary",
+        "baseline_fixable_findings": 2,
+        "rejections": {
+          "collided": 6,
+          "left_the_floor": 2,
+          "moved_too_far": 2
+        }
+      }
+    ]
+  },
+  "costs": {
+    "run1_estimated": {
+      "prefill_tokens": 3424152,
+      "sample_tokens": 989184,
+      "train_tokens": 1158089,
+      "estimated_dollars": 16.655
+    },
+    "run1_pessimistic_preflight": {
+      "sft_rows": 93,
+      "rl_rollouts": 1152,
+      "eval_samples": 780,
+      "prefill_tokens": 5311068,
+      "sample_tokens": 989184,
+      "train_tokens": 3977919,
+      "estimated_dollars": 31.7345,
+      "prompt_tokens_each": 2749,
+      "sft_tokens_each": 2379,
+      "maximum_sample_tokens_each": 512
+    },
+    "run2_estimated": {
+      "prefill_tokens": 2395336,
+      "sample_tokens": 694272,
+      "train_tokens": 3206708,
+      "estimated_dollars": 21.4969
+    },
+    "run2_pessimistic_preflight": {
+      "sft_rows": 1498,
+      "rl_rollouts": 576,
+      "eval_samples": 780,
+      "prefill_tokens": 2938452,
+      "sample_tokens": 694272,
+      "train_tokens": 4852186,
+      "estimated_dollars": 29.2585,
+      "prompt_tokens_each": 2167,
+      "sft_tokens_each": 2209,
+      "maximum_sample_tokens_each": 512
+    },
+    "actual": "Fireworks serverless API does not expose billed totals; consult billing"
+  },
+  "arkit": "Converted annotations are evaluation-only. Without observed walls, doors or routes, model gate scores would be invented and are not reported."
+}

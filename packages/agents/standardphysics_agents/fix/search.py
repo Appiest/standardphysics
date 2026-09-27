@@ -12,6 +12,8 @@ could allow, tested first so the offer is real.
 
 from __future__ import annotations
 
+import math
+import time
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -40,10 +42,12 @@ from .moves import apply_moves, unlocked, without
 from .pinch import Pinch, pinch_from
 from .placement import placements
 from .strategies import Candidate, candidates
+from .surfaces import SurfaceMove, lower_surface_moves
 
 PROPOSAL_NAMESPACE = uuid.UUID("7b3c1f04-5e2a-4c6b-9d18-000000000004")
 
 CANDIDATE_LIMIT = 24
+SET_DOWN_LIMIT = 6
 
 RELAXATION_LIMIT = 6
 """A smaller ladder when testing whether a relaxation would even help."""
@@ -166,17 +170,31 @@ class _Search:
     max_tier: Tier
     baseline: Pass
     candidate_rejection: CandidateRejection | None = None
+    deadline: float = math.inf
+    """`time.monotonic()` past which no more candidates are measured."""
     measured: int = 0
     rejected: list[str] = field(default_factory=list)
 
     def run(self, pinch: Pinch, limit: int) -> tuple[Candidate, SceneGraph] | None:
-        return self.check(pinch, candidates(pinch, limit))
+        return self.check(pinch.finding_id, candidates(pinch, limit))
 
-    def check(self, pinch: Pinch, guesses: Iterable[Candidate]) -> tuple[Candidate, SceneGraph] | None:
+    def set_down(self, finding: Finding) -> tuple[Candidate, SceneGraph] | None:
+        """An item that sits too high, carried to a lower surface: no floor space opens, so no pinch exists.
+
+        The nearest spot on each surface comes first, then the next nearest, and
+        only SET_DOWN_LIMIT are measured: neighbouring spots on one surface almost
+        always measure alike, and each costs a full assessment.
+        """
+        spots = _surface_by_surface(lower_surface_moves(self.graph, finding))[:SET_DOWN_LIMIT]
+        return self.check(finding.id, (move.candidate for move in spots))
+
+    def check(self, finding_id: UUID, guesses: Iterable[Candidate]) -> tuple[Candidate, SceneGraph] | None:
         from ..evaluation.gate import accepts
 
         known = {finding.id for finding in self.baseline.problems}
         for candidate in guesses:
+            if time.monotonic() > self.deadline:
+                return None
             rearranged = apply_moves(self.graph, candidate.moves)
             broken = violations(self.graph, rearranged)
             if broken:
@@ -191,7 +209,7 @@ class _Search:
                 ledger=self.ledger,
                 max_tier=self.max_tier,
             )
-            if not _resolves(known, pinch.finding_id, after) or not accepts(self.baseline, after):
+            if not _resolves(known, finding_id, after) or not accepts(self.baseline, after):
                 continue
             if self.candidate_rejection is not None:
                 reason = self.candidate_rejection(self.graph, rearranged)
@@ -216,8 +234,13 @@ def propose_fix(
     limit: int = CANDIDATE_LIMIT,
     offer_relaxation: bool = True,
     candidate_rejection: CandidateRejection | None = None,
+    deadline: float = math.inf,
 ) -> FixOutcome:
-    """One arrangement that clears a named finding, or one thing to ask about."""
+    """One arrangement that clears a named finding, or one thing to ask about.
+
+    Past `deadline`, a `time.monotonic()` value, nothing more is measured and
+    the search reports what it found by then.
+    """
     problems = [finding for finding in targets if finding.outcome == "problem"
                 and rules.by_id(finding.check_id).rearrangeable]
     before = baseline or assess(
@@ -227,25 +250,19 @@ def propose_fix(
 
     search = _Search(
         graph, scenario, measure, rules, ledger, max_tier,
-        baseline=before, candidate_rejection=candidate_rejection,
+        baseline=before, candidate_rejection=candidate_rejection, deadline=deadline,
     )
     for pinch in _pinches(problems, graph):
         result = search.run(pinch, limit)
-        if result is None and limit > 0:
+        if result is None and limit > 0 and time.monotonic() <= deadline:
             finding = next(f for f in problems if f.id == pinch.finding_id)
-            result = search.check(pinch, placements(graph, pinch, finding, rules, limit * 4))
-        if result is None:
-            continue
-        picked, rearranged = result
-        proposal = _build_proposal(graph, rearranged, picked, target_ids)
-        return FixOutcome(
-            proposal=proposal,
-            graph=rearranged,
-            measured=search.measured,
-            rejected=tuple(dict.fromkeys(search.rejected)),
-            message=proposal.rationale,
-            targets=target_ids,
-        )
+            result = search.check(pinch.finding_id, placements(graph, pinch, finding, rules, limit * 4))
+        if result is not None:
+            return _found(graph, search, result, target_ids)
+    for finding in problems:
+        result = search.set_down(finding) if time.monotonic() <= deadline else None
+        if result is not None:
+            return _found(graph, search, result, target_ids)
 
     relaxation = (
         _find_relaxation(
@@ -261,6 +278,31 @@ def propose_fix(
         rejected=tuple(dict.fromkeys(search.rejected)),
         message=no_arrangement(relaxation.question if relaxation else None),
         relaxation=relaxation,
+        targets=target_ids,
+    )
+
+
+def _surface_by_surface(moves: list[SurfaceMove]) -> list[SurfaceMove]:
+    """Nearest-first moves reordered so each surface's nearest spot comes before any surface's second."""
+    rank: dict[UUID, int] = {}
+    ordered = []
+    for index, move in enumerate(moves):
+        turn = rank.get(move.surface.id, 0)
+        rank[move.surface.id] = turn + 1
+        ordered.append((turn, index, move))
+    return [move for _, _, move in sorted(ordered, key=lambda entry: entry[:2])]
+
+
+def _found(graph: SceneGraph, search: _Search, result: tuple[Candidate, SceneGraph],
+           target_ids: tuple[UUID, ...]) -> FixOutcome:
+    picked, rearranged = result
+    proposal = _build_proposal(graph, rearranged, picked, target_ids)
+    return FixOutcome(
+        proposal=proposal,
+        graph=rearranged,
+        measured=search.measured,
+        rejected=tuple(dict.fromkeys(search.rejected)),
+        message=proposal.rationale,
         targets=target_ids,
     )
 

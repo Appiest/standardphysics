@@ -24,7 +24,15 @@ A frame is worth asking about more than once. Reading a whole walk means
 hundreds of requests in a couple of minutes, and at that rate a few come back
 rate-limited or with a truncated body. Those are retried with a widening,
 jittered wait, because one frame lost to a blip is an object that silently
-never existed.
+never existed. A rate limit is the host saying "later", not "broken": it gets
+more attempts, the wait the host asks for, and that wait is shared by every
+request in flight so the whole walk backs off together instead of each thread
+spending its attempts against the same full budget.
+
+**The model is asked not to reason where the host allows it.** With reasoning
+on, the Fireworks detector spent 1,000-2,300 generated tokens and 15-22 s per
+photo; off, about 320-500 tokens and 5-6 s. The account's limit is generated
+tokens per minute, so this is what lets a whole walk be read in a few minutes.
 
 A request that fails every attempt raises. Nothing here returns an empty list
 to mean the network was down: a silent fallback reads downstream as a room
@@ -36,16 +44,22 @@ from __future__ import annotations
 import base64
 import io
 import json
+import logging
 import os
 import pathlib
 import random
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
 from typing import Any, Callable
 
 from . import taxonomy
+
+log = logging.getLogger(__name__)
 
 MODEL_ENV = "DISCOVERY_MODEL"
 API_KEY_ENV = "DISCOVERY_API_KEY"
@@ -58,10 +72,19 @@ OPENROUTER_HOST = "openrouter.ai"
 PROVIDER_ROUTING = {"data_collection": "deny"}
 """OpenRouter's own routing rules. Every other host rejects or ignores them, so
 they travel only when the request is going to OpenRouter."""
+REASONING_OFF_BY_HOST: dict[str, dict[str, Any]] = {"api.fireworks.ai": {"reasoning_effort": "none"}}
+"""Hosts that accept turning the model's reasoning off, and how each spells it.
+
+OpenRouter is absent on purpose: its default Gemini answers HTTP 400
+"Reasoning is mandatory for this endpoint" to `reasoning_effort`, to
+`reasoning.effort` and to `reasoning.enabled`, and a 400 is never retried, so
+sending it there would lose every frame."""
 REQUEST_TIMEOUT_SECONDS = 120.0
 MAX_ATTEMPTS = 4
+RATE_LIMITED_ATTEMPTS = 8
 FIRST_BACKOFF_SECONDS = 1.5
 BACKOFF_GROWTH = 2.5
+MAX_RATE_LIMIT_WAIT = 60.0
 MAX_OUTPUT_TOKENS = 8_192
 MAX_RESPONSE_BYTES = 4_000_000
 MAX_DETECTIONS = 40
@@ -164,6 +187,40 @@ class DetectionSchemaError(DetectionError):
 
 class DetectionTransientError(DetectionError):
     """Rate limit (429), server error (500/502/503/504), network timeout. Retried with bounded backoff."""
+
+
+class DetectionRateLimited(DetectionTransientError):
+    """HTTP 429, with the wait the host asked for when it said."""
+
+    def __init__(self, message: str, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class RateLimitGate:
+    """One pause shared by every request in flight.
+
+    When one request is told to slow down, the budget is spent for all of them:
+    a thread that keeps asking only spends its own attempts on 429s. So a rate
+    limit holds the gate, and every request waits at it before it is sent.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._open_at = 0.0
+
+    def hold(self, seconds: float) -> None:
+        with self._lock:
+            self._open_at = max(self._open_at, time.monotonic() + seconds)
+
+    def wait(self) -> None:
+        with self._lock:
+            delay = self._open_at - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
+
+
+RATE_LIMIT_GATE = RateLimitGate()
 
 
 @dataclass(frozen=True)
@@ -290,21 +347,33 @@ def detect_objects(
     api_key = _api_key()
     if transport is None and not api_key:
         raise DetectionAuthError(f"neither {API_KEY_ENV} nor {FALLBACK_KEY_ENV} is set, so no frame can be read")
-    body = _request_body(frame)
-    for attempt in range(1, MAX_ATTEMPTS + 1):
+    payload = _answer(transport, _request_body(frame), api_key)
+    if recorded is not None:
+        recorded.append(_request_info(payload, frame_id, orientation))
+    return _detections_from(payload, frame, frame_id)
+
+
+def _answer(transport: Transport | None, body: dict[str, Any], api_key: str) -> dict[str, Any]:
+    """The model's reply, asked for again after a blip or a rate limit until the attempts run out."""
+    attempt = 0
+    while True:
+        attempt += 1
+        RATE_LIMIT_GATE.wait()
         try:
-            payload = _post(transport, body, api_key)
-            if recorded is not None:
-                recorded.append(_request_info(payload, frame_id, orientation))
-            detections = _detections_from(payload, frame, frame_id)
-            return detections
+            return _post(transport, body, api_key)
+        except DetectionRateLimited as error:
+            if attempt >= RATE_LIMITED_ATTEMPTS:
+                raise
+            wait = min(MAX_RATE_LIMIT_WAIT, error.retry_after or _backoff(attempt))
+            log.info("rate limited on attempt %d, holding every request %.1fs (host asked %s)",
+                     attempt, wait, error.retry_after)
+            RATE_LIMIT_GATE.hold(wait)
         except (DetectionAuthError, DetectionSchemaError):
             raise
         except DetectionError:
-            if attempt == MAX_ATTEMPTS:
+            if attempt >= MAX_ATTEMPTS:
                 raise
             time.sleep(_backoff(attempt))
-    raise DetectionError("unreachable")
 
 
 def _backoff(attempt: int) -> float:
@@ -354,11 +423,32 @@ def _base_url() -> str:
     return (configured or DEFAULT_BASE_URL).rstrip("/")
 
 
+def _host() -> str:
+    return urllib.parse.urlsplit(_base_url()).hostname or "unknown"
+
+
+def _request_options() -> dict[str, Any]:
+    """Host-specific request fields: OpenRouter's routing rules, or reasoning turned off."""
+    host = _host()
+    if host == OPENROUTER_HOST:
+        return {"provider": PROVIDER_ROUTING}
+    return dict(REASONING_OFF_BY_HOST.get(host, {}))
+
+
+def answer_identity() -> str:
+    """What decides the answer besides the photo: the model, and whether it was allowed to reason.
+
+    The cache is keyed by this, so an answer given with reasoning on is never
+    served as one given with it off.
+    """
+    model = os.environ.get(MODEL_ENV) or DEFAULT_MODEL
+    reasoning = REASONING_OFF_BY_HOST.get(_host())
+    return model if not reasoning else f"{model}|{json.dumps(reasoning, sort_keys=True)}"
+
+
 def _request_info(payload: dict[str, Any], frame_id: str, orientation: str) -> ModelRequestInfo:
     """Provider, model, request id and usage from a real response, without secrets."""
-    import urllib.parse
-
-    host = urllib.parse.urlsplit(_base_url()).hostname or "unknown"
+    host = _host()
     usage = payload.get("usage")
     if isinstance(usage, dict):
         usage = {str(key): int(value) for key, value in usage.items() if isinstance(value, (int, float))}
@@ -390,8 +480,7 @@ def _request_body(frame: EncodedFrame) -> dict[str, Any]:
             "name": "detections", "strict": True, "schema": DETECTION_SCHEMA,
         }},
     }
-    if OPENROUTER_HOST in _base_url():
-        body["provider"] = PROVIDER_ROUTING
+    body.update(_request_options())
     return body
 
 
@@ -407,11 +496,30 @@ def _post(transport: Transport | None, body: dict[str, Any], api_key: str) -> di
             raise DetectionAuthError(f"the vision model rejected authentication: HTTP {error.code}") from error
         if error.code in (400, 422):
             raise DetectionSchemaError(f"the vision model rejected request schema: HTTP {error.code}") from error
+        if error.code == 429:
+            raise DetectionRateLimited(
+                "the vision model is rate limited: HTTP 429", _retry_after(error.headers)
+            ) from error
         raise DetectionTransientError(f"the vision model had a transient HTTP error: HTTP {error.code}") from error
     except (urllib.error.URLError, TimeoutError) as error:
         raise DetectionTransientError(f"the vision model timed out or network failed: {error}") from error
     except (OSError, ValueError) as error:
         raise DetectionError(f"the vision model did not answer: {error}") from error
+
+
+def _retry_after(headers: Any) -> float | None:
+    """The host's Retry-After, in seconds or as a date, or nothing when it did not say."""
+    value = headers.get("Retry-After") if headers is not None else None
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        pass
+    try:
+        return max(0.0, parsedate_to_datetime(value).timestamp() - time.time())
+    except (TypeError, ValueError):
+        return None
 
 
 def _openrouter_post(url: str, body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:

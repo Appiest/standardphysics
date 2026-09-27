@@ -79,17 +79,33 @@ def apply_room_placements(graph: SceneGraph, rooms: list[RoomPlacement]) -> Scen
         unknown = [str(node_id) for node_id in room.node_ids if node_id not in known]
         if unknown:
             raise ApiProblem(400, "unknown node", need=unknown)
-    moved: dict[uuid.UUID, list[float]] = {}
-    for room in rooms:
-        yaw = math.radians(room.yaw_degrees)
-        for node_id in room.node_ids:
-            node = next(node for node in graph.nodes if node.id == node_id)
-            moved[node_id] = _compose(node.transform.m, room.cx, room.cy, yaw, room.tx, room.ty)
+    placements = {node_id: room for room in rooms for node_id in room.node_ids}
     nodes = [
-        node.model_copy(update={"transform": Mat4(m=moved[node.id])}) if node.id in moved else node
+        _placed(node, placements[node.id]) if node.id in placements else node
         for node in graph.nodes
     ]
     return graph.model_copy(update={"nodes": nodes})
+
+
+def _placed_matrix(m: list[float], room: RoomPlacement) -> list[float]:
+    return _compose(m, room.cx, room.cy, math.radians(room.yaw_degrees), room.tx, room.ty)
+
+
+def _placed(node: SceneNode, room: RoomPlacement) -> SceneNode:
+    """The node carried with its room, along with where the scan found it.
+
+    Placing a room re-registers the whole scan rather than rearranging it, so
+    the position a rearrangement is measured from travels with the room.
+    """
+    transform = Mat4(m=_placed_matrix(node.transform.m, room))
+    origin = node.measured_position
+    if origin is None:
+        return node.model_copy(update={"transform": transform})
+    carried = _placed_matrix(Mat4.translation(origin.x, origin.y, origin.z).m, room)
+    return node.model_copy(update={
+        "transform": transform,
+        "measured_position": Vec3(x=carried[POSITION[0]], y=carried[POSITION[1]], z=origin.z),
+    })
 
 
 def save_combine(database: Database, worker: Worker, scan_id: uuid.UUID, body: SaveCombineRequest) -> SceneGraph:

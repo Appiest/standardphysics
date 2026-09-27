@@ -309,3 +309,75 @@ def test_apply_secondary_semantic_corrections_end_to_end():
     assert wb_nodes[0].parent_id == wall.id
     assert wb_nodes[0].attachment is not None
     assert wb_nodes[0].attachment.support_node_id == wall.id
+
+
+def test_a_chair_tucked_against_a_table_is_not_renamed_a_table():
+    """From most viewpoints a café chair sits inside the table's photo box; that box is about the table."""
+    chair = SceneNode(id=uuid.uuid4(), kind="object", label="Chair", raw_category="chair",
+                      dimensions=Vec3(x=0.45, y=0.5, z=0.85), transform=Mat4.translation(0.0, 2.0, 0.425),
+                      quality="measured", labeled_by="roomplan")
+    cam = camera_at(position=[0.0, 0.0, 0.8], looking_at=[0.0, 2.2, 0.6])
+    table_box = (120.0, 120.0, 520.0, 420.0)
+    table = Detection(frame_id="frame-001", name="table", box=table_box, movable=True, confidence=0.95)
+    assert correct_furniture_label(chair, table, cam) is None
+
+    graph = SceneGraph(scan_id=uuid.uuid4(), nodes=[chair])
+    updated = apply_secondary_semantic_corrections(graph, {"frame-001": [table]}, [cam])
+    assert updated.by_id(chair.id).label == "Chair"
+
+
+def test_a_label_the_detector_also_confirms_outvotes_a_single_contrary_frame():
+    from dataclasses import replace
+
+    table = SceneNode(id=uuid.uuid4(), kind="object", label="Table", raw_category="table",
+                      dimensions=Vec3(x=2.0, y=1.0, z=0.8), transform=Mat4.translation(-1.0, 1.5, 0.4))
+    box = (200.0, 150.0, 440.0, 330.0)
+    frames = [replace(camera_at(position=[-1.0, 0.0, 0.4], looking_at=[-1.0, 1.5, 0.4]), frame_id=f"f{i}")
+              for i in range(3)]
+    detections = {
+        "f0": [Detection(frame_id="f0", name="sofa", box=box, movable=True, confidence=0.9)],
+        "f1": [Detection(frame_id="f1", name="table", box=box, movable=True, confidence=0.9)],
+        "f2": [Detection(frame_id="f2", name="table", box=box, movable=True, confidence=0.9)],
+    }
+    updated = apply_secondary_semantic_corrections(SceneGraph(scan_id=uuid.uuid4(), nodes=[table]), detections, frames)
+    assert updated.by_id(table.id).label == "Table"
+
+
+def _counter_seen_in_three_frames(counter_says_movable: bool, reader_says_movable: bool = True):
+    from dataclasses import replace
+
+    counter = SceneNode(id=uuid.uuid4(), kind="object", label="Table", raw_category="table", movable=True,
+                        dimensions=Vec3(x=2.0, y=1.0, z=0.8), transform=Mat4.translation(-1.0, 1.5, 0.4))
+    box = (200.0, 150.0, 440.0, 330.0)
+    reader_box = (300.0, 160.0, 340.0, 200.0)
+    frames = [replace(camera_at(position=[-1.0, 0.0, 0.4], looking_at=[-1.0, 1.5, 0.4]), frame_id=f"f{i}")
+              for i in range(3)]
+    detections = {
+        frame.frame_id: [
+            Detection(frame_id=frame.frame_id, name="counter", box=box, movable=counter_says_movable, confidence=0.9),
+            Detection(frame_id=frame.frame_id, name="card reader", box=reader_box, movable=reader_says_movable,
+                      confidence=0.9),
+        ]
+        for frame in frames
+    }
+    return counter, detections, frames
+
+
+def test_a_scanned_piece_the_photos_call_a_fixed_counter_stops_being_movable():
+    counter, detections, frames = _counter_seen_in_three_frames(counter_says_movable=False)
+    assert counter.movable
+    updated = apply_secondary_semantic_corrections(SceneGraph(scan_id=uuid.uuid4(), nodes=[counter]), detections, frames)
+    assert not updated.by_id(counter.id).movable
+
+
+def test_a_movable_thing_on_a_counter_does_not_vote_for_the_counter():
+    counter, detections, frames = _counter_seen_in_three_frames(counter_says_movable=True, reader_says_movable=False)
+    updated = apply_secondary_semantic_corrections(SceneGraph(scan_id=uuid.uuid4(), nodes=[counter]), detections, frames)
+    assert updated.by_id(counter.id).movable
+
+
+def test_photos_never_free_a_piece_the_scan_fixed():
+    counter, detections, frames = _counter_seen_in_three_frames(counter_says_movable=True)
+    fixed = counter.model_copy(update={"movable": False})
+    updated = apply_secondary_semantic_corrections(SceneGraph(scan_id=uuid.uuid4(), nodes=[fixed]), detections, frames)
+    assert not updated.by_id(fixed.id).movable
