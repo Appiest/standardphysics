@@ -14,11 +14,15 @@ import numpy as np
 from standardphysics_contracts import SceneNode, SurfaceAttachment
 
 from ..textures.camera import PhotoCamera
+from . import taxonomy
 from .detect import box_iou
 
 MIN_INDEPENDENT_VIEW_DISTANCE_M = 0.50
 MAX_SAME_OUTLET_SURFACE_DISTANCE_M = 0.06  # 6 cm faceplate tolerance
 NORMAL_ALIGNMENT_MIN_COS = 0.85
+TYPICAL_HALF_WIDTH_M = {taxonomy.TELEVISION: 0.75, taxonomy.WHITEBOARD: 0.75}
+"""Half the face of a typical device of the class, when no photo measured the whole of it: a wall TV is
+0.8 to 1.4 m wide, and unmeasured views of one land wherever each photo's ray met the wall."""
 VISUAL_AGREEMENT_IOU = 0.30
 """How much two boxes in the same photo must overlap to count as one detection."""
 
@@ -56,51 +60,80 @@ def _reprojection_agrees(
     return obs_box[0] - pad_x <= col[0] <= obs_box[2] + pad_x and obs_box[1] - pad_y <= row[0] <= obs_box[3] + pad_y
 
 
+SAME_FACE_DEPTH_M = 0.05
+"""How far apart along the wall's normal two views may sit and still be on one face of it."""
+
+
+def _on_one_face(pos_a: np.ndarray, pos_b: np.ndarray, normal: np.ndarray) -> bool:
+    """Whether two points lie on one wall face though RoomPlan measured it as separate overlapping pieces."""
+    return abs(float(np.dot(pos_a - pos_b, normal))) <= SAME_FACE_DEPTH_M
+
+
+def _same_device_distance(node_a: SceneNode, node_b: SceneNode) -> float:
+    """How far apart two views of one device may land: a faceplate's tolerance, or half the wider device's face.
+
+    Six centimetres keeps a duplex outlet's two plates apart. A television is
+    half a metre to a metre wide, and each photo places its centre where that
+    photo saw most of it, so one wall TV came out as six televisions.
+    """
+    widest = max(max(node.dimensions.as_tuple()) for node in (node_a, node_b))
+    typical = max(TYPICAL_HALF_WIDTH_M.get(taxonomy.classify(node.raw_category), 0.0) for node in (node_a, node_b))
+    return max(MAX_SAME_OUTLET_SURFACE_DISTANCE_M, widest / 2, typical)
+
+
 def are_compatible_observations(
     node_a: SceneNode,
     node_b: SceneNode,
     camera_a: PhotoCamera | None = None,
     camera_b: PhotoCamera | None = None,
 ) -> bool:
-    """Checks whether two surface-attached observations represent the same physical outlet.
-    
+    """Checks whether two surface-attached observations represent the same physical device.
+
     Rejects:
-    - Different support parents (different walls or furniture)
     - Opposite or tilted surface normals (e.g. opposite sides of a wall)
-    - Surface distance exceeding faceplate tolerance (e.g. adjacent duplex sockets)
+    - Points on different wall faces (different walls, or furniture)
+    - Distance beyond what one device of that size allows (e.g. adjacent duplex sockets)
     - Reprojection mismatches when cameras are provided
     - Any pair with neither camera nor shared-photo visual agreement:
       distance on its own never proves one device, so adjacent outlets stay
       separate and the count stays unknown
     """
-    att_a = node_a.attachment
-    att_b = node_b.attachment
-    if att_a is None or att_b is None:
+    att_a, att_b = node_a.attachment, node_b.attachment
+    if att_a is None or att_b is None or not _same_place(node_a, node_b):
         return False
-    if att_a.support_node_id != att_b.support_node_id or att_a.normal is None or att_b.normal is None:
-        return False
-    norm_a = np.array([att_a.normal.x, att_a.normal.y, att_a.normal.z], dtype=np.float64)
-    norm_b = np.array([att_b.normal.x, att_b.normal.y, att_b.normal.z], dtype=np.float64)
-    if float(np.dot(norm_a, norm_b)) < NORMAL_ALIGNMENT_MIN_COS:
-        return False
-    pos_a = np.array([node_a.transform.m[3], node_a.transform.m[7], node_a.transform.m[11]], dtype=np.float64)
-    pos_b = np.array([node_b.transform.m[3], node_b.transform.m[7], node_b.transform.m[11]], dtype=np.float64)
-    if float(np.linalg.norm(pos_a - pos_b)) > MAX_SAME_OUTLET_SURFACE_DISTANCE_M:
-        return False
+    if camera_a is None and camera_b is None:
+        return _visually_agree(att_a, att_b)
+    return _cameras_agree(node_a, node_b, camera_a, camera_b)
 
-    verified = False
-    if camera_a is not None:
-        if not _reprojection_agrees(att_a, pos_b, camera_a):
-            return False
-        verified = True
-    if camera_b is not None:
-        if not _reprojection_agrees(att_b, pos_a, camera_b):
-            return False
-        verified = True
 
-    if verified:
-        return True
-    return _visually_agree(att_a, att_b)
+def _position(node: SceneNode) -> np.ndarray:
+    return np.array([node.transform.m[3], node.transform.m[7], node.transform.m[11]], dtype=np.float64)
+
+
+def _normal(attachment: SurfaceAttachment) -> np.ndarray | None:
+    if attachment.normal is None:
+        return None
+    return np.array([attachment.normal.x, attachment.normal.y, attachment.normal.z], dtype=np.float64)
+
+
+def _same_place(node_a: SceneNode, node_b: SceneNode) -> bool:
+    """Facing the same way, on one wall face, and close enough to be one device of their size."""
+    norm_a, norm_b = _normal(node_a.attachment), _normal(node_b.attachment)
+    if norm_a is None or norm_b is None or float(np.dot(norm_a, norm_b)) < NORMAL_ALIGNMENT_MIN_COS:
+        return False
+    pos_a, pos_b = _position(node_a), _position(node_b)
+    same_support = node_a.attachment.support_node_id == node_b.attachment.support_node_id
+    if not same_support and not _on_one_face(pos_a, pos_b, norm_a):
+        return False
+    return float(np.linalg.norm(pos_a - pos_b)) <= _same_device_distance(node_a, node_b)
+
+
+def _cameras_agree(
+    node_a: SceneNode, node_b: SceneNode, camera_a: PhotoCamera | None, camera_b: PhotoCamera | None,
+) -> bool:
+    """Each view's photo box holds the other node's centre, for every camera given."""
+    views = ((node_a.attachment, _position(node_b), camera_a), (node_b.attachment, _position(node_a), camera_b))
+    return all(_reprojection_agrees(att, other, camera) for att, other, camera in views if camera is not None)
 
 
 def _merged_observations(cluster: Sequence[SceneNode]) -> list:
@@ -184,7 +217,8 @@ def merge_cluster(cluster: Sequence[SceneNode], cameras: dict[str, PhotoCamera] 
     """Merges a cluster of compatible outlet nodes, consolidating evidence and updating uncertainty."""
     import uuid
 
-    first_att = cluster[0].attachment
+    lead = _best_measured(cluster)
+    first_att = lead.attachment
     assert first_att is not None
 
     merged_obs = _merged_observations(cluster)
@@ -227,7 +261,7 @@ def merge_cluster(cluster: Sequence[SceneNode], cameras: dict[str, PhotoCamera] 
         uncertainty_reasons=uncertainty_reasons,
     )
 
-    new_m = list(cluster[0].transform.m)
+    new_m = list(lead.transform.m)
     new_m[3] = float(merged_pos[0])
     new_m[7] = float(merged_pos[1])
     new_m[11] = float(merged_pos[2])
@@ -235,11 +269,19 @@ def merge_cluster(cluster: Sequence[SceneNode], cameras: dict[str, PhotoCamera] 
     stable_seed = f"{merged_att.support_node_id}_{round(float(merged_pos[0]), 2)}_{round(float(merged_pos[1]), 2)}_{round(float(merged_pos[2]), 2)}"
     merged_id = uuid.uuid5(uuid.NAMESPACE_OID, stable_seed)
 
-    return cluster[0].model_copy(update={
+    return lead.model_copy(update={
         "id": merged_id,
-        "transform": cluster[0].transform.model_copy(update={"m": new_m}),
+        "transform": lead.transform.model_copy(update={"m": new_m}),
         "attachment": merged_att,
     })
+
+
+def _best_measured(cluster: Sequence[SceneNode]) -> SceneNode:
+    """The view to keep label and size from: a detected one before a candidate, then the widest face measured."""
+    return max(cluster, key=lambda node: (
+        node.attachment is not None and node.attachment.review_status != "candidate",
+        max(node.dimensions.as_tuple()),
+    ))
 
 
 def merge_two_nodes(node_a: SceneNode, node_b: SceneNode, cameras: dict[str, PhotoCamera] | None = None) -> SceneNode:

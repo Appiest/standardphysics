@@ -274,3 +274,43 @@ def test_merge_08_same_photo_disjoint_boxes_in_different_places_stay_separate():
     node_b = make_outlet_node((0.04, 2.0, 1.0), support_id=support_id, frame_id="frame-0001", sensor_box=[400.0, 200.0, 460.0, 260.0])
 
     assert not are_compatible_observations(node_a, node_b)
+
+
+def test_views_of_one_wall_television_become_one_television():
+    """A TV is far wider than a faceplate, so its views land tens of centimetres apart and are still one TV."""
+    wall = uuid.uuid4()
+    box = [200.0, 120.0, 440.0, 300.0]
+    measured = make_outlet_node((1.0, 2.0, 2.4), support_id=wall, sensor_box=box).model_copy(update={
+        "kind": "object", "label": "Television (tv)", "raw_category": "tv",
+        "dimensions": Vec3(x=0.7, y=0.03, z=0.45)})
+    shifted = [210.0, 126.0, 452.0, 306.0]
+    candidate = make_outlet_node((1.25, 2.0, 2.3), support_id=wall, sensor_box=shifted, review_status="candidate").model_copy(
+        update={"kind": "object", "label": "Candidate television (tv)", "raw_category": "tv",
+                "dimensions": Vec3(x=0.0, y=0.0, z=0.0)})
+    [television] = reconcile_outlets([candidate, measured])
+    assert television.label == "Television (tv)" and television.dimensions.x == 0.7
+    assert len(television.attachment.observations) == 1  # one observation per photo
+
+
+def test_two_televisions_a_metre_apart_stay_two():
+    wall = uuid.uuid4()
+    box = [200.0, 120.0, 440.0, 300.0]
+    left, right = (make_outlet_node((x, 2.0, 2.4), support_id=wall, sensor_box=box).model_copy(update={
+        "kind": "object", "label": "Television (tv)", "raw_category": "tv", "dimensions": Vec3(x=0.7, y=0.03, z=0.45)})
+        for x in (1.0, 2.1))
+    assert len(reconcile_outlets([left, right])) == 2
+
+
+def test_one_television_on_a_wall_roomplan_split_into_two_pieces_is_one():
+    box = [200.0, 120.0, 440.0, 300.0]
+    views = [make_outlet_node((x, 2.0, 2.4), support_id=uuid.uuid4(), sensor_box=b).model_copy(update={
+        "kind": "object", "label": "Television (tv)", "raw_category": "tv", "dimensions": Vec3(x=0.7, y=0.03, z=0.45)})
+        for x, b in ((1.0, box), (1.3, [212.0, 126.0, 452.0, 306.0]))]
+    assert len(reconcile_outlets(views)) == 1
+
+
+def test_outlets_on_two_walls_meeting_at_a_corner_stay_apart():
+    box = [288.0, 216.0, 352.0, 264.0]
+    one = make_outlet_node((1.0, 2.0, 0.4), normal=(0.0, -1.0, 0.0), sensor_box=box)
+    other = make_outlet_node((1.02, 2.0, 0.4), normal=(-1.0, 0.0, 0.0), sensor_box=box)
+    assert len(reconcile_outlets([one, other])) == 2
