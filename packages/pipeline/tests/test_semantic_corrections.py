@@ -309,3 +309,35 @@ def test_apply_secondary_semantic_corrections_end_to_end():
     assert wb_nodes[0].parent_id == wall.id
     assert wb_nodes[0].attachment is not None
     assert wb_nodes[0].attachment.support_node_id == wall.id
+
+
+def test_a_chair_tucked_against_a_table_is_not_renamed_a_table():
+    """From most viewpoints a café chair sits inside the table's photo box; that box is about the table."""
+    chair = SceneNode(id=uuid.uuid4(), kind="object", label="Chair", raw_category="chair",
+                      dimensions=Vec3(x=0.45, y=0.5, z=0.85), transform=Mat4.translation(0.0, 2.0, 0.425),
+                      quality="measured", labeled_by="roomplan")
+    cam = camera_at(position=[0.0, 0.0, 0.8], looking_at=[0.0, 2.2, 0.6])
+    table_box = (120.0, 120.0, 520.0, 420.0)
+    table = Detection(frame_id="frame-001", name="table", box=table_box, movable=True, confidence=0.95)
+    assert correct_furniture_label(chair, table, cam) is None
+
+    graph = SceneGraph(scan_id=uuid.uuid4(), nodes=[chair])
+    updated = apply_secondary_semantic_corrections(graph, {"frame-001": [table]}, [cam])
+    assert updated.by_id(chair.id).label == "Chair"
+
+
+def test_a_label_the_detector_also_confirms_outvotes_a_single_contrary_frame():
+    from dataclasses import replace
+
+    table = SceneNode(id=uuid.uuid4(), kind="object", label="Table", raw_category="table",
+                      dimensions=Vec3(x=2.0, y=1.0, z=0.8), transform=Mat4.translation(-1.0, 1.5, 0.4))
+    box = (200.0, 150.0, 440.0, 330.0)
+    frames = [replace(camera_at(position=[-1.0, 0.0, 0.4], looking_at=[-1.0, 1.5, 0.4]), frame_id=f"f{i}")
+              for i in range(3)]
+    detections = {
+        "f0": [Detection(frame_id="f0", name="sofa", box=box, movable=True, confidence=0.9)],
+        "f1": [Detection(frame_id="f1", name="table", box=box, movable=True, confidence=0.9)],
+        "f2": [Detection(frame_id="f2", name="table", box=box, movable=True, confidence=0.9)],
+    }
+    updated = apply_secondary_semantic_corrections(SceneGraph(scan_id=uuid.uuid4(), nodes=[table]), detections, frames)
+    assert updated.by_id(table.id).label == "Table"

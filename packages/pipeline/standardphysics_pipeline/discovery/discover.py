@@ -394,10 +394,13 @@ def _semantic_corrections(
 
 
 def _relevant_detections(detections: dict[str, list[Detection]]) -> dict[str, list[Detection]]:
-    """Only the findings the correction pass can act on, so it never scans the rest."""
-    wanted = {taxonomy.SOFA, taxonomy.TABLE, taxonomy.WHITEBOARD}
+    """The findings the correction pass weighs: the relabel targets, and the furniture that argues against them.
+
+    A chair must be able to vote for being a chair, or every table box it
+    stands inside outvotes it.
+    """
     return {
-        frame_id: [one for one in found if one.class_key in wanted]
+        frame_id: [one for one in found if one.class_key != taxonomy.PERSON and one.category == "object"]
         for frame_id, found in detections.items()
     }
 

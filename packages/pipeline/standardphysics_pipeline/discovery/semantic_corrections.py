@@ -62,7 +62,14 @@ TABLE_NAMES = frozenset({
     "conference_table",
 })
 
+SEAT_NAMES = frozenset({"chair", "stool", "bar_stool", "seat", "high_chair", "armchair", "dining_chair"})
+
 MIN_FURNITURE_CORRECTION_CONFIDENCE = 0.75
+MIN_DETECTION_ON_NODE = 0.6
+"""Share of a detection's box the node's own outline must cover before the detection names that node.
+
+A café chair tucked against a table sits inside the table's box from most
+viewpoints, but covers little of it; the table's box is about the table."""
 MIN_WHITEBOARD_CONFIDENCE = 0.70
 
 SEMANTIC_CORRECTION_NAMESPACE = uuid.UUID("a9e5b3c1-7d2f-4e8a-9b1c-3f5e7a9b0c2d")
@@ -89,15 +96,40 @@ def _project_point(camera: PhotoCamera, point_room: np.ndarray) -> tuple[float, 
     return col, row, depth
 
 
-def _box_contains_point(box_2d: Sequence[float], col: float, row: float, margin_fraction: float = 0.10) -> bool:
-    """Whether (col, row) is within the detection bounding box [left, top, right, bottom]."""
-    left, top, right, bottom = box_2d
-    w = right - left
-    h = bottom - top
-    return (
-        (left - margin_fraction * w) <= col <= (right + margin_fraction * w)
-        and (top - margin_fraction * h) <= row <= (bottom + margin_fraction * h)
-    )
+def _projected_box(node: SceneNode, camera: PhotoCamera) -> tuple[float, float, float, float] | None:
+    """The node's eight corners on the image, clipped to it; None when any corner is behind the camera."""
+    matrix = np.asarray(node.transform.m, dtype=np.float64).reshape(4, 4)
+    half = np.array([node.dimensions.x, node.dimensions.y, node.dimensions.z]) / 2
+    corners = [matrix @ np.array([sx * half[0], sy * half[1], sz * half[2], 1.0])
+               for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]
+    points = [_project_point(camera, corner[:3]) for corner in corners]
+    if any(point is None for point in points):
+        return None
+    cols, rows = [point[0] for point in points], [point[1] for point in points]
+    return (max(min(cols), 0.0), max(min(rows), 0.0), min(max(cols), camera.width), min(max(rows), camera.height))
+
+
+def _covered_share(detection_box: Sequence[float], node_box: Sequence[float]) -> float:
+    """How much of the detection's box the node's outline covers."""
+    left, top = max(detection_box[0], node_box[0]), max(detection_box[1], node_box[1])
+    right, bottom = min(detection_box[2], node_box[2]), min(detection_box[3], node_box[3])
+    area = (detection_box[2] - detection_box[0]) * (detection_box[3] - detection_box[1])
+    return max(0.0, right - left) * max(0.0, bottom - top) / area if area > 0 else 0.0
+
+
+def _names(node: SceneNode, detection: Detection, camera: PhotoCamera) -> bool:
+    """Whether the detection is a picture of this node rather than of something it stands beside."""
+    node_box = _projected_box(node, camera)
+    return node_box is not None and _covered_share(_detection_box(detection), node_box) >= MIN_DETECTION_ON_NODE
+
+
+def _family(name: str) -> str:
+    """Names that mean the same kind of furniture, so a stool agrees with a scanned chair."""
+    key = name.strip().lower().replace(" ", "_")
+    for family, names in (("seat", SEAT_NAMES), ("table", TABLE_NAMES), ("sofa", SOFA_NAMES)):
+        if key in names:
+            return family
+    return key
 
 
 def _detection_name(detection: Detection) -> str:
@@ -144,16 +176,7 @@ def correct_furniture_label(
     if node.label.strip().capitalize() == target_label:
         return None
 
-    # Project node center into camera frame to verify visibility and overlap
-    pos = node.transform.position
-    node_center = np.array([pos.x, pos.y, pos.z], dtype=np.float64)
-    proj = _project_point(camera, node_center)
-    if proj is None:
-        return None
-
-    col, row, _depth = proj
-    box = _detection_box(detection)
-    if not _box_contains_point(box, col, row):
+    if not _names(node, detection, camera):
         return None
 
     # Apply correction: preserve raw_category, dimensions, and transform exactly
@@ -278,6 +301,35 @@ def _best_whiteboard(
     return best_board
 
 
+def _voted_label(node: SceneNode, detections_by_frame: dict[str, list[Detection]],
+                 cameras_by_id: dict[str, PhotoCamera]) -> SceneNode:
+    """The node relabeled only when more frames name it the new thing than name it what it already is.
+
+    Each frame casts at most one vote per label, from detections that are
+    pictures of this node. A chair the detector also calls a chair keeps its label.
+    """
+    own = _family(node.label)
+    votes: dict[str, list[SceneNode]] = {}
+    kept = 0
+    for frame_id, detections in detections_by_frame.items():
+        camera = cameras_by_id.get(frame_id)
+        if camera is None:
+            continue
+        frame_votes = {}
+        for detection in detections:
+            corrected = correct_furniture_label(node, detection, camera)
+            if corrected is not None:
+                frame_votes.setdefault(corrected.label, corrected)
+            elif _family(_detection_name(detection)) == own and _names(node, detection, camera):
+                frame_votes.setdefault(node.label, node)
+        kept += node.label in frame_votes
+        for label, corrected in frame_votes.items():
+            if label != node.label:
+                votes.setdefault(label, []).append(corrected)
+    winner = max(votes.items(), key=lambda item: len(item[1]), default=None)
+    return winner[1][0] if winner and len(winner[1]) > kept else node
+
+
 def apply_secondary_semantic_corrections(
     graph: SceneGraph,
     detections_by_frame: dict[str, list[Detection]],
@@ -293,22 +345,8 @@ def apply_secondary_semantic_corrections(
     updated_nodes: list[SceneNode] = []
     whiteboards: list[SceneNode] = []
 
-    # 1. Check existing nodes for sofa/table corrections
-    for node in graph.nodes:
-        current_node = node
-        # Try to find a photo detection that provides a label correction
-        for frame_id, detections in detections_by_frame.items():
-            camera = cameras_by_id.get(frame_id)
-            if camera is None:
-                continue
-            for det in detections:
-                corrected = correct_furniture_label(current_node, det, camera)
-                if corrected is not None:
-                    current_node = corrected
-                    break
-            if current_node.labeled_by == "discovery":
-                break
-        updated_nodes.append(current_node)
+    # 1. Check existing nodes for sofa/table corrections, by a vote across frames
+    updated_nodes = [_voted_label(node, detections_by_frame, cameras_by_id) for node in graph.nodes]
 
     # 2. Check walls for whiteboard attachments: one board per wall,
     # the best-evidenced view, so many frames of one board are not many boards.
