@@ -42,3 +42,13 @@ def test_the_reward_resolves_a_reply_against_the_rows_own_menu(row, room_data):
     answer = assistant_turn(row)["content"]
     assert data.score(answer, "v").reward == pytest.approx(row["best_reward"], abs=1e-3)
     assert data.score("no idea", "v").reward == 0.0
+
+
+def test_loaded_rows_carry_their_room_for_rl_batching(row, room_data, tmp_path, monkeypatch):
+    import menu_data
+
+    (tmp_path / "sources.json").write_text(json.dumps({"train": "t", "heldout": "h"}))
+    (tmp_path / "train.jsonl").write_text(json.dumps(row) + "\n")
+    monkeypatch.setattr(menu_data, "load_multiroom", lambda _path: room_data)
+    loaded = menu_data.load(tmp_path)
+    assert loaded.rl[0]["window"] == "w" and loaded.sft[0]["messages"][-1]["role"] == "assistant"

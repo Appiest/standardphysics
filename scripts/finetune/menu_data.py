@@ -189,6 +189,8 @@ def load(menu_dir: pathlib.Path, train_data: pathlib.Path | None = None,
     rooms = {"train": load_multiroom(train_data or pathlib.Path(sources["train"])),
              "heldout": load_multiroom(heldout_data or pathlib.Path(sources["heldout"]))}
     train, heldout = _usable(menu_dir / "train.jsonl"), _usable(menu_dir / "heldout.jsonl")
+    for row in [*train, *heldout]:
+        row["window"] = rooms[row["source"]].variants[row["variant"]]["window_id"]
     sft = [{**row, "messages": [*row["messages"], assistant_turn(row)]} for row in train if row["best_reward"] > 0]
     return MenuData(rooms=rooms, rows={row["variant"]: row for row in [*train, *heldout]},
                     sft=sft, rl=[row for row in train if row["best_reward"] > 0], heldout=heldout)
