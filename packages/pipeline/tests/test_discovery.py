@@ -313,6 +313,46 @@ class TestSeeingOneThingTwice:
         assert len(merge_candidates(self._two_views("laptop", "laptop", centre_b=(1.2, 1.0, 1.0)))) == 2
 
 
+class TestNamingWhatWasSeen:
+    BOX = ((0.0, 1.0, 1.0), (0.3, 0.2, 0.2))
+
+    def _views(self, *names_and_frames):
+        box = fit_box(slab(*self.BOX))
+        return [Candidate(Detection(frame, name, (0, 0, 10, 10), True, 0.8), box) for name, frame in names_and_frames]
+
+    def test_three_wordings_of_one_thing_outvote_a_name_said_twice(self):
+        merged = merge_candidates(self._views(
+            ("payment terminal", "f1"), ("payment terminal", "f2"),
+            ("sanitizer", "f3"), ("hand sanitizer", "f4"), ("sanitizer dispenser", "f5"),
+        ))
+        assert len(merged) == 1 and merged[0].name == "sanitizer"
+
+    def test_views_reported_at_zero_confidence_keep_their_name_when_joined(self):
+        box = fit_box(slab(*self.BOX))
+        merged = merge_candidates([Candidate(Detection(frame, "tablet", (0, 0, 10, 10), True, 0.0), box)
+                                   for frame in ("f1", "f2")])
+        assert [object_.name for object_ in merged] == ["tablet"]
+
+    def test_a_view_inside_a_bigger_object_no_photo_drew_apart_is_that_object(self):
+        tablet = fit_box(slab((0.0, 1.0, 1.0), (0.4, 0.3, 0.6)))
+        slice_of_it = fit_box(slab((0.0, 1.0, 1.15), (0.3, 0.2, 0.25)))
+        merged = merge_candidates([
+            Candidate(Detection("f1", "card reader", (0, 0, 10, 10), True, 0.9), tablet),
+            Candidate(Detection("f2", "card reader", (0, 0, 10, 10), True, 0.9), tablet),
+            Candidate(Detection("f3", "hand dryer", (0, 0, 10, 10), False, 0.8), slice_of_it),
+        ])
+        assert [object_.name for object_ in merged] == ["payment terminal"]
+
+    def test_a_small_thing_named_beside_a_big_one_in_one_photo_stays_its_own(self):
+        cabinet = fit_box(slab((0.0, 1.0, 0.5), (0.8, 0.5, 1.0)))
+        box_on_shelf = fit_box(slab((0.0, 1.0, 0.6), (0.3, 0.2, 0.2)))
+        merged = merge_candidates([
+            Candidate(Detection("f1", "cabinet", (0, 0, 10, 10), False, 0.9), cabinet),
+            Candidate(Detection("f1", "cash box", (0, 0, 10, 10), True, 0.9), box_on_shelf),
+        ])
+        assert sorted(object_.name for object_ in merged) == ["cabinet", "cash box"]
+
+
 class TestReadingTheModelsBoxes:
     def _frame(self):
         return EncodedFrame(jpeg=b"", width=1000, height=500)
