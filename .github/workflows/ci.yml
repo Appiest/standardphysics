@@ -44,4 +44,8 @@ jobs:
           tags: standardphysics:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # Accounts, then a real RoomPlan bedroom through the worker, the
+      # assessment and Blender, then the workspace. The bedroom takes seconds;
+      # the limit is for a worker that hangs.
       - run: scripts/smoke_image.sh standardphysics:ci
+        timeout-minutes: 10
