@@ -50,8 +50,9 @@ from .detect import (
     answer_identity,
     detect_objects,
 )
+from .extent import MeshViews, measured_on_the_mesh
 from .merge import Candidate, DiscoveredObject, merge_candidates
-from .people import PersonVolume, without_people
+from .people import PeopleRemoval, PersonVolume, without_people
 from .placement import part_of_a_scanned_piece, seated, seen_through_the_shell, standing_on_the_floor
 from .reconcile import reconcile_outlets
 from .semantic_corrections import apply_secondary_semantic_corrections
@@ -157,15 +158,13 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
         recorded=requests,
     )
     buffers = {camera.frame_id: depth_buffer(camera, points) for camera in cameras}
-    removal = without_people(
-        points, graph,
-        [(camera, detections.get(camera.frame_id, []), buffers[camera.frame_id]) for camera in cameras],
-    )
+    views = [(camera, detections.get(camera.frame_id, []), buffers[camera.frame_id]) for camera in cameras]
+    removal = without_people(points, graph, views)
     worktops = measure_worktops(graph, removal.points)
     graph = _with_replaced(graph, worktops)
     renamed = _semantic_corrections(graph, detections, cameras)
     graph = _with_replaced(graph, renamed)
-    kept = _carved_objects(graph, cameras, detections, removal.points, removal.volumes)
+    kept = _carved_objects(graph, cameras, detections, removal, MeshViews(points, views))
     objects = [object_ for object_, _ in kept]
     carved_nodes = [_node_for(object_, graph, viewpoints) for object_, viewpoints in kept]
     attached_nodes = _attached_targets(inputs, graph, cameras, detections, buffers)
@@ -197,8 +196,8 @@ def _carved_objects(
     graph: SceneGraph,
     cameras: list[PhotoCamera],
     detections: dict[str, list[Detection]],
-    points: np.ndarray,
-    people: Sequence[PersonVolume] = (),
+    removal: PeopleRemoval,
+    mesh: MeshViews,
 ) -> list[tuple[DiscoveredObject, int]]:
     """Every object worth a node, with how many separate places it was seen from.
 
@@ -208,16 +207,23 @@ def _carved_objects(
     frame of the walk, including the frames the detector saw the till in
     because the customer had stepped away. Whatever is still carved where a
     person stood is a leftover piece of them, not an object.
+
+    The small objects kept are then measured on the mesh itself, so their
+    heights do not rest on which rectangles this run's detector drew.
     """
+    points, people = removal.points, removal.volumes
     clear_view = {camera.frame_id: depth_buffer(camera, points) for camera in cameras}
     unclaimed = points[~claimed_by_any(points, graph)]
     candidates = _carve_all(cameras, detections, unclaimed, clear_view)
     found = [(object_, _viewpoints(object_, cameras)) for object_ in merge_candidates(candidates)]
+    worth = [(object_, viewpoints) for object_, viewpoints in found
+             if _worth_keeping(object_, graph, viewpoints, cameras, people)]
+    objects = [object_ for object_, _ in worth]
+    measured = measured_on_the_mesh(objects, mesh.loose_near(objects, graph, people))
     loose = points[~structure_points(points, graph)]
     return [
         (replace(standing, box=seated(standing.box, graph, loose)), viewpoints)
-        for object_, viewpoints in found
-        if _worth_keeping(object_, graph, viewpoints, cameras, people)
+        for object_, (_, viewpoints) in zip(measured, worth, strict=True)
         for standing in [standing_on_the_floor(object_, graph, loose)]
         if standing is not None
     ]
