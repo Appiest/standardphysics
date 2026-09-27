@@ -83,7 +83,7 @@ from .sharing import install_share_routes
 from .simulations import queue_simulation, simulation_status
 from .splats import install_splat_routes
 from .stages import Stages, preview_ledger
-from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId
+from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId, ScanFull, ScanQuota
 from .team import adopt_allowlist
 from .textures import install_texture_routes, maybe_queue_texture, validate_manifest
 from .usdz_validation import InvalidUsdz, validate_room_usdz
@@ -135,7 +135,8 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
         stages = Stages(ledger_factory=preview_ledger) if settings.preview_unverified_rules else Stages()
     database = Database(settings.database_path)
     adopt_allowlist(database, settings.team_emails)
-    store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes)
+    quota = ScanQuota(settings.max_scan_artifacts, settings.max_scan_bytes)
+    store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes, quota)
     worker = Worker(database, store, stages, settings)
     worker.notifier = notifier_from(settings)
 
@@ -291,10 +292,31 @@ def _accept_staged(database, store, scan_id, artifact_id, kind, claimed, staged)
             if existing.sha256 != staged.sha256:
                 raise ApiProblem(409, "artifact already stored with different content")
             return 200, existing
+        try:
+            _admit(connection, store, scan_id, staged.bytes)
+        except ApiProblem:
+            store.discard(staged)
+            raise
         artifact = Artifact(id=artifact_id, kind=kind, sha256=staged.sha256, bytes=staged.bytes)
         repo.insert_artifact(connection, scan_id, artifact)
         store.commit(staged, store.artifact_path(scan_id, artifact_id))
         return 201, artifact
+
+
+def _admit(connection, store: ArtifactStore, scan_id: uuid.UUID, incoming_bytes: int) -> None:
+    """Refuse an artifact the scan has no room left for, with a 413 that says which limit it hit."""
+    try:
+        store.quota.admit(*repo.artifact_usage(connection, scan_id), incoming_bytes)
+    except ScanFull as full:
+        raise ApiProblem(413, str(full)) from None
+
+
+def _refuse_a_full_scan_early(database: Database, store: ArtifactStore, scan_id: uuid.UUID, artifact_id: str) -> None:
+    """Say no before reading the body when a new artifact could not fit anyway. A repeat upload still gets its 200."""
+    with database.connect() as connection:
+        _scan_or_404(connection, scan_id)
+        if repo.find_artifact(connection, scan_id, artifact_id) is None:
+            _admit(connection, store, scan_id, 0)
 
 
 def _finalize(database: Database, store: ArtifactStore, scan_id: uuid.UUID) -> tuple[Scan, bool]:
@@ -391,8 +413,7 @@ def _install_upload_routes(
         x_checksum_sha256: Annotated[str, Header()],
         x_artifact_kind: Annotated[ArtifactKind, Header()],
     ):
-        with database.connect() as connection:
-            _scan_or_404(connection, scan_id)
+        _refuse_a_full_scan_early(database, store, scan_id, artifact_id)
         staged = await _stage_upload(store, scan_id, artifact_id, request)
         _validate_staged(store, staged, x_artifact_kind)
         status, artifact = _accept_staged(

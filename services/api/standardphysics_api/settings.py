@@ -14,6 +14,8 @@ from dataclasses import dataclass
 
 from standardphysics_agents.tracing import ENTITY_ENV, PROJECT_ENV
 
+from .store import ScanQuota
+
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 log = logging.getLogger(__name__)
 DEFAULT_DATA_DIR = pathlib.Path(__file__).resolve().parents[1] / "var"
@@ -69,6 +71,10 @@ def _bounded_integer(name: str, default: int, low: int, high: int) -> int:
 class Settings:
     data_dir: pathlib.Path = DEFAULT_DATA_DIR
     max_artifact_bytes: int = 1024 * 1024 * 1024
+    max_scan_artifacts: int = ScanQuota.max_artifacts
+    """How many artifacts one scan may hold, from SP_MAX_SCAN_ARTIFACTS. See `store.ScanQuota`."""
+    max_scan_bytes: int = ScanQuota.max_bytes
+    """How many bytes one scan's artifacts may add up to, from SP_MAX_SCAN_BYTES."""
     preview_unverified_rules: bool = False
     """Development only. Runs every rule as if a person had verified it, so the
     viewer has findings to draw before the rule pack is reviewed."""
@@ -162,6 +168,8 @@ class Settings:
             apns_team_id=os.environ.get("SP_APNS_TEAM_ID") or None,
             apns_topic=os.environ.get("SP_APNS_TOPIC") or "com.standardphysics.capture",
             apple_audiences=_email_set("SP_APPLE_AUDIENCES") or frozenset({"com.standardphysics.capture"}),
+            max_scan_artifacts=_bounded_integer("SP_MAX_SCAN_ARTIFACTS", ScanQuota.max_artifacts, 1, 1_000_000),
+            max_scan_bytes=_bounded_integer("SP_MAX_SCAN_BYTES", ScanQuota.max_bytes, 1, 2**50),
             evidence_settle_seconds=_bounded_integer(
                 "SP_EVIDENCE_SETTLE_SECONDS", 30, 0, 86_400
             ),

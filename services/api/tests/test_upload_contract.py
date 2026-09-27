@@ -61,6 +61,26 @@ def test_an_artifact_over_the_cap_is_refused(client):
     assert put_artifact(client, scan_id, "walkthrough", b"0" * 5_000_001, "walkthrough_mp4").status_code == 413
 
 
+def test_a_scan_holds_only_so_many_artifacts(make_client):
+    with make_client(max_scan_artifacts=2) as test_client:
+        scan_id = create_scan(test_client)
+        codes = [put_artifact(test_client, scan_id, f"clip-{n}", b"clip %d" % n, "walkthrough_mp4").status_code
+                 for n in range(3)]
+        assert codes == [201, 201, 413]
+        assert put_artifact(test_client, scan_id, "clip-0", b"clip 0", "walkthrough_mp4").status_code == 200
+        assert len(test_client.get(f"/api/scans/{scan_id}").json()["artifacts"]) == 2
+
+
+def test_a_scan_holds_only_so_many_bytes(make_client):
+    with make_client(max_scan_bytes=100) as test_client:
+        scan_id = create_scan(test_client)
+        assert put_artifact(test_client, scan_id, "clip-0", b"0" * 60, "walkthrough_mp4").status_code == 201
+        refused = put_artifact(test_client, scan_id, "clip-1", b"1" * 60, "walkthrough_mp4")
+        assert refused.status_code == 413
+        assert "scan" in refused.json()["error"]
+        assert len(test_client.get(f"/api/scans/{scan_id}").json()["artifacts"]) == 1
+
+
 def test_uploading_to_an_unknown_scan_is_not_found(client):
     assert put_artifact(client, unknown_scan(), "room-json", b"{}", "room_json").status_code == 404
 

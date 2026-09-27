@@ -170,6 +170,15 @@ def find_artifact(connection: sqlite3.Connection, scan_id: uuid.UUID, artifact_i
     return Artifact(id=row["id"], kind=row["kind"], sha256=row["sha256"], bytes=row["bytes"]) if row else None
 
 
+def artifact_usage(connection: sqlite3.Connection, scan_id: uuid.UUID) -> tuple[int, int]:
+    """How many artifacts a scan holds, and their bytes together."""
+    row = connection.execute(
+        "SELECT COUNT(*) AS held, COALESCE(SUM(bytes), 0) AS held_bytes FROM artifacts WHERE scan_id = ?",
+        (str(scan_id),),
+    ).fetchone()
+    return row["held"], row["held_bytes"]
+
+
 def artifact_of_kind(connection: sqlite3.Connection, scan_id: uuid.UUID, kind: str) -> Artifact | None:
     row = connection.execute(
         "SELECT id, kind, sha256, bytes FROM artifacts WHERE scan_id = ? AND kind = ? ORDER BY created_at DESC LIMIT 1",
