@@ -5,7 +5,7 @@ parse, edits that move a piece the phantom filter holds still, edits that name
 the wrong furniture, a layout that breaks a hard constraint, one an ADA layout
 directive for the room's space type refuses, or one the gate rejects. An accepted partial fix earns at most 0.55; a fix clearing every
 fixable finding earns at least 0.65. Recovery helps rank partial fixes, while
-usability and movement break ties within each tier. This makes a complete fix
+usability, the owner's wishes (`WISH_WEIGHT`) and movement break ties within each tier. This makes a complete fix
 the training objective without paying for rejected layouts. A fix that needs
 construction (a wall shift or a relocated fixture) pays a little less per inch moved, so a furniture-only
 fix of the same room always ranks above it.
@@ -34,7 +34,11 @@ from .usability import usability
 ACCEPTED_FLOOR = 0.05
 RECOVERY_WEIGHT = 0.30
 ALL_CLEAR_FLOOR = 0.80
-USABILITY_WEIGHT = 0.20
+USABILITY_WEIGHT = 0.10
+WISH_WEIGHT = 0.10
+"""Share of the reward for keeping the owner's layout: of the wishes it showed (seats at tables, pieces
+against walls, the counter's view) that the room still kept, the share the fix keeps. The model never sees
+the owner's layout, so earning this means reading the owner's choices from where things stand."""
 MOVED_PINNED = "moved_unconfirmed_object"
 DISRUPTION_PENALTY_PER_METER = 0.03
 MAX_DISRUPTION_PENALTY = 0.15
@@ -60,6 +64,8 @@ class Verdict:
     """U, for gate-accepted layouts."""
     construction_inches: float = 0.0
     """Total wall shift the edits ask for; zero for a furniture-only answer."""
+    wishes_kept: float | None = None
+    """The share of the owner's wishes the fix keeps, for gate-accepted layouts."""
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -72,12 +78,12 @@ def disruption_meters(moves) -> float:
 
 
 def shaped_reward(recovered: float, all_clear: bool, disruption: float, usable: float = 1.0,
-                  construction: float = 0.0) -> float:
+                  construction: float = 0.0, wishes: float = 1.0) -> float:
     penalty = min(MAX_DISRUPTION_PENALTY, DISRUPTION_PENALTY_PER_METER * disruption)
     penalty += min(MAX_CONSTRUCTION_PENALTY, CONSTRUCTION_PENALTY_PER_INCH * construction)
-    usability_credit = USABILITY_WEIGHT * max(0.0, min(1.0, usable))
+    credit = USABILITY_WEIGHT * max(0.0, min(1.0, usable)) + WISH_WEIGHT * max(0.0, min(1.0, wishes))
     earned = (ALL_CLEAR_FLOOR if all_clear else ACCEPTED_FLOOR + RECOVERY_WEIGHT * max(0.0, min(1.0, recovered)))
-    earned += usability_credit
+    earned += credit
     return round(max(MIN_ACCEPTED_REWARD, min(1.0, earned - penalty)), 6)
 
 
@@ -178,8 +184,10 @@ def _gated(room: SceneGraph, candidate: SceneGraph, checker: TrainingChecker, di
     owner = checker.owner_layout or room
     quality = layout_quality(room, candidate, owner, checker.measure)
     usable = usability(room, candidate, owner, checker.scenario)
+    wishes = round(checker.owner_wishes.kept_share(room, candidate, checker.measure), 4)
     return Verdict(
-        shaped_reward(recovered, left == 0, disruption, usable, construction), parsed=True, hard_constraints_pass=True,
-        gate_accepts=True, shortfall_recovered=recovered, fixable_left=left, disruption_meters=disruption,
-        quality=quality.as_dict(), usability=usable, construction_inches=construction,
+        shaped_reward(recovered, left == 0, disruption, usable, construction, wishes), parsed=True,
+        hard_constraints_pass=True, gate_accepts=True, shortfall_recovered=recovered, fixable_left=left,
+        disruption_meters=disruption, quality=quality.as_dict(), usability=usable, construction_inches=construction,
+        wishes_kept=wishes,
     )

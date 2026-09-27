@@ -5,8 +5,10 @@ from pathlib import Path
 
 import pytest
 from standardphysics_agents.fix import apply_moves
+from standardphysics_agents.training import TrainingChecker, score_completion
+from standardphysics_agents.training.reward import shaped_reward
 from standardphysics_agents.training.wishes import broken, infer_wishes, kept, kept_share, stays_near, stays_put
-from standardphysics_contracts import NodeMove, SceneGraph, Vec3
+from standardphysics_contracts import NodeMove, Scenario, SceneGraph, Vec3
 from standardphysics_pipeline import PipelineMeasurements
 
 
@@ -74,3 +76,18 @@ def test_stated_wishes_are_hard_and_hold_the_owner_to_their_words(room, measure)
                 + (chair.transform.position.y - table.transform.position.y) ** 2) ** 0.5
     assert kept(stays_near(chair, table, distance + 0.1), room, room, measure)
     assert not kept(stays_near(chair, table, distance - 0.1), room, room, measure)
+
+
+def test_the_reward_pays_for_keeping_the_owners_layout(room, measure, pack, ledger):
+    data = json.loads((Path(__file__).parent / "fixtures/placement-room.json").read_text())
+    checker = TrainingChecker(Scenario.model_validate(data["scenario"]), rules=pack, ledger=ledger, measure=measure,
+                              owner_layout=room)
+    assert checker.owner_wishes.wishes == infer_wishes(room, measure)
+    assert shaped_reward(0.5, False, 0.0, 1.0, wishes=1.0) > shaped_reward(0.5, False, 0.0, 1.0, wishes=0.0)
+    assert shaped_reward(1.0, True, 0.0, 1.0, wishes=1.0) == 1.0
+    seat = _wish(infer_wishes(room, measure), "with_table").subjects[0]
+    assert checker.owner_wishes.kept_share(room, _slide(room, seat, 0.05), measure) == 1.0
+    assert checker.owner_wishes.kept_share(room, _slide(room, seat, 1.0), measure) < 1.0
+    verdict = score_completion(json.dumps({"moves": [{"node_id": str(seat), "dx": 1.0, "dy": 0.0,
+                                                      "rotation_degrees": 0}]}), room, checker)
+    assert verdict.wishes_kept is None or verdict.wishes_kept < 1.0

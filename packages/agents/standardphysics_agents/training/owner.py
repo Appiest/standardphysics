@@ -32,6 +32,14 @@ INCH = 0.0254
 class WishBook:
     """Wishes, each with the layout it refers to."""
 
+    @classmethod
+    def read_from(cls, layout: SceneGraph, measure: MeasurementProvider) -> WishBook:
+        """The wishes a layout shows its owner chose, each referring to that layout."""
+        book = cls()
+        for wish in infer_wishes(layout, measure):
+            book.add(wish, layout)
+        return book
+
     entries: list[tuple[Wish, SceneGraph]] = field(default_factory=list)
 
     def add(self, wish: Wish, reference: SceneGraph) -> None:
@@ -61,6 +69,13 @@ class WishBook:
 
         return refuse
 
+    def kept_share(self, start: SceneGraph, end: SceneGraph, measure: MeasurementProvider) -> float:
+        """Of the wishes `start` keeps, the share `end` still keeps; 1.0 when `start` keeps none."""
+        held = [(wish, reference) for wish, reference in self.entries if kept(wish, reference, start, measure)]
+        if not held:
+            return 1.0
+        return sum(kept(wish, reference, end, measure) for wish, reference in held) / len(held)
+
     def newly_broken(self, before: SceneGraph, after: SceneGraph, measure: MeasurementProvider) -> list[Wish]:
         """Wishes `before` kept and `after` breaks."""
         return [wish for wish, reference in self.entries
@@ -89,8 +104,7 @@ class SimulatedOwner:
 
     def __post_init__(self) -> None:
         if not self.hidden.entries:
-            for wish in infer_wishes(self.owner_layout, self.measure):
-                self.hidden.add(wish, self.owner_layout)
+            self.hidden = WishBook.read_from(self.owner_layout, self.measure)
 
     def review(self, before: SceneGraph, after: SceneGraph, explanation: str = "") -> Review:
         """Yes, or no naming the first wish the change newly breaks, which becomes a stated wish."""
@@ -102,10 +116,7 @@ class SimulatedOwner:
 
     def kept_share(self, start: SceneGraph, end: SceneGraph) -> float:
         """Of the hidden wishes the starting room kept, the share the final room still keeps."""
-        held = [wish for wish, reference in self.hidden.entries if kept(wish, reference, start, self.measure)]
-        if not held:
-            return 1.0
-        return sum(kept(wish, self.owner_layout, end, self.measure) for wish in held) / len(held)
+        return self.hidden.kept_share(start, end, self.measure)
 
 
 ANSWER_HELP = (

@@ -239,7 +239,7 @@ def test_usability_is_paid_and_quality_is_only_logged(graph, scenario, pipeline,
     assert target is not None and target.verdict.quality is not None and target.verdict.usability is not None
     verdict = target.verdict
     assert verdict.reward == shaped_reward(verdict.shortfall_recovered, verdict.fixable_left == 0,
-                                           verdict.disruption_meters, verdict.usability)
+                                           verdict.disruption_meters, verdict.usability, 0.0, verdict.wishes_kept)
     assert layout_quality(variant, variant, graph, pipeline).q == pytest.approx(1.0)
     assert score_completion("nonsense", variant, checker).usability is None
 

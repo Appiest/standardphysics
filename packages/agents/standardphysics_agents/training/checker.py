@@ -10,6 +10,7 @@ and nowhere in the production path.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import cached_property
 from uuid import UUID
 
 from standardphysics_contracts import Finding, MeasurementProvider, Scenario, SceneGraph
@@ -51,6 +52,13 @@ class TrainingChecker:
     """The room as its owner has it, before any scramble, for judging how a layout looks."""
     space_typology: SpaceTypology | None = None
     """What kind of space the room is, which picks its ADA layout directives; None applies none."""
+
+    @cached_property
+    def owner_wishes(self):
+        """The wishes the owner's own layout shows, which a fix is paid for keeping; empty with no owner layout."""
+        from .owner import WishBook
+
+        return WishBook.read_from(self.owner_layout, self.measure) if self.owner_layout else WishBook()
 
     def assess(self, graph: SceneGraph) -> Pass:
         return assess(
