@@ -16,6 +16,30 @@
 # `git rev-parse HEAD`, and a rollback is `git checkout <sha>` and
 # `GIT_SHA=<sha> docker compose up -d`, which finds that tag already built and
 # starts it without a rebuild. Without GIT_SHA it falls back to :latest.
+#
+# Memory and CPU limits are sized for a 2 vCPU, 4 GB Droplet, whose kernel
+# keeps a little of the 4 GB for itself, with the 2 GB of swap setup.sh adds
+# behind it:
+#
+#   api   3.2 GB, plus 1 GB of swap. A photo bake of a whole floor peaks near
+#         3 GB, and it runs inside this container on top of the server, so
+#         the limit sits just above the bake. The swap allowance lets a bake
+#         that runs a little over slow down instead of being killed.
+#   web   512 MB, plus 256 MB of swap. The workspace renders pages and holds
+#         no scans, so this is a ceiling for a leak, not a working size.
+#   rest  Caddy, Docker itself, sshd and the kernel have no limit and take
+#         what is left. With both containers at their ceilings that is only
+#         a couple of hundred MB, and swap covers the difference. Both at
+#         once is unlikely, because only the API does heavy work.
+#
+# The limits are there so a runaway process dies inside its own container.
+# Without them the kernel's OOM killer picks from the whole box, and Docker,
+# sshd and Caddy are all on its list.
+#
+# For CPU, the bake runs one thread per core. 1.75 cores keeps a quarter of a
+# core free for Caddy and SSH while a bake has the box, and costs the bake up
+# to an eighth of its speed. The workspace gets one core, so a burst of page
+# renders cannot take the bake's second one.
 
 services:
   caddy:
@@ -50,6 +74,9 @@ services:
     image: standardphysics:${GIT_SHA:-latest}
     command: ["api"]
     restart: unless-stopped
+    mem_limit: 3200m
+    memswap_limit: 4200m
+    cpus: 1.75
     env_file: .env
     environment:
       SP_API_PORT: "8787"
@@ -90,6 +117,9 @@ services:
     image: standardphysics:${GIT_SHA:-latest}
     command: ["web"]
     restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 768m
+    cpus: 1.0
     environment:
       PORT: "3000"
       SP_API_ORIGIN: http://api:8787
