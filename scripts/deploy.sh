@@ -7,6 +7,15 @@
 # doctor.sh, streaming everything back. Set SP_DEPLOY_HOST in your shell if the
 # box moves.
 #
+# The image is tagged with the commit it was built from, and each deploy adds
+# a line to /var/log/standardphysics-deploys.log on the box, so the commit to
+# roll back to is written down. docs/DEPLOY.md has the rollback. A box left on
+# an older commit by a rollback goes back to master here before it pulls.
+#
+# It refuses to deploy while the API has jobs queued or running. The rebuild
+# restarts the API, which throws away whatever a bake has done so far, so it
+# waits for the queue to empty unless SP_DEPLOY_FORCE=1 says to go anyway.
+#
 # It refuses to deploy behind your own work. The Droplet pulls master from
 # GitHub, so a commit still sitting on this laptop is not going anywhere, and
 # a deploy that silently ships the previous commit is worse than one that
@@ -16,6 +25,16 @@ set -euo pipefail
 HOST="${SP_DEPLOY_HOST:-root@api.standardphysics.app}"
 DIR="${SP_DEPLOY_DIR:-/root/standardphysics}"
 LOCK="${SP_DEPLOY_LOCK:-/var/lock/standardphysics-deploy}"
+HISTORY="${SP_DEPLOY_HISTORY:-/var/log/standardphysics-deploys.log}"
+FORCE="${SP_DEPLOY_FORCE:-}"
+
+# Read the way the Droplet's own tools read the queue: the API container's
+# Python opening the database it holds, read-only, so this cannot take a lock
+# a job needs. The image has no sqlite3 command.
+IN_FLIGHT_QUERY="import sqlite3
+database = sqlite3.connect('file:/data/standardphysics.sqlite3?mode=ro', uri=True)
+query = \"SELECT COUNT(*) FROM jobs WHERE state IN ('queued', 'running')\"
+print(database.execute(query).fetchone()[0])"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 say() { printf '\n== %s\n' "$1"; }
@@ -72,10 +91,20 @@ if ! flock -n 9; then
   echo 'Another deploy is already running on this box. Wait for it to finish.' >&2
   exit 75
 fi
+cd '$DIR/deploy/digitalocean'
+in_flight=\$(docker compose exec -T api /opt/venv/bin/python -c $(printf %q "$IN_FLIGHT_QUERY") 2>/dev/null || echo 0)
+if [ \"\$in_flight\" -gt 0 ] && [ '$FORCE' != 1 ]; then
+  echo \"The API has \$in_flight job(s) queued or running, and a deploy restarts it.\" >&2
+  echo 'Wait for them to finish, or run with SP_DEPLOY_FORCE=1 to interrupt them.' >&2
+  exit 75
+fi
 cd '$DIR'
+git checkout --quiet master
 git pull --ff-only
+export GIT_SHA=\$(git rev-parse HEAD)
 cd deploy/digitalocean
 docker compose up -d --build
+echo \"\$(date -u +%Y-%m-%dT%H:%M:%SZ) \$GIT_SHA\" >> '$HISTORY'
 ./doctor.sh"
 }
 
