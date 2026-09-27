@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { IDENTITY_PLACEMENT, roomMeshPose } from "@/lib/room-groups";
+import { isValidElement, type ReactElement, type ReactNode } from "react";
+import { IDENTITY_PLACEMENT, roomMeshPose, type RoomGroup } from "@/lib/room-groups";
+import { CombinedRooms } from "./CombinedRooms";
+import { PaintedScan } from "./PaintedScan";
 
 const here = join(process.cwd(), "src/components/workspace");
 
@@ -20,11 +23,26 @@ describe("the viewer forwards what it is given", () => {
     expect(call, "Viewer should render ShopSurfaces").not.toBeNull();
     expect(call![1]).toContain("{...viewerProps}");
   });
+});
 
-  it("draws one captured mesh for every walk that has been photographed", () => {
-    const source = readFileSync(join(here, "CombinedRooms.tsx"), "utf8");
-    expect(source).toContain("room.scan_glb_url");
-    expect(source).toContain("PaintedScan");
+type PaintedScanElement = ReactElement<{ url: string }>;
+
+function paintedScansIn(node: ReactNode): PaintedScanElement[] {
+  if (Array.isArray(node)) return node.flatMap(paintedScansIn);
+  if (!isValidElement<{ children?: ReactNode }>(node)) return [];
+  if (node.type === PaintedScan) return [node as PaintedScanElement];
+  return paintedScansIn(node.props.children);
+}
+
+const walk = (name: string, scanGlbUrl: string | null): RoomGroup => ({ name, node_ids: [], scan_glb_url: scanGlbUrl });
+
+describe("the combined floor", () => {
+  it("draws one captured mesh for every walk that has been photographed, and none for the rest", () => {
+    const rooms = [walk("stacks", "/api/stacks.glb"), walk("lobby", null), walk("reading room", "/api/reading.glb")];
+
+    const drawn = paintedScansIn(CombinedRooms({ rooms, placements: {} }));
+
+    expect(drawn.map((scan) => scan.props.url)).toEqual(["/api/stacks.glb", "/api/reading.glb"]);
   });
 });
 
