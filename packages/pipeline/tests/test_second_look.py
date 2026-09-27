@@ -123,3 +123,9 @@ def test_leaning_votes_let_a_second_look_refine_the_name_but_not_the_kind(photos
     [fridge] = second_look([dispenser(LEANING_VOTES)], photos, transport=Model(name="paper towel dispenser"))
     [napkins] = second_look([dispenser(LEANING_DISPENSER)], photos, transport=Model(name="napkin dispenser"))
     assert fridge.name == "refrigerator" and napkins.name == "napkin dispenser"
+
+
+def test_an_unclear_answer_keeps_the_photos_name_and_the_model_is_asked_without_sampling(photos):
+    model = Model(name="unclear")
+    [kept] = second_look([dispenser(SPLIT_VOTES)], photos, transport=model)
+    assert kept.name == "chair" and model.bodies[0]["temperature"] == 0

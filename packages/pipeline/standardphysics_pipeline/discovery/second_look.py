@@ -13,13 +13,15 @@ largest, go to the vision model together with one question, what is this.
 The answer replaces the name. Every other object keeps the name its votes gave
 it, and a second look that fails keeps it too.
 
-Three things this learned on Share-Tea. The earlier guesses are not shown: given
+Four things this learned on Share-Tea. The earlier guesses are not shown: given
 "payment terminal" among them, the model picked it for a napkin dispenser it
 named correctly on its own. The close-ups are the sharpest of the largest
 views, because a walk blurs many frames and a blurred one reads as anything.
 And a second look never makes something a counter or a table: a blurred crop
 of a kitchen pillar came back as a counter 81 inches high, and a work surface
-needs the mesh to show one, not a name.
+needs the mesh to show one, not a name. The model is asked at temperature zero
+and may answer 'unclear': sampled freely, the same fridge-top crops came back
+as a paper towel dispenser once and a napkin dispenser the next time.
 """
 
 from __future__ import annotations
@@ -65,7 +67,9 @@ MIN_CLOSE_UP_EDGE = 40.0
 CLOSE_UP_EDGE = 512
 LOOK_WORKERS = 8
 MAX_ANSWER_TOKENS = 200
-PROMPT_VERSION = "second-look-2"
+PROMPT_VERSION = "second-look-3"
+UNCLEAR = "unclear"
+"""The model's answer when the close-ups show nothing it can name; the photos' name is kept."""
 MODEL_ENV = "DISCOVERY_SECOND_LOOK_MODEL"
 """A stronger vision model for the few close-ups a scan needs; the detector's model when unset."""
 
@@ -73,7 +77,8 @@ INSTRUCTION = (
     "You are shown close-up photos of one object in a shop, restaurant or office, cut from a phone walk-through. "
     "Every photo shows the same object in its middle. Say what it is, as the short lowercase name a shop owner "
     "would use, for example 'hand sanitizer dispenser', 'card reader', 'napkin dispenser', 'bar stool', "
-    "'menu sign'. Set movable to true when one person could pick it up and set it down elsewhere."
+    "'menu sign'. If the photos do not clearly show one object you can name, answer 'unclear'. "
+    "Set movable to true when one person could pick it up and set it down elsewhere."
 )
 
 ANSWER_SCHEMA: dict[str, Any] = {
@@ -136,7 +141,7 @@ def _looked_at(
 
 def _accepted(object_: DiscoveredObject, name: str) -> bool:
     """Whether the answer may replace the photos' name: never a new work surface, and within its kind when the votes lean."""
-    if not name or (is_work_surface(name) and not is_work_surface(object_.name)):
+    if not name or name == UNCLEAR or (is_work_surface(name) and not is_work_surface(object_.name)):
         return False
     if name_support(object_.weights) < OPEN:
         return True
@@ -255,6 +260,7 @@ def _request_body(close_ups: list[bytes]) -> dict[str, Any]:
     body: dict[str, Any] = {
         "model": _model(),
         "max_tokens": MAX_ANSWER_TOKENS,
+        "temperature": 0,
         "messages": [
             {"role": "system", "content": INSTRUCTION},
             {"role": "user", "content": [{"type": "text", "text": "What is this object?"}, *images]},
