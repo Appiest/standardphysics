@@ -9,6 +9,7 @@ rather than assumed.
 
 from __future__ import annotations
 
+import builtins
 import sys
 
 import pytest
@@ -89,6 +90,45 @@ class TestWithoutAnAccount:
         monkeypatch.setitem(sys.modules, "weave", None)
         monkeypatch.setenv("WANDB_PROJECT", "standardphysics")
         assert tracing.init() is False
+
+    def test_a_missing_weave_install_is_announced_when_a_project_is_set(self, monkeypatch, caplog):
+        """Production sets WANDB_PROJECT expecting traces. An image built
+        without the observability extra must say so, not go quiet."""
+        monkeypatch.setitem(sys.modules, "weave", None)
+        monkeypatch.setenv("WANDB_PROJECT", "standardphysics")
+        with caplog.at_level("WARNING", logger=tracing.__name__):
+            assert tracing.init() is False
+        assert "observability" in caplog.text
+        assert "standardphysics" in caplog.text
+
+    def test_a_weave_that_breaks_on_import_is_announced(self, monkeypatch, caplog):
+        real_import = builtins.__import__
+
+        def import_with_broken_weave(name, *args, **kwargs):
+            if name == "weave":
+                raise RuntimeError("incompatible protobuf")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.delitem(sys.modules, "weave", raising=False)
+        monkeypatch.setattr(builtins, "__import__", import_with_broken_weave)
+        monkeypatch.setenv("WANDB_PROJECT", "standardphysics")
+        with caplog.at_level("WARNING", logger=tracing.__name__):
+            assert tracing.init() is False
+        assert "incompatible protobuf" in caplog.text
+
+    def test_a_key_without_a_project_is_announced(self, monkeypatch, caplog):
+        monkeypatch.delenv("WANDB_PROJECT", raising=False)
+        monkeypatch.setenv("WANDB_API_KEY", "not-a-real-key")
+        with caplog.at_level("WARNING", logger=tracing.__name__):
+            assert tracing.init() is False
+        assert "WANDB_PROJECT" in caplog.text
+
+    def test_no_key_and_no_project_stays_quiet(self, monkeypatch, caplog):
+        monkeypatch.delenv("WANDB_PROJECT", raising=False)
+        monkeypatch.delenv("WANDB_API_KEY", raising=False)
+        with caplog.at_level("WARNING", logger=tracing.__name__):
+            assert tracing.init() is False
+        assert caplog.text == ""
 
 
 class TestWithAnAccount:

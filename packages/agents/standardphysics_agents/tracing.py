@@ -19,6 +19,7 @@ Fn = TypeVar("Fn", bound=Callable[..., Any])
 
 PROJECT_ENV = "WANDB_PROJECT"
 ENTITY_ENV = "WANDB_ENTITY"
+API_KEY_ENV = "WANDB_API_KEY"
 
 log = logging.getLogger(__name__)
 
@@ -38,8 +39,9 @@ class _Tracing:
     def start(self, project: str | None, entity: str | None) -> bool:
         target = _project_name(project, entity)
         if target is None:
+            _warn_if_key_has_no_project()
             return False
-        module = _import_weave()
+        module = _import_weave(target)
         if module is None:
             return False
         if not _open_project(module, target):
@@ -93,12 +95,29 @@ def suspend_tracing():
         _THREAD_STATE.suspended = previous
 
 
-def _import_weave() -> Any:
+def _import_weave(target: str) -> Any:
+    """A project was asked for, so a missing or broken SDK is a deployment
+    mistake worth a warning: without one, production runs untraced and nothing
+    says why. It still leaves the server running.
+    """
     try:
         import weave
     except ImportError:
+        log.warning(
+            "weave tracing is off for %s: the weave SDK is not installed. "
+            "Install standardphysics-agents[observability].",
+            target,
+        )
+        return None
+    except Exception as error:
+        log.warning("weave tracing is off for %s: importing weave failed: %s", target, error)
         return None
     return weave
+
+
+def _warn_if_key_has_no_project() -> None:
+    if os.environ.get(API_KEY_ENV):
+        log.warning("weave tracing is off: %s is set but %s is not.", API_KEY_ENV, PROJECT_ENV)
 
 
 def _open_project(module: Any, target: str) -> bool:
