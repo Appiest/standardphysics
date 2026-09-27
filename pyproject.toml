@@ -24,3 +24,28 @@ known-first-party = ["standardphysics_api", "conftest"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
+
+[tool.mypy]
+# CI checks the contracts package and the API service. The pipeline and agents
+# packages are imported for their types but not yet held to the checker, so
+# errors inside them stay silent until they get their own pass.
+files = ["packages/contracts/standardphysics_contracts", "services/api/standardphysics_api"]
+mypy_path = "packages/contracts:packages/pipeline:packages/agents:packages/fixtures:services/api"
+plugins = ["pydantic.mypy"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = ["standardphysics_pipeline.*", "standardphysics_agents.*", "standardphysics_fixtures.*"]
+follow_imports = "silent"
+
+[[tool.mypy.overrides]]
+# scipy ships no inline types, and scipy-stubs would be one more pin to keep in step.
+module = ["scipy.*"]
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = false
+warn_required_dynamic_aliases = true
