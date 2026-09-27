@@ -8,6 +8,7 @@ illegally let code own the geometry. So the model here chooses, and code places.
 
 1. Generate. For each fixable problem, the solver's own guesses: the slide
    ladder of `fix/strategies.py` and the placement beam of `fix/placement.py`,
+   slides that set a too-high item down on a lower surface (`fix/surfaces.py`),
    plus short slides of a built-in fixture the problem names. Each is worded as
    a relation ("slide Chair [3f2a] 14 in away from the Cafe table, for P1").
    After Holodeck (Yang et al., CVPR 2024, arXiv:2312.09067), where the language
@@ -45,6 +46,8 @@ from standardphysics_contracts import Finding, NodeMove, SceneGraph, SceneNode, 
 from ..evaluation.gate import accepts
 from ..fix import candidates, describe, pinch_from, snap_moves
 from ..fix.placement import placements
+from ..fix.strategies import Candidate
+from ..fix.surfaces import lower_surface_moves
 from ..redesign import FurnitureMove
 from .checker import TrainingChecker
 from .construction import MAX_FIXTURE_MOVE_INCHES, FixtureMove, build, construction_inches, fixture_ids
@@ -156,16 +159,31 @@ def _move_words(graph: SceneGraph, move: NodeMove, finding: Finding) -> str:
     return f"{words} and turn it {_turn_words(degrees)}" if turned else words
 
 
-def _furniture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:
+def _pinch_candidates(graph: SceneGraph, finding: Finding, checker: TrainingChecker) -> list[Candidate]:
     pinch = pinch_from(finding, graph)
     if pinch is None or not pinch.fixable:
         return []
-    found = [*candidates(pinch, GUESSES_PER_PROBLEM),
-             *placements(graph, pinch, finding, checker.rules, PLACEMENTS_PER_PROBLEM)]
-    found.sort(key=lambda candidate: candidate.disruption)
-    return _varied([_Guess(TrainingEdits(moves=[_furniture(move) for move in candidate.moves]),
-                   "; ".join(_move_words(graph, move, finding) for move in candidate.moves) + f", for {label}")
-            for candidate in found if not any(move.node_id in checker.pinned for move in candidate.moves)])
+    return [*candidates(pinch, GUESSES_PER_PROBLEM),
+            *placements(graph, pinch, finding, checker.rules, PLACEMENTS_PER_PROBLEM)]
+
+
+def _surface_guesses(graph: SceneGraph, finding: Finding, label: str) -> list[tuple[float, _Guess]]:
+    return [(found.candidate.disruption, _Guess(
+        TrainingEdits(moves=[_furniture(move) for move in found.candidate.moves]),
+        f"set {_name(found.item)} down on the {found.surface.label}, "
+        f"{to_inches(found.candidate.disruption):.0f} in away, for {label}"))
+        for found in lower_surface_moves(graph, finding)]
+
+
+def _furniture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:
+    """Slides and placements that open space, and slides that set a too-high item on a lower surface."""
+    found = [(candidate.disruption, _Guess(
+        TrainingEdits(moves=[_furniture(move) for move in candidate.moves]),
+        "; ".join(_move_words(graph, move, finding) for move in candidate.moves) + f", for {label}"))
+        for candidate in _pinch_candidates(graph, finding, checker)]
+    found.extend(_surface_guesses(graph, finding, label))
+    found.sort(key=lambda pair: pair[0])
+    return _varied([guess for _, guess in found if not _touched(guess.edits) & set(checker.pinned)])
 
 
 def _varied(guesses: list[_Guess]) -> list[_Guess]:
