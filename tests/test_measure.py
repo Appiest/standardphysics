@@ -177,6 +177,16 @@ def test_an_unsized_photo_candidate_on_a_surface_leaves_the_floor_walkable():
     assert not grid.occupied.all()
 
 
+def test_an_outline_with_no_area_contains_nothing():
+    """A photo candidate given no size has a point for a footprint, and must not stand over the whole room."""
+    point = [(1.0, 2.0)] * 4
+    line = [(0.0, 0.0), (1.0, 0.0), (1.0, 0.0), (0.0, 0.0)]
+    assert not contains_point(point, (1.0, 2.0))
+    assert not contains_point(point, (-3.0, 5.0))
+    assert not contains_point(line, (0.5, 0.0))
+    assert contains_point([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)], (0.5, 0.5))
+
+
 def test_occupied_cells_name_an_object_or_are_the_world_edge(shop):
     """Ground beyond the building is closed off but belongs to no node, so a
     finding can never blame the edge of the world for a pinch."""
