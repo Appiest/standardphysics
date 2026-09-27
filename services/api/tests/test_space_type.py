@@ -9,7 +9,7 @@ BOBA = SpaceTypology.QSR_BEVERAGE.value
 
 
 def _sample(make_client):
-    client = make_client(seed=True, stages=no_blender_stages(router_factory=LocalPolicyRouter)).__enter__()
+    client = make_client(seed=True, team=True, stages=no_blender_stages(router_factory=LocalPolicyRouter)).__enter__()
     drain(client)
     return client, client.get("/api/scans").json()["scans"][0]["id"]
 
