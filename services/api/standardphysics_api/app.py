@@ -17,7 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from PIL import Image as PILImage
 from pydantic import BaseModel
-from standardphysics_agents import init_tracing, project_url, shutdown_tracing
+from standardphysics_agents import init_tracing, project_url, shutdown_tracing, tracing_status
 from standardphysics_agents.scenario_suggestion import DESTINATIONS
 from standardphysics_contracts import (
     ApproachReport,
@@ -232,7 +232,7 @@ def _install_health_routes(app: FastAPI, database: Database, worker: Worker, com
     @app.get("/health/details")
     def health_details() -> dict:
         """What each worker loop is doing, how long since it last beat, how long the queue has waited,
-        and which commit this server was built from."""
+        which commit this server was built from, and whether its traces are reaching Weave."""
         with database.connect() as connection:
             oldest = repo.oldest_queued_job_seconds(connection)
         problems = worker.problems()
@@ -242,6 +242,7 @@ def _install_health_routes(app: FastAPI, database: Database, worker: Worker, com
             "worker": worker.status(),
             "oldest_queued_job_seconds": oldest,
             "commit": commit,
+            "tracing": tracing_status(),
         }
 
 

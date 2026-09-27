@@ -159,7 +159,8 @@ typed on the box without `GIT_SHA` would start it.
 A window remains. An upload that finalises between the queue read and the
 moment the old container stops, about a second, queues a job the check did
 not see. That job is not lost: `requeue_interrupted_jobs` puts every job left
-`running` back in the queue on the next start, and a job still `queued`
+`running` back in the queue on the next start (a simulation is marked failed
+instead, so a restart never pays for its model calls twice), and a job still `queued`
 simply waits for the new worker. What the window costs is the progress of a
 job that started in that second. Closing it completely needs the worker to
 stop claiming jobs while a maintenance flag is set, which lives in

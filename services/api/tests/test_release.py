@@ -20,3 +20,11 @@ def test_the_commit_comes_from_the_image_environment(monkeypatch):
 def test_a_server_built_outside_the_image_says_it_does_not_know(monkeypatch):
     monkeypatch.delenv("SP_GIT_SHA", raising=False)
     assert Settings.from_environment().git_sha == "unknown"
+
+
+def test_details_say_whether_traces_are_being_sent(make_client):
+    """Tests run with no W&B key, so tracing is off, and the details must say why rather than stay silent."""
+    with make_client() as client:
+        tracing = client.get("/health/details").json()["tracing"]
+    assert tracing["active"] is False
+    assert tracing["off_because"]
