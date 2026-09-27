@@ -11,7 +11,15 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 import numpy as np
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, stands_upright, to_meters
+from standardphysics_contracts import (
+    SceneGraph,
+    SceneNode,
+    Vec3,
+    is_fixed_to_a_surface,
+    lies_flat,
+    stands_upright,
+    to_meters,
+)
 
 from .footprints import floor_polygon, polygon_bounds
 
@@ -237,9 +245,14 @@ def _measures_nothing(graph: SceneGraph) -> bool:
     real has no extent at all. One of those in the graph means the capture did
     not measure what it claims to describe, and a room whose shape is unknown
     has no walkable ground in it until somebody scans it again.
+
+    A photo candidate fixed to a surface is not the capture failing: discovery
+    gives a television or an outlet it could not place on a measured face no
+    size on purpose, so the zero is never read as a device. It blocks no floor
+    either way, and one of them used to close every route in the room.
     """
     return any(
-        max(node.dimensions.as_tuple()) <= 0 for node in graph.nodes
+        max(node.dimensions.as_tuple()) <= 0 for node in graph.nodes if not is_fixed_to_a_surface(node)
     )
 
 
