@@ -75,6 +75,8 @@ The held-out suite is 39 labelled cases: the sample shop as shipped, and variant
 
 The stand-in row is the control. Swapping the measured geometry for merged boxes keeps recall but loses most of the precision, so nearly all of the score comes from measuring the room correctly.
 
+These cases are synthetic variants of one modelled shop, generated so that the correct answer is known exactly. They test that the checks and the fixer reason correctly about geometry. They do not measure accuracy on real scans.
+
 ## Production readiness
 
 **Jobs survive crashes.** The queue lives in SQLite with WAL and `BEGIN IMMEDIATE` transactions, and a job is claimed atomically ([`repository.py`](services/api/standardphysics_api/repository.py)). At startup every job left running is queued again. An exclusive lock beside the database keeps a second process from running the same jobs ([`worker_lock.py`](services/api/standardphysics_api/worker_lock.py)). The worker loops back off and retry when the database errors, and a photo bake that runs past its time limit is killed and its job marked failed ([`worker.py`](services/api/standardphysics_api/worker.py)). The failure-injection tests are in [`test_worker_resilience.py`](services/api/tests/test_worker_resilience.py) and [`test_job_lifecycle.py`](services/api/tests/test_job_lifecycle.py).
