@@ -43,3 +43,8 @@ next-env.d.ts
 # written by next dev
 /AGENTS.md
 /CLAUDE.md
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
