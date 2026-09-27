@@ -50,9 +50,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from standardphysics_contracts import Finding, NodeMove, SceneGraph, SceneNode, to_inches, to_meters
+from standardphysics_pipeline.footprints import rotation_about_z
 
 from ..evaluation.gate import accepts
-from ..fix import CandidateRejection, candidates, combine_rejections, pinch_from, snap_moves
+from ..fix import CandidateRejection, candidates, combine_rejections, pinch_from, room_heading, snap_moves
 from ..fix.built_ins import built_in_set_moves
 from ..fix.clearing import circle_clearing_moves
 from ..fix.groups import group_moves
@@ -89,6 +90,8 @@ OPTIONS_PER_PROBLEM = 4
 MENU_SIZE = 12
 MAX_PICKS = MENU_SIZE
 TURN_WORDING_DEGREES = 1.0
+SQUARE_TOLERANCE_DEGREES = 3.0
+"""How close to a multiple of 90 degrees, relative to the room's own axes, still counts as square."""
 
 MENU_INSTRUCTION = (
     "You are rearranging a shop so a wheelchair user can get around it. `problems` lists the measured "
@@ -349,6 +352,7 @@ def _effect(room, candidate, checker, before, after, problems: dict[UUID, str], 
         "usable": round(usability(room, candidate, owner, checker.scenario), 3),
         "inches_moved": round(to_inches(sum(math.hypot(move.dx, move.dy) for move in edits.moves)), 1),
         "construction_inches": round(construction_inches(edits.wall_shifts, edits.fixture_moves), 1),
+        "ends_square": _ends_square(room, candidate, edits),
     }
 
 
@@ -356,9 +360,47 @@ def _inches(finding: Finding) -> float | None:
     return None if finding.measured_inches is None else round(finding.measured_inches, 1)
 
 
+def _node_heading_degrees(node: SceneNode) -> float:
+    cos_t, sin_t = rotation_about_z(node)
+    return math.degrees(math.atan2(sin_t, cos_t))
+
+
+def _square_to_room(heading_degrees: float, room_heading_degrees: float,
+                    tolerance: float = SQUARE_TOLERANCE_DEGREES) -> bool:
+    """Whether a heading sits within `tolerance` degrees of a multiple of 90, relative to the room's own axes."""
+    relative = (heading_degrees - room_heading_degrees) % 90.0
+    return min(relative, 90.0 - relative) <= tolerance
+
+
+def _ends_square(room: SceneGraph, candidate: SceneGraph, edits: TrainingEdits) -> bool:
+    """Whether every piece these edits move ends up square to the room, not standing at an angle in it."""
+    touched = _touched(edits)
+    heading = room_heading(room)
+    if heading is None or not touched:
+        return True
+    room_degrees = math.degrees(heading)
+    by_id = {node.id: node for node in candidate.nodes}
+    return all(_square_to_room(_node_heading_degrees(by_id[node_id]), room_degrees)
+               for node_id in touched if node_id in by_id)
+
+
 def _rank(effect: dict) -> tuple:
-    return (-len(effect["clears"]), effect["fixable_left"], len(effect.get("breaks_wishes", [])),
-            effect["construction_inches"], -effect["usable"], effect["inches_moved"])
+    return (-len(effect["clears"]), effect["fixable_left"], int(not effect.get("ends_square", True)),
+            len(effect.get("breaks_wishes", [])), effect["construction_inches"], -effect["usable"],
+            effect["inches_moved"])
+
+
+def _drop_covered_diagonals(measured: list) -> list:
+    """Drop a diagonal option when a square option clears the very same problems.
+
+    A diagonal option is kept when it is the only one that clears a problem at
+    all: a display case standing square that fixes nothing is not an
+    alternative, so nothing else works and the diagonal move stays offered.
+    """
+    square_clears = {frozenset(effect["clears"]) for _, effect in measured
+                     if effect.get("ends_square", True) and effect["clears"]}
+    return [pair for pair in measured
+            if pair[1].get("ends_square", True) or frozenset(pair[1]["clears"]) not in square_clears]
 
 
 def _clears(found: list, label: str) -> bool:
@@ -461,6 +503,7 @@ def build_menu(room: SceneGraph, checker: TrainingChecker, stated: WishBook | No
     labelled, told = _wishes_shown(room, checker, stated, view)
     measurer = _Measurer(room, checker, before, labels, veto, labelled)
     measured = [pair for finding in problems for pair in measurer.for_problem(finding)]
+    measured = _drop_covered_diagonals(measured)
     kept_best = sorted(measured, key=lambda pair: _rank(pair[1]))[:MENU_SIZE]
     options = [Option(number, guess.wording, guess.edits, effect)
                for number, (guess, effect) in enumerate(_ordered(kept_best, view), start=1)]

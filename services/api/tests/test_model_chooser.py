@@ -3,9 +3,8 @@
 import json
 import re
 
-from standardphysics_api.model_chooser import ModelChooser
-
 from conftest import drain
+from standardphysics_api.model_chooser import ModelChooser
 
 
 def _sample(make_client):
