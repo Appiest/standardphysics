@@ -136,8 +136,6 @@ class TextureBuild(BaseModel):
     box_key: str | None = None
     """Which bake of the photographed boxes this build carries, so a build that
     changes only the painted scan copies them instead of baking them again."""
-    scan_glb_url: str | None = None
-    """The room as it was scanned, painted from the photos, when the build produced one."""
 
 
 class TextureRequest(BaseModel):
