@@ -36,7 +36,9 @@ from standardphysics_agents.fix import FixOutcome, combine_rejections, propose_f
 from standardphysics_agents.loop import loop_steps
 from standardphysics_agents.precedents import rejection_for_space
 from standardphysics_agents.rules import AgentRulePack
+from standardphysics_agents.training.checker import TrainingChecker
 from standardphysics_agents.training.explain import explain_change, owner_text
+from standardphysics_agents.training.menu import build_menu, menu_messages
 from standardphysics_agents.training.owner import keep_request, stated_book
 from standardphysics_agents.training.wishes import broken, infer_wishes
 from standardphysics_contracts import (
@@ -56,6 +58,7 @@ from standardphysics_pipeline import PipelineMeasurements, blender, parse_room_j
 from standardphysics_pipeline.discovery import DiscoveryError, DiscoveryInputs, DiscoveryResult, discover_objects
 from standardphysics_pipeline.textures import BakeInputs, BakeResult, bake_textures
 
+from .model_chooser import ModelChooser, menu_for_findings, picked_outcome
 from .scope_manifest import build_scope_manifest
 
 log = logging.getLogger(__name__)
@@ -350,6 +353,22 @@ class Stages:
     def _rejection(self, graph: SceneGraph, typology: SpaceTypology | None, wishes: Sequence[OwnerWish]):
         return combine_rejections(rejection_for_space(typology, graph),
                                   stated_book(graph, list(wishes)).rejection(self.search_measure))
+
+    def model_proposal(
+        self, graph: SceneGraph, scenario: Scenario, targets: list[Finding], chooser: ModelChooser,
+        typology: SpaceTypology | None = None, wishes: Sequence[OwnerWish] = (),
+    ) -> FixOutcome | None:
+        """The model's pick from the menu of legal moves for these findings, or None when it has nothing to offer."""
+        with self._search_lock:
+            checker = TrainingChecker(scenario, rules=load_pack(), ledger=self.ledger_factory(),
+                                      measure=self.search_measure, owner_layout=graph, space_typology=typology)
+            menu = menu_for_findings(build_menu(graph, checker, stated=stated_book(graph, list(wishes))), targets)
+            if menu is None:
+                return None
+            messages = menu_messages(graph, checker, menu, None)
+        reply = chooser.ask(messages)
+        with self._search_lock:
+            return picked_outcome(graph, checker, menu, reply, targets)
 
     def explain(
         self, before: SceneGraph, after: SceneGraph, scenario: Scenario, wishes: Sequence[OwnerWish] = ()

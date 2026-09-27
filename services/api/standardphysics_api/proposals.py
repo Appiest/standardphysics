@@ -9,6 +9,7 @@ from standardphysics_contracts import OwnerWish, ProposalRequest, ProposalResult
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
+from .model_chooser import ModelChooser
 from .stages import Stages
 
 
@@ -40,8 +41,10 @@ def propose(database: Database, stages: Stages, scan_id: uuid.UUID, body: Propos
     targets = [finding for finding in assessment.findings if finding.id in wanted]
     if len(targets) != len(wanted):
         raise ApiProblem(400, "unknown finding", need=sorted(str(i) for i in wanted - {f.id for f in targets}))
-    wishes = owner_wishes_of(database, scan_id)
-    outcome = stages.propose(graph, scenario, targets, space_typology_of(database, scan_id), wishes)
+    wishes, typology = owner_wishes_of(database, scan_id), space_typology_of(database, scan_id)
+    chooser = ModelChooser.from_environment()
+    picked = stages.model_proposal(graph, scenario, targets, chooser, typology, wishes) if chooser else None
+    outcome = picked or stages.propose(graph, scenario, targets, typology, wishes)
     explanation = stages.explain(graph, outcome.graph, scenario, wishes) if outcome.graph is not None else None
     return ProposalResult(
         base_revision=body.base_revision,
