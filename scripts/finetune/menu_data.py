@@ -68,9 +68,10 @@ def _best_pick(room, checker, menu: Menu) -> tuple[list[int], dict]:
 def _why(menu: Menu, picks: list[int]) -> str:
     cleared = sorted({label for number in picks for label in menu.option(number).effect.get("clears", [])})
     inches = sum(menu.option(number).effect.get("inches_moved", 0) for number in picks)
+    moving = f" with {inches:.0f} in of moving" if inches >= 1 else ""
     if cleared:
-        return f"It clears {', '.join(cleared)} moving {inches:.0f} in, and keeps the owner's layout as it stands."
-    return f"It improves the most with {inches:.0f} in of moving, and keeps the owner's layout as it stands."
+        return f"It clears {', '.join(cleared)}{moving} and keeps the owner's layout as it stands."
+    return f"It improves the room the most{moving} and keeps the owner's layout as it stands."
 
 
 def menu_row(data: MultiroomData, variant: str, source: str) -> dict | None:
