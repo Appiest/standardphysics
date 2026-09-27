@@ -185,15 +185,28 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     )
 
     @app.get("/health")
-    def health() -> dict[str, str]:
+    def health():
         """Reachable without a session, so a load balancer can ask.
 
         It touches the database, because a process that is listening but cannot
-        read its own scans is not healthy in any way that matters.
+        read its own scans is not healthy in any way that matters. It fails when
+        a worker loop has died, since then uploads are accepted and never
+        measured. It stays healthy while a loop is busy with a fifteen-minute
+        bake, and in a second process that found the worker lock taken, because
+        restarting either one would fix nothing. /health/details says which.
         """
         with database.connect() as connection:
             connection.execute("SELECT 1 FROM scans LIMIT 1").fetchone()
-        return {"status": "ok"}
+        state = worker.summary()
+        body = {"status": "ok" if state != "stopped" else "worker stopped", "worker": state}
+        return JSONResponse(body, status_code=503 if state == "stopped" else 200)
+
+    @app.get("/health/details")
+    def health_details() -> dict:
+        """What each worker loop is doing, how long since it last beat, and how long the queue has waited."""
+        with database.connect() as connection:
+            oldest = repo.oldest_queued_job_seconds(connection)
+        return {"worker": worker.status(), "oldest_queued_job_seconds": oldest}
 
     return app
 

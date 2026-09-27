@@ -1,9 +1,15 @@
-"""One background thread that runs queued jobs in order.
+"""Two background threads that run queued jobs in order: one for photo bakes, one for the rest.
 
-Run one API process per database. Jobs are claimed atomically, and at startup
-every job left running is queued again, on the assumption that the process that
-claimed it has stopped. A second process on the same database would rerun the
-first process's jobs.
+Run one API process per database. Before it touches the queue the worker takes
+an exclusive lock on a file beside the database; a second process finds the
+lock held, says so in the log, and serves requests without running any job.
+Jobs are claimed atomically, and at startup every job left running is queued
+again. The lock is what makes that safe: no other live process can be running
+one of them.
+
+Neither loop stops on an error. A job's own failure is recorded on its row; an
+error outside any job, such as a database that stays locked, is logged and the
+loop tries again after a wait that doubles up to a minute.
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ import json
 import logging
 import multiprocessing
 import pathlib
+import sqlite3
 import threading
 import time
 import traceback
@@ -31,6 +38,7 @@ from .simulations import SIMULATE, queue_simulation, run_simulation
 from .stages import DiscoveryOutcome, Stages
 from .store import ArtifactStore
 from .textures import TEXTURE, maybe_queue_texture, run_texture
+from .worker_lock import WorkerLock
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +46,70 @@ PROCESS, ASSESS, DISPLAY = "process", "assess", "display"
 
 
 GUEST_SWEEP_SECONDS = 3600.0
+IDLE_WAIT_SECONDS = 2.0
+FIRST_RETRY_SECONDS = 1.0
+LONGEST_RETRY_SECONDS = 60.0
+STALLED_AFTER_SECONDS = 120.0
+"""An idle loop beats at least every IDLE_WAIT_SECONDS and waits at most
+LONGEST_RETRY_SECONDS between retries, so an idle loop that has not beaten for
+this long is stuck somewhere. A loop running a job is never called stalled,
+because a photo bake takes up to fifteen minutes and the loop beats only when
+it ends."""
+LOOP_NAMES = {False: "jobs", True: "textures"}
+
+
+class _Backoff:
+    """Waits that double from FIRST_RETRY_SECONDS up to LONGEST_RETRY_SECONDS."""
+
+    def __init__(self):
+        self._next = FIRST_RETRY_SECONDS
+
+    def delay(self) -> float:
+        current = min(self._next, LONGEST_RETRY_SECONDS)
+        self._next = current * 2
+        return current
+
+    def reset(self) -> None:
+        self._next = FIRST_RETRY_SECONDS
+
+
+@dataclass
+class LoopPulse:
+    """What one worker loop is doing, kept in memory so /health can read it without the database."""
+
+    thread: threading.Thread | None = None
+    beat_at: float | None = None
+    job: tuple[str, int, float] | None = None
+    """Kind, id and start time of the job running now. One attribute, so a reader never sees half of it."""
+
+    def beat(self) -> None:
+        self.beat_at = time.monotonic()
+
+    def begin(self, job) -> None:
+        self.job = (job["kind"], job["id"], time.monotonic())
+
+    def end(self) -> None:
+        self.job = None
+        self.beat()
+
+    def state(self, now: float) -> str:
+        if self.thread is None:
+            return "not_started"
+        if not self.thread.is_alive():
+            return "stopped"
+        if self.job is not None:
+            return "busy"
+        if self.beat_at is None or now - self.beat_at > STALLED_AFTER_SECONDS:
+            return "stalled"
+        return "idle"
+
+    def report(self, now: float) -> dict:
+        job = self.job
+        return {
+            "state": self.state(now),
+            "heartbeat_seconds": None if self.beat_at is None else round(now - self.beat_at, 1),
+            "job": None if job is None else {"kind": job[0], "id": job[1], "running_seconds": round(now - job[2], 1)},
+        }
 
 
 @dataclass
@@ -65,12 +137,38 @@ class Worker:
         self.settings = settings
         self._wake = threading.Event()
         self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-        self._texture_thread: threading.Thread | None = None
+        self.pulses = {texture_only: LoopPulse() for texture_only in LOOP_NAMES}
+        self.lock = WorkerLock(database.path)
+        self._standby = False
         self.notifier: Notifier = LoggedNotifier()
         self._guests_swept_at = 0.0
 
     def start(self) -> None:
+        if not self.lock.acquire():
+            self._standby = True
+            log.error(
+                "another worker already holds %s (process %s), so this process serves requests but runs no jobs;"
+                " run one API process per database",
+                self.lock.path,
+                self.lock.holder(),
+            )
+            return
+        try:
+            self._recover_interrupted_jobs()
+        except Exception:
+            self.lock.release()
+            raise
+        for texture_only, pulse in self.pulses.items():
+            pulse.thread = threading.Thread(
+                target=self._loop,
+                args=(texture_only,),
+                name=f"standardphysics-{LOOP_NAMES[texture_only]}",
+                daemon=True,
+            )
+            pulse.beat()
+            pulse.thread.start()
+
+    def _recover_interrupted_jobs(self) -> None:
         with self.database.transaction() as connection:
             connection.execute(
                 "UPDATE jobs SET state='failed', error='Simulation interrupted; start a new run to continue'"
@@ -78,23 +176,32 @@ class Worker:
                 (SIMULATE,),
             )
             repo.requeue_interrupted_jobs(connection)
-        self._thread = threading.Thread(target=self._loop, name="standardphysics-worker", daemon=True)
-        self._thread.start()
-        self._texture_thread = threading.Thread(
-            target=self._loop,
-            args=(True,),
-            name="standardphysics-textures",
-            daemon=True,
-        )
-        self._texture_thread.start()
 
     def stop(self) -> None:
         self._stop.set()
         self._wake.set()
-        if self._thread is not None:
-            self._thread.join(timeout=5)
-        if self._texture_thread is not None:
-            self._texture_thread.join(timeout=5)
+        threads = [pulse.thread for pulse in self.pulses.values() if pulse.thread is not None]
+        for thread in threads:
+            thread.join(timeout=5)
+        if not any(thread.is_alive() for thread in threads):
+            self.lock.release()
+
+    def status(self) -> dict:
+        """Whether this process holds the queue, and what each loop is doing."""
+        now = time.monotonic()
+        return {
+            "lock": "held" if self.lock.held else "standby" if self._standby else "free",
+            "loops": {LOOP_NAMES[texture_only]: pulse.report(now) for texture_only, pulse in self.pulses.items()},
+        }
+
+    def summary(self) -> str:
+        """One word for /health. Only "stopped" is unhealthy: a loop that should be running has died."""
+        now = time.monotonic()
+        if not self._stop.is_set() and any(pulse.state(now) == "stopped" for pulse in self.pulses.values()):
+            return "stopped"
+        if self.lock.held:
+            return "running"
+        return "standby" if self._standby else "not_started"
 
     def wake(self) -> None:
         self._wake.set()
@@ -119,18 +226,45 @@ class Worker:
             job = repo.claim_job(connection, texture_only)
         if job is None:
             return False
+        pulse = self.pulses.get(texture_only) or LoopPulse()
+        pulse.begin(job)
+        try:
+            self._settle(job)
+        finally:
+            pulse.end()
+        return True
+
+    def _settle(self, job) -> None:
         scan_id = uuid.UUID(job["scan_id"])
         if self._delete_if_asked(scan_id, job["id"]):
-            return True
+            return
         outcome = self._run(job)
-        with self.database.transaction() as connection:
-            repo.finish_job(connection, job["id"], outcome.error)
-            repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
+        self._record_outcome(job, scan_id, outcome)
         if self._delete_if_asked(scan_id):
-            return True
+            return
         if outcome.follow_up and outcome.error is None:
             self._queue_follow_up_if_due(scan_id)
-        return True
+
+    def _record_outcome(self, job, scan_id: uuid.UUID, outcome: _JobOutcome) -> None:
+        """Write how the job ended, waiting out a locked database rather than giving up.
+
+        A result that is never written leaves the row running until the next
+        restart, and a running row can't be queued again and keeps its scan
+        from being deleted.
+        """
+        backoff = _Backoff()
+        while True:
+            try:
+                with self.database.transaction() as connection:
+                    repo.finish_job(connection, job["id"], outcome.error)
+                    repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
+                return
+            except sqlite3.OperationalError as error:
+                if self._stop.is_set():
+                    raise
+                delay = backoff.delay()
+                log.warning("could not record job %s (%s); trying again in %.1f s", job["id"], error, delay)
+                self._stop.wait(delay)
 
     def _delete_if_asked(self, scan_id: uuid.UUID, claimed_job: int | None = None) -> bool:
         """Finish deleting a scan its owner deleted while a job of its was running.
@@ -164,14 +298,32 @@ class Worker:
             self.wake()
 
     def _loop(self, texture_only: bool = False) -> None:
+        pulse = self.pulses[texture_only]
+        backoff = _Backoff()
         while not self._stop.is_set():
-            if self.run_once(texture_only):
+            pulse.beat()
+            try:
+                self._tick(texture_only)
+            except Exception:
+                delay = backoff.delay()
+                log.error(
+                    "worker loop %s failed; trying again in %.1f s:\n%s",
+                    LOOP_NAMES[texture_only],
+                    delay,
+                    traceback.format_exc(),
+                )
+                self._stop.wait(delay)
                 continue
-            if not texture_only:
-                self._sweep_due_settled()
-                self._sweep_guests_hourly()
-            self._wake.wait(timeout=2.0)
-            self._wake.clear()
+            backoff.reset()
+
+    def _tick(self, texture_only: bool) -> None:
+        if self.run_once(texture_only):
+            return
+        if not texture_only:
+            self._sweep_due_settled()
+            self._sweep_guests_hourly()
+        self._wake.wait(timeout=IDLE_WAIT_SECONDS)
+        self._wake.clear()
 
     def _sweep_guests_hourly(self) -> None:
         if time.monotonic() - self._guests_swept_at < GUEST_SWEEP_SECONDS:
