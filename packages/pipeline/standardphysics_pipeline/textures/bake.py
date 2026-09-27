@@ -21,17 +21,18 @@ from .camera import CameraMetadataError, PhotoCamera, load_cameras
 from .project import (
     MAX_EXPOSURE_POINTS,
     DepthBuffers,
+    PointBlocks,
     TopViews,
     TriangleBlocks,
     bilinear,
     exposure_gains,
     in_parallel,
+    occluder_depth_buffer,
     pad_gutters,
     rasterize_atlas,
     sample_surface,
     to_linear,
     to_srgb,
-    triangle_depth_buffer,
     view_samples,
 )
 from .stages import advanced, timed
@@ -64,7 +65,6 @@ choice spread evenly through time is not spread evenly through the room.
 """
 ATLAS_SIZE = 2048
 MAX_ATLASES = 4
-CHUNK_SIZE = 100_000
 MAX_SOURCE_BYTES = 32 * 1024 * 1024
 MAX_SOURCE_PIXELS = 24_000_000
 MAX_IMAGE_EDGE = 2048
@@ -357,9 +357,9 @@ def _validate_image(camera: PhotoCamera, path: pathlib.Path, image: Image.Image)
 
 
 def _depth_buffers(cameras: list[PhotoCamera], triangles: np.ndarray) -> list[np.ndarray]:
-    """Each photo's depth buffer, drawn from only the faces in cubes its frame reaches, on every core."""
+    """Each photo's depth buffer on every core, drawn from the faces in cubes its frame reaches, nearest cubes first."""
     blocks = TriangleBlocks(triangles)
-    return list(in_parallel(lambda camera: triangle_depth_buffer(camera, triangles[blocks.seen_by(camera)]), cameras))
+    return list(in_parallel(lambda camera: occluder_depth_buffer(camera, triangles, blocks), cameras))
 
 
 def _exposure_gains(world, cameras, images, clean_buffers, lidar_buffers) -> np.ndarray:
@@ -462,19 +462,26 @@ def _bake_atlas(
     image = np.zeros((ATLAS_SIZE, ATLAS_SIZE, 3), dtype=np.float32)
     views = TopViews(len(texels))
     reachable = np.zeros(len(texels), dtype=bool)
-    for camera, photo, clean, lidar, gain, view_quality in zip(cameras, images, clean_buffers, lidar_buffers, gains, quality):
-        buffers = DepthBuffers(camera, clean, lidar)
-        for start in range(0, len(texels), CHUNK_SIZE):
-            stop = min(len(texels), start + CHUNK_SIZE)
-            samples = view_samples(buffers, texels.positions[start:stop], texels.normals[start:stop], view_quality)
-            reachable[start:stop] |= samples.faced
-            accepted = np.flatnonzero(samples.accepted)
-            if len(accepted):
-                colors = np.clip(bilinear(photo, samples.u[accepted], samples.v[accepted]) * gain, 0.0, 1.0)
-                views.add(accepted + start, samples.weight[accepted], colors)
-            disagreement = np.flatnonzero(samples.disagreed)
-            if len(disagreement):
-                views.note_disagreement(disagreement + start)
+    blocks = PointBlocks(texels.positions)
+
+    def sample(index: int):
+        """One photo's view of the texels in cubes its frame reaches; a texel outside the frame gets nothing from it."""
+        camera = cameras[index]
+        nearby = blocks.seen_by(camera)
+        samples = view_samples(
+            DepthBuffers(camera, clean_buffers[index], lidar_buffers[index]),
+            texels.positions[nearby], texels.normals[nearby], quality[index],
+        )
+        accepted = np.flatnonzero(samples.accepted)
+        colors = np.clip(bilinear(images[index], samples.u[accepted], samples.v[accepted]) * gains[index], 0.0, 1.0) if len(accepted) else None
+        return nearby, samples.faced, nearby[accepted], samples.weight[accepted], colors, nearby[np.flatnonzero(samples.disagreed)]
+
+    for nearby, faced, accepted, weight, colors, disagreement in in_parallel(sample, range(len(cameras)), counted=False):
+        reachable[nearby] |= faced
+        if len(accepted):
+            views.add(accepted, weight, colors)
+        if len(disagreement):
+            views.note_disagreement(disagreement)
     colors, covered = views.resolve()
     painted = to_linear(texels.base_colours).astype(np.float32)
     painted[covered] = colors[covered]

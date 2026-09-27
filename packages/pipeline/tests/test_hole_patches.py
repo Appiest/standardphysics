@@ -140,6 +140,22 @@ def test_scanned_vertices_are_never_marked_hidden():
     assert not hidden[~patched.inferred].any()
 
 
+def test_a_camera_too_far_for_its_lidar_cannot_paint_a_patch():
+    """Past the LiDAR's reach nothing checked the line of sight to a patch.
+
+    On a library floor the walk never came within six metres of one corner, so
+    the floor there was patched in, and photos from across the room painted it
+    with the benches and the ceiling lights that really stood along those lines.
+    """
+    patched = with_holes_patched(left_half_of_floor(), np.empty((0, 3), dtype=np.int64), room())
+    floor_patch = patched.inferred & (patched.vertices[:, 2] < 0.01)
+    from_across_the_room = hidden_behind_objects(room(), patched.vertices, patched.inferred)(CameraAt(9.0, 0.0, 1.5))
+    from_close_by = hidden_behind_objects(room(), patched.vertices, patched.inferred)(CameraAt(1.0, 0.0, 1.5))
+    assert from_across_the_room[floor_patch].all()
+    assert not from_close_by[floor_patch].any()
+    assert not from_across_the_room[~patched.inferred].any()
+
+
 def test_floor_running_past_the_walls_is_not_patched_outside_them():
     walls = [
         node("Wall", (4.0, 0.0, 3.0), (0.0, 2.0, 1.5)),

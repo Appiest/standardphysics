@@ -17,9 +17,16 @@ name with the most views behind it wins. This round asks for containment in
 **both** directions, because one-directional containment is just a small thing
 standing on a big one.
 
-Neither round lets joins chain. A candidate joins an object only if it sits
-inside that object's own box, so a pillow touching a sofa touching a chair
-stays three things instead of collapsing into one piece of furniture.
+Neither round lets joins chain. A candidate joins an object only if the smaller
+of the two sits inside the larger's own box, so a pillow touching a sofa
+touching a chair stays three things instead of collapsing into one piece of
+furniture. Asking of the smaller box also stops a full view joining a thin
+sliver that happened to seed first and then growing to the sliver's width.
+
+Two rectangles drawn in one photo are two things, because the detector already
+told them apart. A candidate never joins an object that holds a view from its
+own frame. Without that, a row of identical bins whose carved boxes touch
+collapses into a few boxes of a bin and a half each.
 
 The merged object is refitted from every point that fed it, which is why a box
 built from several viewpoints is tighter than any single view.
@@ -60,7 +67,6 @@ SYNONYMS = {
     "cushion": "pillow",
     "carpet": "rug",
     "mat": "rug",
-    "bin": "box",
     "crate": "box",
 }
 
@@ -116,9 +122,11 @@ def _gather(candidates: list[Candidate]) -> list[DiscoveredObject]:
 def _where_it_belongs(candidate: Candidate, objects: list[DiscoveredObject]) -> int | None:
     best, best_share = None, JOINS_OBJECT
     for index, object_ in enumerate(objects):
+        if candidate.detection.frame_id in object_.frame_ids:
+            continue
         if not _names_agree(candidate.detection.name, object_.name):
             continue
-        share = _share_inside(candidate.box, object_.box)
+        share = _smaller_inside_larger(candidate.box, object_.box)
         if share >= best_share:
             best, best_share = index, share
     return best
@@ -141,6 +149,13 @@ def _fold_duplicates(objects: list[DiscoveredObject]) -> list[DiscoveredObject]:
             if combined is not None:
                 settled[twin] = combined
     return settled
+
+
+def _smaller_inside_larger(first: CarvedBox, second: CarvedBox) -> float:
+    """How much of the smaller box lies within the larger, whichever came first."""
+    if first.volume <= second.volume:
+        return _share_inside(first, second)
+    return _share_inside(second, first)
 
 
 def _share_inside(inner: CarvedBox, outer: CarvedBox) -> float:

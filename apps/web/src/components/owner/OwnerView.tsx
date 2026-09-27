@@ -26,6 +26,7 @@ import { ToolsPanel } from "./ToolsPanel";
 import { guessCounter, useOwnerModel } from "./useOwnerModel";
 import { usePathEditor } from "./usePathEditor";
 import { WaitingPanel } from "./WaitingPanel";
+import { DeleteScanButton } from "@/components/workspace/DeleteScanButton";
 import { DrivingPad, WheelchairPanel } from "./WheelchairPanel";
 
 export type OwnerViewProps = {
@@ -34,6 +35,8 @@ export type OwnerViewProps = {
   requests: OwnerRequest[];
   scene: SceneGraph | null;
   glbUrl: string | null;
+  /** The painted scan of the shop, when its photos have been baked onto it. */
+  scanGlbUrl?: string | null;
   assessment: Assessment | null;
   checklist: Checklist;
   suggestedPath: Scenario | null;
@@ -58,7 +61,7 @@ export function OwnerView(props: OwnerViewProps) {
   useAppLink(props.scan.id, props.journey.stage);
   if (props.scene === null) {
     return (
-      <Frame shopName={props.scan.name} embedded={props.embedded} model={null}>
+      <Frame shopName={props.scan.name} embedded={props.embedded} model={null} end={shopEnd(props)}>
         <EarlyPanel {...props} />
       </Frame>
     );
@@ -93,13 +96,22 @@ function modelSize(panel: string): ModelSize {
   return panel === "counter" || panel === "path" || panel === "plan" ? "medium" : "small";
 }
 
-function Frame({ shopName, embedded, model, size = "medium", step = "", children }: { shopName: string; embedded: boolean; model: ReactNode; size?: ModelSize; step?: string; children: ReactNode }) {
+/** Where the owner deletes a shop: the end of every step's page, and never on a shop they can only read. */
+function shopEnd(props: OwnerViewProps): ReactNode {
+  if (props.readOnly) return null;
+  return <DeleteScanButton look="page" scanId={props.scan.id} name={props.scan.name} />;
+}
+
+function Frame({ shopName, embedded, model, size = "medium", step = "", end, children }: { shopName: string; embedded: boolean; model: ReactNode; size?: ModelSize; step?: string; end: ReactNode; children: ReactNode }) {
   return (
     <div className={`grid h-dvh grid-cols-[minmax(0,1fr)] overflow-hidden ${model ? "grid-rows-[auto_auto_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_28rem] lg:grid-rows-[auto_minmax(0,1fr)]" : "grid-rows-[auto_minmax(0,1fr)]"}`}>
       {embedded ? <span /> : <Header shopName={shopName} wide={model !== null} />}
       {model && <section aria-label="Your shop in 3D" className={`relative ${MODEL_HEIGHT[size]} touch-none overflow-hidden lg:h-auto lg:rounded-tr-2xl`}>{model}</section>}
       <main key={step} className="min-h-0 overflow-y-auto overscroll-contain px-4 pt-6 lg:px-6 lg:pt-8">
-        <div className="mx-auto flex min-h-full max-w-xl flex-col gap-8 pb-6">{children}</div>
+        <div className="mx-auto flex min-h-full max-w-xl flex-col gap-8 pb-6">
+          {children}
+          {end}
+        </div>
       </main>
     </div>
   );
@@ -245,7 +257,7 @@ function OwnerShop(props: ShopProps) {
   };
 
   return (
-    <Frame shopName={scan.name} embedded={props.embedded} model={<><OwnerModel scene={scene} glbUrl={props.glbUrl} setup={setup} lightweight={props.embedded} />{panel === "wheelchair" && <DrivingPad />}</>} size={modelSize(panel)} step={panel}>
+    <Frame shopName={scan.name} embedded={props.embedded} end={shopEnd(props)} model={<><OwnerModel scene={scene} glbUrl={props.glbUrl} scanGlbUrl={props.scanGlbUrl ?? null} setup={setup} lightweight={props.embedded} />{panel === "wheelchair" && <DrivingPad />}</>} size={modelSize(panel)} step={panel}>
       {content[panel]()}
       <SavePrompt open={save.open} inApp={props.embedded} onClose={save.close} />
     </Frame>

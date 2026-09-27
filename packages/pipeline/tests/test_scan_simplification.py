@@ -101,7 +101,7 @@ def _floor_of_rooms(vertices: np.ndarray, triangles: np.ndarray, rooms: int) -> 
     return np.concatenate(placed), np.concatenate(offsets)
 
 
-def test_a_floor_keeps_as_many_faces_as_its_rooms_would_while_a_room_keeps_its_own(patched_scan):
+def test_a_room_keeps_one_atlas_worth_of_faces_and_a_floor_of_rooms_more(patched_scan):
     from standardphysics_pipeline.textures.scan_atlas import MAX_VIEWER_FACES, MIN_VIEWER_FACES, viewer_faces
     from standardphysics_pipeline.textures.scan_colour import ColouredScan
 
@@ -110,9 +110,9 @@ def test_a_floor_keeps_as_many_faces_as_its_rooms_would_while_a_room_keeps_its_o
         return viewer_faces(ColouredScan(vertices, faces, np.zeros((len(vertices), 3)), np.zeros(len(vertices), bool)))
 
     room = budget(triangles)
-    floor = budget(_floor_of_rooms(vertices, triangles, 4)[1])
-    assert MIN_VIEWER_FACES <= room < floor <= MAX_VIEWER_FACES
-    assert floor >= min(MAX_VIEWER_FACES, 4 * room) * 0.99
+    floor = budget(_floor_of_rooms(vertices, triangles, 8)[1])
+    assert room == MIN_VIEWER_FACES
+    assert MIN_VIEWER_FACES < floor <= MAX_VIEWER_FACES
 
 
 def test_blender_is_never_handed_more_than_its_cap_however_large_the_floor(patched_scan, tmp_path, monkeypatch):

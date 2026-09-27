@@ -133,7 +133,7 @@ class Stages:
     measure: PipelineMeasurements = field(default_factory=PipelineMeasurements)
     label: Callable[[SceneGraph], SceneGraph] = reconstruct
     discover: Callable[[DiscoveryInputs], DiscoveryResult] = discover_objects
-    export_glb: Callable[[SceneGraph, pathlib.Path], pathlib.Path] = blender.export_glb
+    export_glb: Callable[[SceneGraph, pathlib.Path, pathlib.Path | None], pathlib.Path] = blender.export_glb
     usdz_to_glb: Callable[..., blender.ConversionResult] = blender.usdz_to_glb
     render_finding: Callable[..., pathlib.Path] = blender.render_finding
     router_factory: Callable[[], TypeSafeRouter | LocalPolicyRouter] = configured_router
@@ -341,10 +341,14 @@ class Stages:
         out: pathlib.Path,
         usdz: pathlib.Path | None,
         mapping: pathlib.Path | None,
+        lidar_mesh: pathlib.Path | None = None,
     ) -> pathlib.Path | None:
-        """Object-separated graph geometry, with a fully mapped scan as fallback."""
+        """Object-separated graph geometry, each object shaped by the LiDAR mesh when there is one.
+
+        A fully mapped scan is the fallback when the graph cannot be drawn at all.
+        """
         try:
-            return self.export_glb(graph, out)
+            return self.export_glb(graph, out, lidar_mesh)
         except (FileNotFoundError, blender.BlenderError) as exc:
             log.info("graph glb failed, trying scanned mesh: %s", exc)
         scanned = self._scanned_mesh(out, usdz, mapping)

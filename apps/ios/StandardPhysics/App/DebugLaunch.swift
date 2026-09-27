@@ -64,8 +64,8 @@ enum DebugLaunch {
             "inside_doors", "yes_no", "Do customers go through any doors inside the shop, like a restroom door?",
             "Doors between rooms count. The front door doesn\u{2019}t."),
         "entrance_threshold": ask(
-            "entrance_threshold", "photo", "Send a photo of the front doorway from the side",
-            "Get the floor and the bottom of the door in frame. We\u{2019}ll measure the step and check it against the half inch the standard allows."),
+            "entrance_threshold", "photo", "Send a low photo of the front doorway",
+            "Open the door, crouch just outside and hold your phone a few inches off the ground, pointed into the shop. If you have a tape measure, stand it next to the threshold so we can read its height against the half inch the standard allows."),
         "door_hardware": ask(
             "door_hardware", "photo", "Send a photo of the front door handle",
             "Straight on, close enough to see its shape. We\u{2019}ll check it opens with a closed fist and sits between 34 and 48 inches up."),

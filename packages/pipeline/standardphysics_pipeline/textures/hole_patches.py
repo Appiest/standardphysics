@@ -582,20 +582,36 @@ def _segments_enter_box(origin: np.ndarray, points: np.ndarray, node: SceneNode)
     return ~outside_a_slab & (enter <= leave) & (leave > 0.0) & (enter < 1.0)
 
 
+LIDAR_REACH = 5.0
+"""How far from a camera the phone's LiDAR measures, in metres.
+
+Inside this reach, anything standing between the camera and a patch would have
+been scanned and would hide the patch. Past it nothing was measured along the
+line of sight, so the pixel may show whatever really stood there.
+"""
+
+
 def hidden_behind_objects(graph: SceneGraph, vertices: np.ndarray, patches: np.ndarray):
-    """For each camera, the patch vertices a measured object stands between it and.
+    """For each camera, the patch vertices it cannot be trusted to see.
 
     The LiDAR often misses the legs and underside of a chair as well as the floor
     beneath it, so no scanned surface blocks the view, and the floor patch there
     would take the chair's colour from every photo. The object's measured box is
     in the graph even where its surface is not in the scan, so it does the blocking.
+
+    A patch farther away than the LiDAR reaches is hidden too. A walk that never
+    came near a corner of a library floor left it patched, and photos from across
+    the room painted that floor with the benches and ceiling lights along each
+    line of sight.
     """
     boxes = ObjectBoxes(graph)
     patch_index = np.flatnonzero(patches)
 
     def hidden(camera) -> np.ndarray:
+        points = vertices[patch_index]
+        out_of_reach = np.linalg.norm(points - camera.position, axis=1) > LIDAR_REACH
         blocked = np.zeros(len(vertices), dtype=bool)
-        blocked[patch_index] = boxes.blocking(camera.position, vertices[patch_index])
+        blocked[patch_index] = out_of_reach | boxes.blocking(camera.position, points)
         return blocked
 
     return hidden

@@ -63,6 +63,7 @@ final class WebBridgeMessageTests: XCTestCase {
             .openLink(URL(string: "https://www.ada.gov/law-and-regs/design-standards/")!))
         XCTAssertEqual(WebBridgeMessage(body: ["type": "stageChanged", "scanId": scan.uuidString, "stage": "fix"]),
             .stageChanged(scanID: scan, stage: "fix"))
+        XCTAssertEqual(WebBridgeMessage(body: ["type": "shopDeleted", "scanId": scan.uuidString]), .shopDeleted(scanID: scan))
     }
 
     func testMalformedMessagesAreDropped() {
@@ -73,6 +74,8 @@ final class WebBridgeMessageTests: XCTestCase {
         XCTAssertNil(WebBridgeMessage(body: ["type": "openLink", "url": "javascript:alert(1)"]))
         XCTAssertNil(WebBridgeMessage(body: ["type": "share", "url": "file:///etc/passwd"]))
         XCTAssertNil(WebBridgeMessage(body: ["type": "stageChanged", "scanId": UUID().uuidString]))
+        XCTAssertNil(WebBridgeMessage(body: ["type": "shopDeleted"]))
+        XCTAssertNil(WebBridgeMessage(body: ["type": "shopDeleted", "scanId": "not-a-shop"]))
     }
 
     func testTheOwnerViewAndTheExampleLiveWhereTheWebServesThem() {

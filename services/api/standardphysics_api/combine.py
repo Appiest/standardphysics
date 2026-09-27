@@ -16,9 +16,11 @@ from __future__ import annotations
 import json
 import math
 import uuid
+from collections.abc import Callable
 
+import numpy as np
 from pydantic import BaseModel
-from standardphysics_contracts import Mat4, SceneGraph
+from standardphysics_contracts import Mat4, SceneGraph, SceneNode, SurfaceAttachment, Vec3
 from standardphysics_pipeline.ingest import parse_room_json
 from standardphysics_pipeline.registration import PlaneAlignment, align_points
 
@@ -135,6 +137,13 @@ def placement_since_capture(capture: SceneGraph, placed: SceneGraph, node_ids: l
     return align_points(source, target, tolerance=PLACEMENT_TOLERANCE_M)
 
 
+def placement_matrix(placement: PlaneAlignment) -> np.ndarray:
+    """Row-major 4x4 in the room frame: a walk as measured to the walk as placed."""
+    cos, sin = np.cos(placement.yaw), np.sin(placement.yaw)
+    tx, ty = placement.translation
+    return np.array([[cos, -sin, 0, tx], [sin, cos, 0, ty], [0, 0, 1, 0], [0, 0, 0, 1]])
+
+
 def captured_graph(store: ArtifactStore, scan_id: uuid.UUID) -> SceneGraph:
     """A walk's boxes as its phone measured them, in the capture's own frame."""
     return parse_room_json(json.loads(store.artifact_path(scan_id, "room-json").read_text()))
@@ -163,3 +172,90 @@ def rooms_of(database: Database, store: ArtifactStore, scan_id: uuid.UUID, revis
         return {"rooms": rooms}
     placed = repo.graph_of(row)
     return {"rooms": [{**room, "capture_pose": _capture_pose(store, room, placed)} for room in rooms]}
+
+
+def found_since_capture(walk: SceneGraph, capture: SceneGraph) -> list[SceneNode]:
+    """What a walk's own processing added to what its phone measured.
+
+    RoomPlan boxes the furniture categories Apple ships. Discovery, run on the
+    walk's photos after upload, adds everything else: the counter, the standing
+    whiteboards, the security gates. A floor joined from RoomPlan's boxes alone
+    has none of them.
+    """
+    captured = {node.id for node in capture.nodes}
+    return [node for node in walk.nodes if node.id not in captured]
+
+
+def carried_onto_floor(
+    found: list[SceneNode],
+    motion: np.ndarray,
+    placed_ids: dict[uuid.UUID, uuid.UUID],
+    renumbered: Callable[[str], str],
+) -> list[SceneNode]:
+    """A walk's findings moved by the walk's placement, pointing at the floor's own boxes and photos.
+
+    `motion` is the row-major room-frame motion from where the walk was
+    measured to where it was placed. `placed_ids` names each RoomPlan box of
+    the walk by its id on the floor, and `renumbered` gives each photo its
+    floor-wide number.
+    """
+    carried_ids = {node.id for node in found}
+
+    def on_floor(node_id: uuid.UUID | None) -> uuid.UUID | None:
+        if node_id is None or node_id in carried_ids:
+            return node_id
+        return placed_ids.get(node_id)
+
+    return [_carried(node, motion, on_floor, renumbered) for node in found]
+
+
+def _carried(
+    node: SceneNode,
+    motion: np.ndarray,
+    on_floor: Callable[[uuid.UUID | None], uuid.UUID | None],
+    renumbered: Callable[[str], str],
+) -> SceneNode:
+    parent = on_floor(node.parent_id)
+    placed = motion @ np.asarray(node.transform.m, dtype=np.float64).reshape(4, 4)
+    update: dict = {
+        "transform": Mat4(m=placed.reshape(16).tolist()),
+        "parent_id": parent,
+        "relation": node.relation if parent is not None else None,
+        "texts": [
+            text.model_copy(update={"evidence_frame_ids": [renumbered(one) for one in text.evidence_frame_ids]})
+            for text in node.texts
+        ],
+    }
+    if node.reconstruction is not None:
+        update["reconstruction"] = node.reconstruction.model_copy(
+            update={"evidence_frame_ids": [renumbered(one) for one in node.reconstruction.evidence_frame_ids]}
+        )
+    if node.attachment is not None:
+        update["attachment"] = _carried_attachment(node.attachment, motion, on_floor, renumbered)
+    return node.model_copy(update=update)
+
+
+def _carried_attachment(
+    attachment: SurfaceAttachment,
+    motion: np.ndarray,
+    on_floor: Callable[[uuid.UUID | None], uuid.UUID | None],
+    renumbered: Callable[[str], str],
+) -> SurfaceAttachment:
+    """The mounting moved with its walk. The anchor is in its support's own frame, so it stays put."""
+    turn = motion[:3, :3]
+
+    def point(value: Vec3) -> Vec3:
+        return _vec(turn @ np.asarray(value.as_tuple()) + motion[:3, 3])
+
+    return attachment.model_copy(update={
+        "support_node_id": on_floor(attachment.support_node_id),
+        "normal": _vec(turn @ np.asarray(attachment.normal.as_tuple())) if attachment.normal is not None else None,
+        "observed_region": [point(corner) for corner in attachment.observed_region],
+        "observations": [
+            crop.model_copy(update={"frame_id": renumbered(crop.frame_id)}) for crop in attachment.observations
+        ],
+    })
+
+
+def _vec(values: np.ndarray) -> Vec3:
+    return Vec3(x=float(values[0]), y=float(values[1]), z=float(values[2]))

@@ -42,6 +42,7 @@ from standardphysics_contracts import (  # noqa: E402
     Artifact,
     CreateScanRequest,
     SceneGraph,
+    SceneNode,
     TextureBuild,
     TextureCoverage,
 )
@@ -52,7 +53,13 @@ from standardphysics_pipeline.textures import texture_build_key  # noqa: E402
 from standardphysics_pipeline.textures.library_scan import painted_scans_joined  # noqa: E402
 
 from standardphysics_api import repository  # noqa: E402
-from standardphysics_api.combine import captured_graph, placement_since_capture  # noqa: E402
+from standardphysics_api.combine import (  # noqa: E402
+    captured_graph,
+    carried_onto_floor,
+    found_since_capture,
+    placement_matrix,
+    placement_since_capture,
+)
 from standardphysics_api.db import Database  # noqa: E402
 from standardphysics_api.store import ArtifactStore  # noqa: E402
 from standardphysics_api.textures import (  # noqa: E402
@@ -83,9 +90,7 @@ class Walk:
     @property
     def to_floor(self) -> np.ndarray:
         """Row-major 4x4 in the room frame: the walk as measured to the walk as placed."""
-        cos, sin = np.cos(self.placement.yaw), np.sin(self.placement.yaw)
-        tx, ty = self.placement.translation
-        return np.array([[cos, -sin, 0, tx], [sin, cos, 0, ty], [0, 0, 1, 0], [0, 0, 0, 1]])
+        return placement_matrix(self.placement)
 
     @property
     def arkit_motion(self) -> np.ndarray:
@@ -122,6 +127,19 @@ def _moved(columns: list[float], motion: np.ndarray) -> list[float]:
     """An ARKit column-major transform, carried by a row-major motion."""
     matrix = np.asarray(columns, dtype=np.float64).reshape(4, 4, order="F")
     return (motion @ matrix).reshape(16, order="F").tolist()
+
+
+def _findings(connection, store: ArtifactStore, walk: Walk, room: dict) -> list[SceneNode]:
+    """What discovery found in the walk's own photos, moved to where the walk was placed."""
+    capture = captured_graph(store, walk.scan_id)
+    placed_ids = {node.id: uuid.UUID(node_id) for node, node_id in zip(capture.nodes, room["node_ids"])}
+    found = found_since_capture(_latest_graph(connection, walk.scan_id), capture)
+    return carried_onto_floor(found, walk.to_floor, placed_ids, walk.frame_id)
+
+
+def _with_findings(placed: SceneGraph, findings: list[SceneNode]) -> SceneGraph:
+    present = {node.id for node in placed.nodes}
+    return placed.model_copy(update={"nodes": [*placed.nodes, *(node for node in findings if node.id not in present)]})
 
 
 def _mesh_parts(store: ArtifactStore, walk: Walk) -> list[dict]:
@@ -235,6 +253,10 @@ def main() -> int:
             raise SystemExit("that scan's walks have not been placed yet: align them and save first")
         walks = [_walk(store, room, placed, index) for index, room in enumerate(manifest["rooms"])]
         painted = [_painted_scan(connection, store, walk) for walk in walks]
+        findings = [
+            node for walk, room in zip(walks, manifest["rooms"]) for node in _findings(connection, store, walk, room)
+        ]
+        placed = _with_findings(placed, findings)
 
     scan_id = uuid.uuid4()
     store.artifact_path(scan_id, "poses").parent.mkdir(parents=True, exist_ok=True)
@@ -253,7 +275,7 @@ def main() -> int:
     ]
     _insert_scan(database, args, scan_id, placed, artifacts)
     print(f"\n{args.name}: {scan_id}")
-    print(f"  {len(parts)} mesh parts, {len(poses)} cameras, {len(frames)} photographs")
+    print(f"  {len(parts)} mesh parts, {len(poses)} cameras, {len(frames)} photographs, {len(findings)} discovered objects")
     print(f"  painted floor at {_publish_floor(database, store, scan_id, walks, painted)}")
     return 0
 

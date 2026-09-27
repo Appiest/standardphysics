@@ -26,7 +26,7 @@ describe("splitQuestions", () => {
   });
 
   it("counts every question as still to send before any photo arrives", () => {
-    const questions = [question("a", "Send a photo of the front door handle"), question("b", "Send a photo of the front doorway from the side")];
+    const questions = [question("a", "Send a photo of the front door handle"), question("b", "Send a low photo of the front doorway")];
     expect(splitQuestions(questions)).toEqual({ toSend: questions, beingChecked: [] });
   });
 });

@@ -35,7 +35,13 @@ export type ModelSetup = {
   onClear: () => void;
 };
 
-export function OwnerModel({ scene, glbUrl, setup, lightweight }: { scene: SceneGraph; glbUrl: string | null; setup: ModelSetup; lightweight: boolean }) {
+/** The look the model takes: the scanned room when it has been painted, which is what the shop really looks like, then the photographed boxes. */
+function lookOf(glbUrl: string | null, scanGlbUrl: string | null) {
+  if (scanGlbUrl) return "scan" as const;
+  return glbUrl ? ("reconstructed" as const) : ("plain" as const);
+}
+
+export function OwnerModel({ scene, glbUrl, scanGlbUrl, setup, lightweight }: { scene: SceneGraph; glbUrl: string | null; scanGlbUrl: string | null; setup: ModelSetup; lightweight: boolean }) {
   return (
     <Viewer
       scene={setup.shown}
@@ -52,8 +58,8 @@ export function OwnerModel({ scene, glbUrl, setup, lightweight }: { scene: Scene
       selected={setup.selected}
       onSelectNode={setup.onSelectNode}
       onClearSelection={setup.onClear}
-      materialMode={glbUrl ? "reconstructed" : "plain"}
-      scanGlbUrl={null}
+      materialMode={lookOf(glbUrl, scanGlbUrl)}
+      scanGlbUrl={scanGlbUrl}
       staleNodeIds={NO_NODES}
       coverage={NO_COVERAGE}
       lightweight={lightweight}

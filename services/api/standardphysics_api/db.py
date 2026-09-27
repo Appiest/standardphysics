@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS scans (
     space_typology TEXT,
     last_opened_at TEXT,
     results_told_at TEXT,
-    replaces_scan_id TEXT
+    replaces_scan_id TEXT,
+    deleting_at TEXT
 );
 CREATE TABLE IF NOT EXISTS artifacts (
     scan_id TEXT NOT NULL REFERENCES scans(id),
@@ -200,6 +201,7 @@ ADDED_COLUMNS = {
         ("last_opened_at", "TEXT"),
         ("results_told_at", "TEXT"),
         ("replaces_scan_id", "TEXT"),
+        ("deleting_at", "TEXT"),
     ),
     "owners": (("guest", "INTEGER NOT NULL DEFAULT 0"), ("apple_sub", "TEXT"), ("reminded_at", "TEXT")),
     "jobs": (

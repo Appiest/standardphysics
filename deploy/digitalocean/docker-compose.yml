@@ -18,6 +18,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    # Every download leaves through this container's own network namespace,
+    # which does not follow the host's choice; setup.sh loads the module.
+    sysctls:
+      net.ipv4.tcp_congestion_control: bbr
     environment:
       API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
       APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in .env}

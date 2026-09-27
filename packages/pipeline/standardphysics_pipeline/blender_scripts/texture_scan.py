@@ -5,7 +5,10 @@
 Each triangle takes the atlas the unwrap packed it into, one material per atlas.
 
 The atlas is an sRGB photograph of the surface, so the viewer shows the colours
-the camera recorded rather than brightening them a second time.
+the camera recorded rather than brightening them a second time. The scan is
+drawn unlit, so it carries no normals, and its geometry is Draco-compressed:
+with every face on its own atlas island no corner is shared, and plain floats
+were most of the file.
 """
 
 import argparse
@@ -58,6 +61,8 @@ def main() -> None:
     bpy.ops.export_scene.gltf(
         filepath=args.out, export_format="GLB", use_selection=False,
         export_yup=True, export_apply=True, export_image_format="AUTO",
+        export_normals=False, export_draco_mesh_compression_enable=True,
+        export_draco_position_quantization=16, export_draco_texcoord_quantization=16,
     )
     print("SCAN_GLB_WRITTEN")
 
