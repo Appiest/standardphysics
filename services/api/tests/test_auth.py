@@ -196,3 +196,15 @@ def test_the_team_tools_are_closed_while_nobody_is_on_the_team(client):
     assert client.post(f"/api/scans/{scan_id}/ask", json={"text": "hi", "base_revision": 0}).status_code == 403
     assert client.post(f"/api/scans/{scan_id}/loop", json={"base_revision": 0}).status_code == 403
     assert client.get(f"/api/scans/{scan_id}/requests").status_code == 200
+
+
+def test_one_network_cannot_make_endless_accounts(make_client):
+    with make_client(sign_in_as_owner=False) as browser:
+        codes = []
+        for number in range(11):
+            browser.cookies.clear()
+            codes.append(browser.post("/api/auth/sign-up", json={
+                "email": f"owner{number}@example.com", "password": OWNER_PASSWORD, "shop_name": "Corner cafe",
+            }).status_code)
+    assert codes[:10] == [201] * 10
+    assert codes[10] == 429

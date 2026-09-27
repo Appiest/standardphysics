@@ -42,6 +42,8 @@ is granted the team role (see `team`)."""
 
 SIGN_IN_ATTEMPTS = 10
 SIGN_IN_WINDOW_SECONDS = 300
+SIGN_UPS_PER_ADDRESS = 10
+SIGN_UP_WINDOW_SECONDS = 3600
 
 
 class SignUpRequest(BaseModel):
@@ -290,8 +292,15 @@ def _erase_owner(database: Database, owner: Owner) -> list[uuid.UUID]:
 
 
 def _install_auth_routes(app: FastAPI, database: Database, store: ArtifactStore, limiter: AttemptLimiter) -> None:
+    sign_ups = AttemptLimiter(limit=SIGN_UPS_PER_ADDRESS, window=SIGN_UP_WINDOW_SECONDS,
+                              message="Too many new accounts from this network. Try again in an hour.")
+
     @app.post("/api/auth/sign-up", status_code=201, response_model=Session)
     def sign_up(body: SignUpRequest, request: Request, response: Response) -> Session:
+        """A new account, or a guest keeping theirs. A handful an hour per network."""
+        address = client_address(request)
+        sign_ups.check(address)
+        sign_ups.record(address)
         current = resolve_owner(database, request)
         if current is not None and current.guest:
             saved = save_guest(database, current, body.email, body.password, body.shop_name)
