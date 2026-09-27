@@ -378,6 +378,39 @@ def _plurality(node: SceneNode, tally: Counter[str], proposals: dict[str, SceneN
     return proposals[winner] if tally[winner] > rivals else node
 
 
+MIN_BUILT_IN_VOTES = 2
+"""Frames that must call a scanned piece fixed before it stops being movable."""
+
+
+def _voted_built_in(node: SceneNode, detections_by_frame: dict[str, list[Detection]],
+                    cameras_by_id: dict[str, PhotoCamera]) -> SceneNode:
+    """A scanned piece most frames call fixed, under a name of its own family, stops being movable.
+
+    RoomPlan files a service counter under storage, which starts movable, so the
+    solver would turn a plumbed-in counter to clear a floor space. The vote only
+    ever fixes a piece in place; it never frees one.
+    """
+    if not node.movable or bounds_the_room(node) or _is_owner_protected(node):
+        return node
+    fixed = movable = 0
+    for frame_id, detections in detections_by_frame.items():
+        camera = cameras_by_id.get(frame_id)
+        vote = None if camera is None else _movability_vote(node, detections, camera)
+        fixed += vote is False
+        movable += vote is True
+    if fixed >= MIN_BUILT_IN_VOTES and fixed > movable:
+        return node.model_copy(update={"movable": False, "labeled_by": "discovery"})
+    return node
+
+
+def _movability_vote(node: SceneNode, detections: list[Detection], camera: PhotoCamera) -> bool | None:
+    """What this frame says about moving the node: None when no picture of it names its family."""
+    node_box = _projected_box(node, camera)
+    says = {detection.movable for detection in detections
+            if _pictures(node_box, detection) and same_furniture(_detection_name(detection), node.label)}
+    return None if len(says) != 1 else says.pop()
+
+
 def apply_secondary_semantic_corrections(
     graph: SceneGraph,
     detections_by_frame: dict[str, list[Detection]],
@@ -394,7 +427,8 @@ def apply_secondary_semantic_corrections(
     whiteboards: list[SceneNode] = []
 
     # 1. Check existing nodes for sofa/table corrections, by a vote across frames
-    updated_nodes = [_voted_label(node, detections_by_frame, cameras_by_id) for node in graph.nodes]
+    updated_nodes = [_voted_built_in(_voted_label(node, detections_by_frame, cameras_by_id),
+                                     detections_by_frame, cameras_by_id) for node in graph.nodes]
 
     # 2. Check walls for whiteboard attachments: one board per wall,
     # the best-evidenced view, so many frames of one board are not many boards.
