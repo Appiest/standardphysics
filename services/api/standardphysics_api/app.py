@@ -60,6 +60,7 @@ from . import repository as repo
 from .approach import evaluate as evaluate_approach
 from .architecture_export import install_architecture_export_routes
 from .auth import install_auth, owner_of
+from .budgets import Budgets, UploadAdmission
 from .combine import SaveCombineRequest, rooms_of, save_combine
 from .coverage import parse_coverage
 from .db import Database
@@ -86,7 +87,7 @@ from .sharing import install_share_routes
 from .simulations import queue_simulation, simulation_status
 from .splats import install_splat_routes
 from .stages import Stages, preview_ledger
-from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId, ScanFull, ScanQuota, StagedUpload
+from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId, ScanQuota, StagedUpload
 from .team import adopt_allowlist
 from .textures import MAX_METADATA_BYTES, install_texture_routes, maybe_queue_texture, validate_manifest
 from .usdz_validation import MAX_ARCHIVE_BYTES, InvalidUsdz, validate_room_usdz
@@ -114,7 +115,7 @@ def _seed_demo_account(database: Database, store: ArtifactStore, settings: Setti
 
 
 def _problem_response(exc: ApiProblem) -> JSONResponse:
-    return JSONResponse(exc.body.model_dump(exclude_none=True), status_code=exc.status)
+    return JSONResponse(exc.body.model_dump(exclude_none=True), status_code=exc.status, headers=exc.headers)
 
 
 def _install_error_handlers(app: FastAPI) -> None:
@@ -168,8 +169,11 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     install_auth(app, database, store)
     install_account_routes(app, database, settings.apple_audiences)
     install_architecture_export_routes(app, database)
-    _install_scan_routes(app, database, store)
-    _install_upload_routes(app, database, store, worker, settings)
+    budgets = Budgets(
+        settings.max_owner_scans, settings.max_owner_bytes, settings.max_queued_jobs, settings.min_free_disk_bytes
+    )
+    _install_scan_routes(app, database, store, budgets)
+    _install_upload_routes(app, database, store, worker, settings, budgets)
     _install_workspace_routes(app, database, store, stages)
     install_owner_routes(app, database, store, stages)
     _install_combine_routes(app, database, store, worker)
@@ -240,11 +244,12 @@ def _scan_or_404(connection, scan_id: uuid.UUID) -> Scan:
     return scan
 
 
-def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore) -> None:
+def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore, budgets: Budgets) -> None:
     @app.post("/api/scans", status_code=201, response_model=Scan)
     def create_scan(body: CreateScanRequest, request: Request) -> Scan:
         owner = owner_of(request)
         with database.transaction() as connection:
+            budgets.admit_scan(connection, store, owner)
             if body.replaces is not None and repo.scan_owner(connection, body.replaces) != owner.id:
                 raise ApiProblem(404, "no scan")
             scan_id = repo.insert_scan(connection, body, owner.id)
@@ -282,8 +287,11 @@ def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore)
         return Response(status_code=204)
 
 
-def _accept_staged(database, store, scan_id, artifact_id, kind, claimed, staged) -> tuple[int, Artifact]:
+def _accept_staged(
+    database: Database, admission: UploadAdmission, artifact_id: str, kind: str, claimed: str, staged: StagedUpload
+) -> tuple[int, Artifact]:
     """Store a staged upload, or refuse it. The caller discards whatever is still staged afterwards."""
+    store, scan_id = admission.store, admission.scan_id
     if staged.sha256 != claimed.lower():
         raise ApiProblem(400, "checksum mismatch")
     with database.transaction() as connection:
@@ -295,27 +303,22 @@ def _accept_staged(database, store, scan_id, artifact_id, kind, claimed, staged)
             if existing.sha256 != staged.sha256:
                 raise ApiProblem(409, "artifact already stored with different content")
             return 200, existing
-        _admit(connection, store, scan_id, staged.bytes)
+        admission.before_storing(connection, staged.bytes)
         artifact = Artifact(id=artifact_id, kind=kind, sha256=staged.sha256, bytes=staged.bytes)
         repo.insert_artifact(connection, scan_id, artifact)
         store.commit(staged, store.artifact_path(scan_id, artifact_id))
         return 201, artifact
 
 
-def _admit(connection, store: ArtifactStore, scan_id: uuid.UUID, incoming_bytes: int) -> None:
-    """Refuse an artifact the scan has no room left for, with a 413 that says which limit it hit."""
-    try:
-        store.quota.admit(*repo.artifact_usage(connection, scan_id), incoming_bytes)
-    except ScanFull as full:
-        raise ApiProblem(413, str(full)) from None
-
-
-def _refuse_a_full_scan_early(database: Database, store: ArtifactStore, scan_id: uuid.UUID, artifact_id: str) -> None:
+def _refuse_a_doomed_upload_early(
+    database: Database, admission: UploadAdmission, artifact_id: str, request: Request
+) -> None:
     """Say no before reading the body when a new artifact could not fit anyway. A repeat upload still gets its 200."""
+    declared = request.headers.get("content-length", "")
     with database.connect() as connection:
-        _scan_or_404(connection, scan_id)
-        if repo.find_artifact(connection, scan_id, artifact_id) is None:
-            _admit(connection, store, scan_id, 0)
+        _scan_or_404(connection, admission.scan_id)
+        if repo.find_artifact(connection, admission.scan_id, artifact_id) is None:
+            admission.before_reading(connection, int(declared) if declared.isdigit() else 0)
 
 
 def _coverage_of(store: ArtifactStore, scan: Scan) -> list[SurfaceCoverage]:
@@ -326,9 +329,11 @@ def _coverage_of(store: ArtifactStore, scan: Scan) -> list[SurfaceCoverage]:
     return parse_coverage(store.artifact_path(scan.id, artifact.id).read_bytes())
 
 
-def _finalize(database: Database, store: ArtifactStore, scan_id: uuid.UUID) -> tuple[Scan, bool]:
+def _finalize(database: Database, store: ArtifactStore, budgets: Budgets, scan_id: uuid.UUID) -> tuple[Scan, bool]:
     with database.transaction() as connection:
         scan = _scan_or_404(connection, scan_id)
+        if scan.state in ("failed", "uploading"):
+            budgets.admit_queued_work(connection)
         if scan.state == "failed":
             repo.retry_failed_jobs(connection, scan_id)
             return _scan_or_404(connection, scan_id), True
@@ -426,6 +431,7 @@ def _install_upload_routes(
     store: ArtifactStore,
     worker: Worker,
     settings: Settings,
+    budgets: Budgets,
 ) -> None:
     @app.put("/api/scans/{scan_id}/artifacts/{artifact_id}", response_model=Artifact, status_code=201)
     async def upload_artifact(
@@ -435,12 +441,13 @@ def _install_upload_routes(
         x_checksum_sha256: Annotated[str, Header()],
         x_artifact_kind: Annotated[ArtifactKind, Header()],
     ):
-        _refuse_a_full_scan_early(database, store, scan_id, artifact_id)
+        admission = UploadAdmission(budgets, store, owner_of(request), scan_id)
+        _refuse_a_doomed_upload_early(database, admission, artifact_id, request)
         staged = await _stage_upload(store, scan_id, artifact_id, request)
         try:
             _validate_staged(staged, x_artifact_kind)
             status, artifact = _accept_staged(
-                database, store, scan_id, artifact_id, x_artifact_kind, x_checksum_sha256, staged
+                database, admission, artifact_id, x_artifact_kind, x_checksum_sha256, staged
             )
         finally:
             store.discard(staged)
@@ -452,7 +459,7 @@ def _install_upload_routes(
 
     @app.post("/api/scans/{scan_id}/complete", response_model=Scan)
     def complete(scan_id: uuid.UUID, body: CompleteRequest | None = None) -> Scan:
-        scan, queued = _finalize(database, store, scan_id)
+        scan, queued = _finalize(database, store, budgets, scan_id)
         if not queued and scan.state != "uploading":
             with database.transaction() as connection:
                 current = _scan_or_404(connection, scan_id)

@@ -179,6 +179,23 @@ def artifact_usage(connection: sqlite3.Connection, scan_id: uuid.UUID) -> tuple[
     return row["held"], row["held_bytes"]
 
 
+def owner_scan_count(connection: sqlite3.Connection, owner_id: uuid.UUID) -> int:
+    return connection.execute("SELECT COUNT(*) FROM scans WHERE owner_id = ?", (str(owner_id),)).fetchone()[0]
+
+
+def owner_artifact_bytes(connection: sqlite3.Connection, owner_id: uuid.UUID) -> int:
+    """Every uploaded byte across the owner's scans."""
+    return connection.execute(
+        "SELECT COALESCE(SUM(artifacts.bytes), 0) FROM artifacts"
+        " JOIN scans ON scans.id = artifacts.scan_id WHERE scans.owner_id = ?",
+        (str(owner_id),),
+    ).fetchone()[0]
+
+
+def queued_job_count(connection: sqlite3.Connection) -> int:
+    return connection.execute("SELECT COUNT(*) FROM jobs WHERE state = 'queued'").fetchone()[0]
+
+
 def artifact_of_kind(connection: sqlite3.Connection, scan_id: uuid.UUID, kind: str) -> Artifact | None:
     row = connection.execute(
         "SELECT id, kind, sha256, bytes FROM artifacts WHERE scan_id = ? AND kind = ? ORDER BY created_at DESC LIMIT 1",

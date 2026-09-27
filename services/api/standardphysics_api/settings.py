@@ -64,6 +64,22 @@ class Settings:
     """How many artifacts one scan may hold, from SP_MAX_SCAN_ARTIFACTS. See `store.ScanQuota`."""
     max_scan_bytes: int = ScanQuota.max_bytes
     """How many bytes one scan's artifacts may add up to, from SP_MAX_SCAN_BYTES."""
+    max_owner_scans: int = 25
+    """How many scans one account may hold, from SP_MAX_OWNER_SCANS. The team is exempt (see `budgets`)."""
+    max_owner_bytes: int = 6 * 1024 * 1024 * 1024
+    """How many uploaded bytes one account may hold across its scans, from SP_MAX_OWNER_BYTES.
+
+    The largest walk on file, the Moffitt library's full floor, is 2.5 GB, so an
+    owner has room for two walks that size. A shop is far smaller than a library
+    floor. The team, whose account holds about ten Moffitt-scale walks, is exempt.
+    """
+    max_queued_jobs: int = 200
+    """How many jobs may wait in the queue before finalizing a scan is refused with a 503, from SP_MAX_QUEUED_JOBS.
+    A finalized walk queues a handful of jobs, so this is dozens of walks waiting at once."""
+    min_free_disk_bytes: int = 1024 * 1024 * 1024
+    """The free space kept on the data volume, from SP_MIN_FREE_DISK_BYTES. Below it, new scans and
+    uploads are refused with a 507. It is at least one artifact at the largest size allowed, so an
+    upload admitted just above the floor can't run the 10 GB volume out of space by itself."""
     preview_unverified_rules: bool = False
     """Development only. Runs every rule as if a person had verified it, so the
     viewer has findings to draw before the rule pack is reviewed."""
@@ -164,6 +180,10 @@ class Settings:
             apple_audiences=_email_set("SP_APPLE_AUDIENCES") or frozenset({"com.standardphysics.capture"}),
             max_scan_artifacts=_bounded_integer("SP_MAX_SCAN_ARTIFACTS", ScanQuota.max_artifacts, 1, 1_000_000),
             max_scan_bytes=_bounded_integer("SP_MAX_SCAN_BYTES", ScanQuota.max_bytes, 1, 2**50),
+            max_owner_scans=_bounded_integer("SP_MAX_OWNER_SCANS", cls.max_owner_scans, 1, 1_000_000),
+            max_owner_bytes=_bounded_integer("SP_MAX_OWNER_BYTES", cls.max_owner_bytes, 1, 2**50),
+            max_queued_jobs=_bounded_integer("SP_MAX_QUEUED_JOBS", cls.max_queued_jobs, 1, 1_000_000),
+            min_free_disk_bytes=_bounded_integer("SP_MIN_FREE_DISK_BYTES", cls.min_free_disk_bytes, 0, 2**50),
             evidence_settle_seconds=_bounded_integer(
                 "SP_EVIDENCE_SETTLE_SECONDS", 30, 0, 86_400
             ),

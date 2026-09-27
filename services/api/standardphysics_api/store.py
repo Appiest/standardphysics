@@ -11,6 +11,7 @@ import hashlib
 import os
 import pathlib
 import re
+import shutil
 import tempfile
 import uuid
 from collections.abc import AsyncIterator
@@ -71,6 +72,10 @@ class ArtifactStore:
             raise InvalidArtifactId(artifact_id)
         return path
 
+    def free_bytes(self) -> int:
+        """Space left on the volume the store is on, which the database and the worker's output share."""
+        return shutil.disk_usage(self.root).free
+
     def scan_dir(self, scan_id: uuid.UUID) -> pathlib.Path:
         return self.root / "scans" / str(scan_id)
 
@@ -81,8 +86,6 @@ class ArtifactStore:
         root, the same way a read is, so a delete can never walk out of the
         store.
         """
-        import shutil
-
         target = self.scan_dir(scan_id)
         if not str(target).startswith(str(self.root)):
             raise InvalidArtifactId(str(scan_id))

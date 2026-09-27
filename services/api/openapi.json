@@ -27,7 +27,9 @@
           }
         },
         "responses": {
-          "201": {"description": "Scan created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Scan"}}}}
+          "201": {"description": "Scan created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Scan"}}}},
+          "403": {"description": "This account already holds as many scans as it may"},
+          "507": {"description": "The data volume is below its free-space floor. Try again later"}
         }
       },
       "get": {
@@ -49,7 +51,9 @@
         "responses": {
           "201": {"description": "Stored"},
           "200": {"description": "Already stored"},
-          "400": {"description": "Checksum mismatch"}
+          "400": {"description": "Checksum mismatch"},
+          "413": {"description": "Over a limit: the artifact size, its kind's cap, the scan's quota or the account's budget"},
+          "507": {"description": "The data volume is below its free-space floor. Try again later"}
         }
       }
     },
@@ -64,7 +68,8 @@
         },
         "responses": {
           "200": {"description": "Queued", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Scan"}}}},
-          "409": {"description": "Missing required artifacts"}
+          "409": {"description": "Missing required artifacts"},
+          "503": {"description": "The job queue is full. Retry after the seconds in Retry-After"}
         }
       }
     },
