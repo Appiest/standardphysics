@@ -2,8 +2,10 @@
 
 Q = WALL_WEIGHT * W + PAIR_WEIGHT * P + SIGHT_WEIGHT * S.
 
-W  wall relation. Each moved piece's angle to its nearest wall and distance
-   from it, compared with the owner's layout (the room before any scramble).
+W  wall relation. Each moved piece keeps a reference wall, the wall nearest it
+   in the owner's layout, and its angle and distance are measured against that
+   same wall segment in both layouts, so landing nearer a different wall after
+   the edit is not scored as a turn toward it.
 P  chair and table pairs. Each seat and the table nearest it in the owner's
    layout keep their distance and the seat keeps facing the table.
 S  sightlines. The open floor visible at eye level from the service counter's
@@ -105,9 +107,18 @@ def _to_segment(point, segment) -> float:
     return math.hypot(px - (ax + t * (bx - ax)), py - (ay + t * (by - ay)))
 
 
+def _nearest_wall(point: tuple[float, float], walls):
+    """The wall segment closest to `point`, out of `walls`."""
+    return min(walls, key=lambda wall: _to_segment(point, wall))
+
+
 def wall_relation(node: SceneNode, walls) -> tuple[float, float]:
-    """The piece's heading against its nearest wall, in degrees modulo 180, and its distance from it."""
-    nearest = min(walls, key=lambda wall: _to_segment(_xy(node), wall))
+    """The piece's heading against its nearest wall, in degrees modulo 180, and its distance from it.
+
+    Pass a single-element `walls` to measure against one particular wall
+    instead of picking whichever is nearest to `node` right now.
+    """
+    nearest = _nearest_wall(_xy(node), walls)
     (ax, ay), (bx, by) = nearest
     direction = math.degrees(math.atan2(by - ay, bx - ax))
     return (yaw_degrees(node) - direction) % 180.0, _to_segment(_xy(node), nearest)
@@ -126,8 +137,9 @@ def wall_term(owner: SceneGraph, after: SceneGraph, moved: set) -> float:
         return 1.0
     scores = []
     for piece in pieces:
-        angle_before, distance_before = wall_relation(owned[piece.id], walls)
-        angle_after, distance_after = wall_relation(piece, walls)
+        reference = [_nearest_wall(_xy(owned[piece.id]), walls)]
+        angle_before, distance_before = wall_relation(owned[piece.id], reference)
+        angle_after, distance_after = wall_relation(piece, reference)
         scores.append(relation_score(_angle_between(angle_before, angle_after, 180.0),
                                      distance_after - distance_before))
     return sum(scores) / len(scores)
