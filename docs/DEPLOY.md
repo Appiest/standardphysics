@@ -73,13 +73,25 @@ rooms somewhere else.
 ## Start it
 
 ```bash
-docker compose up -d --build
+GIT_SHA=$(git rev-parse HEAD) docker compose up -d --build
 docker compose logs -f caddy    # watch the certificate arrive
 curl https://api.standardphysics.app/health
 ```
 
 The first build takes a while: it installs the Python packages and builds the
 workspace on the box.
+
+`GIT_SHA` names the commit being built. The image is tagged
+`standardphysics:<sha>` as well as `standardphysics:latest`, and the API
+reports the commit at `/health/details`, which is how a rollback knows what
+it is rolling back from. Left out, the tag falls back to `latest` and the API
+reports `unknown`.
+
+The compose file caps the API at 3.2 GB and 1.75 cores and the workspace at
+512 MB and one core, sized so a photo bake of up to about 3 GB fits and Caddy,
+Docker and SSH still have room. The comment at the top of
+`docker-compose.yml` has the arithmetic. On a bigger Droplet, raise them
+there.
 
 ## Blender
 
@@ -124,16 +136,66 @@ taken, the stack half torn down and the site answering 502. It stops if you have
 pulls from GitHub and a deploy that quietly ships the previous commit is worse
 than one that refuses. `SP_DEPLOY_HOST` moves it to another box.
 
-On the Droplet itself it is the two commands the script runs:
+It also waits while the API has jobs queued or running. The rebuild restarts
+the API, and a bake interrupted ten minutes in starts again from nothing, so
+the script counts the unfinished rows in the `jobs` table first, through the
+API container's own Python, and stops if there are any. To deploy anyway:
 
 ```bash
-git pull
-docker compose up -d --build
+SP_DEPLOY_FORCE=1 scripts/deploy.sh
 ```
 
-The API restarts, which interrupts any reconstruction in flight. Those jobs
-are requeued on the next start by `requeue_interrupted_jobs`, so an update
-during a busy afternoon costs time rather than a scan.
+Interrupted jobs are requeued on the next start by `requeue_interrupted_jobs`,
+so a forced deploy costs time rather than a scan.
+
+Each deploy appends the time and the commit to
+`/var/log/standardphysics-deploys.log` on the Droplet. That file is the list of
+commits you can roll back to.
+
+On the Droplet itself it is the commands the script runs:
+
+```bash
+git checkout master
+git pull
+GIT_SHA=$(git rev-parse HEAD) docker compose up -d --build
+```
+
+## Rolling back
+
+Every deploy leaves its image behind, tagged with its commit, so going back
+to an earlier one reuses that image rather than building it again. On the
+Droplet:
+
+```bash
+cat /var/log/standardphysics-deploys.log     # pick the commit to go back to
+docker image ls standardphysics              # check its image is still here
+cd /root/standardphysics
+git checkout <sha>
+cd deploy/digitalocean
+GIT_SHA=<sha> docker compose up -d
+curl -s https://api.standardphysics.app/health/details   # "commit" is now <sha>
+```
+
+Leave `--build` off. With it, compose rebuilds from the checked-out source,
+which gives the same result far more slowly. Without it, compose finds
+`standardphysics:<sha>` and starts it. If that image has been pruned, the
+command builds it from the checked-out commit instead.
+
+The checkout also rolls back `docker-compose.yml` and `Caddyfile` to that
+commit, which is what you want: the image and the configuration it was
+deployed with go back together.
+
+The database is not rolled back with the code. Schema changes here only add
+tables and columns (`_add_missing_columns` in `db.py`), so an older server
+normally runs on a newer database without noticing. If the release being
+undone wrote data the older code cannot read, restore the database from the
+backup taken before that release (below).
+
+The next `scripts/deploy.sh` returns the box to master before it pulls, so
+rolling forward again is an ordinary deploy.
+
+Old images take a few GB each. Clear out the ones you will not roll back to
+with `docker image rm standardphysics:<sha>`, keeping the last few.
 
 ## One container holds the database
 
@@ -144,21 +206,84 @@ is worth doing when more than one person is scanning at a time.
 
 ## Backups
 
-A volume snapshot is not a database backup: SQLite may be mid-write when the
-snapshot is taken. DigitalOcean's snapshots are a floor to fall back on, not
-the plan. For a real copy:
+`deploy/digitalocean/backup.sh` takes one snapshot of everything on the
+volume: the database, and the scans and keys beside it. Set where the
+snapshots go in `.env`:
 
 ```bash
-docker compose exec api /opt/venv/bin/python -c \
-  "import sqlite3; s=sqlite3.connect('/data/standardphysics.sqlite3'); \
-   d=sqlite3.connect('/data/backup.sqlite3'); s.backup(d)"
-scp root@<droplet>:/mnt/standardphysics-scans/backup.sqlite3 .
+SP_BACKUP_DEST=/mnt/standardphysics-backups          # a path on this box
+SP_BACKUP_DEST=backup@203.0.113.7:/srv/standardphysics   # or another box, over ssh
+SP_BACKUP_KEEP=14
 ```
 
-The scan artifacts sit beside it under the same mount and are the larger half.
-Until they are on Spaces or another object store, losing the volume loses the
-rooms. `doctl compute volume-action snapshot` schedules nothing on its own, so
-put it in cron or take one before each update.
+A local path should be on a second Block Storage volume, not the scans
+volume, or the backup is lost with the thing it backs up. A remote target
+needs rsync installed there and an ssh key on this box that works without a
+passphrase. Spaces and other object stores are not supported, because
+snapshots share unchanged files through hard links and an object store has
+none.
+
+Then turn on the nightly run, which `setup.sh` installed switched off:
+
+```bash
+systemctl enable --now standardphysics-backup.timer
+systemctl start standardphysics-backup.service   # one now, to see it work
+journalctl -u standardphysics-backup.service
+```
+
+How it works, and why:
+
+- The database is copied with SQLite's online backup API, run by the API
+  container's own Python. A plain file copy is not a backup here. The API
+  keeps the database in WAL mode, where recent writes live in a separate
+  `-wal` file until a checkpoint, so copying the main file alone can lose them.
+- The volume is then copied with `rsync --link-dest` into a directory named
+  for the UTC time, like `2026-09-27T103000Z`. A file that has not changed
+  since the previous snapshot becomes a hard link to it, so each snapshot is a
+  complete tree that costs only the space of what changed.
+- A snapshot is written as `<name>.partial` and renamed when it finishes, so
+  a backup that dies halfway never looks like a good one.
+- After a snapshot finishes, all but the newest `SP_BACKUP_KEEP` are deleted.
+
+Run `backup.sh` by hand before anything risky, such as a rollback past a
+release that changed stored data.
+
+DigitalOcean's volume snapshots are still worth having as a floor, but they
+catch SQLite mid-write, and `doctl compute volume-action snapshot` schedules
+nothing on its own.
+
+### Restoring
+
+`restore.sh` copies a snapshot into a new directory and checks it. It never
+writes over the live volume.
+
+```bash
+cd /root/standardphysics/deploy/digitalocean
+./restore.sh                                 # lists the snapshots
+./restore.sh latest /root/restored
+```
+
+It prints SQLite's integrity check, the number of scans, and the number of
+artifacts the database lists against the number of files. It exits 1 if the
+database is damaged, and 2 if some listed artifact has no file, naming each
+one. A scan uploaded while the backup ran can show up as a file the database
+does not list yet, which is harmless.
+
+To put a checked copy back under the API:
+
+```bash
+docker compose stop api web
+rsync -a /mnt/standardphysics-scans/ /mnt/standardphysics-backups/before-restore/
+rsync -a --delete --exclude=/lost+found /root/restored/ /mnt/standardphysics-scans/
+chown -R 10001:10001 /mnt/standardphysics-scans
+docker compose start api web
+```
+
+The first copy keeps what was live, in case the restore was the mistake; put
+it anywhere with room. `--delete` makes the volume hold exactly the restored
+files, including removing the old `-wal` and `-shm` files, which belong to the
+database being replaced. The volume stays mounted throughout, because it is a
+mount point and moving it would move the mount.
 
 ## Pointing the app at it
 
