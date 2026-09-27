@@ -206,10 +206,11 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
 
     @app.get("/health/details")
     def health_details() -> dict:
-        """What each worker loop is doing, how long since it last beat, and how long the queue has waited."""
+        """What each worker loop is doing, how long since it last beat, how long the queue has waited,
+        and which commit this server was built from."""
         with database.connect() as connection:
             oldest = repo.oldest_queued_job_seconds(connection)
-        return {"worker": worker.status(), "oldest_queued_job_seconds": oldest}
+        return {"worker": worker.status(), "oldest_queued_job_seconds": oldest, "commit": settings.git_sha}
 
     return app
 

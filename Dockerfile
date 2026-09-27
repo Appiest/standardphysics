@@ -105,6 +105,13 @@ COPY apps/web/tsconfig.json ./apps/web/tsconfig.json
 
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
+# The commit this image holds, which /health/details reports. It is declared
+# this late because every layer after an ARG's first use rebuilds when its
+# value changes, and each deploy changes it. deploy/digitalocean passes it
+# from `git rev-parse HEAD`.
+ARG GIT_SHA=unknown
+ENV SP_GIT_SHA=$GIT_SHA
+
 # The scans and their uploaded artifacts live here. Mount it, or a restart
 # loses every shop anyone has scanned.
 RUN mkdir -p /data && useradd --system --uid 10001 physics && chown -R physics /data /app

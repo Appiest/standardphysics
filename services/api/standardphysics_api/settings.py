@@ -132,6 +132,10 @@ class Settings:
     not changed for this long (or an explicit /complete arrives), one semantic
     job is queued. Zero keeps the immediate per-artifact behavior for tests.
     """
+    git_sha: str = "unknown"
+    """The commit the image was built from, from SP_GIT_SHA, which the Dockerfile
+    bakes in from the GIT_SHA build argument. /health/details reports it, so the
+    commit to roll back from is on the server rather than in someone's memory."""
 
     @property
     def database_path(self) -> pathlib.Path:
@@ -156,6 +160,7 @@ class Settings:
             apns_key_id=os.environ.get("SP_APNS_KEY_ID") or None,
             apns_team_id=os.environ.get("SP_APNS_TEAM_ID") or None,
             apns_topic=os.environ.get("SP_APNS_TOPIC") or "com.standardphysics.capture",
+            git_sha=os.environ.get("SP_GIT_SHA") or "unknown",
             apple_audiences=_email_set("SP_APPLE_AUDIENCES") or frozenset({"com.standardphysics.capture"}),
             max_scan_artifacts=_bounded_integer("SP_MAX_SCAN_ARTIFACTS", ScanQuota.max_artifacts, 1, 1_000_000),
             max_scan_bytes=_bounded_integer("SP_MAX_SCAN_BYTES", ScanQuota.max_bytes, 1, 2**50),
