@@ -3,7 +3,7 @@
   "benchmark_id": "moffett-photo-mesh-500-v1",
   "kind": "requirements_not_implemented_evaluator",
   "status": "proposed_targets_not_measured_results",
-  "plan": "docs/deepseek-moffett-photo-mesh-500-plan.txt",
+  "plan": "docs/research/deepseek-moffett-photo-mesh-500-plan.txt",
   "gaussian_splatting_allowed": false,
   "generated_detail_allowed": false,
   "preserve_originals_and_prior_revisions": true,

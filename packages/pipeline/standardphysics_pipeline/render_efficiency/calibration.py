@@ -24,7 +24,7 @@ from .builder import sample_mesh
 from .metrics import MetricError
 
 TANGENT_FACTORS: tuple[float, ...] = (0.5, 0.75, 1.0)
-"""Policy options for tangent sigma = factor * spacing (docs/deepseek-lidar-experiment-policy-v2.json)."""
+"""Policy options for tangent sigma = factor * spacing (docs/research/deepseek-lidar-experiment-policy-v2.json)."""
 
 OPACITY_OPTIONS: tuple[float, ...] = (0.3, 0.5, 0.7)
 """Policy options for per-splat opacity."""

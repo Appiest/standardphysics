@@ -6,7 +6,7 @@ measured scene, outlet work and production viewer. SplatX is experimental until
 held-out quality passes; its first pilot is not production-ready.
 
 Start in /Users/yanzihao/Documents/standardphysics.
-Read docs/splatx-metal-evaluation.txt and
+Read docs/research/splatx-metal-evaluation.txt and
 runs/moffett/splatx-evaluation/status.json. These contain the completed audit,
 161 passing core tests, exact source revision and actual M5 Pro measurements.
 Do not repeat the repository search, build or capability audit unless a file is

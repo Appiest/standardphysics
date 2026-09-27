@@ -8,7 +8,7 @@ Read `docs/PLAN.md` sections 6 and 7. Read `docs/AGENT_PROTOCOL.md` before your 
 
 ```
 packages/pipeline/**
-PROGRESS_B.json
+docs/progress/PROGRESS_B.json
 docs/handoffs/B-to-*.md
 ```
 

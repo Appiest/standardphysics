@@ -139,7 +139,7 @@ def main():
         source for state in result.sample_states for source in state.source_ids
     )
     provenance = {
-        "policy": "docs/deepseek-lidar-experiment-policy-v2.json",
+        "policy": "docs/research/deepseek-lidar-experiment-policy-v2.json",
         "method": "deterministic_surface_gaussians",
         "colour_source": "allowed train RGB with static-mask support",
         "input_allowlist_sha256": _sha256(args.allowlist),

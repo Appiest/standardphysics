@@ -2,13 +2,13 @@ You are the implementation coordinator for Standard Physics. Work in
 /Users/yanzihao/Documents/standardphysics. This is an instruction to BUILD and
 VERIFY the product, not to write another plan. Read this entire prompt pack:
 
-1. docs/deepseek-shop-pilot/01-coordinator.txt
-2. docs/deepseek-shop-pilot/02-contracts-and-ownership.txt
-3. docs/deepseek-shop-pilot/03-agent-prompts.txt
-4. docs/deepseek-shop-pilot/04-hard-gates.json
-5. docs/deepseek-shop-pilot/05-adversarial-tests.txt
-6. docs/deepseek-shop-pilot/06-phone-and-field-handoff.txt
-7. docs/product-vision-audit-2026-09-21.txt
+1. docs/research/deepseek-shop-pilot/01-coordinator.txt
+2. docs/research/deepseek-shop-pilot/02-contracts-and-ownership.txt
+3. docs/research/deepseek-shop-pilot/03-agent-prompts.txt
+4. docs/research/deepseek-shop-pilot/04-hard-gates.json
+5. docs/research/deepseek-shop-pilot/05-adversarial-tests.txt
+6. docs/research/deepseek-shop-pilot/06-phone-and-field-handoff.txt
+7. docs/research/product-vision-audit-2026-09-21.txt
 Read applicable AGENTS.md and the actual source before changing anything.
 
 The user needs the strongest VERIFIED pilot by 2026-09-22T00:00:00-07:00

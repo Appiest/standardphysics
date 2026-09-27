@@ -7,12 +7,12 @@
   "timezone": "America/Los_Angeles",
   "deadline_meaning": "physical-phone assisted pilot handoff; actual shop field visit occurs later",
   "authoritative_documents": [
-    "docs/deepseek-shop-pilot/01-coordinator.txt",
-    "docs/deepseek-shop-pilot/02-contracts-and-ownership.txt",
-    "docs/deepseek-shop-pilot/03-agent-prompts.txt",
-    "docs/deepseek-shop-pilot/05-adversarial-tests.txt",
-    "docs/deepseek-shop-pilot/06-phone-and-field-handoff.txt",
-    "docs/product-vision-audit-2026-09-21.txt"
+    "docs/research/deepseek-shop-pilot/01-coordinator.txt",
+    "docs/research/deepseek-shop-pilot/02-contracts-and-ownership.txt",
+    "docs/research/deepseek-shop-pilot/03-agent-prompts.txt",
+    "docs/research/deepseek-shop-pilot/05-adversarial-tests.txt",
+    "docs/research/deepseek-shop-pilot/06-phone-and-field-handoff.txt",
+    "docs/research/product-vision-audit-2026-09-21.txt"
   ],
   "prohibited": [
     "gaussian_splatting_work_or_fallback_in_mesh_mode",
@@ -174,7 +174,7 @@
     {
       "id": "G15", "name": "Photo mesh 500px quality", "owner": "V", "evaluator": "Q", "depends_on": ["G05", "G09"],
       "requires": ["all applicable gates in referenced visual policy recomputed", "frozen source-independent test views and exposure disclosure", "actual mesh in product viewer", "all four Moffett rooms and full-floor seated route", "physical-phone runtime for phone claim", "independent visual review; user acceptance separate"],
-      "policy_reference": "docs/deepseek-moffett-photo-mesh-500-policy.json",
+      "policy_reference": "docs/research/deepseek-moffett-photo-mesh-500-policy.json",
       "limits": {"minimum_framebuffer_px": [500,500], "coverage_min_each_view": 0.95, "critical_ROI_coverage_min_each": 0.98, "largest_hole_fraction_max": 0.01, "median_alignment_error_px_max": 1.5, "p95_alignment_error_px_max": 3.0, "critical_feature_error_px_max": 2.0, "effective_resolution_passing_fraction_min": 0.95, "median_added_edge_width_px_max": 1.0, "p95_added_edge_width_px_max": 2.0, "weighted_pass_score": null},
       "note": "Reference policy remains authoritative for further details; mismatch between policies fails preflight. Any authorized change requires versioning. A library runtime candidate cannot inherit a single-room proof."
     },

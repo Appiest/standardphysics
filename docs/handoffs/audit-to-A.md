@@ -1,6 +1,6 @@
 # Audit to Lane A
 
-Findings from `a6e14f7` and the twelve-commit burst `1ebff37..24eecbc`. Reproductions are in `PROGRESS.md`.
+Findings from `a6e14f7` and the twelve-commit burst `1ebff37..24eecbc`. Reproductions are in `docs/progress/PROGRESS.md`.
 
 ## A-47 The coverage engine never reaches "done" on a real scan (High)
 

@@ -3,12 +3,12 @@ Moffett outlet implementation audit — 2026-09-20
 VERDICT: NOT COMPLETE. Do not use the current reach results to decide an outlet
 is accessible. Commit 5f4598e implements helpers, schema fields, a panel and export
 support, but the real photo-to-outlet path is disconnected and acceptance evidence
-is synthetic. PROGRESS_MOFFETT_OUTLETS.json's Gates A–F complete claim is unsupported.
+is synthetic. docs/progress/PROGRESS_MOFFETT_OUTLETS.json's Gates A–F complete claim is unsupported.
 This is an audit, not a repair. Existing implementation and original captures were
 left unchanged. No database mutation or demo script execution was performed.
 
 Scope: audited 5f4598e and current working files against
-docs/gemini-overnight-outlet-feature-prompt.txt. Other rendering work is concurrent
+docs/research/gemini-overnight-outlet-feature-prompt.txt. Other rendering work is concurrent
 and outside scope. Links/line numbers below refer to the audited working snapshot.
 
 P1 — The completion evidence is a hand-authored fixture, not a real demonstration.

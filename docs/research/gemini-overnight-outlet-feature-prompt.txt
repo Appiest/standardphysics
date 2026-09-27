@@ -15,7 +15,7 @@ than fabricated detections, invented measurements, or an unsupported success cla
 1. Operating rules and runtime settings
 
 Read all applicable AGENTS.md instructions and existing project conventions first.
-Read PROGRESS_MOFFETT.json and relevant latest run-status files. Inspect git status,
+Read docs/progress/PROGRESS_MOFFETT.json and relevant latest run-status files. Inspect git status,
 current branch, existing contracts, detector, API and viewer before editing.
 The workspace has concurrent changes: preserve them and do not reset, overwrite,
 stash, or commit other people's work. Branch first if on the default branch.
@@ -112,7 +112,7 @@ Known issues to verify in current source:
 
 3. Persistent plan, checkpoints, and the outer work loop
 
-Create docs/moffett-outlet-build-plan.txt and PROGRESS_MOFFETT_OUTLETS.json, unless
+Create docs/research/moffett-outlet-build-plan.txt and docs/progress/PROGRESS_MOFFETT_OUTLETS.json, unless
 equivalent current files exist; in that case extend them rather than duplicating.
 Do not create new .md files. Store experimental artifacts under a new directory
 such as runs/moffett/outlets/<run-id>; preserve earlier runs.

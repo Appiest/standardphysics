@@ -8,7 +8,7 @@ Read `docs/PLAN.md` sections 1, 2 and 3. Read `docs/AGENT_PROTOCOL.md` before yo
 
 ```
 apps/ios/**
-PROGRESS_A.json
+docs/progress/PROGRESS_A.json
 docs/handoffs/A-to-*.md
 ```
 
@@ -29,7 +29,7 @@ Nothing else. The results screens inside the app are Lane D's web build in a Web
 | Walking the shop and the venue to record real scans | Someone has to hold the phone and walk | By 2:00 PM |
 | Handing the phone to a stranger to test the coverage guidance | The whole point is whether a person understands it | By 6:00 PM |
 
-Put each in `needs_human` in `PROGRESS_A.json` the moment you reach it, then keep building against fixtures.
+Put each in `needs_human` in `docs/progress/PROGRESS_A.json` the moment you reach it, then keep building against fixtures.
 
 ## Build order
 

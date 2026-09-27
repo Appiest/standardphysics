@@ -127,7 +127,7 @@ Reuse existing ownership rather than adding duplicate camera or export systems:
 Paths above are relative to the repository; splats/ means
 packages/pipeline/standardphysics_pipeline/splats/ and textures/ means its sibling.
 Observed repository HEAD: 5b48faa, with additional uncommitted work; snapshot hashes
-are in docs/moffett-splat-audit-evidence.json.
+are in docs/research/moffett-splat-audit-evidence.json.
 
 3. PROPOSED BUILD: CALIBRATED SURFACE GAUSSIANS
 

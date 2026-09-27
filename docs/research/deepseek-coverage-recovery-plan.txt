@@ -9,10 +9,10 @@ when usable. Coverage success, appearance success and full-floor completion are
 separate outcomes. A passing test count is not a reconstructed room.
 
 Read first, in this order
-- docs/deepseek-coverage-recovery-policy.json (parameters and acceptance contract)
-- docs/deepseek-render-r003-audit.txt (latest concrete failures)
+- docs/research/deepseek-coverage-recovery-policy.json (parameters and acceptance contract)
+- docs/research/deepseek-render-r003-audit.txt (latest concrete failures)
 - runs/moffett/render-efficiency/r003/checkpoint.json (completed work to reuse)
-- docs/splatx-metal-evaluation.txt (native capability limits; do not repeat audit)
+- docs/research/splatx-metal-evaluation.txt (native capability limits; do not repeat audit)
 Also obey applicable AGENTS.md. Work in /Users/yanzihao/Documents/standardphysics.
 The new coverage policy supersedes the prior32-photo experiment for this run.
 It is a requirements document, not an implemented evaluator or measured result.

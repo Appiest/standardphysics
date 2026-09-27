@@ -29,6 +29,8 @@ import functools
 import inspect
 from typing import Any
 
+from standardphysics_pipeline.occupancy import CELL_SIZE
+
 from .configuration import DEFAULT_SETUPS, Setup, review
 from .dataset import Case, dataset
 from .runner import FIX_CANDIDATE_LIMIT
@@ -139,6 +141,7 @@ def _model_class(module: Any):
 
     class ShopReview(module.Model):
         measurements: str = "pipeline"
+        cell_size: float = CELL_SIZE
         router: str = "local"
         run_fixes: bool = True
         fix_candidates: int = FIX_CANDIDATE_LIMIT

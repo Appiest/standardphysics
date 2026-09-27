@@ -1,8 +1,8 @@
 {
   "run_id": "r001",
   "objective": "Implement the evaluator first, freeze a fair pilot, and build a deterministic surface-Gaussian candidate. Evaluate against matched baselines under the frozen experiment policy; deliver evidence and an honest conclusion.",
-  "plan": "docs/deepseek-overnight-lidar-render-plan.txt",
-  "policy": "docs/deepseek-lidar-experiment-policy.json",
+  "plan": "docs/research/deepseek-overnight-lidar-render-plan.txt",
+  "policy": "docs/research/deepseek-lidar-experiment-policy.json",
   "status": "plan_executed_no_eligible_score_honest_blocker",
   "updated_at": "2026-09-20T13:35:00-07:00",
   "environment": {
@@ -146,7 +146,7 @@
       "note": "Spark headless harness could not match Brush native render; capability blocker recorded in probe-gate-report.json"
     }
   ],
-  "status_note": "All four phases executed with evidence: v2 split reviewed as separated, synthetic parameters frozen, edge audit recorded, B0 v2 reproduced 3x with native held-out eval (11.42 dB / 0.316 SSIM), candidate built 3x and ablated, msplat built and audited. Honest blockers: no validated common renderer and no honest F timing, so the candidate has no eligible score; invalidated renders archived. Full writeup in docs/moffett-render-efficiency-results.txt.",
+  "status_note": "All four phases executed with evidence: v2 split reviewed as separated, synthetic parameters frozen, edge audit recorded, B0 v2 reproduced 3x with native held-out eval (11.42 dB / 0.316 SSIM), candidate built 3x and ablated, msplat built and audited. Honest blockers: no validated common renderer and no honest F timing, so the candidate has no eligible score; invalidated renders archived. Full writeup in docs/research/moffett-render-efficiency-results.txt.",
   "benchmark_version": 2,
   "evaluator_hash": "5283a976b72ebfbee027c51ce03286c19deafc303a4514d5bbe347dde0d1b35c",
   "evaluator_hash_note": "v2 includes added calibration.py; recorded before any candidate score computation"

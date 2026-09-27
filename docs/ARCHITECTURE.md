@@ -1,6 +1,6 @@
 # How the app gets there
 
-The plan behind [`MISSION.md`](MISSION.md).
+The plan behind [`MISSION.md`](MISSION.md) for the reasoning layer: how checks and questions are built from measured geometry. The running system, its services and its deployment are described in the [README](../README.md#how-its-built).
 
 ## The mistake this plan corrects
 

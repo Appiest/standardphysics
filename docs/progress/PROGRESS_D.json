@@ -36,7 +36,7 @@
     "Fix what I can: the workspace runs Lane C's run_loop and shows each pass, the router's choice and whether the re-measure kept it",
     "ARIA: the evaluation grid is in W&B as one run per configuration, and docs/aria.md says what a run holds, what a person has to turn on, and which questions to ask",
     "marimo: notebooks/scenario_sweep.py varies the shop's dimensions and the routine through Lane C's run_case, with a sweep chart whose sampled boundary lands on the number the check cites (docs/marimo.md)",
-    "ARIA: nine runs uploaded, six questions asked and answered, one improvement shipped from what it found. docs/aria_responses.md holds its answers and docs/aria.md holds what changed",
+    "ARIA: nine runs uploaded, six questions asked and answered, one improvement shipped from what it found. docs/research/aria_responses.md holds its answers and docs/aria.md holds what changed",
     "routes stay in the room: RoomPlan's zero-thickness walls are drawn solid, a trip between two stops on the floor never uses the outside, and a stop inside furniture is reached from its open side (b6da05c)",
     "audit A-6: the endpoint exemption keeps only what a stop stands at (1084818)",
     "audit A-14, A-15, A-16: 403.5.2 widths measured across the gaps the route runs through (1d6a685)",
@@ -88,7 +88,7 @@
   "needs_human": [
     "Record the second check on the rules (docs/handoffs/D-to-C-rule-review.md). Until then every report carries the preview notice.",
     "Try build 7 from TestFlight on a LiDAR iPhone: first launch with no account, a real walk and the in-shop questions, the results push, Sign in with Apple, adding a room and sharing the report",
-    "Lane A: decide what the capture gate requires; PROGRESS.md A-47 has the data",
+    "Lane A: decide what the capture gate requires; docs/progress/PROGRESS.md A-47 has the data",
     "Decide whether dead-end turning space (304.3.1) is a recommendation, which needs a new Finding outcome in contracts",
     "Decide whether door_clearance_blocked should report the chair in the doorway as a route finding too (relabelled in 1084818)",
     "A scan that includes a door, and tape measurements to check it against (A-50, G17)",

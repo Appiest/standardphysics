@@ -23,4 +23,4 @@ Visual and evidence interpretation -> primary
 
 Completed: native release build, 161 core tests, 300-step smoke, 3000-step pilot,
 eight validation renders per model, export round-trip and source audit.
-Result: evaluated, not promoted. See docs/splatx-metal-evaluation.txt.
+Result: evaluated, not promoted. See docs/research/splatx-metal-evaluation.txt.

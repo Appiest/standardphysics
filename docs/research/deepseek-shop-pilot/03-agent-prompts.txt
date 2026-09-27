@@ -6,7 +6,7 @@ complexity, not a claim that DeepSeek exposes OpenAI models.
 
 COMMON WRAPPER (PREPEND TO EVERY CARD)
 You are lane <ID> in Standard Physics, working toward the connected shop pilot
-described in docs/deepseek-shop-pilot/00-PASTE-INTO-DEEPSEEK.txt. Read your card,
+described in docs/research/deepseek-shop-pilot/00-PASTE-INTO-DEEPSEEK.txt. Read your card,
 01-coordinator.txt, 02-contracts-and-ownership.txt, 04-hard-gates.json and applicable
 AGENTS.md. You are not alone in the codebase. Do not revert others' edits. Only
 edit your leased files; coordinate shared changes. Read source and reuse existing

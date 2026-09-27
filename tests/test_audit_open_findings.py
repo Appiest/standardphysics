@@ -3,7 +3,7 @@
 Each test states what correct behaviour looks like and fails on today's code,
 so CI stays green while the bug exists. `strict=True` turns a fix into a
 failing XPASS, so whoever fixes a finding deletes its marker in the same push
-and the finding closes. Reproductions are in PROGRESS.md. The lane that owns
+and the finding closes. Reproductions are in docs/progress/PROGRESS.md. The lane that owns
 the code fixes it; the audit only pins it.
 """
 
