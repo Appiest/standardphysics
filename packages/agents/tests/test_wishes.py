@@ -1,11 +1,13 @@
 """Owner wishes: inferred from the layout or stated, and checked against a proposed room."""
 
 import json
+import math
 from pathlib import Path
 
 import pytest
 from standardphysics_agents.fix import apply_moves
 from standardphysics_agents.training import TrainingChecker, score_completion
+from standardphysics_agents.training.quality import wall_segments, wall_term
 from standardphysics_agents.training.reward import shaped_reward
 from standardphysics_agents.training.wishes import broken, infer_wishes, kept, kept_share, stays_near, stays_put
 from standardphysics_contracts import NodeMove, Scenario, SceneGraph, Vec3
@@ -91,3 +93,37 @@ def test_the_reward_pays_for_keeping_the_owners_layout(room, measure, pack, ledg
     verdict = score_completion(json.dumps({"moves": [{"node_id": str(seat), "dx": 1.0, "dy": 0.0,
                                                       "rotation_degrees": 0}]}), room, checker)
     assert verdict.wishes_kept is None or verdict.wishes_kept < 1.0
+
+
+def _perpendicular_distance(point, segment):
+    (px, py), ((ax, ay), (bx, by)) = point, segment
+    length_squared = (bx - ax) ** 2 + (by - ay) ** 2
+    t = 0.0 if length_squared == 0 else max(0.0, min(1.0, ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / length_squared))
+    return math.hypot(px - (ax + t * (bx - ax)), py - (ay + t * (by - ay)))
+
+
+def _wall_tangent(node, owner):
+    """A unit vector along the nearest wall to `node`, so a slide by this vector keeps its wall distance."""
+    position = (node.transform.position.x, node.transform.position.y)
+    (ax, ay), (bx, by) = min(wall_segments(owner), key=lambda segment: _perpendicular_distance(position, segment))
+    length = math.hypot(bx - ax, by - ay) or 1.0
+    return (bx - ax) / length, (by - ay) / length
+
+
+def test_turning_a_moved_piece_diagonal_pays_less_than_the_same_slide_along_its_wall(room, measure):
+    """The audit case: a display case slid 0.3 m along its wall keeps its wall relation and is paid in
+    full; turned 90 degrees crosswise over that same slide, it stands diagonally in open floor and the
+    reward should pay clearly less for it, even though nothing else about the edit changed."""
+    piece_id = _wish(infer_wishes(room, measure), "against_wall").subjects[0]
+    piece = room.by_id(piece_id)
+    tx, ty = _wall_tangent(piece, room)
+    slid = _slide(room, piece_id, tx * 0.3, ty * 0.3)
+    turned_too = _slide(room, piece_id, tx * 0.3, ty * 0.3, turn=90.0)
+
+    wall_slid = wall_term(room, slid, {piece_id})
+    wall_turned = wall_term(room, turned_too, {piece_id})
+    assert wall_turned < wall_slid - 0.2
+
+    reward_slid = shaped_reward(1.0, True, 0.0, wall=wall_slid)
+    reward_turned = shaped_reward(1.0, True, 0.0, wall=wall_turned)
+    assert reward_turned < reward_slid

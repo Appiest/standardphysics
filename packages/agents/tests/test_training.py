@@ -87,6 +87,12 @@ def test_shaped_reward_rewards_recovery_and_charges_disruption():
     assert shaped_reward(0.5, False, 0.0) > shaped_reward(0.5, False, 3.0)
     assert shaped_reward(0.0, False, 100.0, 0.0) == 0.05
     assert shaped_reward(0.0, True, 100.0, 0.0) > shaped_reward(1.0, False, 0.0, 1.0)
+    # A perfect complete fix (all clear, full usability, wishes and wall placement, no penalties) pays 1.0.
+    assert shaped_reward(1.0, True, 0.0, 1.0, 0.0, 1.0, wall=1.0) == 1.0
+    # Turning a moved piece off its wall costs reward even when the fix clears every finding.
+    assert shaped_reward(1.0, True, 0.0, wall=0.0) < shaped_reward(1.0, True, 0.0, wall=1.0)
+    # Even the worst wall placement on a complete fix still outranks the best possible partial fix.
+    assert shaped_reward(0.0, True, 100.0, 0.0, wall=0.0) > shaped_reward(1.0, False, 0.0, 1.0, wall=1.0)
 
 
 def test_scrambled_variants_are_buildable_and_have_something_to_fix(graph, scenario, pipeline, pack, ledger):

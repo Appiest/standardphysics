@@ -15,7 +15,7 @@ from standardphysics_agents.training.quality import (
     viewpoint,
     wall_term,
 )
-from standardphysics_agents.training.reward import MOVED_PINNED, USABILITY_WEIGHT
+from standardphysics_agents.training.reward import MOVED_PINNED, USABILITY_WEIGHT, WALL_PLACEMENT_WEIGHT
 from standardphysics_agents.training.rooms import ScanPlan, build_window
 from standardphysics_agents.training.scans import export_scan, read_only
 from standardphysics_agents.training.split import DROPPED, HELDOUT, TRAIN, HoldOut, RoomRecord, assign, pick_floor
@@ -230,16 +230,20 @@ def test_moving_a_pinned_piece_scores_zero(graph, scenario, pipeline, pack, ledg
     assert verdict.reward == 0.0 and verdict.reason == MOVED_PINNED
 
 
-def test_usability_is_paid_and_quality_is_only_logged(graph, scenario, pipeline, pack, ledger):
+def test_usability_and_wall_are_paid_pairs_and_sight_are_only_logged(graph, scenario, pipeline, pack, ledger):
     assert shaped_reward(0.5, False, 1.0, 1.0) - shaped_reward(0.5, False, 1.0, 0.0) == pytest.approx(USABILITY_WEIGHT)
     assert shaped_reward(0.5, False, 1.0, 5.0) == shaped_reward(0.5, False, 1.0, 1.0)
+    assert (shaped_reward(0.5, False, 1.0, wall=1.0) - shaped_reward(0.5, False, 1.0, wall=0.0)
+           == pytest.approx(WALL_PLACEMENT_WEIGHT))
     checker = TrainingChecker(scenario, rules=pack, ledger=ledger, measure=pipeline, owner_layout=graph)
     variant = scramble(graph, checker, 1, seed=1)[0].graph
     target = search_target(variant, checker)
     assert target is not None and target.verdict.quality is not None and target.verdict.usability is not None
     verdict = target.verdict
+    assert verdict.wall is not None and verdict.wall == verdict.quality["wall"]
     assert verdict.reward == shaped_reward(verdict.shortfall_recovered, verdict.fixable_left == 0,
-                                           verdict.disruption_meters, verdict.usability, 0.0, verdict.wishes_kept)
+                                           verdict.disruption_meters, verdict.usability, 0.0, verdict.wishes_kept,
+                                           verdict.wall)
     assert layout_quality(variant, variant, graph, pipeline).q == pytest.approx(1.0)
     assert score_completion("nonsense", variant, checker).usability is None
 
