@@ -3,7 +3,7 @@
 What counts as a problem, and what the loop does next.
 
 ```bash
-python -m pip install -e packages/agents
+python -m pip install -e packages/contracts -e packages/fixtures -e packages/pipeline -e packages/agents
 python -m pytest packages/agents -q
 ```
 
