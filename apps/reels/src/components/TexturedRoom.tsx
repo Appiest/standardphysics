@@ -24,7 +24,7 @@ function unlit(model: Group, ceiling: Plane) {
   model.traverse((node) => {
     if (!(node instanceof Mesh)) return;
     const source = node.material as Material & { map?: Texture | null };
-    node.material = new MeshBasicMaterial({ map: source.map ?? null, clippingPlanes: [ceiling] });
+    node.material = new MeshBasicMaterial({ map: source.map ?? null, vertexColors: node.geometry.hasAttribute("color"), clippingPlanes: [ceiling] });
   });
 }
 
