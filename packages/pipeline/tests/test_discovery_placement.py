@@ -21,6 +21,7 @@ from standardphysics_pipeline.discovery.carve import CarvedBox, fit_box
 from standardphysics_pipeline.discovery.detect import Detection
 from standardphysics_pipeline.discovery.merge import DiscoveredObject
 from standardphysics_pipeline.discovery.placement import (
+    at_its_surface,
     part_of_a_scanned_piece,
     seated,
     seen_through_the_shell,
@@ -231,6 +232,32 @@ class TestWorkSurfacesLevelWithAScannedOne:
         lowered = carved("counter", np.vstack([lowered_top, slab((0.0, -0.45, 0.38), (0.9, 0.0, 0.76))]))
         mesh = np.vstack([self.counter_mesh(), lowered_top])
         assert not part_of_a_scanned_piece(lowered, graph_of(self.measured_counter()), mesh)
+
+
+class TestACarvedWorkSurfaceAtItsSurface:
+    def test_its_top_is_the_surface_not_the_sign_standing_on_it(self):
+        counter = np.vstack([slab((3.0, 0.0, COUNTER_TOP), (1.5, 0.5, 0.0)), slab((3.0, -0.24, 0.43), (1.5, 0.0, 0.86))])
+        sign = slab((3.2, 0.0, 1.0), (0.3, 0.1, 0.26))
+        carve = carved("counter", np.vstack([counter, sign]))
+        topped = at_its_surface(carve, graph_of(), np.vstack([counter, sign]))
+        assert top(topped.box) == pytest.approx(COUNTER_TOP, abs=0.01)
+        assert topped.box.floor_clearance == pytest.approx(carve.box.floor_clearance)
+        assert topped.name == "counter"
+
+    def test_running_on_level_from_a_scanned_table_it_is_a_table(self):
+        """The photos called the rest of the bar ledge a counter; RoomPlan boxed its start as a table."""
+        bar = piece("Table", (0.0, 0.0, COUNTER_TOP / 2), (1.7, 0.7, COUNTER_TOP))
+        run_on = np.vstack([slab((1.9, 0.0, COUNTER_TOP), (2.4, 0.7, 0.0)), slab((1.9, -0.34, 0.43), (2.4, 0.0, 0.86))])
+        assert at_its_surface(carved("counter", run_on), graph_of(bar), run_on).name == "table"
+
+    def test_a_lower_counter_beside_a_scanned_table_keeps_its_name(self):
+        bar = piece("Table", (0.0, 0.0, 0.55), (1.7, 0.7, 1.1))
+        run_on = np.vstack([slab((1.9, 0.0, COUNTER_TOP), (2.4, 0.7, 0.0)), slab((1.9, -0.34, 0.43), (2.4, 0.0, 0.86))])
+        assert at_its_surface(carved("counter", run_on), graph_of(bar), run_on).name == "counter"
+
+    def test_anything_else_is_left_as_it_is(self):
+        reader = carved("card reader", slab((0.4, 0.0, 0.93), (0.1, 0.15, 0.12)))
+        assert at_its_surface(reader, graph_of(), reader.box.points) is reader
 
 
 class TestCountersStandOnTheFloor:

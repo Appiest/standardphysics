@@ -44,6 +44,8 @@ LEVEL_WITH = 0.4
 """Share of a carved work surface's points over a scanned one's footprint, at any height, for a shared top to make them one."""
 LEVEL = 0.03
 """Metres between two tops that are the same surface: about an inch, the margin a worktop is measured to."""
+TOUCHING = 0.1
+"""Share of a carved work surface's points over a scanned one's widened footprint for the two to meet."""
 BEYOND = 0.5
 """Share of an object's points past the room's shell before it is outside the room."""
 PAST_THE_SHEET = 0.05
@@ -100,6 +102,34 @@ def level_with(box: CarvedBox, node: SceneNode, points: np.ndarray) -> bool:
         return False
     surface = carved_top(box, points)
     return surface is not None and abs(surface - top_of(node)) <= LEVEL
+
+
+def at_its_surface(object_: DiscoveredObject, graph: SceneGraph, points: np.ndarray) -> DiscoveredObject:
+    """A carved table or counter topped where the mesh shows its surface, and named like the scanned piece it continues.
+
+    A carve reaches as high as whatever stands on the surface: on Share-Tea a
+    carve of the bar ledge topped out at 64.5 inches on the kiosk beside it,
+    while the mesh put its surface at 43.2, level with the bar RoomPlan boxed
+    and named a table. The photos called that stretch a counter in one run
+    and a table in another; running on level from the scanned piece, it is
+    more of that piece and takes its name, the way a scanned bar the photos
+    call a counter stays a table. Anything else is returned as it is.
+    """
+    if not is_work_surface(object_.name):
+        return object_
+    surface = carved_top(object_.box, points)
+    if surface is None:
+        return object_
+    box = object_.box
+    if box.floor_clearance + MIN_EXTENT < surface < box.centre[2] + box.dimensions[2] / 2:
+        box = box.topped_at(surface)
+    continued = next(
+        (node for node in graph.nodes
+         if not bounds_the_room(node) and same_furniture(object_.name, node.label)
+         and abs(surface - top_of(node)) <= LEVEL and share_over(object_.box, node, REACH) >= TOUCHING),
+        None,
+    )
+    return replace(object_, box=box, name=object_.name if continued is None else continued.label.lower())
 
 
 def seen_through_the_shell(box: CarvedBox, graph: SceneGraph, viewpoints: np.ndarray) -> bool:

@@ -425,6 +425,13 @@ class TestNotReDiscoveringTheRoom:
             assert _worth_keeping(self._object(name), graph_of(), viewpoints=9), name
 
 
+    def test_a_table_the_scanner_missed_needs_a_third_place_to_be_seen_from(self):
+        """Named from two places, an unboxed counter is more often the bench, ledge and kiosk along a wall."""
+        assert not _worth_keeping(self._object("counter"), graph_of(), viewpoints=2)
+        assert _worth_keeping(self._object("counter"), graph_of(), viewpoints=3)
+        assert _worth_keeping(self._object("payment terminal"), graph_of(), viewpoints=2)
+
+
 class TestLeavingBehindWhatAThingRestsOn:
     def test_a_laptop_on_a_desktop_is_separated_from_it(self):
         """The desktop goes entirely. The laptop keeps everything but the

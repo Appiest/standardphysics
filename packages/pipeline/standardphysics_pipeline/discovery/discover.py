@@ -53,9 +53,15 @@ from .detect import (
 from .extent import MeshViews, measured_on_the_mesh
 from .merge import Candidate, DiscoveredObject, merge_candidates
 from .people import PeopleRemoval, PersonVolume, without_people
-from .placement import part_of_a_scanned_piece, seated, seen_through_the_shell, standing_on_the_floor
+from .placement import (
+    at_its_surface,
+    part_of_a_scanned_piece,
+    seated,
+    seen_through_the_shell,
+    standing_on_the_floor,
+)
 from .reconcile import reconcile_outlets
-from .semantic_corrections import apply_secondary_semantic_corrections
+from .semantic_corrections import apply_secondary_semantic_corrections, is_work_surface
 from .surface_attach import attach_detection_to_surface
 from .worktops import measure_worktops
 
@@ -217,15 +223,15 @@ def _carved_objects(
     candidates = _carve_all(cameras, detections, unclaimed, clear_view)
     found = [(object_, _viewpoints(object_, cameras)) for object_ in merge_candidates(candidates)]
     loose = points[~structure_points(points, graph)]
-    worth = [(object_, viewpoints) for object_, viewpoints in found
-             if _worth_keeping(object_, graph, viewpoints, cameras, people, loose)]
-    objects = [object_ for object_, _ in worth]
-    measured = measured_on_the_mesh(objects, mesh.loose_near(objects, graph, people))
+    kept = [object_ for object_, viewpoints in found
+            if _worth_keeping(object_, graph, viewpoints, cameras, people, loose)]
+    measured = measured_on_the_mesh(kept, mesh.loose_near(kept, graph, people))
     return [
-        (replace(standing, box=seated(standing.box, graph, loose)), viewpoints)
-        for object_, (_, viewpoints) in zip(measured, worth, strict=True)
+        (replace(standing, box=seated(standing.box, graph, loose)), _viewpoints(standing, cameras))
+        for object_ in measured
         for standing in [standing_on_the_floor(object_, graph, loose)]
         if standing is not None
+        for standing in [at_its_surface(standing, graph, loose)]
     ]
 
 
@@ -447,7 +453,7 @@ def _worth_keeping(
     people: Sequence[PersonVolume] = (),
     loose: np.ndarray | None = None,
 ) -> bool:
-    if object_.name.strip().lower() in ALREADY_THE_ROOM or viewpoints < MIN_VIEWS:
+    if object_.name.strip().lower() in ALREADY_THE_ROOM or viewpoints < _views_needed(object_):
         return False
     if object_.box.volume < MIN_VOLUME or object_.box.floor_clearance > MAX_FLOOR_CLEARANCE:
         return False
@@ -457,6 +463,18 @@ def _worth_keeping(
         or seen_through_the_shell(object_.box, graph, _positions(object_, cameras))
         or any(person.holds(object_.box) for person in people)
     )
+
+
+def _views_needed(object_: DiscoveredObject) -> int:
+    """Separate places an object must be named from before it becomes a node.
+
+    A table or counter RoomPlan did not box is, more often than not, a mash of
+    what stands along a wall: on Share-Tea the photos called a bench, the bar
+    ledge above it and a kiosk behind both a counter from two places, and it
+    came out a floor-standing counter 80 inches tall. A real one is big
+    enough to be named from wherever the walk passes it.
+    """
+    return CONFIDENT_VIEWS if is_work_surface(object_.name) else MIN_VIEWS
 
 
 def _already_measured(object_: DiscoveredObject, graph: SceneGraph) -> bool:
