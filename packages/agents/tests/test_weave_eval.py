@@ -26,9 +26,18 @@ from standardphysics_agents.evaluation.weave_eval import (
 
 
 class FakeModel:
-    """Enough of `weave.Model`: fields arrive as keyword arguments."""
+    """Enough of `weave.Model`: fields arrive as keyword arguments.
+
+    `weave.Model` is a pydantic model that forbids extra fields, so a field the
+    model class does not declare is refused here too. A stand-in that accepted
+    anything let the command break in Weave while every test passed.
+    """
 
     def __init__(self, **fields):
+        declared = {name for cls in type(self).__mro__ for name in getattr(cls, "__annotations__", {})}
+        undeclared = sorted(set(fields) - declared)
+        if undeclared:
+            raise TypeError(f"{type(self).__name__} has no field {', '.join(undeclared)}")
         for name, value in fields.items():
             setattr(self, name, value)
 
@@ -130,6 +139,10 @@ class TestTheConfigurations:
                           cases=dataset()[:1])
         model = weave.evaluations[0].models[0]
         assert (model.measurements, model.run_fixes) == ("stub", False)
+
+    def test_the_model_carries_the_cell_size(self, weave):
+        evaluate_in_weave([Setup("fine cells", cell_size=0.02)], cases=dataset()[:1])
+        assert weave.evaluations[0].models[0].cell_size == 0.02
 
     def test_the_result_comes_back_under_its_label(self, weave):
         result = evaluate_in_weave([Setup("just this one")], cases=dataset()[:1])
