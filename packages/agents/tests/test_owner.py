@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from standardphysics_agents.fix import apply_moves
 from standardphysics_agents.training.owner import InteractiveOwner, SimulatedOwner, WishBook, stated_from
-from standardphysics_agents.training.wishes import infer_wishes, stays_put
+from standardphysics_agents.training.wishes import infer_wishes, kept, stays_put
 from standardphysics_contracts import NodeMove, SceneGraph, Vec3
 from standardphysics_pipeline import PipelineMeasurements
 
@@ -77,3 +77,33 @@ def test_a_person_at_the_terminal_can_say_yes_or_lock_a_piece(room):
     no = InteractiveOwner(ask=lambda _: f"n lock {str(chair.id)[:6]}", show=shown.append).review(room, room)
     assert yes.accepted and shown[0] == "Here is what changed."
     assert not no.accepted and no.stated[0].kind == "stays_put" and no.about is room
+
+
+def test_saved_wishes_become_stated_wishes_and_skip_pieces_no_longer_there(room, measure):
+    from standardphysics_agents.training.owner import stated_book
+    from standardphysics_contracts import OwnerWish
+
+    chair = next(node for node in room.nodes if node.label == "Chair")
+    table = next(node for node in room.nodes if node.label == "Table")
+    saved = [OwnerWish(kind="stays_put", node_id=chair.id),
+             OwnerWish(kind="stays_near", node_id=chair.id, anchor_id=table.id, inches=200),
+             OwnerWish(kind="stays_put", node_id="00000000-0000-0000-0000-000000000009")]
+    book = stated_book(room, saved)
+    assert [wish.kind for wish in book.wishes] == ["stays_put", "stays_near"]
+    assert all(wish.hard for wish in book.wishes)
+    veto = book.rejection(measure)
+    assert veto(room, room) is None
+    assert veto(room, _slide(room, chair.id, 0.3)).startswith("owner_wish:")
+
+
+def test_a_bent_wish_offers_the_saved_wish_that_would_keep_it(room, measure):
+    from standardphysics_agents.training.owner import keep_request, stated_book
+
+    for wish in infer_wishes(room, measure):
+        saved = keep_request(wish, room)
+        if wish.kind == "clear_view":
+            assert saved is None
+            continue
+        assert saved is not None and saved.text.startswith("Keep the ")
+        kept_again = stated_book(room, [saved]).wishes[0]
+        assert kept_again.hard and kept(kept_again, room, room, measure)

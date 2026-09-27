@@ -5,7 +5,7 @@ geometry it reasoned over, only a plain paragraph. That paragraph has to come
 from the same facts the rearranger checked, not from a model's memory of what
 it meant to do: what moved and by how far (`quality.moved_ids`, `edits.
 yaw_degrees`), which accessibility problem that move cleared or eased, with
-its ADA section and the before and after measurement (`TrainingChecker`), and
+its ADA section and the before and after measurement (an `Assessor`), and
 which of the owner's own wishes survived the change (`wishes.kept`). The model
 that picked the option may add one sentence of its own reasoning, carried
 through unchanged and always labelled as the model's reason rather than a
@@ -17,16 +17,29 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import asdict, dataclass
+from typing import Protocol
 
-from standardphysics_contracts import Finding, SceneGraph, SceneNode, to_inches
+from standardphysics_contracts import Finding, MeasurementProvider, SceneGraph, SceneNode, to_inches
 
+from ..assess import Pass
 from ..numbers import _whole_or_tenth
-from ..rules import RuleSpec
-from .checker import TrainingChecker
+from ..rules import AgentRulePack, RuleSpec
 from .edits import yaw_degrees
 from .quality import _xy, moved_ids
 from .wishes import Wish
 from .wishes import kept as wish_kept
+
+
+class Assessor(Protocol):
+    """What an explanation reads the room through: the training checker, or production's own assessment."""
+
+    rules: AgentRulePack
+    measure: MeasurementProvider
+
+    def assess(self, graph: SceneGraph) -> Pass: ...
+
+    def fixable_problems(self, result: Pass) -> list[Finding]: ...
+
 
 ID_TAG = re.compile(r" \[[0-9a-fA-F]{4}\]")
 """The " [abcd]" tag `wishes._name` adds to tell twins apart. Owners never see ids."""
@@ -155,7 +168,7 @@ def _fixed_sentence(finding: Finding, rule: RuleSpec, after_problems: dict) -> s
     return _improved_sentence(finding, rule, still_there.measured_inches)
 
 
-def _fixed_sentences(checker: TrainingChecker, before: SceneGraph, after: SceneGraph) -> list[str]:
+def _fixed_sentences(checker: Assessor, before: SceneGraph, after: SceneGraph) -> list[str]:
     fixable = checker.fixable_problems(checker.assess(before))
     after_problems = {finding.id: finding for finding in checker.assess(after).problems}
     sentences = (_fixed_sentence(finding, checker.rules.by_id(finding.check_id), after_problems)
@@ -163,7 +176,7 @@ def _fixed_sentences(checker: TrainingChecker, before: SceneGraph, after: SceneG
     return [sentence for sentence in sentences if sentence is not None]
 
 
-def _clean(text: str) -> str:
+def owner_text(text: str) -> str:
     """A wish's text, with its " [abcd]" id tag removed: owners never see ids."""
     return ID_TAG.sub("", text)
 
@@ -174,19 +187,19 @@ def _touched(wish: Wish, moved: set) -> bool:
 
 
 def _kept_and_bent(wishes: list[Wish], before: SceneGraph, after: SceneGraph,
-                    checker: TrainingChecker) -> tuple[list[str], list[str]]:
+                    checker: Assessor) -> tuple[list[str], list[str]]:
     """The wishes about pieces that moved, split by whether they survived; repeats are said once."""
     moved = moved_ids(before, after)
     kept_texts: list[str] = []
     bent_texts: list[str] = []
     for wish in (wish for wish in wishes if _touched(wish, moved)):
         bucket = kept_texts if wish_kept(wish, before, after, checker.measure) else bent_texts
-        if _clean(wish.text) not in bucket:
-            bucket.append(_clean(wish.text))
+        if owner_text(wish.text) not in bucket:
+            bucket.append(owner_text(wish.text))
     return kept_texts, bent_texts
 
 
-def explain_change(before: SceneGraph, after: SceneGraph, checker: TrainingChecker,
+def explain_change(before: SceneGraph, after: SceneGraph, checker: Assessor,
                     wishes: list[Wish], why: str = "") -> Explanation:
     """What changed, in the owner's own words, built only from what was measured."""
     kept_texts, bent_texts = _kept_and_bent(wishes, before, after, checker)

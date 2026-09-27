@@ -16,11 +16,12 @@ asks a person at the terminal instead.
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
-from standardphysics_contracts import MeasurementProvider, SceneGraph
+from standardphysics_contracts import MeasurementProvider, OwnerWish, SceneGraph
 
 from ..fix import CandidateRejection
 from .wishes import Wish, infer_wishes, kept, stays_near, stays_put
@@ -158,3 +159,53 @@ class InteractiveOwner:
         if answer.lower() in ("y", "yes", ""):
             return Review(accepted=True)
         return Review(accepted=False, said=answer, stated=tuple(stated_from(answer, before)), about=before)
+
+
+TABLE_SLACK_INCHES = 12.0
+"""How far a seat the owner wants kept at its table may still drift from it."""
+
+
+def _node(graph: SceneGraph, node_id):
+    return next((node for node in graph.nodes if node.id == node_id), None)
+
+
+def _as_wish(saved: OwnerWish, graph: SceneGraph) -> Wish | None:
+    node = _node(graph, saved.node_id)
+    if node is None:
+        return None
+    if saved.kind == "stays_put":
+        return stays_put(node)
+    anchor = _node(graph, saved.anchor_id)
+    return None if anchor is None else stays_near(node, anchor, saved.inches * INCH)
+
+
+def stated_book(graph: SceneGraph, saved: list[OwnerWish]) -> WishBook:
+    """The owner's saved wishes as stated wishes about `graph`; a wish naming a piece no longer there is skipped."""
+    book = WishBook()
+    for wish in (_as_wish(item, graph) for item in saved):
+        if wish is not None:
+            book.add(wish, graph)
+    return book
+
+
+def _distance_inches(a, b) -> float:
+    return math.dist((a.transform.position.x, a.transform.position.y),
+                     (b.transform.position.x, b.transform.position.y)) / INCH
+
+
+def keep_request(wish: Wish, graph: SceneGraph) -> OwnerWish | None:
+    """The saved wish that would keep an inferred one, read against the layout it was inferred from.
+
+    A seat kept at its table stays within a foot of its distance now; a piece
+    kept against its wall stays where it is. The counter's view depends on
+    every piece at once, so there is no single wish to save for it.
+    """
+    nodes = [_node(graph, node_id) for node_id in wish.subjects]
+    if wish.kind == "with_table" and None not in nodes:
+        seat, table = nodes
+        return OwnerWish(kind="stays_near", node_id=seat.id, anchor_id=table.id,
+                         inches=round(_distance_inches(seat, table) + TABLE_SLACK_INCHES, 1),
+                         text=f"Keep the {seat.label.lower()} at the {table.label.lower()}")
+    if wish.kind == "against_wall" and None not in nodes:
+        return OwnerWish(kind="stays_put", node_id=nodes[0].id, text=f"Keep the {nodes[0].label.lower()} where it is")
+    return None

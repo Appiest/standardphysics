@@ -159,6 +159,7 @@ from .textures import (
     TextureState,
     TextureStatus,
 )
+from .wishes import BentWish, OwnerWish, OwnerWishesRequest, ProposalExplanation
 
 __all__ = [
     "Asks",
@@ -287,6 +288,10 @@ __all__ = [
     "Scan",
     "ScanList",
     "SpaceTypologyRequest",
+    "OwnerWish",
+    "OwnerWishesRequest",
+    "BentWish",
+    "ProposalExplanation",
     "ScanState",
     "Scenario",
     "SceneGraph",

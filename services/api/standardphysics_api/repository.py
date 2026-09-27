@@ -15,6 +15,7 @@ from standardphysics_contracts import (
     Assessment,
     CreateScanRequest,
     EvidenceBundle,
+    OwnerWish,
     Scan,
     Scenario,
     SceneGraph,
@@ -59,6 +60,7 @@ def _scan(connection: sqlite3.Connection, row: sqlite3.Row, with_photos: bool = 
         coverage=[SurfaceCoverage.model_validate(c) for c in json.loads(row["coverage_json"])],
         content_hash=row["content_hash"],
         space_typology=row["space_typology"],
+        owner_wishes=_wishes_from(row["owner_wishes_json"]),
     )
 
 
@@ -95,6 +97,20 @@ def set_space_typology(connection: sqlite3.Connection, scan_id: uuid.UUID, typol
 def space_typology(connection: sqlite3.Connection, scan_id: uuid.UUID) -> SpaceTypology | None:
     row = connection.execute("SELECT space_typology FROM scans WHERE id = ?", (str(scan_id),)).fetchone()
     return SpaceTypology(row["space_typology"]) if row and row["space_typology"] else None
+
+
+def _wishes_from(stored: str) -> list[OwnerWish]:
+    return [OwnerWish.model_validate(wish) for wish in json.loads(stored)]
+
+
+def set_owner_wishes(connection: sqlite3.Connection, scan_id: uuid.UUID, wishes: list[OwnerWish]) -> None:
+    stored = json.dumps([wish.model_dump(mode="json") for wish in wishes])
+    connection.execute("UPDATE scans SET owner_wishes_json = ? WHERE id = ?", (stored, str(scan_id)))
+
+
+def owner_wishes(connection: sqlite3.Connection, scan_id: uuid.UUID) -> list[OwnerWish]:
+    row = connection.execute("SELECT owner_wishes_json FROM scans WHERE id = ?", (str(scan_id),)).fetchone()
+    return _wishes_from(row["owner_wishes_json"]) if row else []
 
 
 def get_scan(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Scan | None:

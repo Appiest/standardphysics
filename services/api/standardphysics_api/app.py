@@ -34,6 +34,7 @@ from standardphysics_contracts import (
     LoopRequest,
     LoopResult,
     ManualMarkRequest,
+    OwnerWishesRequest,
     ProposalRequest,
     ProposalResult,
     RebuildRequest,
@@ -579,6 +580,14 @@ def _install_route_routes(app: FastAPI, database: Database, stages: Stages, work
     @app.post("/api/scans/{scan_id}/scenario/legs", response_model=RouteLegs)
     def scenario_legs(scan_id: uuid.UUID, body: Scenario) -> RouteLegs:
         return legs(database, stages, scan_id, body)
+
+    @app.put("/api/scans/{scan_id}/owner-wishes", response_model=Scan)
+    def set_owner_wishes(scan_id: uuid.UUID, body: OwnerWishesRequest) -> Scan:
+        """Everything the owner wants kept in this shop; every later proposal and loop is held to it."""
+        with database.transaction() as connection:
+            _scan_or_404(connection, scan_id)
+            repo.set_owner_wishes(connection, scan_id, body.wishes)
+            return repo.get_scan(connection, scan_id)
 
     @app.put("/api/scans/{scan_id}/space-type", response_model=Scan)
     def set_space_type(scan_id: uuid.UUID, body: SpaceTypologyRequest) -> Scan:

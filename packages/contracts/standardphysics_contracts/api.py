@@ -19,6 +19,7 @@ from .precedents import SpaceTypology
 from .rules import Check
 from .scan import Scan
 from .scene import Scenario, SceneGraph
+from .wishes import ProposalExplanation
 
 
 class CreateScanRequest(BaseModel):
@@ -184,6 +185,8 @@ class ProposalResult(BaseModel):
     """The sentence to show: the fix, or that no arrangement works."""
     question: str | None = None
     """One thing the owner could allow, when nothing works as things stand."""
+    explanation: ProposalExplanation | None = None
+    """The proposal in the owner's words, with the choices it keeps and bends."""
 
 
 class AskRequest(BaseModel):

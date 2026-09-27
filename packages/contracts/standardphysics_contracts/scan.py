@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from .precedents import SpaceTypology
+from .wishes import OwnerWish
 
 ArtifactKind = Literal[
     "room_usdz", "room_json", "room_metadata", "walkthrough_mp4",
@@ -121,3 +122,5 @@ class Scan(BaseModel):
     content_hash: str | None = None
     space_typology: SpaceTypology | None = None
     """What kind of space this is, as the owner said. None until they say; no ADA layout directive applies without it."""
+    owner_wishes: list[OwnerWish] = []
+    """What the owner asked to keep; every proposal is held to these."""

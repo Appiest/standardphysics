@@ -19,7 +19,7 @@ import json
 import logging
 import pathlib
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 
 from standardphysics_agents import (
@@ -32,10 +32,26 @@ from standardphysics_agents import (
     load_pack,
 )
 from standardphysics_agents.ask import Answer, ask
-from standardphysics_agents.fix import FixOutcome, propose_fix
+from standardphysics_agents.fix import FixOutcome, combine_rejections, propose_fix
 from standardphysics_agents.loop import loop_steps
 from standardphysics_agents.precedents import rejection_for_space
-from standardphysics_contracts import Assessment, Finding, Scenario, SceneGraph, SpaceTypology, Stop, Vec3
+from standardphysics_agents.rules import AgentRulePack
+from standardphysics_agents.training.explain import explain_change, owner_text
+from standardphysics_agents.training.owner import keep_request, stated_book
+from standardphysics_agents.training.wishes import broken, infer_wishes
+from standardphysics_contracts import (
+    Assessment,
+    BentWish,
+    Finding,
+    MeasurementProvider,
+    OwnerWish,
+    ProposalExplanation,
+    Scenario,
+    SceneGraph,
+    SpaceTypology,
+    Stop,
+    Vec3,
+)
 from standardphysics_pipeline import PipelineMeasurements, blender, parse_room_json, reconstruct
 from standardphysics_pipeline.discovery import DiscoveryError, DiscoveryInputs, DiscoveryResult, discover_objects
 from standardphysics_pipeline.textures import BakeInputs, BakeResult, bake_textures
@@ -124,6 +140,22 @@ def without_route_rules(ledger: VerificationLedger) -> VerificationLedger:
     """The same verifications minus every rule about a customer route, for a scan that has none yet."""
     route_rule_ids = {rule.id for rule in load_pack().rules if ROUTE_SUBJECTS.intersection(rule.applies_to)}
     return VerificationLedger(entries=[entry for entry in ledger.entries if entry.rule_id not in route_rule_ids])
+
+
+@dataclass(frozen=True)
+class _Assessor:
+    """Production's assessment of a room for explaining a proposal: unsure scan geometry stays unsure."""
+
+    scenario: Scenario
+    measure: MeasurementProvider
+    rules: AgentRulePack
+    ledger: VerificationLedger
+
+    def assess(self, graph: SceneGraph):
+        return assess(graph, self.scenario, self.measure, rules=self.rules, ledger=self.ledger)
+
+    def fixable_problems(self, result) -> list[Finding]:
+        return [finding for finding in result.problems if self.rules.by_id(finding.check_id).rearrangeable]
 
 
 @dataclass
@@ -300,34 +332,54 @@ class Stages:
         return result.assessment.model_copy(update={"rules_checked": checked, "scope": scope})
 
     def propose(
-        self, graph: SceneGraph, scenario: Scenario, targets: list[Finding], typology: SpaceTypology | None = None
+        self, graph: SceneGraph, scenario: Scenario, targets: list[Finding], typology: SpaceTypology | None = None,
+        wishes: Sequence[OwnerWish] = (),
     ) -> FixOutcome:
         """Lane C's fix agent: one arrangement that clears the targets, or one thing to ask.
 
-        The space type's verified ADA directives veto any arrangement that breaks them.
+        The space type's verified ADA directives, and every wish the owner saved,
+        veto any arrangement that breaks them.
         """
         with self._search_lock:
             ledger = self.ledger_factory()
             return propose_fix(
                 graph, scenario, self.search_measure, targets, rules=load_pack(), ledger=ledger,
-                candidate_rejection=rejection_for_space(typology, graph),
+                candidate_rejection=self._rejection(graph, typology, wishes),
             )
 
+    def _rejection(self, graph: SceneGraph, typology: SpaceTypology | None, wishes: Sequence[OwnerWish]):
+        return combine_rejections(rejection_for_space(typology, graph),
+                                  stated_book(graph, list(wishes)).rejection(self.search_measure))
+
+    def explain(
+        self, before: SceneGraph, after: SceneGraph, scenario: Scenario, wishes: Sequence[OwnerWish] = ()
+    ) -> ProposalExplanation:
+        """A proposal in the owner's words: what moved, what it fixed, and which of their choices it bends."""
+        with self._search_lock:
+            reader = _Assessor(scenario, self.search_measure, load_pack(), self.ledger_factory())
+            inferred = infer_wishes(before, self.search_measure)
+            said = stated_book(before, list(wishes)).wishes
+            story = explain_change(before, after, reader, [*inferred, *said])
+            bent = broken(inferred, before, after, self.search_measure)
+        return ProposalExplanation(
+            moves=story.moves, fixed=story.fixed, kept=story.kept,
+            bent=[BentWish(text=owner_text(wish.text), keep=keep_request(wish, before)) for wish in bent],
+        )
+
     def loop(
-        self, graph: SceneGraph, scenario: Scenario, typology: SpaceTypology | None = None
+        self, graph: SceneGraph, scenario: Scenario, typology: SpaceTypology | None = None,
+        wishes: Sequence[OwnerWish] = (),
     ) -> tuple[str, Iterator[LoopStep]]:
         """Lane C's loop on the search cache: the router's name, and each pass as it finishes."""
         router = self.router_factory()
-        return router.provider, self._loop_steps(graph, scenario, router, typology)
+        return router.provider, self._loop_steps(graph, scenario, router, self._rejection(graph, typology, wishes))
 
-    def _loop_steps(
-        self, graph: SceneGraph, scenario: Scenario, router, typology: SpaceTypology | None
-    ) -> Iterator[LoopStep]:
+    def _loop_steps(self, graph: SceneGraph, scenario: Scenario, router, rejection) -> Iterator[LoopStep]:
         with self._search_lock:
             ledger = self.ledger_factory()
             yield from loop_steps(
                 graph, scenario, self.search_measure, router, rules=load_pack(), ledger=ledger,
-                candidate_rejection=rejection_for_space(typology, graph),
+                candidate_rejection=rejection,
             )
 
     def ask(self, text: str, graph: SceneGraph, scenario: Scenario) -> Answer:

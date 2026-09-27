@@ -352,6 +352,29 @@ export interface ScopeItem {
   source: "measured" | "owner_confirmed" | "manual_photo" | "requested_not_observed";
 }
 /**
+ * A choice the owner's layout showed that a proposal breaks, and the wish that would keep it.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "BentWish".
+ */
+export interface BentWish {
+  keep: OwnerWish | null;
+  text: string;
+}
+/**
+ * One thing the owner wants kept.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "OwnerWish".
+ */
+export interface OwnerWish {
+  anchor_id: string | null;
+  inches: number | null;
+  kind: "stays_put" | "stays_near";
+  node_id: string;
+  text: string;
+}
+/**
  * A hard constraint a layout breaks, from Lane C's fix constraints.
  *
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -1021,6 +1044,18 @@ export interface RequestAnswer {
   yes: boolean | null;
 }
 /**
+ * Every wish the owner wants kept for this shop, replacing the ones saved before.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "OwnerWishesRequest".
+ */
+export interface OwnerWishesRequest {
+  /**
+   * @maxItems 50
+   */
+  wishes: OwnerWish[];
+}
+/**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "PendingReview".
  */
@@ -1291,6 +1326,18 @@ export interface PrimitiveSpec {
   summary: string;
 }
 /**
+ * A proposal in the owner's words, built only from what was measured.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ProposalExplanation".
+ */
+export interface ProposalExplanation {
+  bent: BentWish[];
+  fixed: string[];
+  kept: string[];
+  moves: string[];
+}
+/**
  * Ask the fix agent for a layout that clears these findings.
  *
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -1306,6 +1353,7 @@ export interface ProposalRequest {
  */
 export interface ProposalResult {
   base_revision: number;
+  explanation: ProposalExplanation | null;
   message: string;
   proposal: Proposal | null;
   question: string | null;
@@ -1366,6 +1414,7 @@ export interface Scan {
   duration_seconds: number;
   id: string;
   name: string;
+  owner_wishes: OwnerWish[];
   space_typology: SpaceTypology | null;
   state: "uploading" | "measuring" | "checking" | "ready" | "failed";
 }

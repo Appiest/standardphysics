@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS scans (
     coverage_json TEXT NOT NULL DEFAULT '[]',
     owner_id TEXT REFERENCES owners(id),
     space_typology TEXT,
+    owner_wishes_json TEXT NOT NULL DEFAULT '[]',
     last_opened_at TEXT,
     results_told_at TEXT,
     replaces_scan_id TEXT,
@@ -198,6 +199,7 @@ ADDED_COLUMNS = {
     "scans": (
         ("owner_id", "TEXT REFERENCES owners(id)"),
         ("space_typology", "TEXT"),
+        ("owner_wishes_json", "TEXT NOT NULL DEFAULT '[]'"),
         ("last_opened_at", "TEXT"),
         ("results_told_at", "TEXT"),
         ("replaces_scan_id", "TEXT"),
