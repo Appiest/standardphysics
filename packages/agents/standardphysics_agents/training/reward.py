@@ -23,11 +23,11 @@ from dataclasses import asdict, dataclass
 from standardphysics_contracts import SceneGraph
 
 from ..evaluation.gate import accepts
-from ..fix import apply_moves, describe, relocation_violations, violations
+from ..fix import Violation, apply_moves, describe, relocation_violations, violations
 from ..fix.strategies import TURN_DISRUPTION_METERS
 from .checker import TrainingChecker
 from .construction import build, construction_inches
-from .edits import edit_complaint, node_moves, parse_edits
+from .edits import TrainingEdits, edit_complaint, node_moves, parse_edits
 from .quality import layout_quality
 from .usability import usability
 
@@ -96,17 +96,26 @@ def score_completion(completion: str, room: SceneGraph, checker: TrainingChecker
     complaint = edit_complaint(room, edits)
     if complaint:
         return Verdict(0.0, parsed=True, reason=complaint)
-    moves = node_moves(edits)
     try:
-        built = build(room, edits.wall_shifts, edits.fixture_moves)
+        candidate, broken = constrained(room, edits)
     except ValueError:
         return Verdict(0.0, parsed=True, reason="unbuildable_construction")
-    candidate = apply_moves(built, moves)
-    relocated = {move.node_id for move in edits.fixture_moves}
-    broken = [*violations(built, candidate), *relocation_violations(room, candidate, relocated)]
     if broken:
         return Verdict(0.0, parsed=True, reason="; ".join(sorted({describe(item) for item in broken})))
-    return _gated(room, candidate, checker, disruption_meters(moves), construction_inches(edits.wall_shifts, edits.fixture_moves))
+    return _gated(room, candidate, checker, disruption_meters(node_moves(edits)),
+                  construction_inches(edits.wall_shifts, edits.fixture_moves))
+
+
+def constrained(room: SceneGraph, edits: TrainingEdits) -> tuple[SceneGraph, list[Violation]]:
+    """The room the edits make, and every hard constraint it breaks; raises ValueError for unbuildable construction.
+
+    This is the one legality test: the scorer refuses what it finds, and the
+    menu of moves offers nothing it finds.
+    """
+    built = build(room, edits.wall_shifts, edits.fixture_moves)
+    candidate = apply_moves(built, node_moves(edits))
+    relocated = {move.node_id for move in edits.fixture_moves}
+    return candidate, [*violations(built, candidate), *relocation_violations(room, candidate, relocated)]
 
 
 def summarize(verdicts: list[Verdict]) -> dict:
