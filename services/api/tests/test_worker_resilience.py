@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sqlite3
 import threading
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
+
+import pytest
 
 from conftest import create_scan
 from standardphysics_api import repository as repo
@@ -170,3 +173,135 @@ def test_a_second_worker_on_the_same_database_refuses_to_run_jobs(make_client, c
             assert after_the_first_stopped.status()["lock"] == "held"
         finally:
             after_the_first_stopped.stop()
+
+
+@contextlib.contextmanager
+def _one_queued_job(make_client, kind: str = "simulate"):
+    """A client with one queued job, so a test can break the worker only after the API has set it up."""
+    with make_client() as client:
+        scan_id = create_scan(client)
+        _queue(client, scan_id, kind)
+        yield client, scan_id
+
+
+def _job_row(client, scan_id: str, kind: str = "simulate"):
+    with client.app.state.database.connect() as connection:
+        return connection.execute(
+            "SELECT state, error, attempts FROM jobs WHERE scan_id = ? AND kind = ?", (scan_id, kind)
+        ).fetchone()
+
+
+def _fails_on_calls(real, failing_calls: set[int], error: BaseException):
+    calls = {"count": 0}
+
+    def replacement(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] in failing_calls:
+            raise error
+        return real(*args, **kwargs)
+
+    return replacement
+
+
+def _succeeds(self, scan_id, revision, job=None) -> bool:
+    return False
+
+
+def _interrupted(self, scan_id, revision, job=None) -> bool:
+    raise KeyboardInterrupt
+
+
+def test_a_job_whose_start_check_fails_goes_back_to_the_queue(make_client, monkeypatch):
+    monkeypatch.setattr(Worker, "_simulate", _succeeds)
+    with _one_queued_job(make_client) as (client, scan_id):
+        broken = _fails_on_calls(repo.marked_for_deletion, {1}, RuntimeError("disk"))
+        monkeypatch.setattr(worker_module.repo, "marked_for_deletion", broken)
+        with pytest.raises(RuntimeError):
+            client.app.state.worker.run_once()
+        assert _job_row(client, scan_id)["state"] == "queued"
+        client.app.state.worker.run_once()
+        assert _job_row(client, scan_id)["state"] == "done"
+
+
+def test_a_job_that_keeps_failing_its_start_check_is_failed_after_its_last_claim(make_client, monkeypatch):
+    def always_broken(connection, scan_id):
+        raise RuntimeError("the deletion check is broken")
+
+    with _one_queued_job(make_client) as (client, scan_id):
+        monkeypatch.setattr(worker_module.repo, "marked_for_deletion", always_broken)
+        for _ in range(worker_module.MAX_CLAIMS_BEFORE_START):
+            with pytest.raises(RuntimeError):
+                client.app.state.worker.run_once()
+        job = _job_row(client, scan_id)
+    assert job["state"] == "failed"
+    assert job["attempts"] == worker_module.MAX_CLAIMS_BEFORE_START
+    assert "the deletion check is broken" in job["error"]
+
+
+def test_a_failure_while_marking_the_scan_failed_still_fails_the_job(make_client, monkeypatch):
+    def broken_stage(self, scan_id, revision, job=None):
+        raise ValueError("the stage broke")
+
+    monkeypatch.setattr(Worker, "_assess", broken_stage)
+    with _one_queued_job(make_client, "assess") as (client, scan_id):
+        monkeypatch.setattr(worker_module.repo, "set_state", _fails_on_calls(repo.set_state, {1}, RuntimeError("io")))
+        with pytest.raises(RuntimeError):
+            client.app.state.worker.run_once()
+        job = _job_row(client, scan_id, "assess")
+    assert job["state"] == "failed"
+    assert "io" in job["error"]
+
+
+def test_an_unexpected_error_while_recording_the_outcome_fails_the_job(make_client, monkeypatch):
+    monkeypatch.setattr(Worker, "_simulate", _succeeds)
+    with _one_queued_job(make_client) as (client, scan_id):
+        broken = _fails_on_calls(repo.record_job_attempt, {1}, KeyError("attempt"))
+        monkeypatch.setattr(worker_module.repo, "record_job_attempt", broken)
+        with pytest.raises(KeyError):
+            client.app.state.worker.run_once()
+        job = _job_row(client, scan_id)
+    assert job["state"] == "failed"
+    assert "attempt" in job["error"]
+
+
+def test_a_job_interrupted_mid_run_is_not_left_running(make_client, monkeypatch):
+    monkeypatch.setattr(Worker, "_simulate", _interrupted)
+    with _one_queued_job(make_client) as (client, scan_id):
+        with pytest.raises(KeyboardInterrupt):
+            client.app.state.worker.run_once()
+        job = _job_row(client, scan_id)
+    assert job["state"] == "failed"
+    assert "KeyboardInterrupt" in job["error"]
+
+
+def test_a_failure_after_the_outcome_is_written_leaves_the_job_settled(make_client, monkeypatch):
+    monkeypatch.setattr(Worker, "_simulate", _succeeds)
+    with _one_queued_job(make_client) as (client, scan_id):
+        broken = _fails_on_calls(repo.marked_for_deletion, {2}, RuntimeError("disk"))
+        monkeypatch.setattr(worker_module.repo, "marked_for_deletion", broken)
+        with pytest.raises(RuntimeError):
+            client.app.state.worker.run_once()
+        assert _job_row(client, scan_id)["state"] == "done"
+
+
+def test_a_failed_follow_up_leaves_the_job_settled(make_client, monkeypatch):
+    def broken_follow_up(self, scan_id):
+        raise RuntimeError("follow-up broke")
+
+    monkeypatch.setattr(Worker, "_simulate", lambda self, scan_id, revision, job=None: True)
+    monkeypatch.setattr(Worker, "_queue_follow_up_if_due", broken_follow_up)
+    with _one_queued_job(make_client) as (client, scan_id):
+        with pytest.raises(RuntimeError):
+            client.app.state.worker.run_once()
+        assert _job_row(client, scan_id)["state"] == "done"
+
+
+def test_settling_an_interrupted_job_waits_out_a_locked_database(make_client, monkeypatch):
+    _fast_retries(monkeypatch)
+    monkeypatch.setattr(Worker, "_simulate", _interrupted)
+    with _one_queued_job(make_client) as (client, scan_id):
+        locked = sqlite3.OperationalError("database is locked")
+        monkeypatch.setattr(worker_module.repo, "fail_running_job", _fails_on_calls(repo.fail_running_job, {1, 2}, locked))
+        with pytest.raises(KeyboardInterrupt):
+            client.app.state.worker.run_once()
+        assert _job_row(client, scan_id)["state"] == "failed"

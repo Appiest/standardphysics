@@ -469,6 +469,22 @@ def finish_job(connection: sqlite3.Connection, job_id: int, error: str | None = 
     connection.execute("UPDATE jobs SET state = ?, error = ? WHERE id = ?", (state, error, job_id))
 
 
+def fail_running_job(connection: sqlite3.Connection, job_id: int, error: str) -> bool:
+    """Fail a job only if it is still running, so an outcome already written is never overwritten."""
+    cursor = connection.execute(
+        "UPDATE jobs SET state = 'failed', error = ? WHERE id = ? AND state = 'running'", (error, job_id)
+    )
+    return cursor.rowcount > 0
+
+
+def requeue_running_job(connection: sqlite3.Connection, job_id: int) -> bool:
+    """Put a claimed job back at its place in the queue, if nothing has settled it since."""
+    cursor = connection.execute(
+        "UPDATE jobs SET state = 'queued', queued_at = ? WHERE id = ? AND state = 'running'", (now(), job_id)
+    )
+    return cursor.rowcount > 0
+
+
 def retry_failed_jobs(connection: sqlite3.Connection, scan_id: uuid.UUID) -> None:
     """Queue again whichever stage failed, and show the state that stage runs in."""
     kinds = {

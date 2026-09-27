@@ -57,6 +57,8 @@ this long is stuck somewhere. A loop running a job is never called stalled,
 because a photo bake takes up to fifteen minutes and the loop beats only when
 it ends."""
 LOOP_NAMES = {False: "jobs", True: "textures"}
+MAX_CLAIMS_BEFORE_START = 3
+"""How many times a job may be claimed and put back because of an error before it ran."""
 
 
 class _Backoff:
@@ -236,35 +238,89 @@ class Worker:
         return True
 
     def _settle(self, job) -> None:
+        """Run a claimed job and write how it ended, whatever raises on the way.
+
+        A row left running can't be queued again and keeps its scan from being
+        deleted, so an error before the job starts puts it back in the queue,
+        and an error once it has started fails it with that error. Either way
+        the error is raised again for the loop to log and back off on.
+        """
         scan_id = uuid.UUID(job["scan_id"])
-        if self._delete_if_asked(scan_id, job["id"]):
+        if self._closed_before_start(job, scan_id):
             return
-        outcome = self._run(job)
-        self._record_outcome(job, scan_id, outcome)
+        try:
+            outcome = self._run(job)
+            self._record_outcome(job, scan_id, outcome)
+        except BaseException as error:
+            self._fail_unrecorded(job, scan_id, error)
+            raise
         if self._delete_if_asked(scan_id):
             return
         if outcome.follow_up and outcome.error is None:
             self._queue_follow_up_if_due(scan_id)
 
-    def _record_outcome(self, job, scan_id: uuid.UUID, outcome: _JobOutcome) -> None:
-        """Write how the job ended, waiting out a locked database rather than giving up.
+    def _closed_before_start(self, job, scan_id: uuid.UUID) -> bool:
+        try:
+            return self._delete_if_asked(scan_id, job["id"])
+        except BaseException as error:
+            self._release_unstarted(job, scan_id, error)
+            raise
 
-        A result that is never written leaves the row running until the next
-        restart, and a running row can't be queued again and keeps its scan
-        from being deleted.
+    def _release_unstarted(self, job, scan_id: uuid.UUID, error: BaseException) -> None:
+        """Queue a job again that an error stopped before it ran, up to MAX_CLAIMS_BEFORE_START claims.
+
+        The cap is for an error that is not going away, which would otherwise
+        claim and release the same job for ever.
+        """
+        if job["attempts"] < MAX_CLAIMS_BEFORE_START:
+            self._settle_or_leave_for_restart(job, lambda connection: repo.requeue_running_job(connection, job["id"]))
+            return
+        self._fail_unrecorded(job, scan_id, error)
+
+    def _fail_unrecorded(self, job, scan_id: uuid.UUID, error: BaseException) -> None:
+        message = f"{type(error).__name__}: {error}"
+
+        def fail(connection) -> None:
+            if repo.fail_running_job(connection, job["id"], message):
+                repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
+
+        self._settle_or_leave_for_restart(job, fail)
+
+    def _settle_or_leave_for_restart(self, job, write: Callable[[sqlite3.Connection], object]) -> None:
+        """The last attempt to settle a job. If even this can't be written, the
+        worker lock guarantees the next start finds the row running and queues it."""
+        try:
+            self._write_through_locks(write, f"job {job['id']}")
+        except Exception:
+            log.error(
+                "job %s is left running until the next start queues it again:\n%s",
+                job["id"],
+                traceback.format_exc(),
+            )
+
+    def _record_outcome(self, job, scan_id: uuid.UUID, outcome: _JobOutcome) -> None:
+        def record(connection) -> None:
+            repo.finish_job(connection, job["id"], outcome.error)
+            repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
+
+        self._write_through_locks(record, f"job {job['id']}")
+
+    def _write_through_locks(self, write: Callable[[sqlite3.Connection], object], what: str) -> None:
+        """Run one write in a transaction, waiting out a locked database rather than giving up.
+
+        It stops waiting only when the worker is stopping, and raises then.
         """
         backoff = _Backoff()
         while True:
             try:
                 with self.database.transaction() as connection:
-                    repo.finish_job(connection, job["id"], outcome.error)
-                    repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
+                    write(connection)
                 return
             except sqlite3.OperationalError as error:
                 if self._stop.is_set():
                     raise
                 delay = backoff.delay()
-                log.warning("could not record job %s (%s); trying again in %.1f s", job["id"], error, delay)
+                log.warning("could not record %s (%s); trying again in %.1f s", what, error, delay)
                 self._stop.wait(delay)
 
     def _delete_if_asked(self, scan_id: uuid.UUID, claimed_job: int | None = None) -> bool:
