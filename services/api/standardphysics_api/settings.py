@@ -113,10 +113,12 @@ class Settings:
     SP_BAKE_TIMEOUT_SECONDS changes it.
     """
     team_emails: frozenset[str] = frozenset()
-    """Accounts that see the team's tools, from SP_TEAM_EMAILS (comma separated).
+    """The team's emails before the team was a role, from SP_TEAM_EMAILS (comma separated).
 
-    Owners never see developer mode, the improvement loop, scoped checks or the
-    other builder tools. Everyone signed in with one of these emails does.
+    Read once per database: the saved accounts with these emails on the day the
+    server first starts with the team role are granted it (`team.adopt_allowlist`).
+    A sign-up with one of these emails after that is an owner, because sign-up
+    never confirms an email. Grant anyone later with `python -m standardphysics_api.team`.
     """
     apple_audiences: frozenset[str] = frozenset({"com.standardphysics.capture"})
     """The app ids a Sign in with Apple token may be issued for, from SP_APPLE_AUDIENCES.

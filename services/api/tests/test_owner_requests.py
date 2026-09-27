@@ -75,7 +75,7 @@ def test_a_measured_doorway_is_checked_against_the_rule(make_client):
 
 
 def test_a_photo_waits_for_the_team_then_becomes_a_result(make_client):
-    client, scan_id = _sample(make_client, team_emails=frozenset({"demo@standardphysics.app"}))
+    client, scan_id = _sample(make_client, team=True)
     sent = client.put(f"/api/scans/{scan_id}/requests/door_hardware/photo", content=_jpeg(),
                       headers={"content-type": "image/jpeg"})
     assert sent.status_code == 200

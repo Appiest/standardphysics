@@ -23,7 +23,7 @@ def shop(client):
 
 
 def test_screening_is_queued_snapshotted_and_does_not_save_a_layout(make_client):
-    with make_client(seed=True) as client:
+    with make_client(seed=True, team=True) as client:
         scan_id = shop(client)
         before = client.get(f'/api/scans/{scan_id}/scene').json()
         response = client.post(
@@ -53,7 +53,7 @@ def test_screening_is_queued_snapshotted_and_does_not_save_a_layout(make_client)
 
 
 def test_screening_without_confirmed_route_uses_an_inferred_entrance(make_client):
-    with make_client(seed=True) as client:
+    with make_client(seed=True, team=True) as client:
         scan_id = shop(client)
         with client.app.state.database.transaction() as connection:
             connection.execute("DELETE FROM scenarios WHERE scan_id=?", (scan_id,))
@@ -238,7 +238,7 @@ def test_accessibility_loop_never_converges_while_an_ada_problem_remains(
 
 def test_live_preflight_rejects_missing_key_before_queuing(make_client, monkeypatch):
     monkeypatch.delenv('TYPESAFE_API_KEY', raising=False)
-    with make_client(seed=True) as client:
+    with make_client(seed=True, team=True) as client:
         scan_id = shop(client)
         response = client.post(f'/api/scans/{scan_id}/simulations', json={'base_revision': 0, 'router': 'typesafe'})
         assert response.status_code == 409
@@ -246,7 +246,7 @@ def test_live_preflight_rejects_missing_key_before_queuing(make_client, monkeypa
 
 
 def test_job_limits_and_stale_layout_rejected(make_client):
-    with make_client(seed=True) as client:
+    with make_client(seed=True, team=True) as client:
         scan_id = shop(client)
         for body in (
             {'samples': 10001},
@@ -268,7 +268,7 @@ def test_simulation_failure_keeps_room_ready_and_sanitizes_errors(make_client, m
     def fail(*args):
         raise RuntimeError('secret upstream payload')
     monkeypatch.setattr('standardphysics_api.worker.run_simulation', fail)
-    with make_client(seed=True) as client:
+    with make_client(seed=True, team=True) as client:
         scan_id = shop(client)
         client.post(f'/api/scans/{scan_id}/simulations', json={'base_revision': 0, 'samples': 1})
         drain(client)
@@ -291,7 +291,7 @@ def test_rebuild_keeps_measured_geometry_and_rejects_stale_revision(make_client)
                 ]
             }
         )
-    with make_client(seed=True, stages=no_blender_stages(label=label)) as client:
+    with make_client(seed=True, team=True, stages=no_blender_stages(label=label)) as client:
         scan_id = shop(client)
         before = client.get(f'/api/scans/{scan_id}/scene').json()
         result = client.post(f'/api/scans/{scan_id}/rebuild', json={'base_revision': 0})
@@ -311,7 +311,7 @@ def test_rebuild_keeps_measured_geometry_and_rejects_stale_revision(make_client)
 
 
 def test_deleting_room_cleans_queued_simulation(make_client):
-    with make_client(seed=True) as client:
+    with make_client(seed=True, team=True) as client:
         scan_id = shop(client)
         response = client.post(
             f'/api/scans/{scan_id}/simulations',
@@ -324,7 +324,7 @@ def test_deleting_room_cleans_queued_simulation(make_client):
 
 
 def test_deletion_during_a_running_job_hides_the_shop_and_keeps_its_rows_for_the_worker(make_client):
-    with make_client(seed=True) as client:
+    with make_client(seed=True, team=True) as client:
         scan_id = shop(client)
         client.post(f'/api/scans/{scan_id}/simulations', json={'base_revision': 0, 'samples': 1})
         with client.app.state.database.transaction() as connection:
@@ -343,6 +343,7 @@ def test_auto_deep_campaign_waits_for_route_and_is_idempotent(
     monkeypatch.setattr("standardphysics_api.simulations._live_ready", lambda stages, request: None)
     with make_client(
         seed=True,
+        team=True,
         auto_deep_simulation=True,
         auto_deep_samples=7,
         auto_deep_typesafe_call_limit=23,
@@ -383,7 +384,7 @@ def _typesafe_configured(monkeypatch):
 
 def test_typesafe_route_trials_queue_on_preview_rules(make_client, monkeypatch):
     _typesafe_configured(monkeypatch)
-    with make_client(seed=True) as client:
+    with make_client(seed=True, team=True) as client:
         scan_id = shop(client)
         body = {'base_revision': 0, 'router': 'typesafe', 'samples': 100, 'typesafe_call_limit': 400}
         response = client.post(f'/api/scans/{scan_id}/simulations', json=body)
@@ -393,7 +394,7 @@ def test_typesafe_route_trials_queue_on_preview_rules(make_client, monkeypatch):
 
 def test_typesafe_route_trials_need_rules_to_screen_against(make_client, monkeypatch):
     _typesafe_configured(monkeypatch)
-    with make_client(seed=True, stages=no_blender_stages(ledger_factory=VerificationLedger)) as client:
+    with make_client(seed=True, team=True, stages=no_blender_stages(ledger_factory=VerificationLedger)) as client:
         scan_id = shop(client)
         response = client.post(f'/api/scans/{scan_id}/simulations', json={'base_revision': 0, 'router': 'typesafe'})
         assert response.status_code == 409
@@ -404,7 +405,7 @@ def test_typesafe_route_trials_need_rules_to_screen_against(make_client, monkeyp
 def test_astra_redesign_queues_on_preview_rules_but_the_exhaustive_campaign_does_not(make_client, monkeypatch):
     _typesafe_configured(monkeypatch)
     monkeypatch.setenv('OPENROUTER_API_KEY', 'test-key')
-    with make_client(seed=True) as client:
+    with make_client(seed=True, team=True) as client:
         scan_id = shop(client)
         exhaustive = {'base_revision': 0, 'router': 'typesafe', 'exhaustive_evaluations': 40}
         refused = client.post(f'/api/scans/{scan_id}/simulations', json=exhaustive)

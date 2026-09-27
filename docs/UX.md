@@ -129,7 +129,7 @@ Answers change findings as soon as they arrive. A photo that's been sent and not
 | `/team/reviews` | The team | Photos waiting to be checked |
 | `/team/funnel` | The team | How many shops reach each step, from the walk to the first fix |
 
-The team is whoever `SP_TEAM_EMAILS` names. Once it names anyone, the ask box, the improvement loop, simulations, rebuilds and combining rooms answer only to the team.
+The team is every account granted the team role with `python -m standardphysics_api.team grant <email>` on the server. The ask box, the improvement loop, simulations, rebuilds and combining rooms answer only to the team, so while nobody holds the role nobody can use them. Signing up with a team email doesn't grant the role, because sign-up never confirms the email. `SP_TEAM_EMAILS` is read once per database, to grant the role to the saved accounts it named on the day the role arrived.
 
 ### The bridge
 

@@ -99,7 +99,8 @@ CREATE TABLE IF NOT EXISTS owners (
     created_at TEXT NOT NULL,
     guest INTEGER NOT NULL DEFAULT 0,
     apple_sub TEXT,
-    reminded_at TEXT
+    reminded_at TEXT,
+    team INTEGER NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX IF NOT EXISTS owners_by_apple ON owners(apple_sub) WHERE apple_sub IS NOT NULL;
 CREATE TABLE IF NOT EXISTS sessions (
@@ -180,6 +181,10 @@ CREATE TABLE IF NOT EXISTS layout_plans (
     findings_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS applied_steps (
+    name TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS checklist_items (
     scan_id TEXT NOT NULL REFERENCES scans(id),
     finding_id TEXT NOT NULL,
@@ -202,7 +207,12 @@ ADDED_COLUMNS = {
         ("replaces_scan_id", "TEXT"),
         ("deleting_at", "TEXT"),
     ),
-    "owners": (("guest", "INTEGER NOT NULL DEFAULT 0"), ("apple_sub", "TEXT"), ("reminded_at", "TEXT")),
+    "owners": (
+        ("guest", "INTEGER NOT NULL DEFAULT 0"),
+        ("apple_sub", "TEXT"),
+        ("reminded_at", "TEXT"),
+        ("team", "INTEGER NOT NULL DEFAULT 0"),
+    ),
     "jobs": (
         ("input_hash", "TEXT"),
         ("note", "TEXT"),
@@ -233,6 +243,20 @@ def _add_missing_columns(connection: sqlite3.Connection) -> None:
         for name, definition in columns:
             if name not in present:
                 connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
+def first_time(connection: sqlite3.Connection, step: str) -> bool:
+    """True the first time a one-off data step asks, and False every time after.
+
+    Some changes can't be expressed as a column with a default: they read the
+    rows as they stand on the day the step runs. Recording the step's name
+    inside the same transaction means it runs once per database, however many
+    times the server restarts.
+    """
+    cursor = connection.execute(
+        "INSERT OR IGNORE INTO applied_steps (name, applied_at) VALUES (?, datetime('now'))", (step,)
+    )
+    return cursor.rowcount == 1
 
 
 class Database:

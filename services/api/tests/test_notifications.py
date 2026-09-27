@@ -71,7 +71,7 @@ def test_the_first_results_send_one_push_and_a_recheck_stays_quiet(make_client):
 
 
 def test_a_checked_photo_tells_the_owner_what_it_showed(make_client):
-    client = make_client(seed=True, team_emails=frozenset({"demo@standardphysics.app"})).__enter__()
+    client = make_client(seed=True, team=True).__enter__()
     drain(client)
     recorder = Recorder()
     client.app.state.notifier = recorder

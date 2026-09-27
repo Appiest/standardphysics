@@ -7,7 +7,7 @@ from conftest import REPO, create_scan, drain, put_artifact
 
 
 def _sample(make_client):
-    client = make_client(seed=True).__enter__()
+    client = make_client(seed=True, team=True).__enter__()
     drain(client)
     return client, client.get("/api/scans").json()["scans"][0]["id"]
 
@@ -31,14 +31,14 @@ def test_an_empty_question_is_refused(make_client):
     assert client.post(f"/api/scans/{scan_id}/ask", json={"base_revision": 0, "text": ""}).status_code == 400
 
 
-def test_a_real_scan_without_a_route_can_still_be_asked_about(client):
+def test_a_real_scan_without_a_route_can_still_be_asked_about(team_client):
     phone = REPO / "datasets/phone/ravida"
-    scan_id = create_scan(client)
-    put_artifact(client, scan_id, "room-json", (phone / "room.json").read_bytes(), "room_json")
-    put_artifact(client, scan_id, "room-usdz", (phone / "room.usdz").read_bytes(), "room_usdz")
-    client.post(f"/api/scans/{scan_id}/complete")
-    drain(client)
-    answer = client.post(f"/api/scans/{scan_id}/ask", json={"base_revision": 0, "text": "how many tables are there?"}).json()
+    scan_id = create_scan(team_client)
+    put_artifact(team_client, scan_id, "room-json", (phone / "room.json").read_bytes(), "room_json")
+    put_artifact(team_client, scan_id, "room-usdz", (phone / "room.usdz").read_bytes(), "room_usdz")
+    team_client.post(f"/api/scans/{scan_id}/complete")
+    drain(team_client)
+    answer = team_client.post(f"/api/scans/{scan_id}/ask", json={"base_revision": 0, "text": "how many tables are there?"}).json()
     assert answer["understood"] is True
     assert answer["text"] == "You have three tables."
 

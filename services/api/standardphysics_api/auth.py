@@ -37,7 +37,8 @@ BEARER = re.compile(r"^Bearer\s+(?P<token>[A-Za-z0-9_\-]+)$")
 SCAN_IN_PATH = re.compile(r"^/api/scans/(?P<scan_id>[0-9a-fA-F-]{36})(?:/|$)")
 TEAM_ONLY = re.compile(r"^/api/scans/[0-9a-fA-F-]{36}/(ask|loop|loop/stream|simulations|rebuild|combine)$")
 """The builders' tools: the ask box, the improvement loop, simulations, rebuilds and combining rooms.
-Owners don't see them (docs/UX.md, owner tools and team tools)."""
+Owners don't see them (docs/UX.md, owner tools and team tools), and nobody does until someone
+is granted the team role (see `team`)."""
 
 SIGN_IN_ATTEMPTS = 10
 SIGN_IN_WINDOW_SECONDS = 300
@@ -97,9 +98,9 @@ def signed_in(database: Database, request: Request) -> Owner:
     return owner
 
 
-def team_member(database: Database, team_emails: frozenset[str], request: Request) -> Owner:
+def team_member(database: Database, request: Request) -> Owner:
     owner = signed_in(database, request)
-    if role_of(owner, team_emails) != "team":
+    if role_of(owner) != "team":
         raise ApiProblem(403, "This is for the Standard Physics team.")
     return owner
 
@@ -139,13 +140,15 @@ def _owns_scan(database: Database, scan_id: uuid.UUID, owner: Owner) -> bool:
         return not repo.scan_exists(connection, scan_id)
 
 
-def role_of(owner: Owner, team_emails: frozenset[str]) -> Role:
-    return "team" if owner.email.casefold() in team_emails else "owner"
+def role_of(owner: Owner) -> Role:
+    return "team" if owner.team else "owner"
 
 
-def install_auth(
-    app: FastAPI, database: Database, store: ArtifactStore, team_emails: frozenset[str] = frozenset()
-) -> None:
+def client_address(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def install_auth(app: FastAPI, database: Database, store: ArtifactStore) -> None:
     limiter = AttemptLimiter()
 
     class RequireOwner(BaseHTTPMiddleware):
@@ -158,7 +161,7 @@ def install_auth(
             scan_id = _scan_id_in(request.url.path)
             if scan_id is not None and not _owns_scan(database, scan_id, owner):
                 return _problem(404, "no scan")
-            if _team_only(request, owner, team_emails):
+            if _team_only(request, owner):
                 return _problem(403, "This is for the Standard Physics team.")
             if scan_id is not None and request.method == "GET":
                 _mark_opened(database, scan_id)
@@ -166,14 +169,12 @@ def install_auth(
             return await call_next(request)
 
     app.add_middleware(RequireOwner)
-    _install_auth_routes(app, database, store, limiter, team_emails)
+    _install_auth_routes(app, database, store, limiter)
 
 
-def _team_only(request: Request, owner: Owner, team_emails: frozenset[str]) -> bool:
-    """A team tool asked for by someone off the team. A server with no team named keeps them open."""
-    if not team_emails or not TEAM_ONLY.match(request.url.path):
-        return False
-    return role_of(owner, team_emails) != "team"
+def _team_only(request: Request, owner: Owner) -> bool:
+    """A team tool asked for by someone off the team. With nobody granted the role, that is everyone."""
+    return bool(TEAM_ONLY.match(request.url.path)) and role_of(owner) != "team"
 
 
 OPENED_RESOLUTION = timedelta(hours=1)
@@ -193,11 +194,11 @@ def _problem(status: int, message: str) -> JSONResponse:
     return JSONResponse(ApiProblem(status, message).body.model_dump(exclude_none=True), status_code=status)
 
 
-def session_of(database: Database, owner: Owner, team_emails: frozenset[str]) -> Session:
+def session_of(database: Database, owner: Owner) -> Session:
     with database.connect() as connection:
         deletes_at = accounts.guest_deletes_at(connection, owner)
     return Session(
-        owner_id=owner.id, email=owner.shown_email, shop_name=owner.shop_name, role=role_of(owner, team_emails),
+        owner_id=owner.id, email=owner.shown_email, shop_name=owner.shop_name, role=role_of(owner),
         guest=owner.guest, deletes_at=deletes_at,
     )
 
@@ -288,18 +289,16 @@ def _erase_owner(database: Database, owner: Owner) -> list[uuid.UUID]:
     return scan_ids
 
 
-def _install_auth_routes(
-    app: FastAPI, database: Database, store: ArtifactStore, limiter: AttemptLimiter, team_emails: frozenset[str]
-) -> None:
+def _install_auth_routes(app: FastAPI, database: Database, store: ArtifactStore, limiter: AttemptLimiter) -> None:
     @app.post("/api/auth/sign-up", status_code=201, response_model=Session)
     def sign_up(body: SignUpRequest, request: Request, response: Response) -> Session:
         current = resolve_owner(database, request)
         if current is not None and current.guest:
             saved = save_guest(database, current, body.email, body.password, body.shop_name)
-            return session_of(database, saved, team_emails)
+            return session_of(database, saved)
         owner, token = _open(database, _register(database, body))
         set_session_cookie(response, request, token)
-        return session_of(database, owner, team_emails)
+        return session_of(database, owner)
 
     @app.post("/api/auth/sign-in", response_model=Session)
     def sign_in(body: SignInRequest, request: Request, response: Response) -> Session:
@@ -307,14 +306,12 @@ def _install_auth_routes(
         take_guest_shops(database, request, owner)
         owner, token = _open(database, owner)
         set_session_cookie(response, request, token)
-        return session_of(database, owner, team_emails)
+        return session_of(database, owner)
 
-    _install_session_routes(app, database, store, team_emails)
+    _install_session_routes(app, database, store)
 
 
-def _install_session_routes(
-    app: FastAPI, database: Database, store: ArtifactStore, team_emails: frozenset[str]
-) -> None:
+def _install_session_routes(app: FastAPI, database: Database, store: ArtifactStore) -> None:
     @app.post("/api/auth/sign-out", status_code=204)
     def sign_out(request: Request) -> Response:
         token = token_from(request)
@@ -348,4 +345,4 @@ def _install_session_routes(
         owner = resolve_owner(database, request)
         if owner is None:
             raise ApiProblem(401, "Sign in to continue.")
-        return session_of(database, owner, team_emails)
+        return session_of(database, owner)

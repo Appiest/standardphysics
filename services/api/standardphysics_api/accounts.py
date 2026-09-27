@@ -58,6 +58,8 @@ class Owner:
     email: str
     shop_name: str
     guest: bool = False
+    team: bool = False
+    """Granted by hand with `python -m standardphysics_api.team`, never by the email (see `team`)."""
 
     @property
     def shown_email(self) -> str | None:
@@ -114,7 +116,10 @@ def owner_from_row(row: sqlite3.Row) -> Owner:
 
 
 def _owner(row: sqlite3.Row) -> Owner:
-    return Owner(id=uuid.UUID(row["id"]), email=row["email"], shop_name=row["shop_name"], guest=bool(row["guest"]))
+    return Owner(
+        id=uuid.UUID(row["id"]), email=row["email"], shop_name=row["shop_name"], guest=bool(row["guest"]),
+        team=bool(row["team"]),
+    )
 
 
 def _owner_where(connection: sqlite3.Connection, column: str, value: str) -> Owner | None:
@@ -150,7 +155,7 @@ def save_guest(
         )
     except sqlite3.IntegrityError as exc:
         raise EmailAlreadyRegistered from exc
-    return Owner(id=owner.id, email=address, shop_name=name)
+    return Owner(id=owner.id, email=address, shop_name=name, team=owner.team)
 
 
 def owner_by_email(connection: sqlite3.Connection, email: str) -> Owner | None:
@@ -168,7 +173,7 @@ def attach_apple(connection: sqlite3.Connection, owner: Owner, subject: str, ema
         "UPDATE owners SET apple_sub = ?, guest = 0, email = COALESCE(?, email) WHERE id = ?",
         (subject, address, str(owner.id)),
     )
-    return Owner(id=owner.id, email=address or owner.email, shop_name=owner.shop_name)
+    return Owner(id=owner.id, email=address or owner.email, shop_name=owner.shop_name, team=owner.team)
 
 
 def create_apple_owner(connection: sqlite3.Connection, subject: str, email: str | None, shop_name: str) -> Owner:

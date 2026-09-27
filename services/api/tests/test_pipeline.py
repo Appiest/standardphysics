@@ -93,19 +93,19 @@ def test_a_real_scan_without_stops_is_assessed_without_its_route(client):
     assert client.get(f"/api/scans/{scan_id}/assessment").json()["graph_revision"] == 0
 
 
-def test_rebuild_geometry_is_revision_pinned_and_reports_pending_work(client):
-    scan_id = _upload_real_room(client, "apple_bedroom3")
+def test_rebuild_geometry_is_revision_pinned_and_reports_pending_work(team_client):
+    scan_id = _upload_real_room(team_client, "apple_bedroom3")
     url = f"/api/scans/{scan_id}/scene.glb"
-    assert client.head(url).headers["X-Display-Pending"] == "false"
-    assert client.post(f"/api/scans/{scan_id}/rebuild", json={"base_revision": 0}).status_code == 201
-    waiting = client.head(url + "?revision=1")
+    assert team_client.head(url).headers["X-Display-Pending"] == "false"
+    assert team_client.post(f"/api/scans/{scan_id}/rebuild", json={"base_revision": 0}).status_code == 201
+    waiting = team_client.head(url + "?revision=1")
     assert waiting.status_code == 404
     assert waiting.headers["X-Display-Pending"] == "true"
-    drain(client)
-    assert client.get(url).headers["X-Exported-Revision"] == "1"
-    assert client.get(url + "?revision=0").headers["X-Exported-Revision"] == "0"
-    assert client.head(url + "?revision=1").headers["X-Display-Pending"] == "false"
-    assert client.get(url + "?revision=99").status_code == 404
+    drain(team_client)
+    assert team_client.get(url).headers["X-Exported-Revision"] == "1"
+    assert team_client.get(url + "?revision=0").headers["X-Exported-Revision"] == "0"
+    assert team_client.head(url + "?revision=1").headers["X-Display-Pending"] == "false"
+    assert team_client.get(url + "?revision=99").status_code == 404
 
 
 def test_the_sample_shop_is_ready_with_its_findings(make_client):

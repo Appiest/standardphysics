@@ -84,6 +84,7 @@ from .simulations import queue_simulation, simulation_status
 from .splats import install_splat_routes
 from .stages import Stages, preview_ledger
 from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId
+from .team import adopt_allowlist
 from .textures import install_texture_routes, maybe_queue_texture, validate_manifest
 from .usdz_validation import InvalidUsdz, validate_room_usdz
 from .worker import ASSESS, PROCESS, Worker
@@ -133,6 +134,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     if stages is None:
         stages = Stages(ledger_factory=preview_ledger) if settings.preview_unverified_rules else Stages()
     database = Database(settings.database_path)
+    adopt_allowlist(database, settings.team_emails)
     store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes)
     worker = Worker(database, store, stages, settings)
     worker.notifier = notifier_from(settings)
@@ -159,13 +161,13 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     app.state.database, app.state.store, app.state.worker = database, store, worker
     app.state.notifier = worker.notifier
     _install_error_handlers(app)
-    install_auth(app, database, store, settings.team_emails)
-    install_account_routes(app, database, settings.team_emails, settings.apple_audiences)
+    install_auth(app, database, store)
+    install_account_routes(app, database, settings.apple_audiences)
     install_architecture_export_routes(app, database)
     _install_scan_routes(app, database, store)
     _install_upload_routes(app, database, store, worker, settings)
     _install_workspace_routes(app, database, store, stages)
-    install_owner_routes(app, database, store, stages, settings.team_emails)
+    install_owner_routes(app, database, store, stages)
     _install_combine_routes(app, database, store, worker)
     _install_file_routes(app, database, store)
     _install_layout_routes(app, database, stages, worker)

@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from standardphysics_pipeline import blender
 
+from standardphysics_api import team as team_role
 from standardphysics_api.app import create_app
 from standardphysics_api.settings import Settings
 from standardphysics_api.stages import Stages, preview_ledger
@@ -68,6 +69,7 @@ def make_client(tmp_path):
         seed: bool = False,
         stages: Stages | None = None,
         sign_in_as_owner: bool = True,
+        team: bool = False,
         **settings_overrides,
     ) -> TestClient:
         settings = Settings(
@@ -80,19 +82,34 @@ def make_client(tmp_path):
         test_client = TestClient(create_app(settings, stages or no_blender_stages(), run_worker=False))
         if not sign_in_as_owner:
             return test_client
+        email = settings.seed_owner_email if seed else OWNER_EMAIL
         with test_client:
             if seed:
-                sign_in(test_client, settings.seed_owner_email, SEED_OWNER_PASSWORD)
+                sign_in(test_client, email, SEED_OWNER_PASSWORD)
             else:
                 sign_up(test_client)
+            if team:
+                grant_team(test_client, email)
         return test_client
 
     return build
 
 
+def grant_team(test_client: TestClient, email: str) -> None:
+    """What `python -m standardphysics_api.team grant` does, against this client's database."""
+    with test_client.app.state.database.transaction() as connection:
+        assert team_role.grant(connection, email)
+
+
 @pytest.fixture
 def client(make_client):
     with make_client() as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def team_client(make_client):
+    with make_client(team=True) as test_client:
         yield test_client
 
 
