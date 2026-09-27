@@ -49,6 +49,7 @@ from shop_service import build_counter, cashier, menu_board_on_the_route, menu_b
 from shop_shells import RectShell, ScanShell
 from standardphysics_agents.fix.moves import RESTING_GAP
 from standardphysics_contracts import Mat4, Scenario, SceneGraph, SceneNode, Stop, Vec3
+from standardphysics_contracts.precedents import SpaceTypology
 from standardphysics_pipeline import gap_between
 
 SCAN_SHARE = 0.4
@@ -591,6 +592,29 @@ def build_room(name: str, shop: ShopType, rng: random.Random,
     _rotate_everything(room)
     return room.graph(), Scenario(name=shop.errand, stops=room.stops)
 
+
+SPACE_TYPOLOGIES = {
+    "cafe": SpaceTypology.QSR_BEVERAGE,
+    "boba tea shop": SpaceTypology.QSR_BEVERAGE,
+    "ice cream parlor": SpaceTypology.QSR_BEVERAGE,
+    "restaurant": SpaceTypology.RESTAURANT_DINING,
+    "fast food restaurant": SpaceTypology.RESTAURANT_DINING,
+    "bakery": SpaceTypology.COMMERCIAL_RETAIL,
+    "boutique": SpaceTypology.COMMERCIAL_RETAIL,
+    "bookstore": SpaceTypology.COMMERCIAL_RETAIL,
+    "convenience store": SpaceTypology.COMMERCIAL_RETAIL,
+    "pharmacy": SpaceTypology.COMMERCIAL_RETAIL,
+    "small office": SpaceTypology.BUSINESS_OFFICE,
+    "hotel lobby": SpaceTypology.HOSPITALITY_LOUNGE,
+}
+"""Which ADA directives govern each kind of shop. A salon and a clinic waiting room match no space type
+the directive corpus defines, so they get none rather than a guess."""
+
+
+def space_typology_for(errand: str) -> SpaceTypology | None:
+    """The space type of a generated room, read from its errand (the scenario's name)."""
+    shop = next((shop for shop in SHOP_TYPES if shop.errand == errand), None)
+    return None if shop is None else SPACE_TYPOLOGIES.get(shop.name)
 
 def generate(index: int, attempts: int = 30) -> tuple[SceneGraph, Scenario, ShopType]:
     """The room for this index. Whether it starts from a scan is settled once per index, so the scan

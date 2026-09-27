@@ -2,7 +2,8 @@ import functools
 import math
 
 import pytest
-from shop_generator import SHOP_TYPES, generate
+from multiroom_data import checker_for
+from shop_generator import SHOP_TYPES, SPACE_TYPOLOGIES, generate, space_typology_for
 from shop_geometry import Rect, outline
 from shop_restroom import turning_circle_fits
 from shop_shells import available_scans
@@ -10,6 +11,8 @@ from standardphysics_agents.checks import roles
 from standardphysics_agents.fix.constraints import violations
 from standardphysics_agents.training.quality import front_heading_degrees, wall_segments
 from standardphysics_contracts import SceneGraph, SceneNode
+from standardphysics_contracts.precedents import SpaceTypology
+from synthetic_data import make_room
 
 COUNTER_LABELS = roles.SERVICE_COUNTER_LABELS | {"front desk", "reception desk"}
 """The integration branch adds the two desks to the checker's roles."""
@@ -197,3 +200,18 @@ def test_turning_circle_needs_sixty_inches_clear():
     assert turning_circle_fits(1.6, 1.6, [])
     assert not turning_circle_fits(1.5, 2.0, [])
     assert not turning_circle_fits(1.6, 1.6, [(0.7, 0.7, 0.9, 0.9)])
+
+
+def test_every_generated_shop_kind_has_a_space_type_or_none_on_purpose():
+    assert set(SPACE_TYPOLOGIES) <= {shop.name for shop in SHOP_TYPES}
+    boba = next(shop for shop in SHOP_TYPES if shop.name == "boba tea shop")
+    salon = next(shop for shop in SHOP_TYPES if shop.name == "salon")
+    assert space_typology_for(boba.errand) == SpaceTypology.QSR_BEVERAGE
+    assert space_typology_for(salon.errand) is None
+    assert space_typology_for("an errand no generator writes") is None
+
+
+def test_a_generated_rooms_checker_carries_its_space_type():
+    window = make_room(1)
+    assert generate(1)[2].name == "boba tea shop"
+    assert checker_for(window).space_typology == SPACE_TYPOLOGIES["boba tea shop"]

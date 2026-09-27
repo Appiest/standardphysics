@@ -30,6 +30,7 @@ import uuid
 import zlib
 from collections import Counter
 
+from shop_generator import space_typology_for
 from standardphysics_agents.fix import apply_moves
 from standardphysics_agents.training import TrainingChecker, edits_between, edits_json, prompt_messages, scramble
 from standardphysics_agents.training.edits import node_moves, parse_edits
@@ -225,8 +226,9 @@ def run_windows(run: pathlib.Path, workers: int, progress: Progress) -> None:
 
 
 def checker_for(window: Window) -> TrainingChecker:
+    """The window's checker; a generated room also gets its shop's space type, so its ADA directives apply."""
     return TrainingChecker(window.scenario, pinned=frozenset(uuid.UUID(i) for i in window.pinned),
-                           owner_layout=window.graph)
+                           owner_layout=window.graph, space_typology=space_typology_for(window.scenario.name))
 
 
 def _variant_task(row: dict) -> list[dict]:
