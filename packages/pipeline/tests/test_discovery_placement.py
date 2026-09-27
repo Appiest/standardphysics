@@ -187,6 +187,45 @@ class TestFragmentsOfScannedPieces:
         assert not part_of_a_scanned_piece(cup, graph_of(table))
 
 
+class TestWorkSurfacesLevelWithAScannedOne:
+    """A carve's own top is only as low as the things standing on the surface; the mesh has the surface."""
+
+    def counter_mesh(self):
+        body = slab((0.0, -0.34, 0.43), (1.7, 0.0, 0.86))
+        return np.vstack([counter_surface(), body])
+
+    def measured_counter(self):
+        """The scanned counter as discovery sees it, its top already read off the mesh."""
+        return piece("Counter", (0.0, 0.0, COUNTER_TOP / 2), (1.7, 0.7, COUNTER_TOP))
+
+    def test_the_counter_carved_with_its_signs_is_the_scanned_counter(self):
+        """Half the carve stands above the counter, so no share of it lies within the scanned box."""
+        signs = slab((0.2, -0.2, 1.0), (0.9, 0.2, 0.26))
+        mesh = np.vstack([self.counter_mesh(), signs])
+        front = mesh[mesh[:, 1] <= -0.1]
+        with_signs = carved("counter", front)
+        assert not part_of_a_scanned_piece(with_signs, graph_of(self.measured_counter()))
+        assert part_of_a_scanned_piece(with_signs, graph_of(self.measured_counter()), mesh)
+
+    def test_a_ledge_running_on_past_the_scanned_end_is_that_ledge(self):
+        ledge = slab((1.0, 0.0, COUNTER_TOP), (1.8, 0.7, 0.0))
+        run_on = carved("table", np.vstack([ledge, slab((1.0, -0.34, 0.43), (1.8, 0.0, 0.86))]))
+        mesh = np.vstack([self.counter_mesh(), ledge])
+        assert part_of_a_scanned_piece(run_on, graph_of(self.measured_counter()), mesh)
+
+    def test_a_counter_beside_the_scanned_one_at_the_same_height_is_its_own_counter(self):
+        beside_top = slab((1.4, 0.0, COUNTER_TOP), (2.0, 0.7, 0.0))
+        beside = carved("counter", np.vstack([beside_top, slab((1.4, -0.34, 0.43), (2.0, 0.0, 0.86))]))
+        mesh = np.vstack([self.counter_mesh(), beside_top])
+        assert not part_of_a_scanned_piece(beside, graph_of(self.measured_counter()), mesh)
+
+    def test_a_lowered_section_in_front_of_the_counter_is_its_own_surface(self):
+        lowered_top = slab((0.0, -0.2, 0.76), (0.9, 0.5, 0.0))
+        lowered = carved("counter", np.vstack([lowered_top, slab((0.0, -0.45, 0.38), (0.9, 0.0, 0.76))]))
+        mesh = np.vstack([self.counter_mesh(), lowered_top])
+        assert not part_of_a_scanned_piece(lowered, graph_of(self.measured_counter()), mesh)
+
+
 class TestCountersStandOnTheFloor:
     def test_a_carved_counter_top_with_a_front_below_it_reaches_the_floor(self):
         top_slab = slab((3.0, 0.0, 0.88), (1.5, 0.5, 0.08))

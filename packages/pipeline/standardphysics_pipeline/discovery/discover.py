@@ -216,11 +216,11 @@ def _carved_objects(
     unclaimed = points[~claimed_by_any(points, graph)]
     candidates = _carve_all(cameras, detections, unclaimed, clear_view)
     found = [(object_, _viewpoints(object_, cameras)) for object_ in merge_candidates(candidates)]
+    loose = points[~structure_points(points, graph)]
     worth = [(object_, viewpoints) for object_, viewpoints in found
-             if _worth_keeping(object_, graph, viewpoints, cameras, people)]
+             if _worth_keeping(object_, graph, viewpoints, cameras, people, loose)]
     objects = [object_ for object_, _ in worth]
     measured = measured_on_the_mesh(objects, mesh.loose_near(objects, graph, people))
-    loose = points[~structure_points(points, graph)]
     return [
         (replace(standing, box=seated(standing.box, graph, loose)), viewpoints)
         for object_, (_, viewpoints) in zip(measured, worth, strict=True)
@@ -445,6 +445,7 @@ def _worth_keeping(
     viewpoints: int,
     cameras: Sequence[PhotoCamera] = (),
     people: Sequence[PersonVolume] = (),
+    loose: np.ndarray | None = None,
 ) -> bool:
     if object_.name.strip().lower() in ALREADY_THE_ROOM or viewpoints < MIN_VIEWS:
         return False
@@ -452,7 +453,7 @@ def _worth_keeping(
         return False
     return not (
         _already_measured(object_, graph)
-        or part_of_a_scanned_piece(object_, graph)
+        or part_of_a_scanned_piece(object_, graph, loose)
         or seen_through_the_shell(object_.box, graph, _positions(object_, cameras))
         or any(person.holds(object_.box) for person in people)
     )

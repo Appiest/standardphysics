@@ -103,6 +103,15 @@ def share_within(carved: CarvedBox, node: SceneNode, reach: float) -> float:
     return float((beside & (np.abs(local[:, 2]) <= half[2])).mean())
 
 
+def share_over(carved: CarvedBox, node: SceneNode, reach: float) -> float:
+    """The share of a carved object's points over the node's footprint widened by `reach`, at any height."""
+    if not len(carved.points):
+        return 0.0
+    _, _, half = _frame(node)
+    local = to_local(carved.points, node)
+    return float(np.all(np.abs(local[:, :2]) <= half[:2] + reach, axis=1).mean())
+
+
 FOOTPRINT_SAMPLES = 7
 
 
