@@ -10,6 +10,8 @@ from standardphysics_agents.training.reward import Verdict
 class FakeChecker:
     scenario = "route"
     pinned = frozenset()
+    measure = None
+    owner_layout = None
 
     def assess(self, graph):
         return graph
@@ -43,6 +45,10 @@ def setup_loop(monkeypatch, baseline=2, *, low_usability=()):
     monkeypatch.setattr(evaluator, "usability", lambda _before, _after, _owner, _: 0.5
                         if scored[-1][0] in low_usability else 1.0)
     monkeypatch.setattr(feedback, "room_view", lambda graph, _scenario, _problems: {"remaining": graph})
+    monkeypatch.setattr(evaluator, "infer_wishes", lambda _graph, _measure: [])
+    monkeypatch.setattr(evaluator, "explain_change", lambda *_args: SimpleNamespace(
+        as_dict=lambda: {"moves": []}, text=lambda: "Here is what changed."))
+    monkeypatch.setattr(evaluator, "_owner_outcome", lambda *_args: {})
     return data, scored
 
 
@@ -201,7 +207,7 @@ def test_raw_attempts_record_seconds_and_the_servers_token_counts(monkeypatch):
 
 def test_menu_turns_are_stateless_and_score_the_resolved_edits(monkeypatch):
     data, scored = setup_loop(monkeypatch)
-    menu = SimpleNamespace(problem_view=[{"label": "P1"}], options=[])
+    menu = SimpleNamespace(problem_view=[{"label": "P1"}], options=[], wish_view=[])
     lasts = []
 
     def messages(current, _checker, _menu, last):
@@ -209,10 +215,10 @@ def test_menu_turns_are_stateless_and_score_the_resolved_edits(monkeypatch):
         return [{"role": "system", "content": "menu"}, {"role": "user", "content": str(current)}]
 
     resolved = {'{"choose":[2]}': "bad", '{"choose":[1]}': "partial", '{"choose":[1,3]}': "clear"}
-    monkeypatch.setattr(evaluator, "build_menu", lambda current, _checker: menu)
+    monkeypatch.setattr(evaluator, "build_menu", lambda *_args: menu)
     monkeypatch.setattr(evaluator, "menu_messages", messages)
     monkeypatch.setattr(evaluator, "resolve", lambda reply, *_: SimpleNamespace(
-        completion=resolved[reply], as_dict=lambda: {"picks": json.loads(reply)["choose"]}))
+        completion=resolved[reply], why="", as_dict=lambda: {"picks": json.loads(reply)["choose"]}))
     replies = iter(resolved)
     prompts = []
 
@@ -220,7 +226,7 @@ def test_menu_turns_are_stateless_and_score_the_resolved_edits(monkeypatch):
         prompts.append(history)
         return evaluator.Reply(next(replies), 900, 12)
 
-    record = evaluator.evaluate_variant(data, data.heldout[0], sample, "fake-qwen", interface="menu")
+    record = evaluator.evaluate_variant(data, data.heldout[0], sample, "fake-qwen", setup=evaluator.LoopSetup(interface="menu"))
     assert [len(history) for history in prompts] == [2, 2, 2]
     assert scored == [("bad", 2), ("partial", 2), ("clear", 1)]
     assert lasts[0] is None and lasts[1]["picks"] == [2] and not lasts[1]["accepted"]
@@ -249,9 +255,71 @@ def test_menu_answers_on_a_real_room_never_break_a_hard_constraint():
                            checker=lambda _: checker, graph=lambda _: room)
     replies = iter(('{"choose":[1,2,3,4,5,6],"why":"all"}', "not json"))
     record = evaluator.evaluate_variant(data, data.heldout[0], lambda _: next(replies), "fake-qwen",
-                                        max_attempts=2, interface="menu")
+                                        max_attempts=2, setup=evaluator.LoopSetup(interface="menu"))
     first, second = record["attempts"]
     assert first["verdict"]["hard_constraints_pass"] and first["accepted"]
     assert first["resolution"]["applied"] and first["menu"]["options"]
     assert second["resolution"]["interface"] == "unparseable"
     assert second["verdict"]["reason"] == "no_supported_furniture_move"
+
+
+def test_a_change_the_owner_turns_down_is_put_back_and_their_words_reach_the_next_prompt(monkeypatch):
+    from standardphysics_agents.training.owner import Review
+
+    data, scored = setup_loop(monkeypatch)
+    answers = iter((Review(accepted=False, said="keep the chairs at the table"), Review(accepted=True),
+                    Review(accepted=True)))
+    monkeypatch.setattr(evaluator, "_owner_for", lambda *_args: SimpleNamespace(
+        review=lambda *_review_args: next(answers)))
+    monkeypatch.setattr(evaluator, "build_menu", lambda *_args: SimpleNamespace(
+        problem_view=[], options=[], wish_view=[]))
+    lasts = []
+    monkeypatch.setattr(evaluator, "menu_messages", lambda current, _checker, _menu, last: (
+        lasts.append(last), [{"role": "system", "content": "menu"}, {"role": "user", "content": str(current)}])[1])
+    monkeypatch.setattr(evaluator, "resolve", lambda reply, *_: SimpleNamespace(
+        completion=reply, why="", as_dict=lambda: {"picks": [1]}))
+    replies = iter(("partial", "partial", "clear"))
+    record = evaluator.evaluate_variant(data, data.heldout[0], lambda _: next(replies), "fake-qwen",
+                                        setup=evaluator.LoopSetup(interface="menu", owner="simulated"))
+    first = record["attempts"][0]
+    assert first["verdict"]["gate_accepts"] and not first["accepted"]
+    assert first["owner"] == {"accepted": False, "said": "keep the chairs at the table"}
+    assert "the owner turned it down" in first["feedback"]["checker_feedback"]["reason"]
+    assert scored[1] == ("partial", 2)
+    assert lasts[1]["owner_said"] == "keep the chairs at the table"
+    assert record["success"] and record["attempts_used"] == 3
+
+
+def test_the_first_option_chooser_needs_no_model_and_the_setup_follows_the_flags():
+    from types import SimpleNamespace as Args
+
+    assert json.loads(evaluator._first_option([]))["choose"] == [1]
+    setup = evaluator._setup(Args(interface="menu", owner="simulated", menu_order="shuffled", wish_labels="hidden"))
+    assert setup.owner == "simulated" and setup.view.order == "shuffled" and not setup.view.wishes_shown
+
+
+def test_a_real_room_with_its_owner_in_the_loop_never_keeps_a_change_that_breaks_their_layout():
+    from pathlib import Path
+
+    from standardphysics_agents.rules import VerificationLedger, load_pack
+    from standardphysics_agents.training import TrainingChecker
+    from standardphysics_contracts import Scenario, SceneGraph
+    from standardphysics_pipeline import PipelineMeasurements
+
+    fixture = Path(__file__).resolve().parents[2] / "packages/agents/tests/fixtures/placement-room.json"
+    saved = json.loads(fixture.read_text())
+    pack, ledger = load_pack(), VerificationLedger()
+    for rule in pack.rules:
+        ledger = ledger.record(rule, verified_by="test suite, not a person")
+    room = SceneGraph.model_validate(saved["graph"])
+    checker = TrainingChecker(Scenario.model_validate(saved["scenario"]), rules=pack, ledger=ledger,
+                              measure=PipelineMeasurements(), owner_layout=room)
+    data = SimpleNamespace(variants={"v": {"window_id": "w", "scan_id": "s"}}, heldout=[{"variant": "v"}],
+                           checker=lambda _: checker, graph=lambda _: room)
+    record = evaluator.evaluate_variant(data, data.heldout[0], evaluator._first_option, "first-option",
+                                        max_attempts=2,
+                                        setup=evaluator.LoopSetup(interface="menu", owner="simulated"))
+    assert {"hidden_wishes_kept", "owner_rejections", "layout_quality"} <= set(record)
+    kept = [attempt for attempt in record["attempts"] if attempt["accepted"]]
+    assert all(attempt["owner"]["accepted"] and attempt["explanation"]["moves"] for attempt in kept)
+    assert record["hidden_wishes_kept"] == 1.0

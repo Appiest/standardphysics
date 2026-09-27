@@ -36,21 +36,26 @@ import pathlib
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from multiroom_train_data import MultiroomData, load
 from standardphysics_agents.training.edits import apply_edits, parse_edits
+from standardphysics_agents.training.explain import explain_change
 from standardphysics_agents.training.feedback import feedback_message
-from standardphysics_agents.training.menu import build_menu, menu_messages, resolve
+from standardphysics_agents.training.menu import MenuView, build_menu, menu_messages, resolve
+from standardphysics_agents.training.owner import InteractiveOwner, SimulatedOwner, WishBook
 from standardphysics_agents.training.prompt import prompt_messages
+from standardphysics_agents.training.quality import layout_quality
 from standardphysics_agents.training.reward import score_completion
 from standardphysics_agents.training.usability import usability
+from standardphysics_agents.training.wishes import infer_wishes
 
 DEFAULT_DATA = pathlib.Path(__file__).resolve().parents[2] / "runs/finetune/multiroom/v2"
 MAX_ATTEMPTS = 5
 EVALUATION_POLICY = "checker-full-clear-v1"
 MODES = ("model", "solver-assisted", "solver-only")
 INTERFACES = ("raw", "menu")
+OWNERS = ("none", "simulated", "interactive")
 
 
 @dataclass(frozen=True)
@@ -139,13 +144,56 @@ def _unchanged(message: dict) -> dict:
     return message
 
 
-class RawTurns:
+@dataclass(frozen=True)
+class LoopSetup:
+    """How the loop is run: the answer interface, who reviews each change, and how the menu is shown."""
+
+    interface: str = "raw"
+    owner: str = "none"
+    view: MenuView = MenuView()
+
+
+def _owner_for(kind: str, checker, start):
+    if kind == "simulated":
+        return SimulatedOwner(checker.owner_layout or start, checker.measure, hidden=checker.owner_wishes)
+    if kind == "interactive":
+        return InteractiveOwner()
+    return None
+
+
+class _Turns:
+    """What both interfaces share: each kept change is explained, and the owner, if any, may turn it down."""
+
+    def __init__(self, checker, owner):
+        self.checker, self.owner = checker, owner
+        self.stated = WishBook()
+        self.owner_said = ""
+
+    def why(self) -> str:
+        return ""
+
+    def review(self, before, after, attempt: dict) -> bool:
+        wishes = [*infer_wishes(before, self.checker.measure), *self.stated.wishes]
+        explanation = explain_change(before, after, self.checker, wishes, self.why())
+        attempt["explanation"] = explanation.as_dict()
+        if self.owner is None:
+            return True
+        verdict = self.owner.review(before, after, explanation.text())
+        attempt["owner"] = {"accepted": verdict.accepted, "said": verdict.said}
+        for wish in verdict.stated:
+            self.stated.add(wish, verdict.about or before)
+        self.owner_said = "" if verdict.accepted else verdict.said
+        return verdict.accepted
+
+
+class RawTurns(_Turns):
     """The model writes coordinates and reads the whole conversation so far."""
 
-    def __init__(self, current, checker, sampler, solver, illustrate):
+    def __init__(self, current, checker, sampler, solver, illustrate, owner=None):
+        super().__init__(checker, owner)
         system, room = prompt_messages(current, checker)
         self.messages = [system, illustrate(room)]
-        self.checker, self.sampler, self.solver, self.illustrate = checker, sampler, solver, illustrate
+        self.sampler, self.solver, self.illustrate = sampler, solver, illustrate
 
     def ask(self, current) -> tuple[str, str, dict]:
         reply, stats = _ask(self.sampler, self.messages)
@@ -156,33 +204,79 @@ class RawTurns:
         self.messages.extend(({"role": "assistant", "content": completion}, self.illustrate(feedback)))
 
 
-class MenuTurns:
+class MenuTurns(_Turns):
     """The model picks from a menu of legal, measured moves; each prompt stands alone."""
 
-    def __init__(self, checker, sampler, illustrate):
-        self.checker, self.sampler, self.illustrate = checker, sampler, illustrate
+    def __init__(self, checker, sampler, illustrate, owner=None, view: MenuView = MenuView()):
+        super().__init__(checker, owner)
+        self.sampler, self.illustrate, self.view = sampler, illustrate, view
         self.last: dict | None = None
         self.resolution = None
+        self.asked = 0
+
+    def why(self) -> str:
+        return self.resolution.why if self.resolution else ""
 
     def ask(self, current) -> tuple[str, str, dict]:
-        menu = build_menu(current, self.checker)
+        self.asked += 1
+        menu = build_menu(current, self.checker, self.stated, replace(self.view, seed=self.view.seed + self.asked))
         system, room = menu_messages(current, self.checker, menu, self.last)
         reply, stats = _ask(self.sampler, [system, self.illustrate(room)])
         self.resolution = resolve(reply, current, menu, self.checker.pinned)
         return self.resolution.completion, "model", {
             **stats, "reply": reply, "resolution": self.resolution.as_dict(),
-            "menu": {"problems": menu.problem_view, "options": [option.as_prompt() for option in menu.options]},
+            "menu": {"problems": menu.problem_view, "options": [option.as_prompt() for option in menu.options],
+                     "owner_wishes": menu.wish_view},
         }
 
     def observe(self, completion: str, attempt: dict, feedback: dict) -> None:
         self.last = {**self.resolution.as_dict(), "accepted": attempt["accepted"],
-                     "reason": attempt["verdict"]["reason"],
+                     "reason": attempt["verdict"]["reason"], "owner_said": self.owner_said,
                      "fixable_left": attempt["feedback"]["checker_feedback"]["fixable_left"]}
+
+
+@dataclass
+class _Room:
+    """The room between attempts, and its usability against the starting room."""
+
+    current: object
+    baseline_usability: float = 1.0
+
+
+def _turned_down(feedback: dict, said: str) -> dict:
+    """The checker's feedback on a change the owner refused: not kept, and what the owner said."""
+    content = json.loads(feedback["content"])
+    content["checker_feedback"].update(accepted=False, reason=f"the owner turned it down: {said}")
+    return {**feedback, "content": json.dumps(content, separators=(",", ":"))}
+
+
+def _one_attempt(turns, checker, baseline, room: _Room, index: int) -> tuple[str, dict, dict]:
+    """Ask, score, and keep the change unless the owner turns it down, in which case the room is put back."""
+    before, before_usability = room.current, room.baseline_usability
+    completion, source, extra = turns.ask(before)
+    room.current, room.baseline_usability, attempt, feedback = _attempt(
+        completion, baseline, before, checker, index, before_usability,
+    )
+    attempt.update(source=source, **extra)
+    if attempt["accepted"] and not turns.review(before, room.current, attempt):
+        room.current, room.baseline_usability = before, before_usability
+        attempt["accepted"] = False
+        feedback = _turned_down(feedback, turns.owner_said)
+        attempt["feedback"] = json.loads(feedback["content"])
+    return completion, attempt, feedback
+
+
+def _owner_outcome(checker, start, end, attempts: list[dict]) -> dict:
+    """How the owner's layout fared: hidden wishes kept, times the owner said no, and Q against their layout."""
+    owner_layout = checker.owner_layout or start
+    return {"hidden_wishes_kept": round(checker.owner_wishes.kept_share(start, end, checker.measure), 4),
+            "owner_rejections": sum(1 for attempt in attempts if attempt.get("owner", {}).get("accepted") is False),
+            "layout_quality": layout_quality(start, end, owner_layout, checker.measure).q}
 
 
 def evaluate_variant(data: MultiroomData, row: dict, sampler: Sampler | None, model: str,
                      max_attempts: int = MAX_ATTEMPTS, solver: Solver | None = None,
-                     illustrate: Illustrator = _unchanged, interface: str = "raw") -> dict:
+                     illustrate: Illustrator = _unchanged, setup: LoopSetup = LoopSetup()) -> dict:
     if not 1 <= max_attempts <= MAX_ATTEMPTS:
         raise ValueError("max_attempts must be between one and five")
     variant_id = row["variant"]
@@ -200,21 +294,19 @@ def evaluate_variant(data: MultiroomData, row: dict, sampler: Sampler | None, mo
                 "checker_full_clear_within_five": False, "full_usability_preserved": False,
                 "final_baseline_usability": 1.0, "attempts_used": 0, "stop_reason": "no_fixable_findings"}
 
-    turns = (MenuTurns(checker, sampler, illustrate) if interface == "menu"
-             else RawTurns(current, checker, sampler, solver, illustrate))
+    owner = _owner_for(setup.owner, checker, current)
+    turns = (MenuTurns(checker, sampler, illustrate, owner, setup.view) if setup.interface == "menu"
+             else RawTurns(current, checker, sampler, solver, illustrate, owner))
+    room = _Room(current)
     success = False
-    current_baseline_usability = 1.0
     for index in range(1, max_attempts + 1):
-        completion, source, extra = turns.ask(current)
-        current, current_baseline_usability, attempt, feedback = _attempt(
-            completion, baseline, current, checker, index, current_baseline_usability,
-        )
-        attempt.update(source=source, **extra)
+        completion, attempt, feedback = _one_attempt(turns, checker, baseline, room, index)
         record["attempts"].append(attempt)
         if attempt["accepted"] and attempt["feedback"]["checker_feedback"]["fixable_left"] == 0:
             success = True
             break
         turns.observe(completion, attempt, feedback)
+    current, current_baseline_usability = room.current, room.baseline_usability
 
     construction = sum(a["verdict"]["construction_inches"] for a in record["attempts"] if a["accepted"])
     return {**record, "success": success, "checker_full_clear_within_five": success,
@@ -224,6 +316,7 @@ def evaluate_variant(data: MultiroomData, row: dict, sampler: Sampler | None, mo
             "abstained": not success,
             "final_fixable_left": _fixable_left(current, checker),
             "attempts_used": len(record["attempts"]),
+            **_owner_outcome(checker, baseline, current, record["attempts"]),
             "stop_reason": "fully_cleared" if success else "attempt_limit"}
 
 
@@ -254,7 +347,7 @@ def _previous_records(data: MultiroomData, rows: list[dict], out: pathlib.Path,
 def evaluate(data: MultiroomData, sampler: Sampler | None, model: str, out: pathlib.Path,
              max_attempts: int = MAX_ATTEMPTS, rows: list[dict] | None = None, solver: Solver | None = None,
              workers: int = 1, limit: int | None = None, illustrate: Illustrator = _unchanged,
-             interface: str = "raw") -> dict:
+             setup: LoopSetup = LoopSetup()) -> dict:
     if not 1 <= max_attempts <= MAX_ATTEMPTS:
         raise ValueError("max_attempts must be between one and five")
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -264,7 +357,7 @@ def evaluate(data: MultiroomData, sampler: Sampler | None, model: str, out: path
     pending = [row for row in rows if row["variant"] not in records_by_variant][:limit]
     with out.open("a") as handle, ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(evaluate_variant, data, row, sampler, model, max_attempts, solver, illustrate,
-                               interface) for row in pending]
+                               setup) for row in pending]
         for future in as_completed(futures):
             record = future.result()
             handle.write(json.dumps(record, separators=(",", ":")) + "\n")
@@ -297,9 +390,19 @@ def cached_solver() -> Solver:
     return answer
 
 
+FIRST_OPTION = '{"choose":[1],"why":"the first option on the menu"}'
+
+
+def _first_option(_messages: list[dict]) -> str:
+    """A chooser with no model: always the first option, the baseline a model has to beat."""
+    return FIRST_OPTION
+
+
 def _sampler(args) -> Sampler | None:
     if args.mode == "solver-only":
         return None
+    if args.chooser == "first":
+        return _first_option
     if args.fireworks:
         from fireworks_sampler import FireworksSampler
 
@@ -319,6 +422,23 @@ def _sampler(args) -> Sampler | None:
     return sample
 
 
+def _check(parser: argparse.ArgumentParser, args) -> None:
+    needs_model = args.mode != "solver-only" and args.chooser == "model"
+    if needs_model and not (args.base_url or args.fireworks):
+        parser.error("--base-url or --fireworks is required unless --mode solver-only or --chooser first")
+    if args.fireworks and not args.spend_file:
+        parser.error("--fireworks needs --spend-file so the watchdog can meter it")
+    if args.interface == "menu" and args.mode != "model":
+        parser.error("--interface menu is for --mode model; the solver answers in raw edits")
+    if args.chooser == "first" and args.interface != "menu":
+        parser.error("--chooser first picks from a menu, so it needs --interface menu")
+
+
+def _setup(args) -> LoopSetup:
+    view = MenuView(order=args.menu_order, wishes_shown=args.wish_labels == "shown")
+    return LoopSetup(interface=args.interface, owner=args.owner, view=view)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=pathlib.Path, default=DEFAULT_DATA)
@@ -335,6 +455,13 @@ def main() -> None:
     parser.add_argument("--mode", choices=MODES, default="model")
     parser.add_argument("--interface", choices=INTERFACES, default="raw",
                         help="raw: the model writes coordinates; menu: it picks from legal, measured moves")
+    parser.add_argument("--owner", choices=OWNERS, default="none",
+                        help="who reviews each kept change: nobody, an owner simulated from their own layout, or you")
+    parser.add_argument("--chooser", choices=("model", "first"), default="model",
+                        help="menu only: the model picks, or always the first option with no model")
+    parser.add_argument("--menu-order", choices=("ranked", "shuffled"), default="ranked")
+    parser.add_argument("--wish-labels", choices=("shown", "hidden"), default="shown",
+                        help="menu only: label options with the inferred wishes they break, or leave the model to infer")
     parser.add_argument("--split", choices=("heldout", "train"), default="heldout",
                         help="evaluate held-out rooms or collect training-room correction traces")
     parser.add_argument("--out", type=pathlib.Path, required=True)
@@ -342,12 +469,7 @@ def main() -> None:
     parser.add_argument("--limit", type=int, help="evaluate at most this many new rooms, then exit and free memory")
     parser.add_argument("--shard", default="0/1", help="i/n: evaluate every n-th room starting at i, for parallel processes")
     args = parser.parse_args()
-    if args.mode != "solver-only" and not (args.base_url or args.fireworks):
-        parser.error("--base-url or --fireworks is required unless --mode solver-only")
-    if args.fireworks and not args.spend_file:
-        parser.error("--fireworks needs --spend-file so the watchdog can meter it")
-    if args.interface == "menu" and args.mode != "model":
-        parser.error("--interface menu is for --mode model; the solver answers in raw edits")
+    _check(parser, args)
 
     data = load(args.data)
     rows = data.rl if args.split == "train" else data.heldout
@@ -358,7 +480,7 @@ def main() -> None:
     if args.plan_image:
         from plan_image import with_plan as illustrate
     print(json.dumps(evaluate(data, _sampler(args), args.model, args.out, args.max_attempts, rows, solver,
-                              args.workers, args.limit, illustrate, args.interface)))
+                              args.workers, args.limit, illustrate, _setup(args))))
 
 
 if __name__ == "__main__":
