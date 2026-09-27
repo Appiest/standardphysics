@@ -87,12 +87,11 @@ RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
  && /opt/venv/bin/pip install --no-cache-dir -r requirements.lock
 
 COPY pyproject.toml ./
-COPY src ./src
 COPY packages ./packages
 COPY services ./services
 COPY scripts ./scripts
 RUN /opt/venv/bin/pip install --no-cache-dir --no-deps \
-      -e . -e packages/contracts -e packages/fixtures -e packages/pipeline \
+      -e packages/contracts -e packages/fixtures -e packages/pipeline \
       -e "packages/agents[observability]" -e services/api \
  && /opt/venv/bin/pip check
 

@@ -16,7 +16,7 @@ jobs:
           cache-dependency-path: requirements-dev.lock
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r requirements-dev.lock
-      - run: python -m pip install --no-deps -e . -e packages/contracts -e packages/fixtures -e packages/pipeline -e packages/agents -e services/api
+      - run: python -m pip install --no-deps -e tools/loopforge -e packages/contracts -e packages/fixtures -e packages/pipeline -e packages/agents -e services/api
       - run: python -m pip check
       - run: python -m pip install ruff==0.16.7
       - run: python -m ruff check .

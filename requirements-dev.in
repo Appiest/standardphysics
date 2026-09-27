@@ -3,6 +3,7 @@
 # locks share identical, so CI tests the exact versions the image ships.
 -c requirements.lock
 -r requirements.in
+-e ./tools/loopforge
 -e ./packages/pipeline[reconstruction]
 -e ./packages/agents[observability,notebook]
 -e ./services/api[test]

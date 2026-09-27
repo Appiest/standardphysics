@@ -270,7 +270,6 @@ yarl==1.25.1
     # via gql
 
 # The following packages were excluded from the output:
-# loopforge
 # standardphysics-contracts
 # standardphysics-fixtures
 # standardphysics-pipeline
