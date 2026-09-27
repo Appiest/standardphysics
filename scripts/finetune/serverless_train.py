@@ -32,6 +32,7 @@ from dataclasses import asdict, dataclass
 
 import tinker
 from fireworks.training.sdk import FiretitanSamplingParams, FiretitanServiceClient, FireworksClient
+from menu_data import load as load_menu
 from multiroom_results import composition
 from multiroom_train_data import load as load_multiroom
 from progress import Progress, Spend
@@ -55,7 +56,7 @@ download failed and a stub stood in for it, which would train on garbage."""
 
 
 ESTIMATE_EXIT_CODE = 4
-LOADERS = {"room6": load, "multiroom": load_multiroom}
+LOADERS = {"room6": load, "multiroom": load_multiroom, "menu": load_menu}
 
 
 class BudgetExceeded(RuntimeError):
