@@ -10,6 +10,12 @@
 # Scans live on the attached Block Storage volume rather than the Droplet's
 # own disk, so the disk can be resized or the Droplet rebuilt without losing
 # a shop. SCANS_PATH is where the volume is mounted; setup.sh sets it.
+#
+# Each build is tagged with the commit it came from, standardphysics:<sha>,
+# as well as :latest. GIT_SHA picks the tag: scripts/deploy.sh sets it from
+# `git rev-parse HEAD`, and a rollback is `git checkout <sha>` and
+# `GIT_SHA=<sha> docker compose up -d`, which finds that tag already built and
+# starts it without a rebuild. Without GIT_SHA it falls back to :latest.
 
 services:
   caddy:
@@ -37,7 +43,11 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
-    image: standardphysics:latest
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+      tags:
+        - standardphysics:latest
+    image: standardphysics:${GIT_SHA:-latest}
     command: ["api"]
     restart: unless-stopped
     env_file: .env
@@ -77,7 +87,7 @@ services:
       start_period: 30s
 
   web:
-    image: standardphysics:latest
+    image: standardphysics:${GIT_SHA:-latest}
     command: ["web"]
     restart: unless-stopped
     environment:
