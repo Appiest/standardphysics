@@ -184,10 +184,19 @@ def _winning_name(weights: Counter[str]) -> str:
     three wordings; counted apart, a single "payment terminal" outvotes all of
     them. A name's own weight breaks a tie between agreeing names.
     """
-    def support(name: str) -> tuple[float, float]:
-        return sum(weight for other, weight in weights.items() if _names_agree(name, other)), weights[name]
+    return max(weights, key=lambda name: (_agreeing(weights, name), weights[name]))
 
-    return max(weights, key=support)
+
+def name_support(weights: Counter[str]) -> float:
+    """The share of all naming confidence that agrees with the winning name; 1.0 when nothing was said."""
+    total = sum(weights.values())
+    if not weights or total <= 0:
+        return 1.0
+    return _agreeing(weights, _winning_name(weights)) / total
+
+
+def _agreeing(weights: Counter[str], name: str) -> float:
+    return sum(weight for other, weight in weights.items() if _names_agree(name, other))
 
 
 def _smaller_inside_larger(first: CarvedBox, second: CarvedBox) -> float:

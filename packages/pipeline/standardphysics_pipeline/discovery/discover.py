@@ -62,6 +62,7 @@ from .placement import (
     standing_on_the_floor,
 )
 from .reconcile import reconcile_outlets
+from .second_look import Photos, second_look
 from .semantic_corrections import apply_secondary_semantic_corrections, is_work_surface
 from .surface_attach import attach_detection_to_surface
 from .worktops import measure_worktops
@@ -160,9 +161,9 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
     points = _mesh_points(inputs)
     cameras = _cameras(inputs, graph)
     requests: list[ModelRequestInfo] = []
+    orientations = _orientations(inputs.poses_path)
     detections, failures = _detect_all(
-        cameras, inputs.frame_paths, transport, _cache_for(inputs), _orientations(inputs.poses_path),
-        recorded=requests,
+        cameras, inputs.frame_paths, transport, _cache_for(inputs), orientations, recorded=requests,
     )
     buffers = {camera.frame_id: depth_buffer(camera, points) for camera in cameras}
     views = [(camera, detections.get(camera.frame_id, []), buffers[camera.frame_id]) for camera in cameras]
@@ -172,6 +173,9 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
     renamed = _semantic_corrections(graph, detections, cameras)
     graph = _with_replaced(graph, renamed)
     kept = _carved_objects(graph, cameras, detections, removal, MeshViews(points, views))
+    looked = second_look([object_ for object_, _ in kept], Photos(cameras, inputs.frame_paths, orientations),
+                         transport=transport, cache_dir=inputs.cache_dir)
+    kept = [(object_, viewpoints) for object_, (_, viewpoints) in zip(looked, kept)]
     objects = [object_ for object_, _ in kept]
     carved_nodes = [_node_for(object_, graph, viewpoints) for object_, viewpoints in kept]
     attached_nodes = _attached_targets(inputs, graph, cameras, detections, buffers)

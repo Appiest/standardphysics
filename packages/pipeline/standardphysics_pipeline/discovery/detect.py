@@ -435,6 +435,10 @@ def _request_options() -> dict[str, Any]:
     return dict(REASONING_OFF_BY_HOST.get(host, {}))
 
 
+def answer_model() -> str:
+    return os.environ.get(MODEL_ENV) or DEFAULT_MODEL
+
+
 def answer_identity() -> str:
     """What decides the answer besides the photo: the model, and whether it was allowed to reason.
 
