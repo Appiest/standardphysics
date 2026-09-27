@@ -345,14 +345,15 @@ def _display_geometry(
     People out, the holes they leave in furniture closed, half-seen furniture
     completed from its other half, and walls and floor made whole, in that order.
     """
-    from ..discovery.people import mostly_people
+    from ..discovery.people import in_person_volumes, mostly_people
     from .hole_patches import with_holes_patched
     from .object_holes import closed_object_holes, without_vertices
     from .symmetry import mirrored_completion, seen_through_by
 
     if people:
         views = [(camera, people.get(camera.frame_id, []), depth_buffer(camera, vertices)) for camera in cameras]
-        vertices, triangles = without_vertices(vertices, triangles, mostly_people(vertices, graph, views))
+        people_shown = mostly_people(vertices, graph, views) | in_person_volumes(vertices, graph, views)
+        vertices, triangles = without_vertices(vertices, triangles, people_shown)
     capped = closed_object_holes(vertices, triangles, graph)
     seen_through = seen_through_by(cameras, [depth_buffer(camera, capped.vertices) for camera in cameras])
     completed = mirrored_completion(capped.vertices, capped.triangles, graph, seen_through)
