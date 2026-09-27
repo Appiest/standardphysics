@@ -20,6 +20,7 @@ import numpy as np
 from standardphysics_contracts import SceneGraph, SceneNode, Vec3, bounds_the_room
 
 from .boxes import to_local
+from .carve import CarvedBox
 
 BROAD_TOP = 0.3
 """Square metres of footprint below which a piece is a seat or a stool, not a work surface."""
@@ -34,9 +35,14 @@ CELL = 0.10
 """The footprint is read in ten centimetre cells, so a dense corner counts once."""
 WELL_SEEN = 0.4
 """Share of the footprint the best-covered height must reach before the mesh overrules the box."""
+CARVE_SEEN = 0.3
+"""The same, for a carve. Its footprint takes in what stands round the top as well, the stools under a
+ledge or the front of a counter, so less of it is top: Share-Tea's bar ledge covers 0.39 of one."""
 NEAR_PEAK = 0.8
 """A height covering this share of the best one's cover is still the same surface; the highest wins."""
 UPRIGHT = 0.99
+ABOVE_THE_FLOOR = 0.15
+"""Metres. Lower than this, what spreads across a carve standing on the floor is the floor itself."""
 
 
 def carries_a_worktop(node: SceneNode) -> bool:
@@ -55,7 +61,24 @@ def measured_top(node: SceneNode, points: np.ndarray) -> float | None:
     heights = points[:, 2]
     near = np.all(np.abs(local[:, :2]) <= half[:2], axis=1) & (np.abs(heights - top) <= SEARCH)
     cells = _cell_ids(local[near, :2], half)
-    return _highest_broad_level(heights[near], cells, _cell_count(half), top)
+    return _highest_broad_level(heights[near], cells, _cell_count(half), (top - SEARCH, top + SEARCH))
+
+
+def carved_top(box: CarvedBox, points: np.ndarray) -> float | None:
+    """The highest surface the mesh spreads across a carved box's footprint, anywhere in its height.
+
+    A carve of a counter reaches as high as whatever stands on it, so its own
+    top says nothing about the counter's; the surface does.
+    """
+    cos_t, sin_t = np.cos(box.yaw), np.sin(box.yaw)
+    offset = points[:, :2] - np.asarray(box.centre[:2])
+    local = np.stack([offset[:, 0] * cos_t + offset[:, 1] * sin_t, -offset[:, 0] * sin_t + offset[:, 1] * cos_t], axis=1)
+    half = np.asarray(box.dimensions[:2], dtype=np.float64) / 2
+    bottom, top = max(box.floor_clearance, ABOVE_THE_FLOOR), box.centre[2] + box.dimensions[2] / 2
+    heights = points[:, 2]
+    near = np.all(np.abs(local) <= half, axis=1) & (heights >= bottom) & (heights <= top)
+    cells = _cell_ids(local[near], half)
+    return _highest_broad_level(heights[near], cells, _cell_count(half), (bottom, top), CARVE_SEEN)
 
 
 def with_measured_top(node: SceneNode, surface: float) -> SceneNode:
@@ -93,12 +116,14 @@ def _cell_count(half: np.ndarray) -> int:
     return max(1, int(np.ceil(2 * half[0] / CELL)) * int(np.ceil(2 * half[1] / CELL)))
 
 
-def _highest_broad_level(heights: np.ndarray, cells: np.ndarray, total: int, top: float) -> float | None:
-    levels = np.arange(top - SEARCH, top + SEARCH + LEVEL_STEP / 2, LEVEL_STEP)
+def _highest_broad_level(
+    heights: np.ndarray, cells: np.ndarray, total: int, span: tuple[float, float], well_seen: float = WELL_SEEN,
+) -> float | None:
+    levels = np.arange(span[0], span[1] + LEVEL_STEP / 2, LEVEL_STEP)
     cover = np.asarray([
         len(np.unique(cells[np.abs(heights - level) <= SKIN])) / total for level in levels
     ])
-    if not len(cover) or cover.max() < WELL_SEEN:
+    if not len(cover) or cover.max() < well_seen:
         return None
     highest = float(levels[cover >= cover.max() * NEAR_PEAK].max())
     return float(np.median(heights[np.abs(heights - highest) <= SKIN]))

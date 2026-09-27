@@ -50,6 +50,8 @@ from .boxes import claimed_by_any, structure_points
 from .carve import NEAR_LIMIT, CarvedBox, FrameView, carve, nearest_band, unoccluded
 from .detect import Detection
 
+SURE = 0.6
+"""The detector's own confidence below which a person rectangle deletes nothing from the mesh."""
 MIN_BODY_HEIGHT = 1.2
 MAX_BODY_HEIGHT = 2.2
 MAX_BODY_UNDERSIDE = 0.25
@@ -100,11 +102,19 @@ def person_points(
     graph: SceneGraph,
     views: list[tuple[PhotoCamera, list[Detection], np.ndarray | None]],
 ) -> tuple[np.ndarray, int]:
-    """Which points are a person's surface, and in how many frames a person appeared."""
+    """Which points are a person's surface, and in how many frames a person appeared.
+
+    Only a person the detector is reasonably sure of deletes anything. On
+    Share-Tea one run drew a "person" at 0.5 round the whole of a frame with
+    nobody in it; its nearest surface was a wall-mounted extinguisher, whose
+    upper half went, and with it the carves of the two photos that boxed that
+    half and the extinguisher itself. Below 0.6 a run holds a dozen or two
+    such rectangles, a few thousand of its seventy thousand person points.
+    """
     is_person = np.zeros(len(points), dtype=bool)
     frames = 0
     for camera, detections, depth_buffer in views:
-        people = [detection for detection in detections if detection.is_person]
+        people = [detection for detection in detections if detection.is_person and detection.confidence >= SURE]
         if not people:
             continue
         frames += 1

@@ -21,13 +21,14 @@ from standardphysics_pipeline.discovery.carve import CarvedBox, fit_box
 from standardphysics_pipeline.discovery.detect import Detection
 from standardphysics_pipeline.discovery.merge import DiscoveredObject
 from standardphysics_pipeline.discovery.placement import (
+    at_its_surface,
     part_of_a_scanned_piece,
     seated,
     seen_through_the_shell,
     standing_on_the_floor,
 )
 from standardphysics_pipeline.discovery.semantic_corrections import apply_secondary_semantic_corrections
-from standardphysics_pipeline.discovery.worktops import measure_worktops, measured_top
+from standardphysics_pipeline.discovery.worktops import carved_top, measure_worktops, measured_top
 from standardphysics_pipeline.textures.camera import PhotoCamera
 
 
@@ -103,6 +104,13 @@ class TestReadingAWorktopOffTheMesh:
     def test_a_top_the_mesh_barely_saw_keeps_the_box(self):
         corner = slab((0.7, 0.2, COUNTER_TOP), (0.2, 0.2, 0.0))
         assert measured_top(scanned_counter(), corner) is None
+
+    def test_a_carved_ledge_has_its_top_though_the_stools_before_it_fill_most_of_its_footprint(self):
+        ledge = slab((0.0, 0.0, COUNTER_TOP), (1.8, 0.3, 0.0))
+        stool_backs = slab((0.0, -0.9, 0.45), (1.8, 0.0, 0.5))
+        run = carved("counter", np.vstack([ledge, stool_backs]))
+        assert run.box.dimensions[1] > 1.0
+        assert carved_top(run.box, np.vstack([ledge, stool_backs])) == pytest.approx(COUNTER_TOP, abs=0.01)
 
     def test_a_stool_is_not_read_as_a_worktop(self):
         stool = piece("Chair", (0.0, 0.0, 0.45), (0.45, 0.5, 0.9))
@@ -185,6 +193,77 @@ class TestFragmentsOfScannedPieces:
         table = piece("Table", (0.0, 0.0, 0.37), (1.2, 0.8, 0.74))
         cup = carved("cup", slab((0.55, 0.0, 0.8), (0.08, 0.08, 0.12)))
         assert not part_of_a_scanned_piece(cup, graph_of(table))
+
+
+class TestWorkSurfacesLevelWithAScannedOne:
+    """A carve's own top is only as low as the things standing on the surface; the mesh has the surface."""
+
+    def counter_mesh(self):
+        body = slab((0.0, -0.34, 0.43), (1.7, 0.0, 0.86))
+        return np.vstack([counter_surface(), body])
+
+    def measured_counter(self):
+        """The scanned counter as discovery sees it, its top already read off the mesh."""
+        return piece("Counter", (0.0, 0.0, COUNTER_TOP / 2), (1.7, 0.7, COUNTER_TOP))
+
+    def test_the_counter_carved_with_its_signs_is_the_scanned_counter(self):
+        """Half the carve stands above the counter, so no share of it lies within the scanned box."""
+        signs = slab((0.2, -0.2, 1.0), (0.9, 0.2, 0.26))
+        mesh = np.vstack([self.counter_mesh(), signs])
+        front = mesh[mesh[:, 1] <= -0.1]
+        with_signs = carved("counter", front)
+        assert not part_of_a_scanned_piece(with_signs, graph_of(self.measured_counter()))
+        assert part_of_a_scanned_piece(with_signs, graph_of(self.measured_counter()), mesh)
+
+    def test_a_ledge_running_on_past_the_scanned_end_is_that_ledge(self):
+        ledge = slab((1.0, 0.0, COUNTER_TOP), (1.8, 0.7, 0.0))
+        run_on = carved("table", np.vstack([ledge, slab((1.0, -0.34, 0.43), (1.8, 0.0, 0.86))]))
+        mesh = np.vstack([self.counter_mesh(), ledge])
+        assert part_of_a_scanned_piece(run_on, graph_of(self.measured_counter()), mesh)
+
+    def test_a_counter_beside_the_scanned_one_at_the_same_height_is_its_own_counter(self):
+        beside_top = slab((1.4, 0.0, COUNTER_TOP), (2.0, 0.7, 0.0))
+        beside = carved("counter", np.vstack([beside_top, slab((1.4, -0.34, 0.43), (2.0, 0.0, 0.86))]))
+        mesh = np.vstack([self.counter_mesh(), beside_top])
+        assert not part_of_a_scanned_piece(beside, graph_of(self.measured_counter()), mesh)
+
+    def test_a_lowered_section_in_front_of_the_counter_is_its_own_surface(self):
+        lowered_top = slab((0.0, -0.2, 0.76), (0.9, 0.5, 0.0))
+        lowered = carved("counter", np.vstack([lowered_top, slab((0.0, -0.45, 0.38), (0.9, 0.0, 0.76))]))
+        mesh = np.vstack([self.counter_mesh(), lowered_top])
+        assert not part_of_a_scanned_piece(lowered, graph_of(self.measured_counter()), mesh)
+
+
+class TestACarvedWorkSurfaceAtItsSurface:
+    def test_its_top_is_the_surface_not_the_sign_standing_on_it(self):
+        counter = np.vstack([slab((3.0, 0.0, COUNTER_TOP), (1.5, 0.5, 0.0)), slab((3.0, -0.24, 0.43), (1.5, 0.0, 0.86))])
+        sign = slab((3.2, 0.0, 1.0), (0.3, 0.1, 0.26))
+        carve = carved("counter", np.vstack([counter, sign]))
+        topped = at_its_surface(carve, graph_of(), np.vstack([counter, sign]))
+        assert top(topped.box) == pytest.approx(COUNTER_TOP, abs=0.01)
+        assert topped.box.floor_clearance == pytest.approx(carve.box.floor_clearance)
+        assert topped.name == "counter"
+
+    def test_running_on_level_from_a_scanned_table_it_is_a_table(self):
+        """The photos called the rest of the bar ledge a counter; RoomPlan boxed its start as a table."""
+        bar = piece("Table", (0.0, 0.0, COUNTER_TOP / 2), (1.7, 0.7, COUNTER_TOP))
+        run_on = np.vstack([slab((1.9, 0.0, COUNTER_TOP), (2.4, 0.7, 0.0)), slab((1.9, -0.34, 0.43), (2.4, 0.0, 0.86))])
+        assert at_its_surface(carved("counter", run_on), graph_of(bar), run_on).name == "table"
+
+    def test_a_lower_counter_beside_a_scanned_table_keeps_its_name(self):
+        bar = piece("Table", (0.0, 0.0, 0.55), (1.7, 0.7, 1.1))
+        run_on = np.vstack([slab((1.9, 0.0, COUNTER_TOP), (2.4, 0.7, 0.0)), slab((1.9, -0.34, 0.43), (2.4, 0.0, 0.86))])
+        assert at_its_surface(carved("counter", run_on), graph_of(bar), run_on).name == "counter"
+
+    def test_a_counter_whose_surface_is_a_bench_seat_is_no_counter(self):
+        seat = slab((3.0, 0.0, 0.42), (2.0, 0.45, 0.0))
+        wall_stuff = slab((3.0, 0.3, 0.9), (2.0, 0.0, 0.8))
+        mash = carved("counter", np.vstack([seat, wall_stuff]))
+        assert at_its_surface(mash, graph_of(), np.vstack([seat, wall_stuff])) is None
+
+    def test_anything_else_is_left_as_it_is(self):
+        reader = carved("card reader", slab((0.4, 0.0, 0.93), (0.1, 0.15, 0.12)))
+        assert at_its_surface(reader, graph_of(), reader.box.points) is reader
 
 
 class TestCountersStandOnTheFloor:

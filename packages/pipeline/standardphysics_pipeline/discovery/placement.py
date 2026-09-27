@@ -28,10 +28,11 @@ from dataclasses import replace
 import numpy as np
 from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room, stands_upright
 
-from .boxes import RESTING_GAP, _frame, footprint_covered, resting_parent, share_within, top_of
+from .boxes import RESTING_GAP, _frame, footprint_covered, resting_parent, share_over, share_within, top_of
 from .carve import MIN_EXTENT, CarvedBox
 from .merge import DiscoveredObject
 from .semantic_corrections import is_work_surface, same_furniture
+from .worktops import carved_top
 
 REACH = 0.10
 """How far past a scanned piece's footprint a fragment of it may reach: a backrest's lean, a counter's lip."""
@@ -39,6 +40,14 @@ PART_OF = 0.5
 """Share of a carved object that must lie within a scanned piece of its own kind for it to be that piece."""
 SWALLOWED = 0.8
 """Share of a scanned piece's footprint a carve of its own kind must cover to be that piece seen whole."""
+LEVEL_WITH = 0.4
+"""Share of a carved work surface's points over a scanned one's footprint, at any height, for a shared top to make them one."""
+LEVEL = 0.03
+"""Metres between two tops that are the same surface: about an inch, the margin a worktop is measured to."""
+TOUCHING = 0.1
+"""Share of a carved work surface's points over a scanned one's widened footprint for the two to meet."""
+LOWEST_WORKTOP = 0.5
+"""Metres. A surface lower than this is a seat, a bench or a bottom shelf, not a table or counter top."""
 BEYOND = 0.5
 """Share of an object's points past the room's shell before it is outside the room."""
 PAST_THE_SHEET = 0.05
@@ -58,19 +67,78 @@ SPREAD = 0.5
 """How much of the box's width or depth the points at one height must span to be its body."""
 
 
-def part_of_a_scanned_piece(object_: DiscoveredObject, graph: SceneGraph) -> bool:
-    """Mostly within a scanned piece of the same kind, or over most of one, which already measures it.
+def part_of_a_scanned_piece(object_: DiscoveredObject, graph: SceneGraph, points: np.ndarray | None = None) -> bool:
+    """Mostly within a scanned piece of the same kind, over most of one, or level with one, which already measures it.
 
     A carve that swallows the scanned piece is the same piece seen with what
     stands on it and the staff side behind it: most of its points lie above or
     past the scanned box, yet the scanned box lies inside it.
     """
     return any(
-        same_furniture(object_.name, node.label)
-        and (share_within(object_.box, node, REACH) >= PART_OF or footprint_covered(object_.box, node) >= SWALLOWED)
+        _part_of(object_, node, points)
         for node in graph.nodes
-        if not bounds_the_room(node)
+        if not bounds_the_room(node) and same_furniture(object_.name, node.label)
     )
+
+
+def _part_of(object_: DiscoveredObject, node: SceneNode, points: np.ndarray | None) -> bool:
+    box = object_.box
+    if share_within(box, node, REACH) >= PART_OF or footprint_covered(box, node) >= SWALLOWED:
+        return True
+    return points is not None and is_work_surface(object_.name) and level_with(box, node, points)
+
+
+def level_with(box: CarvedBox, node: SceneNode, points: np.ndarray) -> bool:
+    """Whether a carved work surface is the scanned one's own top, seen with what stands on it or past its end.
+
+    On Share-Tea a carve of the pickup counter reached 44 inches because the
+    signs on it did, and half its points stood above the counter; a carve of
+    the bar ledge ran on past the end RoomPlan boxed. Whether either survived
+    as a second counter changed from run to run with a handful of points,
+    and a second counter at 44 inches is two ADA findings that are not there.
+    The mesh settles it: where the surface across the carve's footprint is the
+    scanned top and the carve stands largely over the scanned piece, it is that
+    piece.
+    """
+    if share_over(box, node, REACH) < LEVEL_WITH:
+        return False
+    surface = carved_top(box, points)
+    return surface is not None and abs(surface - top_of(node)) <= LEVEL
+
+
+def at_its_surface(object_: DiscoveredObject, graph: SceneGraph, points: np.ndarray) -> DiscoveredObject | None:
+    """A carved table or counter topped where the mesh shows its surface, and named like the scanned piece it continues.
+
+    A carve reaches as high as whatever stands on the surface: on Share-Tea a
+    carve of the bar ledge topped out at 64.5 inches on the kiosk beside it,
+    while the mesh put its surface at 43.2, level with the bar RoomPlan boxed
+    and named a table. The photos called that stretch a counter in one run
+    and a table in another; running on level from the scanned piece, it is
+    more of that piece and takes its name, the way a scanned bar the photos
+    call a counter stays a table.
+
+    A surface no higher than a seat is not a table's or a counter's: the same
+    stretch was carved as a 16 inch "counter" in one run, the top of the bench
+    that was also carved, and better seen, in its own right. None then.
+    Anything else is returned as it is.
+    """
+    if not is_work_surface(object_.name):
+        return object_
+    surface = carved_top(object_.box, points)
+    if surface is None:
+        return object_
+    if surface < LOWEST_WORKTOP:
+        return None
+    box = object_.box
+    if box.floor_clearance + MIN_EXTENT < surface < box.centre[2] + box.dimensions[2] / 2:
+        box = box.topped_at(surface)
+    continued = next(
+        (node for node in graph.nodes
+         if not bounds_the_room(node) and same_furniture(object_.name, node.label)
+         and abs(surface - top_of(node)) <= LEVEL and share_over(object_.box, node, REACH) >= TOUCHING),
+        None,
+    )
+    return replace(object_, box=box, name=object_.name if continued is None else continued.label.lower())
 
 
 def seen_through_the_shell(box: CarvedBox, graph: SceneGraph, viewpoints: np.ndarray) -> bool:

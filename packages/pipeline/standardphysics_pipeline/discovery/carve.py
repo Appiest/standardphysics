@@ -75,6 +75,15 @@ class CarvedBox:
             points=self.points,
         )
 
+    def topped_at(self, height: float) -> CarvedBox:
+        """The same box with its top moved to `height` and its underside where it was."""
+        return CarvedBox(
+            centre=(self.centre[0], self.centre[1], (self.floor_clearance + height) / 2),
+            dimensions=(self.dimensions[0], self.dimensions[1], height - self.floor_clearance),
+            yaw=self.yaw,
+            points=self.points,
+        )
+
     def as_vec3(self) -> Vec3:
         return Vec3(x=self.dimensions[0], y=self.dimensions[1], z=self.dimensions[2])
 

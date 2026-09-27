@@ -210,6 +210,15 @@ class TestTakingPeopleOut:
         assert removal.removed == 0
         assert len(removal.points) == len(wall)
 
+    def test_a_person_the_detector_is_unsure_of_deletes_nothing(self):
+        """A 0.5 "person" drawn round a whole frame once took half a fire extinguisher."""
+        extinguisher = slab((0.0, 1.0, 1.1), (0.14, 0.08, 0.6))
+        camera = camera_at((0.0, -0.5, 1.1), (0.0, 1.0, 1.1))
+        unsure = Detection("frame-0001", "person", (0.0, 0.0, camera.width, camera.height), True, 0.5)
+        assert without_people(extinguisher, graph_of(), [(camera, [unsure], None)]).removed == 0
+        sure = replace(unsure, confidence=0.9)
+        assert without_people(extinguisher, graph_of(), [(camera, [sure], None)]).removed > 0
+
     def test_a_frame_with_nobody_in_it_removes_nothing(self):
         points = slab((0.0, 1.0, 1.0), (0.4, 0.3, 0.4))
         camera = camera_at((0.0, -1.5, 1.0), (0.0, 1.0, 1.0))
@@ -414,6 +423,13 @@ class TestNotReDiscoveringTheRoom:
     def test_furniture_and_clutter_still_count(self):
         for name in ("laptop", "payment terminal", "kettlebell", "backpack", "desk"):
             assert _worth_keeping(self._object(name), graph_of(), viewpoints=9), name
+
+
+    def test_a_table_the_scanner_missed_needs_a_third_place_to_be_seen_from(self):
+        """Named from two places, an unboxed counter is more often the bench, ledge and kiosk along a wall."""
+        assert not _worth_keeping(self._object("counter"), graph_of(), viewpoints=2)
+        assert _worth_keeping(self._object("counter"), graph_of(), viewpoints=3)
+        assert _worth_keeping(self._object("payment terminal"), graph_of(), viewpoints=2)
 
 
 class TestLeavingBehindWhatAThingRestsOn:
