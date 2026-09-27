@@ -12,6 +12,7 @@ import pathlib
 import secrets
 from dataclasses import dataclass
 
+from standardphysics_agents.env_file import load_dotenv
 from standardphysics_agents.tracing import ENTITY_ENV, PROJECT_ENV
 
 from .store import ScanQuota
@@ -19,18 +20,6 @@ from .store import ScanQuota
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 log = logging.getLogger(__name__)
 DEFAULT_DATA_DIR = pathlib.Path(__file__).resolve().parents[1] / "var"
-
-
-def load_dotenv(path: pathlib.Path) -> None:
-    """KEY=value lines, without overriding anything already in the environment."""
-    if not path.exists():
-        return
-    for line in path.read_text().splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, value = stripped.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
 def _flag(name: str) -> bool:

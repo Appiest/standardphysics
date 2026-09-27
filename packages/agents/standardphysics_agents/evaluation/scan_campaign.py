@@ -20,6 +20,7 @@ import numpy as np
 from standardphysics_contracts import LidarMesh, SceneGraph, graph_hash
 from standardphysics_pipeline.footprints import rotation_about_z
 
+from ..env_file import REPO_ENV_FILE, load_dotenv
 from .scan_space import FLOOR_NOISE_BAND, ScanSpace, build_spaces
 from .scan_tasks import PROP_SIZES, ScanTask, TaskSuite, choose_task, propose_tasks, validate_tasks
 
@@ -233,7 +234,7 @@ def run_campaign(graph: SceneGraph, mesh: LidarMesh, suite: TaskSuite,
     return result
 
 
-def main() -> None:
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--graph", type=Path, required=True)
     parser.add_argument("--mesh", type=Path, required=True)
@@ -242,10 +243,14 @@ def main() -> None:
     parser.add_argument("--evaluations", type=int, default=2_000_000)
     parser.add_argument("--seed", type=int, default=20260913)
     parser.add_argument("--replay-decisions", type=Path, help="reuse a saved task order without TypeSafe calls")
-    args = parser.parse_args()
-    # Reuse the application env loader without opening or mutating its database.
-    from standardphysics_api.settings import Settings
-    Settings.from_environment()
+    parser.add_argument("--env-file", type=Path, default=REPO_ENV_FILE,
+                        help="KEY=value file holding the model keys (default: the repo-root .env)")
+    return parser.parse_args(argv)
+
+
+def main() -> None:
+    args = parse_arguments()
+    load_dotenv(args.env_file)
     graph = SceneGraph.model_validate_json(args.graph.read_bytes())
     mesh = LidarMesh.model_validate_json(args.mesh.read_bytes())
     if args.tasks.exists():
