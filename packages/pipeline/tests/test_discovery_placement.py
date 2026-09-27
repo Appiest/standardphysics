@@ -27,7 +27,7 @@ from standardphysics_pipeline.discovery.placement import (
     standing_on_the_floor,
 )
 from standardphysics_pipeline.discovery.semantic_corrections import apply_secondary_semantic_corrections
-from standardphysics_pipeline.discovery.worktops import measure_worktops, measured_top
+from standardphysics_pipeline.discovery.worktops import carved_top, measure_worktops, measured_top
 from standardphysics_pipeline.textures.camera import PhotoCamera
 
 
@@ -103,6 +103,13 @@ class TestReadingAWorktopOffTheMesh:
     def test_a_top_the_mesh_barely_saw_keeps_the_box(self):
         corner = slab((0.7, 0.2, COUNTER_TOP), (0.2, 0.2, 0.0))
         assert measured_top(scanned_counter(), corner) is None
+
+    def test_a_carved_ledge_has_its_top_though_the_stools_before_it_fill_most_of_its_footprint(self):
+        ledge = slab((0.0, 0.0, COUNTER_TOP), (1.8, 0.3, 0.0))
+        stool_backs = slab((0.0, -0.9, 0.45), (1.8, 0.0, 0.5))
+        run = carved("counter", np.vstack([ledge, stool_backs]))
+        assert run.box.dimensions[1] > 1.0
+        assert carved_top(run.box, np.vstack([ledge, stool_backs])) == pytest.approx(COUNTER_TOP, abs=0.01)
 
     def test_a_stool_is_not_read_as_a_worktop(self):
         stool = piece("Chair", (0.0, 0.0, 0.45), (0.45, 0.5, 0.9))

@@ -35,6 +35,9 @@ CELL = 0.10
 """The footprint is read in ten centimetre cells, so a dense corner counts once."""
 WELL_SEEN = 0.4
 """Share of the footprint the best-covered height must reach before the mesh overrules the box."""
+CARVE_SEEN = 0.3
+"""The same, for a carve. Its footprint takes in what stands round the top as well, the stools under a
+ledge or the front of a counter, so less of it is top: Share-Tea's bar ledge covers 0.39 of one."""
 NEAR_PEAK = 0.8
 """A height covering this share of the best one's cover is still the same surface; the highest wins."""
 UPRIGHT = 0.99
@@ -74,7 +77,8 @@ def carved_top(box: CarvedBox, points: np.ndarray) -> float | None:
     bottom, top = max(box.floor_clearance, ABOVE_THE_FLOOR), box.centre[2] + box.dimensions[2] / 2
     heights = points[:, 2]
     near = np.all(np.abs(local) <= half, axis=1) & (heights >= bottom) & (heights <= top)
-    return _highest_broad_level(heights[near], _cell_ids(local[near], half), _cell_count(half), (bottom, top))
+    cells = _cell_ids(local[near], half)
+    return _highest_broad_level(heights[near], cells, _cell_count(half), (bottom, top), CARVE_SEEN)
 
 
 def with_measured_top(node: SceneNode, surface: float) -> SceneNode:
@@ -113,13 +117,13 @@ def _cell_count(half: np.ndarray) -> int:
 
 
 def _highest_broad_level(
-    heights: np.ndarray, cells: np.ndarray, total: int, span: tuple[float, float],
+    heights: np.ndarray, cells: np.ndarray, total: int, span: tuple[float, float], well_seen: float = WELL_SEEN,
 ) -> float | None:
     levels = np.arange(span[0], span[1] + LEVEL_STEP / 2, LEVEL_STEP)
     cover = np.asarray([
         len(np.unique(cells[np.abs(heights - level) <= SKIN])) / total for level in levels
     ])
-    if not len(cover) or cover.max() < WELL_SEEN:
+    if not len(cover) or cover.max() < well_seen:
         return None
     highest = float(levels[cover >= cover.max() * NEAR_PEAK].max())
     return float(np.median(heights[np.abs(heights - highest) <= SKIN]))
