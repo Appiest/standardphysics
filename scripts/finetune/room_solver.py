@@ -15,6 +15,10 @@ by a few sizes (the most promising slides then get the furniture search on
 top), and each side of the room is pushed out by the maximum wall shift and,
 when that clears, narrowed to the fewest inches that still clear. The answer
 is always scored by `score_completion`, the same checker the model is judged by.
+
+The whole search runs against a wall-clock budget, `SOLVER_BUDGET_SECONDS`.
+When it runs out every loop stops where it is and the best answer scored so
+far is returned.
 """
 
 from __future__ import annotations
@@ -23,12 +27,13 @@ import math
 import os
 import time
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from fitting_candidates import fitting_candidates
 from standardphysics_agents.fix import propose_fix
 from standardphysics_agents.redesign import FurnitureMove
 from standardphysics_agents.training import score_completion
+from standardphysics_agents.training.checker import trusted_geometry
 from standardphysics_agents.training.construction import (
     MAX_FIXTURE_MOVE_INCHES,
     MAX_WALL_SHIFT_INCHES,
@@ -53,8 +58,22 @@ FIXTURE_FINALISTS = 3
 FITTING_ALTERNATIVES = 4
 CIRCLE_CHECKS = frozenset({"turning_space"})
 PUSH_MARGIN_INCHES = 1.5
-BUDGET_SECONDS = float(os.environ.get("SOLVER_BUDGET_SECONDS", "inf"))
-"""Wall-clock budget for construction search per room; the best answer found so far is returned when it runs out."""
+BUDGET_SECONDS = float(os.environ.get("SOLVER_BUDGET_SECONDS", "150"))
+"""Wall-clock budget per room. When it runs out the search stops and the best
+answer found so far is returned; every answer kept has been scored by the
+checker, so a partial answer is never an unverified one."""
+
+
+@dataclass
+class _Run:
+    """What one `solve` carries through its search: why candidates were refused, and when to stop."""
+
+    deadline: float
+    rejected: Counter = field(default_factory=Counter)
+
+    @property
+    def out_of_time(self) -> bool:
+        return time.monotonic() > self.deadline
 
 
 @dataclass(frozen=True)
@@ -73,21 +92,24 @@ class Solution:
                 verdict["shortfall_recovered"], verdict["reward"])
 
 
-def _furniture_layout(graph: SceneGraph, checker, rejected: Counter) -> SceneGraph:
+def _furniture_layout(graph: SceneGraph, checker, run: _Run) -> SceneGraph:
     def pinned(before, after) -> str | None:
         return "pinned pieces" if any(before.by_id(node_id).transform != after.by_id(node_id).transform
                                       for node_id in checker.pinned) else None
 
     layout = graph
     for _ in range(SEARCH_ROUNDS):
+        if run.out_of_time:
+            break
         before = checker.assess(layout)
         problems = checker.rearrangeable_problems(before)
         if not problems:
             break
         outcome = propose_fix(layout, checker.scenario, checker.measure, problems, rules=checker.rules,
                               ledger=checker.ledger, baseline=before, max_tier=checker.max_tier,
-                              limit=SEARCH_LIMIT, offer_relaxation=False, candidate_rejection=pinned)
-        rejected.update(outcome.rejected)
+                              limit=SEARCH_LIMIT, offer_relaxation=False, candidate_rejection=pinned,
+                              deadline=run.deadline)
+        run.rejected.update(outcome.rejected)
         if not outcome.found:
             break
         layout = outcome.graph
@@ -99,27 +121,44 @@ def _scored(graph: SceneGraph, checker, edits: TrainingEdits) -> Solution:
     return Solution(completion, score_completion(completion, graph, checker).as_dict())
 
 
-def _attempt(graph: SceneGraph, checker, shifts: list[WallShift], rejected: Counter,
+def _attempt(graph: SceneGraph, checker, shifts: list[WallShift], run: _Run,
              fixtures: list[FixtureMove] = (), fittings: TrainingEdits = TrainingEdits()) -> Solution | None:
+    if run.out_of_time:
+        return None
     construction = combined(TrainingEdits(wall_shifts=shifts, fixture_moves=list(fixtures)), fittings)
     try:
         built = built_room(graph, construction)
     except ValueError:
         return None
-    layout = _furniture_layout(built, checker, rejected)
-    edits = combined(construction, TrainingEdits(moves=edits_between(built, layout).moves))
-    if edits == TrainingEdits():
-        return None
-    return _scored(graph, checker, edits)
+    found: list[Solution] = []
+    for room in _rooms_to_search(built):
+        if found and found[-1].clears:
+            break
+        layout = _furniture_layout(room, checker, run)
+        edits = combined(construction, TrainingEdits(moves=edits_between(room, layout).moves))
+        if edits != TrainingEdits():
+            found.append(_scored(graph, checker, edits))
+    return _best(found)
 
 
-def _narrowed(graph: SceneGraph, checker, side, cleared: Solution, rejected: Counter) -> Solution:
+def _rooms_to_search(built: SceneGraph) -> list[SceneGraph]:
+    """The room as scanned, then with its scanned geometry trusted, when that differs.
+
+    The furniture search measures candidates with plain `assess` against the checker's baseline, which trusts the
+    scan. Where geometry needs another look the two disagree and the gate can refuse every candidate on the room as
+    scanned, so the trusted room is searched next. Both answers are scored by the checker the same way.
+    """
+    trusted = trusted_geometry(built)
+    return [built] if trusted.nodes == built.nodes else [built, trusted]
+
+
+def _narrowed(graph: SceneGraph, checker, side, cleared: Solution, run: _Run) -> Solution:
     """The fewest inches on this side that still clear, assuming more room never hurts."""
     steps = [step for step in SHIFT_STEPS_INCHES if step < MAX_WALL_SHIFT_INCHES]
     best, low, high = cleared, 0, len(steps) - 1
-    while low <= high:
+    while low <= high and not run.out_of_time:
         middle = (low + high) // 2
-        trial = _attempt(graph, checker, [WallShift(side=side, inches=steps[middle])], rejected)
+        trial = _attempt(graph, checker, [WallShift(side=side, inches=steps[middle])], run)
         if trial is not None and trial.clears:
             best, high = trial, middle - 1
         else:
@@ -200,7 +239,7 @@ def _circle_push(graph: SceneGraph, checker) -> TrainingEdits | None:
     return edits if edits.moves or edits.fixture_moves or edits.wall_shifts else None
 
 
-def _circle_options(graph: SceneGraph, checker, rejected: Counter) -> list[Solution]:
+def _circle_options(graph: SceneGraph, checker, run: _Run) -> list[Solution]:
     edits = _circle_push(graph, checker)
     if edits is None:
         return []
@@ -208,7 +247,7 @@ def _circle_options(graph: SceneGraph, checker, rejected: Counter) -> list[Solut
     pushed = Solution(completion, score_completion(completion, graph, checker).as_dict())
     if pushed.clears or not (edits.fixture_moves or edits.wall_shifts):
         return [pushed]
-    searched = _attempt(graph, checker, edits.wall_shifts, rejected, edits.fixture_moves)
+    searched = _attempt(graph, checker, edits.wall_shifts, run, edits.fixture_moves)
     return [pushed, *([searched] if searched else [])]
 
 
@@ -219,27 +258,29 @@ def _blocking_fixtures(graph: SceneGraph, checker) -> list:
     return list(dict.fromkeys(named))
 
 
-def _fixture_slides(graph: SceneGraph, checker) -> list[Solution]:
-    """Every single-fixture slide, scored alone, best first."""
+def _fixture_slides(graph: SceneGraph, checker, run: _Run) -> list[Solution]:
+    """Every single-fixture slide, scored alone, best first, as many as the budget allows."""
+    moves = [FixtureMove(node_id=node_id, dx_inches=round(ux * inches, 1), dy_inches=round(uy * inches, 1))
+             for node_id in _blocking_fixtures(graph, checker)
+             for ux, uy in FIXTURE_DIRECTIONS for inches in FIXTURE_STEPS_INCHES]
     slides = []
-    for node_id in _blocking_fixtures(graph, checker):
-        for ux, uy in FIXTURE_DIRECTIONS:
-            for inches in FIXTURE_STEPS_INCHES:
-                move = FixtureMove(node_id=node_id, dx_inches=round(ux * inches, 1), dy_inches=round(uy * inches, 1))
-                completion = edits_json(TrainingEdits(fixture_moves=[move]))
-                slides.append(Solution(completion, score_completion(completion, graph, checker).as_dict()))
+    for move in moves:
+        if run.out_of_time:
+            break
+        completion = edits_json(TrainingEdits(fixture_moves=[move]))
+        slides.append(Solution(completion, score_completion(completion, graph, checker).as_dict()))
     return sorted(slides, key=lambda slide: slide.rank, reverse=True)
 
 
-def _fixture_options(graph: SceneGraph, checker, rejected: Counter) -> list[Solution]:
-    slides = _fixture_slides(graph, checker)
+def _fixture_options(graph: SceneGraph, checker, run: _Run) -> list[Solution]:
+    slides = _fixture_slides(graph, checker, run)
     cleared = [slide for slide in slides if slide.clears]
     if cleared:
         return cleared[:1]
     options = []
     for slide in [slide for slide in slides if slide.verdict["gate_accepts"]][:FIXTURE_FINALISTS]:
         moves = TrainingEdits.model_validate_json(slide.completion).fixture_moves
-        option = _attempt(graph, checker, [], rejected, moves)
+        option = _attempt(graph, checker, [], run, moves)
         if option is not None:
             options.append(option)
     return options
@@ -258,7 +299,7 @@ def _best_fitting(graph: SceneGraph, checker, chosen: TrainingEdits, candidates:
     return [candidate for _, candidate in sorted(kept, key=lambda pair: _fitting_rank(pair[0]), reverse=True)]
 
 
-def _fitting_options(graph: SceneGraph, checker, rejected: Counter) -> tuple[TrainingEdits, list[Solution]]:
+def _fitting_options(graph: SceneGraph, checker, run: _Run) -> tuple[TrainingEdits, list[Solution]]:
     """The fittings chosen greedily problem by problem, and the answers built on them with furniture on top."""
     chosen, alternatives = TrainingEdits(), []
     for candidates in fitting_candidates(graph, checker):
@@ -270,11 +311,11 @@ def _fitting_options(graph: SceneGraph, checker, rejected: Counter) -> tuple[Tra
         return chosen, []
     options = [_scored(graph, checker, chosen)]
     if not options[0].clears:
-        options.append(_attempt(graph, checker, [], rejected, fittings=chosen))
+        options.append(_attempt(graph, checker, [], run, fittings=chosen))
     for before, other in alternatives[:FITTING_ALTERNATIVES]:
         trial = combined(before, other)
         if construction_price(graph, trial) < _cheapest_clear(options):
-            options.append(_attempt(graph, checker, [], rejected, fittings=trial))
+            options.append(_attempt(graph, checker, [], run, fittings=trial))
     return chosen, [option for option in options if option is not None]
 
 
@@ -288,36 +329,41 @@ def _on_top_of(graph: SceneGraph, checker, fitted: TrainingEdits, option: Soluti
     return _scored(graph, checker, combined(fitted, TrainingEdits.model_validate_json(option.completion)))
 
 
-def solve(graph: SceneGraph, checker, allow_construction: bool = True) -> tuple[Solution | None, Counter]:
-    """The best checker-scored repair found, preferring furniture only, then the cheapest construction."""
-    rejected: Counter = Counter()
+def _best(options: list[Solution]) -> Solution | None:
+    return max(options, key=lambda option: option.rank) if options else None
+
+
+def solve(graph: SceneGraph, checker, allow_construction: bool = True,
+          budget_seconds: float = BUDGET_SECONDS) -> tuple[Solution | None, Counter]:
+    """The best checker-scored repair found within the budget, preferring furniture only, then the cheapest
+    construction."""
+    run = _Run(deadline=time.monotonic() + budget_seconds)
     if not checker.fixable_problems(checker.assess(graph)):
-        return None, rejected
-    options = [option for option in [_attempt(graph, checker, [], rejected)] if option is not None]
+        return None, run.rejected
+    options = [option for option in [_attempt(graph, checker, [], run)] if option is not None]
     if (options and options[0].clears) or not allow_construction:
-        return (max(options, key=lambda option: option.rank) if options else None), rejected
-    fitted, fitting_options = _fitting_options(graph, checker, rejected)
+        return _best(options), run.rejected
+    fitted, fitting_options = _fitting_options(graph, checker, run)
     options.extend(fitting_options)
-    if not any(option.clears for option in options):
+    if not any(option.clears for option in options) and not run.out_of_time:
         room = graph if fitted == TrainingEdits() else built_room(graph, fitted)
-        layout_options = _layout_construction(room, checker, rejected)
+        layout_options = _layout_construction(room, checker, run)
         options.extend(option if room is graph else _on_top_of(graph, checker, fitted, option)
                        for option in layout_options)
-    return (max(options, key=lambda option: option.rank) if options else None), rejected
+    return _best(options), run.rejected
 
 
-def _layout_construction(graph: SceneGraph, checker, rejected: Counter) -> list[Solution]:
+def _layout_construction(graph: SceneGraph, checker, run: _Run) -> list[Solution]:
     """Turning-circle pushes, fixture slides and wall shifts, stopping at the first that clears."""
     options: list[Solution] = []
-    deadline = time.monotonic() + BUDGET_SECONDS
-    options.extend(_circle_options(graph, checker, rejected))
+    options.extend(_circle_options(graph, checker, run))
     if not any(option.clears for option in options):
-        options.extend(_fixture_options(graph, checker, rejected))
+        options.extend(_fixture_options(graph, checker, run))
     for edge in walled_edges(graph):
-        if time.monotonic() > deadline or any(option.clears for option in options):
+        if run.out_of_time or any(option.clears for option in options):
             break
-        widest = _attempt(graph, checker, [WallShift(side=edge.side, inches=MAX_WALL_SHIFT_INCHES)], rejected)
+        widest = _attempt(graph, checker, [WallShift(side=edge.side, inches=MAX_WALL_SHIFT_INCHES)], run)
         if widest is None:
             continue
-        options.append(_narrowed(graph, checker, edge.side, widest, rejected) if widest.clears else widest)
+        options.append(_narrowed(graph, checker, edge.side, widest, run) if widest.clears else widest)
     return options

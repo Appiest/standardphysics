@@ -21,14 +21,30 @@ from dataclasses import dataclass
 
 from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, to_meters
 from standardphysics_pipeline import footprint, gap_between
-from standardphysics_pipeline.footprints import Polygon, distance_outside, floor_polygon, polygon_bounds
+from standardphysics_pipeline.footprints import (
+    Polygon,
+    bounds_meet,
+    distance_outside,
+    floor_polygon,
+    polygon_bounds,
+    touching,
+)
 from standardphysics_pipeline.occupancy import blocks_floor
 
 from ..checks import roles
 from ..checks.walls import upright_walls
 from ..hashing import inventory
-from .moves import floor_height, measured_position, rests_on_something, surface_under, top_of, underside
-from .use_space import Room, has_room_to_use, reach
+from .moves import (
+    carried_by_hand,
+    floor_height,
+    measured_position,
+    per_layout,
+    rests_on_something,
+    surface_under,
+    top_of,
+    underside,
+)
+from .use_space import Room, has_room_to_use, reach, room_of
 
 FLOOR_MARGIN = 0.01
 """A centimetre of slack at the floor edge, for arithmetic rather than for room."""
@@ -62,6 +78,10 @@ fix, and it lands on floor the scan only ever saw around something else.
 It is measured from `SceneNode.measured_position`, which every move carries
 forward, so a run of small moves across rounds or saved revisions adds up
 against it exactly as one long move would.
+
+A piece staff carry by hand, such as a sign stand or a bin, has no limit: it
+has no place in the layout to keep, and setting it down on free floor anywhere
+is an ordinary thing to ask. Where it lands is still held to every other rule.
 """
 
 
@@ -222,7 +242,7 @@ def _footprints_meet(a: SceneNode, b: SceneNode) -> bool:
     # interpenetrate by OVERLAP_TOLERANCE and no more. Pulling both in by the
     # whole of it allowed twice that: a case slid 9 mm into a wall passed.
     half = OVERLAP_TOLERANCE / 2
-    return gap_between(collision_shape(a, half), collision_shape(b, half)) == 0.0
+    return touching(collision_shape(a, half), collision_shape(b, half))
 
 
 def _overlapping(a: SceneNode, b: SceneNode) -> bool:
@@ -231,7 +251,7 @@ def _overlapping(a: SceneNode, b: SceneNode) -> bool:
 
 def _in_swing(node: SceneNode, keep_clear: Polygon, floor_z: float) -> bool:
     """Only something standing on the floor gets in the way of a door."""
-    return not rests_on_something(node, floor_z) and gap_between(collision_shape(node), keep_clear) == 0.0
+    return not rests_on_something(node, floor_z) and touching(collision_shape(node), keep_clear)
 
 
 @dataclass(frozen=True)
@@ -258,7 +278,8 @@ class _Scene:
         return _overlapping(node, other)
 
 
-def _on_a_surface(graph: SceneGraph) -> set:
+@per_layout
+def _on_a_surface(graph: SceneGraph) -> frozenset:
     """Pieces the scan found standing on another piece, such as a register on a counter.
 
     They take no floor, but a card reader slid along the counter still cannot
@@ -266,14 +287,27 @@ def _on_a_surface(graph: SceneGraph) -> set:
     the floor, with nothing under it, so it is not one of these.
     """
     floor_z = floor_height(graph)
-    return {node.id for node in graph.nodes
-            if rests_on_something(node, floor_z) and surface_under(graph, node, floor_z) > floor_z}
+    return frozenset(node.id for node in graph.nodes
+                     if rests_on_something(node, floor_z) and surface_under(graph, node, floor_z) > floor_z)
+
+
+@per_layout
+def _unmoved_bounds(graph: SceneGraph) -> dict:
+    """Each piece's footprint box, by the node object it was computed from."""
+    return {id(node): polygon_bounds(footprint(node)) for node in graph.nodes}
+
+
+def _near(node: SceneNode, others: list[SceneNode], known: dict) -> list[SceneNode]:
+    """The others whose footprint box reaches the node's: nothing further off can touch it."""
+    box = polygon_bounds(footprint(node))
+    return [other for other in others
+            if bounds_meet(box, known.get(id(other)) or polygon_bounds(footprint(other)))]
 
 
 def _collisions(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode]) -> list[Violation]:
     moved_ids = {node.id for node in moved}
     wall_ids = {node.id for node in upright_walls(candidate)}
-    surface_ids = frozenset(_on_a_surface(base))
+    surface_ids = _on_a_surface(base)
     obstacles = [
         node
         for node in candidate.nodes
@@ -283,9 +317,10 @@ def _collisions(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode])
     swings = [node for node in candidate.nodes if node.kind in SWING_KINDS]
     scene = _Scene(before={node.id: node for node in base.nodes}, floor_z=floor_height(base), on_surfaces=surface_ids)
 
+    known = _unmoved_bounds(base)
     found = []
     for index, node in enumerate(moved):
-        found.extend(_overlaps(node, [*obstacles, *moved[index + 1:]], swings, scene))
+        found.extend(_overlaps(node, _near(node, [*obstacles, *moved[index + 1:]], known), swings, scene))
     return found
 
 
@@ -308,7 +343,7 @@ def _travelled_too_far(base: SceneGraph, moved: list[SceneNode]) -> list[Violati
     """
     before = {node.id: node for node in base.nodes}
     found = []
-    for node in moved:
+    for node in (piece for piece in moved if not carried_by_hand(piece)):
         origin, now = measured_position(before[node.id]), node.transform.position
         travelled = math.hypot(now.x - origin.x, now.y - origin.y)
         if travelled > MAX_TRAVEL_METERS:
@@ -344,7 +379,8 @@ def _lost_room_to_use(base: SceneGraph, candidate: SceneGraph, checked: list[Sce
     if not at_risk:
         return []
     before = {node.id: node for node in base.nodes}
-    room_before, room_after = Room.of(base), Room.of(candidate)
+    room_before = room_of(base)
+    room_after = Room.of(candidate, reusing=room_before)
     return [
         Violation("no_room_to_use", str(node.id), node.label)
         for node, role in at_risk

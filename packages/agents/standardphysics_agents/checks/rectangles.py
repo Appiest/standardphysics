@@ -15,8 +15,8 @@ from __future__ import annotations
 from uuid import UUID
 
 from standardphysics_contracts import ClearFloorResult, SceneGraph, Vec3, to_meters
-from standardphysics_pipeline import footprint, gap_between
-from standardphysics_pipeline.footprints import Polygon, rotation_about_z
+from standardphysics_pipeline import footprint
+from standardphysics_pipeline.footprints import Polygon, rotation_about_z, touching
 from standardphysics_pipeline.occupancy import blocks_floor
 
 EDGE_TOLERANCE = 0.005
@@ -51,7 +51,7 @@ def intruders(
         for node in graph.nodes
         if node.id not in ignoring
         and blocks_floor(node)
-        and gap_between(footprint(node), space) == 0.0
+        and touching(footprint(node), space)
     ]
 
 

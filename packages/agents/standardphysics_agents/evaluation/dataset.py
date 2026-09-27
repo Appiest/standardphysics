@@ -257,11 +257,15 @@ def _counter_cases() -> list[Case]:
         ),
         _case(
             "counter_blocked",
-            "A low counter with a display case parked in front of it. There is "
-            "nowhere to pull up, while the customer route remains wide enough.",
+            "A low counter with two display cases parked in front of it, "
+            "leaving no 48 inch stretch of its face to pull up to, while the "
+            "customer route remains wide enough.",
             v.add(
-                _clean(),
-                v.box("blocker", "Display case", (0.5, 2.87, 0.45), (0.5, 0.5, 0.9)),
+                v.add(
+                    _clean(),
+                    v.box("blocker", "Display case", (0.5, 2.87, 0.45), (0.5, 0.5, 0.9)),
+                ),
+                v.box("blocker_west", "Display case", (-1.15, 2.87, 0.45), (0.5, 0.5, 0.9)),
             ),
             expected_problems=frozenset({"service_counter_approach"}),
             forbidden_problems=COUNTER_TOO_HIGH | {ROUTE},

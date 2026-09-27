@@ -11,7 +11,10 @@ nothing else.
 
 from __future__ import annotations
 
+import functools
 import math
+from collections.abc import Callable
+from typing import TypeVar
 from uuid import UUID
 
 from standardphysics_contracts import Mat4, NodeMove, SceneGraph, SceneNode, Vec3, bounds_the_room, lies_flat
@@ -20,6 +23,18 @@ from standardphysics_pipeline.footprints import rotation_about_z
 
 RESTING_GAP = 0.12
 """A piece whose underside is more than this above the floor was resting on something."""
+
+LAYOUTS_REMEMBERED = 4
+
+Fact = TypeVar("Fact")
+
+HAND_CARRIED_VOLUME = 0.3
+"""Cubic metres of bounding box one person carries: a sign stand, a stanchion, a
+bin, a stool or a high chair, and not a display case or a booth."""
+
+HAND_CARRIED_HEIGHT = 1.3
+HAND_CARRIED_SPAN = 0.9
+"""Metres. Taller or longer than this and a piece is walked, not carried."""
 
 
 def _turned(node: SceneNode, degrees: float, position: Vec3) -> Mat4:
@@ -61,6 +76,41 @@ def move_node(node: SceneNode, move: NodeMove) -> SceneNode:
 def measured_position(node: SceneNode) -> Vec3:
     """Where the scan found the node, before any rearrangement moved it."""
     return node.measured_position or node.transform.position
+
+
+def per_layout(compute: Callable[[SceneGraph], Fact]) -> Callable[[SceneGraph], Fact]:
+    """`compute(graph)`, remembered for the last few layout objects.
+
+    A search checks thousands of candidates against one base layout, and a fact
+    about the base is the same every time. Layouts are never edited in place, so
+    the same object means the same layout.
+    """
+    kept: list[tuple[SceneGraph, Fact]] = []
+
+    @functools.wraps(compute)
+    def remembered(graph: SceneGraph) -> Fact:
+        for known, fact in kept:
+            if known is graph:
+                return fact
+        fact = compute(graph)
+        kept.insert(0, (graph, fact))
+        del kept[LAYOUTS_REMEMBERED:]
+        return fact
+
+    return remembered
+
+
+def carried_by_hand(node: SceneNode) -> bool:
+    """A movable piece small enough for staff to pick up and set down anywhere in the room."""
+    size = node.dimensions
+    return (
+        node.movable
+        and not lies_flat(node)
+        and not bounds_the_room(node)
+        and size.z <= HAND_CARRIED_HEIGHT
+        and max(size.x, size.y) <= HAND_CARRIED_SPAN
+        and size.x * size.y * size.z <= HAND_CARRIED_VOLUME
+    )
 
 
 def floor_height(graph: SceneGraph) -> float:

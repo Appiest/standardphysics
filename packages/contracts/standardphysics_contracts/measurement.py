@@ -65,5 +65,8 @@ class MeasurementProvider(Protocol):
     def counter_height(self, graph: SceneGraph, counter_id: UUID) -> HeightResult: ...
 
     def counter_approach(
-        self, graph: SceneGraph, counter_id: UUID
-    ) -> ClearFloorResult: ...
+        self, graph: SceneGraph, counter_id: UUID, slide_meters: float = 0.0
+    ) -> ClearFloorResult:
+        """The clear floor in front of the counter face, anywhere within
+        `slide_meters` of its centre along the face."""
+        ...

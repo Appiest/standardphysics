@@ -7,10 +7,12 @@ import pytest
 from standardphysics_agents import assess
 from standardphysics_agents.evaluation.gate import accepts
 from standardphysics_agents.fix import apply_moves, pinch_from, propose_fix, violations
-from standardphysics_agents.fix.placement import placements
+from standardphysics_agents.fix.moves import carried_by_hand
+from standardphysics_agents.fix.placement import _free_spots, _space, placements
 from standardphysics_agents.router import state_for
-from standardphysics_contracts import Scenario, SceneGraph
-from standardphysics_pipeline import PipelineMeasurements
+from standardphysics_contracts import Mat4, Scenario, SceneGraph, SceneNode, Vec3
+from standardphysics_fixtures import build_graph, build_scenario, node_id
+from standardphysics_pipeline import PipelineMeasurements, footprint, gap_between
 
 
 @pytest.fixture
@@ -80,3 +82,48 @@ def test_two_chairs_blocking_one_region_are_relocated_together(room, pack, ledge
             break
     assert clearing
     assert all({m.node_id for m in guess.moves} == {chair.id, other.id} for guess in clearing)
+
+
+def _counter_hemmed_in_by_sign_stands():
+    """A 67 inch counter with a sign stand a foot in front of each end, so no 48 inch space fits beside it."""
+    graph = build_graph()
+    counter = graph.by_id(node_id("counter"))
+    face_y = counter.transform.position.y - counter.dimensions.y / 2
+    short = counter.model_copy(update={"dimensions": counter.dimensions.model_copy(update={"x": 1.7})})
+    stands = [
+        SceneNode(id=node_id(f"hemming_stand_{x}"), kind="object", label="Sign stand", raw_category="storage",
+                  dimensions=Vec3(x=0.33, y=0.27, z=0.4), transform=Mat4.translation(x, face_y - 0.3, 0.2),
+                  movable=True)
+        for x in (-0.55, 0.55)
+    ]
+    nodes = [short if node.id == counter.id else node for node in graph.nodes] + stands
+    return graph.model_copy(update={"nodes": nodes}), [stand.id for stand in stands]
+
+
+def test_sign_stands_blocking_the_counter_are_moved_out_of_the_way(pack, ledger):
+    graph, stands = _counter_hemmed_in_by_sign_stands()
+    scenario, measure = build_scenario(), PipelineMeasurements()
+    before = assess(graph, scenario, measure, rules=pack, ledger=ledger)
+    finding = next(f for f in before.problems if f.check_id == "service_counter_approach")
+    assert all(carried_by_hand(graph.by_id(stand)) for stand in stands)
+    outcome = propose_fix(graph, scenario, measure, [finding], baseline=before, rules=pack, ledger=ledger,
+                          offer_relaxation=False)
+    assert outcome.found
+    assert {move.node_id for move in outcome.proposal.moves} <= set(stands)
+    after = assess(outcome.graph, scenario, measure, rules=pack, ledger=ledger)
+    assert "service_counter_approach" not in {f.check_id for f in after.problems}
+
+
+def test_a_sign_stand_is_offered_free_floor_clear_of_the_space(pack, ledger):
+    graph, stands = _counter_hemmed_in_by_sign_stands()
+    before = assess(graph, build_scenario(), PipelineMeasurements(), rules=pack, ledger=ledger)
+    finding = next(f for f in before.problems if f.check_id == "service_counter_approach")
+    space = _space(finding, graph, pack)
+    for stand in stands:
+        spots = _free_spots(graph, graph.by_id(stand), space)
+        assert spots
+        for move in spots:
+            moved = apply_moves(graph, [move])
+            assert not violations(graph, moved)
+            assert gap_between(footprint(moved.by_id(stand)), space) > 0
+

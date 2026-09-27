@@ -8,8 +8,8 @@ from standardphysics_agents.checks.questions import _inside_door_nodes as inside
 from standardphysics_agents.checks.route_geometry import is_reversal, reversal_stops
 from standardphysics_agents.checks.route_width import route_width_verdict
 from standardphysics_agents.checks.turn_width import turn_verdict
-from standardphysics_contracts import Mat4, Stop, Vec3, to_meters
-from standardphysics_fixtures import build_lawsuit_graph, build_lawsuit_scenario
+from standardphysics_contracts import Mat4, SceneNode, Stop, Vec3, to_meters
+from standardphysics_fixtures import build_graph, build_lawsuit_graph, build_lawsuit_scenario
 from standardphysics_fixtures.shop import FIX_SHIFT_INCHES, node_id
 
 PINCH_INCHES = 31.0
@@ -355,12 +355,16 @@ def test_a_lowered_section_meets_the_height_rule(pipeline, ledger):
 
 def test_the_approach_is_measured_beside_the_lowered_section(pipeline, ledger):
     """904.4.1 puts the clear floor space adjacent to the 36 inch portion. In
-    front of the high part is floor nobody in a wheelchair is served from."""
+    front of the high part is floor nobody in a wheelchair is served from.
+
+    A 48 inch space alongside a 36 inch section can sit 6 inches either side of
+    its centre and still run the whole length of it.
+    """
     graph = build_lawsuit_graph()
     lowered = next(node for node in graph.nodes if node.label == "Lowered counter section")
     result = assess(graph, build_lawsuit_scenario(), pipeline, ledger=ledger)
     approach = next(f for f in result.findings if f.check_id == "service_counter_approach")
-    assert approach.locus.point.x == approx(lowered.transform.position.x, abs=0.01)
+    assert approach.locus.point.x == approx(lowered.transform.position.x, abs=to_meters(6.0) + 1e-6)
 
 
 def test_a_card_reader_on_the_high_counter_is_the_finding(pipeline, ledger):
@@ -376,3 +380,54 @@ def test_a_card_reader_on_the_high_counter_is_the_finding(pipeline, ledger):
 def test_the_plain_shop_has_no_register_finding(graph, scenario, pipeline, ledger):
     result = assess(graph, scenario, pipeline, ledger=ledger)
     assert not [f for f in result.findings if f.check_id == "point_of_sale_height"]
+
+
+SHORT_COUNTER_METERS = 1.7
+"""67 inches: a 48 inch space centred on it covers all but its last 9.5 inches either side."""
+
+
+def _short_counter_with_stands(*stand_xs):
+    """The plain shop with a 67 inch counter and a sign stand a foot in front of its face at each x."""
+    graph = build_graph()
+    counter = graph.by_id(COUNTER)
+    face_y = counter.transform.position.y - counter.dimensions.y / 2
+    short = counter.model_copy(update={"dimensions": counter.dimensions.model_copy(update={"x": SHORT_COUNTER_METERS})})
+    stands = [
+        SceneNode(
+            id=node_id(f"sign_stand_{index}"), kind="object", label="Sign stand", raw_category="storage",
+            dimensions=Vec3(x=0.33, y=0.27, z=0.4), transform=Mat4.translation(x, face_y - 0.3, 0.2), movable=True,
+        )
+        for index, x in enumerate(stand_xs)
+    ]
+    nodes = [short if node.id == COUNTER else node for node in graph.nodes] + stands
+    return graph.model_copy(update={"nodes": nodes})
+
+
+def _approach_finding(graph, scenario, pipeline, ledger):
+    result = assess(graph, scenario, pipeline, ledger=ledger)
+    return next(f for f in result.findings if f.check_id == "service_counter_approach")
+
+
+class TestTheApproachSpaceSlidesAlongTheCounter:
+    """305.3 via 904.4.1: the 30 by 48 inch space runs alongside 36 inches of counter, anywhere along it."""
+
+    def test_a_stand_at_one_end_passes_when_the_middle_is_clear(self, scenario, pipeline, ledger):
+        graph = _short_counter_with_stands(0.55)
+        finding = _approach_finding(graph, scenario, pipeline, ledger)
+        assert finding.outcome == "passes"
+        assert finding.locus.point.x < 0.0
+
+    def test_the_centred_space_is_kept_when_it_is_clear(self, scenario, pipeline, ledger):
+        finding = _approach_finding(_short_counter_with_stands(), scenario, pipeline, ledger)
+        assert finding.outcome == "passes"
+        assert finding.locus.point.x == approx(0.0, abs=1e-6)
+
+    def test_stands_at_both_ends_block_every_position(self, scenario, pipeline, ledger):
+        finding = _approach_finding(_short_counter_with_stands(-0.55, 0.55), scenario, pipeline, ledger)
+        assert finding.outcome == "problem"
+        assert {node_id("sign_stand_0"), node_id("sign_stand_1")} & set(finding.locus.node_ids)
+
+    def test_the_space_may_not_slide_off_the_end_of_the_counter(self, scenario, pipeline, ledger):
+        """Clear floor past the counter's end is not beside 36 inches of it."""
+        finding = _approach_finding(_short_counter_with_stands(0.0), scenario, pipeline, ledger)
+        assert finding.outcome == "problem"

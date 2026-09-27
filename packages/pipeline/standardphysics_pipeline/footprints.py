@@ -166,6 +166,16 @@ def gap_between(a: Polygon, b: Polygon) -> float:
     return min(distances)
 
 
+def bounds_meet(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> bool:
+    """Whether two `polygon_bounds` boxes touch or overlap."""
+    return a[0] <= b[2] and b[0] <= a[2] and a[1] <= b[3] and b[1] <= a[3]
+
+
+def touching(a: Polygon, b: Polygon) -> bool:
+    """Whether two convex footprints touch or overlap: `gap_between(a, b) == 0`, without measuring the gap."""
+    return bounds_meet(polygon_bounds(a), polygon_bounds(b)) and not _separated(a, b)
+
+
 def gap_between_nodes(a: SceneNode, b: SceneNode) -> float:
     return gap_between(footprint(a), footprint(b))
 
