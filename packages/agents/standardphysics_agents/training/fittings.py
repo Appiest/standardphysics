@@ -122,9 +122,14 @@ def _stands_on_the_floor(graph: SceneGraph, node: SceneNode) -> bool:
 
 
 def _stands_on_a_piece(graph: SceneGraph, node: SceneNode) -> bool:
-    """A register on a counter goes where the counter's top goes; it is not hung on its own."""
+    """A register on a counter goes where the counter's top goes; it is not hung on its own.
+
+    Resting means touching: a dispenser hung a foot above a lavatory has the
+    lavatory under it but stands on nothing, and is rehung like any other.
+    """
     floor_z = floor_height(graph)
-    return surface_under(graph, node, floor_z) > floor_z
+    surface = surface_under(graph, node, floor_z)
+    return surface > floor_z and underside(node) - surface <= RESTING_GAP
 
 
 def height_range(graph: SceneGraph, node: SceneNode) -> tuple[float, float] | None:
