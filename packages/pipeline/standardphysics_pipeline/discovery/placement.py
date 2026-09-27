@@ -28,7 +28,7 @@ from dataclasses import replace
 import numpy as np
 from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room, stands_upright
 
-from .boxes import RESTING_GAP, _frame, resting_parent, share_within, top_of
+from .boxes import RESTING_GAP, _frame, footprint_covered, resting_parent, share_within, top_of
 from .carve import MIN_EXTENT, CarvedBox
 from .merge import DiscoveredObject
 from .semantic_corrections import is_work_surface, same_furniture
@@ -37,6 +37,8 @@ REACH = 0.10
 """How far past a scanned piece's footprint a fragment of it may reach: a backrest's lean, a counter's lip."""
 PART_OF = 0.5
 """Share of a carved object that must lie within a scanned piece of its own kind for it to be that piece."""
+SWALLOWED = 0.8
+"""Share of a scanned piece's footprint a carve of its own kind must cover to be that piece seen whole."""
 BEYOND = 0.5
 """Share of an object's points past the room's shell before it is outside the room."""
 PAST_THE_SHEET = 0.05
@@ -57,9 +59,15 @@ SPREAD = 0.5
 
 
 def part_of_a_scanned_piece(object_: DiscoveredObject, graph: SceneGraph) -> bool:
-    """Mostly within a scanned piece of the same kind, which already measures it."""
+    """Mostly within a scanned piece of the same kind, or over most of one, which already measures it.
+
+    A carve that swallows the scanned piece is the same piece seen with what
+    stands on it and the staff side behind it: most of its points lie above or
+    past the scanned box, yet the scanned box lies inside it.
+    """
     return any(
-        same_furniture(object_.name, node.label) and share_within(object_.box, node, REACH) >= PART_OF
+        same_furniture(object_.name, node.label)
+        and (share_within(object_.box, node, REACH) >= PART_OF or footprint_covered(object_.box, node) >= SWALLOWED)
         for node in graph.nodes
         if not bounds_the_room(node)
     )

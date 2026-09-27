@@ -166,6 +166,17 @@ class TestFragmentsOfScannedPieces:
         backrest = carved("chair", slab((0.0, 0.29, 0.8), (0.4, 0.06, 0.16)))
         assert part_of_a_scanned_piece(backrest, graph_of(stool))
 
+    def test_a_carve_that_swallows_the_scanned_counter_is_that_counter(self):
+        """Seen with the till on top and the staff side behind, most points lie above or past the scanned box."""
+        top_layer = slab((-0.2, 0.0, 0.95), (2.1, 1.24, 0.06))
+        front = slab((-0.2, -0.62, 0.45), (2.1, 0.0, 0.9))
+        whole = carved("counter", np.vstack([top_layer, front]))
+        assert part_of_a_scanned_piece(whole, graph_of(scanned_counter()))
+
+    def test_a_counter_beside_the_scanned_one_is_its_own_counter(self):
+        beside = carved("counter", slab((1.4, 0.0, 0.45), (2.0, 0.7, 0.9)))
+        assert not part_of_a_scanned_piece(beside, graph_of(scanned_counter()))
+
     def test_a_card_reader_on_the_counter_is_its_own_object(self):
         reader = carved("card reader", slab((0.4, 0.0, 0.93), (0.1, 0.15, 0.12)))
         assert not part_of_a_scanned_piece(reader, graph_of(scanned_counter()))

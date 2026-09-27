@@ -9,6 +9,7 @@ terminal sitting beside it.
 
 from __future__ import annotations
 
+import math
 from uuid import UUID
 
 import numpy as np
@@ -100,6 +101,20 @@ def share_within(carved: CarvedBox, node: SceneNode, reach: float) -> float:
     local = to_local(carved.points, node)
     beside = np.all(np.abs(local[:, :2]) <= half[:2] + reach, axis=1)
     return float((beside & (np.abs(local[:, 2]) <= half[2])).mean())
+
+
+FOOTPRINT_SAMPLES = 7
+
+
+def footprint_covered(carved: CarvedBox, node: SceneNode) -> float:
+    """The share of the node's footprint that lies inside the carved box's footprint."""
+    rotation, origin, half = _frame(node)
+    steps = np.linspace(-1.0, 1.0, FOOTPRINT_SAMPLES)
+    world = np.array([(a * half[0], b * half[1], 0.0) for a in steps for b in steps]) @ rotation.T + origin
+    cos_t, sin_t = math.cos(carved.yaw), math.sin(carved.yaw)
+    dx, dy = world[:, 0] - carved.centre[0], world[:, 1] - carved.centre[1]
+    along, across = dx * cos_t + dy * sin_t, -dx * sin_t + dy * cos_t
+    return float(((np.abs(along) <= carved.dimensions[0] / 2) & (np.abs(across) <= carved.dimensions[1] / 2)).mean())
 
 
 def top_of(node: SceneNode) -> float:
