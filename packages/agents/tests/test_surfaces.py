@@ -1,4 +1,4 @@
-"""A card reader on the high counter is set down on the lowered section, unless the shop's directives hold it still."""
+"""A card reader on the high counter is set down on the lowered section; the shop's directives hold only built-ins still."""
 
 import json
 
@@ -75,23 +75,32 @@ def test_the_menu_offers_the_lowered_counter_and_every_option_is_legal(shop, pla
         assert not violations(graph, apply_edits(graph, option.edits))
 
 
-def test_a_boba_shop_scores_moving_its_card_reader_zero(shop, plain_menu, pipeline, pack, ledger, monkeypatch):
-    graph, scenario, _ = shop
+def test_a_boba_shop_still_lets_its_card_reader_move_to_the_lowered_counter(shop, plain_menu, pipeline, pack,
+                                                                            ledger, monkeypatch):
+    graph, _, _ = shop
     completion = json.dumps(_card_reader_option(plain_menu).edits.model_dump(mode="json"))
-    assert score_completion(completion, graph, TrainingChecker(scenario, rules=pack, ledger=ledger,
-                                                               measure=pipeline)).reward > 0
     verdict = score_completion(completion, graph, _boba_checker(shop, pipeline, pack, ledger, monkeypatch))
-    assert verdict.reward == 0.0 and verdict.hard_constraints_pass and not verdict.gate_accepts
-    assert verdict.reason == "precedent_violation:moved_fixed_role"
+    assert verdict.gate_accepts, verdict.reason
 
 
-def test_a_boba_shops_menu_never_offers_moving_its_card_reader(shop, pipeline, pack, ledger, monkeypatch):
+def test_a_boba_shop_refuses_relocating_its_counter_even_as_construction(shop, pipeline, pack, ledger, monkeypatch):
+    graph, scenario, _ = shop
+    counter = next(node for node in graph.nodes if node.label == "Ordering counter")
+    completion = json.dumps({"moves": [], "fixture_moves": [
+        {"node_id": str(counter.id), "dx_inches": 0.0, "dy_inches": -3.0}]})
+    plain = score_completion(completion, graph, TrainingChecker(scenario, rules=pack, ledger=ledger,
+                                                                measure=pipeline))
+    boba = score_completion(completion, graph, _boba_checker(shop, pipeline, pack, ledger, monkeypatch))
+    assert "precedent_violation" not in plain.reason
+    assert boba.reward == 0.0 and boba.reason == "precedent_violation:moved_fixed_role"
+
+
+def test_a_boba_shops_menu_offers_only_options_its_directives_allow(shop, pipeline, pack, ledger, monkeypatch):
     graph, _, _ = shop
     checker = _boba_checker(shop, pipeline, pack, ledger, monkeypatch)
     menu = build_menu(graph, checker)
-    reader = next(node.id for node in graph.nodes if node.label == "Card reader")
-    assert menu.veto is not None
-    assert not any(move.node_id == reader for option in menu.options for move in option.edits.moves)
+    assert menu.veto is not None and menu.options
+    assert any(option.wording.startswith("set Card reader") for option in menu.options)
     for option in menu.options:
         verdict = score_completion(json.dumps(option.edits.model_dump(mode="json")), graph, checker)
         assert verdict.gate_accepts, verdict.reason

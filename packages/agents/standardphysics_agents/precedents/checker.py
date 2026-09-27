@@ -30,6 +30,20 @@ FIXED_ROLE_FINDERS: dict[str, Callable[[SceneGraph], list[SceneNode]]] = {
     "point_of_sale": roles.point_of_sale,
 }
 
+HELD_EVEN_IF_MARKED_MOVABLE = frozenset({"service_counter"})
+"""Roles held still whatever the scan says about them.
+
+A counter is built in even when a scan marks it movable, so it stays put. A
+point of sale is held only when it is built in, such as a fixed register: a
+card reader or tip jar that can be picked up may be carried to the lowered
+counter section, which is the fix ADA 904.4's advisory describes and the one
+`point_of_sale_height` asks for.
+"""
+
+
+def _held(role: str, node: SceneNode) -> bool:
+    return role in HELD_EVEN_IF_MARKED_MOVABLE or not node.movable
+
 DISPERSION_RADIUS_METERS = 5.0
 """How far an accessible surface may sit from the middle of the other seating.
 
@@ -66,7 +80,7 @@ def _check_fixed_roles(
         )
         for role in directive.constraints.fixed_roles
         for node in FIXED_ROLE_FINDERS[role](base)
-        if node.id in moved
+        if node.id in moved and _held(role, node)
     ]
 
 

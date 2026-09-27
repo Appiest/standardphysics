@@ -175,10 +175,16 @@ class TestChecker:
         assert [v.rule_broken for v in violations] == ["moved_fixed_role"]
         assert violations[0].target_node_id == str(counter.id)
 
-    def test_moving_the_card_reader_is_refused(self):
+    def test_a_card_reader_that_can_be_picked_up_may_move_to_the_lowered_section(self):
         reader = _box("Card reader", 0, 0, 0.1, size=0.1)
         room = _graph(reader)
-        assert check_precedent_constraints(room, _moved(room, reader, 0.2), [self.counter])
+        assert not check_precedent_constraints(room, _moved(room, reader, 0.2), [self.counter])
+
+    def test_moving_a_built_in_point_of_sale_is_refused(self):
+        reader = _box("Card reader", 0, 0, 0.1, size=0.1, movable=False)
+        room = _graph(reader)
+        violations = check_precedent_constraints(room, _moved(room, reader, 0.2), [self.counter])
+        assert [v.rule_broken for v in violations] == ["moved_fixed_role"]
 
 
 class TestRejectionGate:
