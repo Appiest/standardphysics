@@ -32,6 +32,7 @@ from standardphysics_pipeline.discovery.discover import _viewpoints, _worth_keep
 from standardphysics_pipeline.discovery.merge import Candidate, DiscoveredObject, merge_candidates
 from standardphysics_pipeline.discovery.people import (
     PersonVolume,
+    in_person_volumes,
     is_a_body,
     person_points,
     person_volumes,
@@ -249,6 +250,12 @@ class TestWherePeopleStood:
         assert not surfaces[: len(body)].all()
         removal = without_people(points, graph_of(), views)
         assert len(removal.points) == len(stool)
+
+    def test_the_painted_scan_loses_the_same_body_at_full_resolution(self):
+        body, stool = slab(*self.BODY), slab((2.0, 0.8, 0.35), (0.35, 0.35, 0.7))
+        points = np.vstack([body, stool])
+        gone = in_person_volumes(points, graph_of(), self.named_a_person_in(body, -0.3, 0.3, seen=points))
+        assert gone[: len(body)].all() and not gone[len(body):].any()
 
     def test_one_photo_is_not_enough(self):
         body = slab(*self.BODY)

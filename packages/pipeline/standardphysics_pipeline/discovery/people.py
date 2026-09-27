@@ -44,6 +44,7 @@ from dataclasses import dataclass
 import numpy as np
 from standardphysics_contracts import SceneGraph
 
+from ..lidar import DEFAULT_VOXEL, voxel_downsample
 from ..textures.camera import PhotoCamera
 from .boxes import claimed_by_any, structure_points
 from .carve import NEAR_LIMIT, CarvedBox, FrameView, carve, nearest_band, unoccluded
@@ -165,11 +166,31 @@ def without_people(
     """The mesh minus the surfaces people occupied and the volumes they stood in, with the room's structure kept."""
     is_person, frames = person_points(points, graph, views)
     volumes = tuple(person_volumes(points, graph, views))
-    for volume in volumes:
-        is_person |= volume.contains(points) & ~structure_points(points, graph)
+    is_person |= _inside_any(points, volumes) & ~structure_points(points, graph)
     return PeopleRemoval(
         points=points[~is_person], removed=int(is_person.sum()), frames_with_people=frames, volumes=volumes,
     )
+
+
+def in_person_volumes(
+    points: np.ndarray,
+    graph: SceneGraph,
+    views: list[tuple[PhotoCamera, list[Detection], np.ndarray | None]],
+) -> np.ndarray:
+    """Points of a full-resolution mesh standing where a person stood, the room's structure kept.
+
+    The volumes are found on the same voxel-sampled cloud discovery carves, so a
+    dense display mesh loses exactly the people discovery cleared.
+    """
+    volumes = person_volumes(voxel_downsample(points, DEFAULT_VOXEL), graph, views)
+    return _inside_any(points, volumes) & ~structure_points(points, graph)
+
+
+def _inside_any(points: np.ndarray, volumes: tuple[PersonVolume, ...] | list[PersonVolume]) -> np.ndarray:
+    inside = np.zeros(len(points), dtype=bool)
+    for volume in volumes:
+        inside |= volume.contains(points)
+    return inside
 
 
 def person_volumes(
