@@ -131,3 +131,13 @@ def test_an_exhausted_budget_returns_the_best_answer_already_scored():
     assert not (edits.moves or edits.wall_shifts or edits.fixture_moves)
     assert solution.verdict == room_solver.score_completion(solution.completion, graph, checker).as_dict()
 
+
+def test_a_scan_marked_for_another_look_is_still_rearranged():
+    """The checker trusts the scanned geometry, so the furniture search it runs has to as well."""
+    graph = shop_fixture.build_lawsuit_graph()
+    unsure = graph.model_copy(update={"nodes": [node.model_copy(update={"quality": "needs_another_look"})
+                                                for node in graph.nodes]})
+    checker = TrainingChecker(shop_fixture.build_lawsuit_scenario(), scope="fittings")
+    solution, _ = room_solver.solve(unsure, checker)
+    edits = TrainingEdits.model_validate_json(solution.completion)
+    assert solution.clears and edits.moves

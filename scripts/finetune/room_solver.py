@@ -33,6 +33,7 @@ from fitting_candidates import fitting_candidates
 from standardphysics_agents.fix import propose_fix
 from standardphysics_agents.redesign import FurnitureMove
 from standardphysics_agents.training import score_completion
+from standardphysics_agents.training.checker import trusted_geometry
 from standardphysics_agents.training.construction import (
     MAX_FIXTURE_MOVE_INCHES,
     MAX_WALL_SHIFT_INCHES,
@@ -129,11 +130,26 @@ def _attempt(graph: SceneGraph, checker, shifts: list[WallShift], run: _Run,
         built = built_room(graph, construction)
     except ValueError:
         return None
-    layout = _furniture_layout(built, checker, run)
-    edits = combined(construction, TrainingEdits(moves=edits_between(built, layout).moves))
-    if edits == TrainingEdits():
-        return None
-    return _scored(graph, checker, edits)
+    found: list[Solution] = []
+    for room in _rooms_to_search(built):
+        if found and found[-1].clears:
+            break
+        layout = _furniture_layout(room, checker, run)
+        edits = combined(construction, TrainingEdits(moves=edits_between(room, layout).moves))
+        if edits != TrainingEdits():
+            found.append(_scored(graph, checker, edits))
+    return _best(found)
+
+
+def _rooms_to_search(built: SceneGraph) -> list[SceneGraph]:
+    """The room as scanned, then with its scanned geometry trusted, when that differs.
+
+    The furniture search measures candidates with plain `assess` against the checker's baseline, which trusts the
+    scan. Where geometry needs another look the two disagree and the gate can refuse every candidate on the room as
+    scanned, so the trusted room is searched next. Both answers are scored by the checker the same way.
+    """
+    trusted = trusted_geometry(built)
+    return [built] if trusted.nodes == built.nodes else [built, trusted]
 
 
 def _narrowed(graph: SceneGraph, checker, side, cleared: Solution, run: _Run) -> Solution:
