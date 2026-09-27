@@ -19,9 +19,17 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, to_meters
-from standardphysics_pipeline import footprint, gap_between
-from standardphysics_pipeline.footprints import Polygon, distance_outside, floor_polygon, polygon_bounds
+from standardphysics_contracts import SceneGraph, SceneNode, lies_flat, to_meters
+from standardphysics_pipeline import footprint
+from standardphysics_pipeline.footprints import (
+    Polygon,
+    closer_than,
+    distance_outside,
+    floor_polygon,
+    polygon_bounds,
+    sized_footprint,
+    touching,
+)
 from standardphysics_pipeline.occupancy import blocks_floor
 
 from ..checks import roles
@@ -242,12 +250,9 @@ def door_keep_clear(door: SceneNode) -> Polygon:
 
 def collision_shape(node: SceneNode, tolerance: float = OVERLAP_TOLERANCE) -> Polygon:
     """The node's footprint, pulled in on every side by `tolerance`."""
-    shrunk = Vec3(
-        x=max(node.dimensions.x - 2 * tolerance, 1e-6),
-        y=max(node.dimensions.y - 2 * tolerance, 1e-6),
-        z=node.dimensions.z,
+    return sized_footprint(
+        node, max(node.dimensions.x - 2 * tolerance, 1e-6), max(node.dimensions.y - 2 * tolerance, 1e-6)
     )
-    return footprint(node.model_copy(update={"dimensions": shrunk}))
 
 
 def _one_above_the_other(a: SceneNode, b: SceneNode) -> bool:
@@ -260,7 +265,7 @@ def _footprints_meet(a: SceneNode, b: SceneNode) -> bool:
     # interpenetrate by OVERLAP_TOLERANCE and no more. Pulling both in by the
     # whole of it allowed twice that: a case slid 9 mm into a wall passed.
     half = OVERLAP_TOLERANCE / 2
-    return gap_between(collision_shape(a, half), collision_shape(b, half)) == 0.0
+    return touching(collision_shape(a, half), collision_shape(b, half))
 
 
 def _overlapping(a: SceneNode, b: SceneNode) -> bool:
@@ -269,7 +274,7 @@ def _overlapping(a: SceneNode, b: SceneNode) -> bool:
 
 def _in_swing(node: SceneNode, keep_clear: Polygon, floor_z: float) -> bool:
     """Only something standing on the floor gets in the way of a door."""
-    return not rests_on_something(node, floor_z) and gap_between(collision_shape(node), keep_clear) == 0.0
+    return not rests_on_something(node, floor_z) and touching(collision_shape(node), keep_clear)
 
 
 @dataclass(frozen=True)
@@ -357,7 +362,7 @@ def _travelled_too_far(base: SceneGraph, moved: list[SceneNode]) -> list[Violati
 def _near_a_move(node: SceneNode, role: roles.UsedFromTheFloor, checked: list[SceneNode]) -> bool:
     shape, within = footprint(node), reach(role)
     return any(
-        other.id == node.id or gap_between(shape, footprint(other)) < within for other in checked
+        other.id == node.id or closer_than(shape, footprint(other), within) for other in checked
     )
 
 
