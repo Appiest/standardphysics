@@ -18,6 +18,13 @@ attempt records which source it used. --mode solver-only needs no model.
 
 --plan-image attaches a top-down plan of the current room, drawn from the same
 JSON, to every message the model reads (`plan_image.py`).
+
+--interface menu replaces raw coordinates with a numbered menu of moves that
+are already legal and measured (`training/menu.py`); the model answers
+`{"choose":[...],"why":"..."}` and its picks become the same edits JSON the
+checker scores. Each menu turn is stateless: the system prompt, the current
+room, the menu and the last result, never the whole conversation. Every
+attempt records seconds, prompt_tokens and completion_tokens.
 """
 
 from __future__ import annotations
@@ -26,12 +33,15 @@ import argparse
 import json
 import os
 import pathlib
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 
 from multiroom_train_data import MultiroomData, load
 from standardphysics_agents.training.edits import apply_edits, parse_edits
 from standardphysics_agents.training.feedback import feedback_message
+from standardphysics_agents.training.menu import build_menu, menu_messages, resolve
 from standardphysics_agents.training.prompt import prompt_messages
 from standardphysics_agents.training.reward import score_completion
 from standardphysics_agents.training.usability import usability
@@ -40,7 +50,17 @@ DEFAULT_DATA = pathlib.Path(__file__).resolve().parents[2] / "runs/finetune/mult
 MAX_ATTEMPTS = 5
 EVALUATION_POLICY = "checker-full-clear-v1"
 MODES = ("model", "solver-assisted", "solver-only")
-Sampler = Callable[[list[dict]], str]
+INTERFACES = ("raw", "menu")
+
+
+@dataclass(frozen=True)
+class Reply:
+    text: str
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+
+
+Sampler = Callable[[list[dict]], "str | Reply"]
 Solver = Callable[[object, object], str | None]
 Illustrator = Callable[[dict], dict]
 
@@ -88,9 +108,21 @@ def _verdict_rank(verdict) -> tuple:
             -verdict.construction_inches, verdict.shortfall_recovered)
 
 
-def _chosen(messages: list[dict], current, checker, sampler: Sampler | None, solver: Solver | None) -> tuple[str, str]:
+def _ask(sampler: Sampler | None, messages: list[dict]) -> tuple[str, dict]:
+    """The model's reply text, and how long it took and how many tokens it used, when the server says."""
+    if sampler is None:
+        return "", {}
+    started = time.monotonic()
+    reply = sampler(messages)
+    seconds = round(time.monotonic() - started, 2)
+    if isinstance(reply, str):
+        return reply, {"seconds": seconds, "prompt_tokens": None, "completion_tokens": None}
+    return reply.text, {"seconds": seconds, "prompt_tokens": reply.prompt_tokens,
+                        "completion_tokens": reply.completion_tokens}
+
+
+def _preferred(completion: str, current, checker, sampler, solver) -> tuple[str, str]:
     """The answer this attempt submits, and whether the model or the solver wrote it."""
-    completion = sampler(messages) if sampler else ""
     if solver is None:
         return completion, "model"
     solved = solver(current, checker)
@@ -107,9 +139,50 @@ def _unchanged(message: dict) -> dict:
     return message
 
 
+class RawTurns:
+    """The model writes coordinates and reads the whole conversation so far."""
+
+    def __init__(self, current, checker, sampler, solver, illustrate):
+        system, room = prompt_messages(current, checker)
+        self.messages = [system, illustrate(room)]
+        self.checker, self.sampler, self.solver, self.illustrate = checker, sampler, solver, illustrate
+
+    def ask(self, current) -> tuple[str, str, dict]:
+        reply, stats = _ask(self.sampler, self.messages)
+        completion, source = _preferred(reply, current, self.checker, self.sampler, self.solver)
+        return completion, source, stats
+
+    def observe(self, completion: str, attempt: dict, feedback: dict) -> None:
+        self.messages.extend(({"role": "assistant", "content": completion}, self.illustrate(feedback)))
+
+
+class MenuTurns:
+    """The model picks from a menu of legal, measured moves; each prompt stands alone."""
+
+    def __init__(self, checker, sampler, illustrate):
+        self.checker, self.sampler, self.illustrate = checker, sampler, illustrate
+        self.last: dict | None = None
+        self.resolution = None
+
+    def ask(self, current) -> tuple[str, str, dict]:
+        menu = build_menu(current, self.checker)
+        system, room = menu_messages(current, self.checker, menu, self.last)
+        reply, stats = _ask(self.sampler, [system, self.illustrate(room)])
+        self.resolution = resolve(reply, current, menu, self.checker.pinned)
+        return self.resolution.completion, "model", {
+            **stats, "reply": reply, "resolution": self.resolution.as_dict(),
+            "menu": {"problems": menu.problem_view, "options": [option.as_prompt() for option in menu.options]},
+        }
+
+    def observe(self, completion: str, attempt: dict, feedback: dict) -> None:
+        self.last = {**self.resolution.as_dict(), "accepted": attempt["accepted"],
+                     "reason": attempt["verdict"]["reason"],
+                     "fixable_left": attempt["feedback"]["checker_feedback"]["fixable_left"]}
+
+
 def evaluate_variant(data: MultiroomData, row: dict, sampler: Sampler | None, model: str,
                      max_attempts: int = MAX_ATTEMPTS, solver: Solver | None = None,
-                     illustrate: Illustrator = _unchanged) -> dict:
+                     illustrate: Illustrator = _unchanged, interface: str = "raw") -> dict:
     if not 1 <= max_attempts <= MAX_ATTEMPTS:
         raise ValueError("max_attempts must be between one and five")
     variant_id = row["variant"]
@@ -127,21 +200,21 @@ def evaluate_variant(data: MultiroomData, row: dict, sampler: Sampler | None, mo
                 "checker_full_clear_within_five": False, "full_usability_preserved": False,
                 "final_baseline_usability": 1.0, "attempts_used": 0, "stop_reason": "no_fixable_findings"}
 
-    system, room = prompt_messages(current, checker)
-    messages = [system, illustrate(room)]
+    turns = (MenuTurns(checker, sampler, illustrate) if interface == "menu"
+             else RawTurns(current, checker, sampler, solver, illustrate))
     success = False
     current_baseline_usability = 1.0
     for index in range(1, max_attempts + 1):
-        completion, source = _chosen(messages, current, checker, sampler, solver)
+        completion, source, extra = turns.ask(current)
         current, current_baseline_usability, attempt, feedback = _attempt(
             completion, baseline, current, checker, index, current_baseline_usability,
         )
-        attempt["source"] = source
+        attempt.update(source=source, **extra)
         record["attempts"].append(attempt)
         if attempt["accepted"] and attempt["feedback"]["checker_feedback"]["fixable_left"] == 0:
             success = True
             break
-        messages.extend(({"role": "assistant", "content": completion}, illustrate(feedback)))
+        turns.observe(completion, attempt, feedback)
 
     construction = sum(a["verdict"]["construction_inches"] for a in record["attempts"] if a["accepted"])
     return {**record, "success": success, "checker_full_clear_within_five": success,
@@ -180,7 +253,8 @@ def _previous_records(data: MultiroomData, rows: list[dict], out: pathlib.Path,
 
 def evaluate(data: MultiroomData, sampler: Sampler | None, model: str, out: pathlib.Path,
              max_attempts: int = MAX_ATTEMPTS, rows: list[dict] | None = None, solver: Solver | None = None,
-             workers: int = 1, limit: int | None = None, illustrate: Illustrator = _unchanged) -> dict:
+             workers: int = 1, limit: int | None = None, illustrate: Illustrator = _unchanged,
+             interface: str = "raw") -> dict:
     if not 1 <= max_attempts <= MAX_ATTEMPTS:
         raise ValueError("max_attempts must be between one and five")
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -189,8 +263,8 @@ def evaluate(data: MultiroomData, sampler: Sampler | None, model: str, out: path
     resumed = len(records_by_variant)
     pending = [row for row in rows if row["variant"] not in records_by_variant][:limit]
     with out.open("a") as handle, ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(evaluate_variant, data, row, sampler, model, max_attempts, solver, illustrate)
-                   for row in pending]
+        futures = [pool.submit(evaluate_variant, data, row, sampler, model, max_attempts, solver, illustrate,
+                               interface) for row in pending]
         for future in as_completed(futures):
             record = future.result()
             handle.write(json.dumps(record, separators=(",", ":")) + "\n")
@@ -234,11 +308,13 @@ def _sampler(args) -> Sampler | None:
 
     client = OpenAI(base_url=args.base_url, api_key=os.environ.get(args.api_key_env, "none"))
 
-    def sample(messages: list[dict]) -> str:
+    def sample(messages: list[dict]) -> Reply:
         reply = client.chat.completions.create(model=args.served_model or args.model, messages=messages,
                                                temperature=args.temperature,
                                                max_tokens=args.max_tokens)
-        return reply.choices[0].message.content or ""
+        usage = reply.usage
+        return Reply(reply.choices[0].message.content or "", getattr(usage, "prompt_tokens", None),
+                     getattr(usage, "completion_tokens", None))
 
     return sample
 
@@ -257,6 +333,8 @@ def main() -> None:
     parser.add_argument("--max-tokens", type=int, default=512)
     parser.add_argument("--max-attempts", type=int, default=MAX_ATTEMPTS)
     parser.add_argument("--mode", choices=MODES, default="model")
+    parser.add_argument("--interface", choices=INTERFACES, default="raw",
+                        help="raw: the model writes coordinates; menu: it picks from legal, measured moves")
     parser.add_argument("--split", choices=("heldout", "train"), default="heldout",
                         help="evaluate held-out rooms or collect training-room correction traces")
     parser.add_argument("--out", type=pathlib.Path, required=True)
@@ -268,6 +346,8 @@ def main() -> None:
         parser.error("--base-url or --fireworks is required unless --mode solver-only")
     if args.fireworks and not args.spend_file:
         parser.error("--fireworks needs --spend-file so the watchdog can meter it")
+    if args.interface == "menu" and args.mode != "model":
+        parser.error("--interface menu is for --mode model; the solver answers in raw edits")
 
     data = load(args.data)
     rows = data.rl if args.split == "train" else data.heldout
@@ -278,7 +358,7 @@ def main() -> None:
     if args.plan_image:
         from plan_image import with_plan as illustrate
     print(json.dumps(evaluate(data, _sampler(args), args.model, args.out, args.max_attempts, rows, solver,
-                              args.workers, args.limit, illustrate)))
+                              args.workers, args.limit, illustrate, args.interface)))
 
 
 if __name__ == "__main__":

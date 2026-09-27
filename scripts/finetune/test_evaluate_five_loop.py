@@ -9,6 +9,7 @@ from standardphysics_agents.training.reward import Verdict
 
 class FakeChecker:
     scenario = "route"
+    pinned = frozenset()
 
     def assess(self, graph):
         return graph
@@ -187,3 +188,70 @@ def test_every_user_turn_is_illustrated_and_the_model_answers_stay_plain(monkeyp
                                illustrate=lambda message: {**message, "drawn": True})
     last = seen[-1]
     assert [message.get("drawn", False) for message in last] == [False, True, False, True, False, True]
+
+
+def test_raw_attempts_record_seconds_and_the_servers_token_counts(monkeypatch):
+    data, _ = setup_loop(monkeypatch)
+    record = evaluator.evaluate_variant(data, data.heldout[0], lambda _: evaluator.Reply("clear", 1200, 40),
+                                        "fake-qwen")
+    attempt = record["attempts"][0]
+    assert attempt["prompt_tokens"] == 1200 and attempt["completion_tokens"] == 40
+    assert attempt["seconds"] >= 0 and attempt["completion"] == "clear"
+
+
+def test_menu_turns_are_stateless_and_score_the_resolved_edits(monkeypatch):
+    data, scored = setup_loop(monkeypatch)
+    menu = SimpleNamespace(problem_view=[{"label": "P1"}], options=[])
+    lasts = []
+
+    def messages(current, _checker, _menu, last):
+        lasts.append(last)
+        return [{"role": "system", "content": "menu"}, {"role": "user", "content": str(current)}]
+
+    resolved = {'{"choose":[2]}': "bad", '{"choose":[1]}': "partial", '{"choose":[1,3]}': "clear"}
+    monkeypatch.setattr(evaluator, "build_menu", lambda current, _checker: menu)
+    monkeypatch.setattr(evaluator, "menu_messages", messages)
+    monkeypatch.setattr(evaluator, "resolve", lambda reply, *_: SimpleNamespace(
+        completion=resolved[reply], as_dict=lambda: {"picks": json.loads(reply)["choose"]}))
+    replies = iter(resolved)
+    prompts = []
+
+    def sample(history):
+        prompts.append(history)
+        return evaluator.Reply(next(replies), 900, 12)
+
+    record = evaluator.evaluate_variant(data, data.heldout[0], sample, "fake-qwen", interface="menu")
+    assert [len(history) for history in prompts] == [2, 2, 2]
+    assert scored == [("bad", 2), ("partial", 2), ("clear", 1)]
+    assert lasts[0] is None and lasts[1]["picks"] == [2] and not lasts[1]["accepted"]
+    assert lasts[2]["accepted"] and lasts[2]["fixable_left"] == 1
+    assert record["success"] and record["attempts"][0]["reply"] == '{"choose":[2]}'
+    assert all(attempt["prompt_tokens"] == 900 for attempt in record["attempts"])
+
+
+def test_menu_answers_on_a_real_room_never_break_a_hard_constraint():
+    from pathlib import Path
+
+    from standardphysics_agents.rules import VerificationLedger, load_pack
+    from standardphysics_agents.training import TrainingChecker
+    from standardphysics_contracts import Scenario, SceneGraph
+    from standardphysics_pipeline import PipelineMeasurements
+
+    fixture = Path(__file__).resolve().parents[2] / "packages/agents/tests/fixtures/placement-room.json"
+    saved = json.loads(fixture.read_text())
+    pack, ledger = load_pack(), VerificationLedger()
+    for rule in pack.rules:
+        ledger = ledger.record(rule, verified_by="test suite, not a person")
+    checker = TrainingChecker(Scenario.model_validate(saved["scenario"]), rules=pack, ledger=ledger,
+                              measure=PipelineMeasurements())
+    room = SceneGraph.model_validate(saved["graph"])
+    data = SimpleNamespace(variants={"v": {"window_id": "w", "scan_id": "s"}}, heldout=[{"variant": "v"}],
+                           checker=lambda _: checker, graph=lambda _: room)
+    replies = iter(('{"choose":[1,2,3,4,5,6],"why":"all"}', "not json"))
+    record = evaluator.evaluate_variant(data, data.heldout[0], lambda _: next(replies), "fake-qwen",
+                                        max_attempts=2, interface="menu")
+    first, second = record["attempts"]
+    assert first["verdict"]["hard_constraints_pass"] and first["accepted"]
+    assert first["resolution"]["applied"] and first["menu"]["options"]
+    assert second["resolution"]["interface"] == "unparseable"
+    assert second["verdict"]["reason"] == "no_supported_furniture_move"
