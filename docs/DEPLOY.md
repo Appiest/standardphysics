@@ -324,6 +324,36 @@ files, including removing the old `-wal` and `-shm` files, which belong to the
 database being replaced. The volume stays mounted throughout, because it is a
 mount point and moving it would move the mount.
 
+## What to alert on
+
+Nothing here pages anyone yet. These are the conditions worth an alert, what
+to poll for each, and whether `/health/details` already answers it. Its body
+looks like this:
+
+```json
+{
+  "worker": {"lock": "held", "loops": {
+    "jobs": {"state": "busy", "heartbeat_seconds": 4.0,
+             "job": {"kind": "process", "id": 812, "running_seconds": 41.2}},
+    "textures": {"state": "idle", "heartbeat_seconds": 1.0, "job": null}}},
+  "oldest_queued_job_seconds": 38,
+  "commit": "9a2e29a…"
+}
+```
+
+| Condition | Alert when | Where to read it | In `/health/details` |
+| --- | --- | --- | --- |
+| Queue age | `oldest_queued_job_seconds` over 1800. A whole-floor bake runs about 15 minutes, so a job waiting twice that means the worker is stuck or far behind. | `/health/details` | Yes |
+| Worker stall | `/health` answers 503 because a loop has died, or a loop's `state` is `stalled`, or a `busy` loop's `job.running_seconds` passes the longest bake you expect | `/health`, `/health/details` | Yes |
+| Disk free | Under 15% or 5 GB free on the scans volume, or on the backup destination. Uploads and bakes write there, and SQLite fails every write once it is full. | `df -h /mnt/standardphysics-scans`, or the `space:` line of `doctor.sh` | No |
+| Failed backup | The unit failed, or the newest snapshot is more than 26 hours old. `backup.sh` exits 2 when a file the live database lists is missing, and 75 when another backup was already running. | `systemctl is-failed standardphysics-backup.service`, `./restore.sh` with no arguments lists the snapshots | No |
+| Failed deploy | `scripts/deploy.sh` exits non-zero: 75 means jobs were in flight, 69 means the queue could not be read, anything else means the pull, build or restart failed. After a deploy, the `commit` in `/health/details` should match the last line of `/var/log/standardphysics-deploys.log`, which only records deploys that got as far as the restart. | the script's exit code, `/health/details` | The commit only |
+| Tracing off | Only when `WANDB_PROJECT` is set on purpose and traces stop arriving. `tracing_status()` in `standardphysics_agents.tracing` reports whether traces are sent and why not. | the API log's `weave tracing is off` warning | Not yet wired in |
+
+A cron job on the Droplet that curls `/health/details` and runs `df` every
+few minutes, posting to a webhook when a row trips, covers the first four.
+DigitalOcean's uptime checks can watch `/health` from outside.
+
 ## Pointing the app at it
 
 The iPhone app ships with both addresses compiled in, set in
