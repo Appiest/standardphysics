@@ -39,13 +39,15 @@ from .search import (
     proposal_id,
     propose_fix,
 )
+from .snap import Snapped, snap_moves
 from .strategies import Candidate, candidates
 
 __all__ = [
     "CANDIDATE_LIMIT", "Candidate", "FixOutcome", "Pinch", "Relaxation",
     "Violation", "apply_moves", "candidates", "collision_shape", "describe",
     "door_keep_clear", "interior_polygon", "is_allowed", "move_node", "on_a_surface",
-    "pinch_from", "proposal_id", "propose_fix", "relocation_violations", "unlocked", "violations",
+    "pinch_from", "proposal_id", "propose_fix", "relocation_violations", "Snapped", "snap_moves", "unlocked",
+    "violations",
     "without",
     "ApproachResult", "ReachRecord", "evaluate_approach", "suggestion_stop",
     "support_of", "target_height_inches",
