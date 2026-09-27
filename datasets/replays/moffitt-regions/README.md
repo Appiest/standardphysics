@@ -8,6 +8,7 @@ on real geometry.
 | --- | --- |
 | `entrance.json`, `entrance-points.npz` | the south walk (`5e66b9c6`) around the security gates and the service desk |
 | `platform.json`, `platform-points.npz` | the east walk (`67b1fc64`) around the low wooden platform |
+| `entrance-walk-whiteboards.json` | the whiteboards the south walk's photos produced before boards at one place were folded together |
 
 Each `.json` holds the walls and floors in that corner (`sheets`) and the
 detections whose carved boxes land there (`candidates`, in carve order). Each

@@ -278,6 +278,25 @@ def _best_whiteboard(
     return best_board
 
 
+BOARD_APART = 0.5
+"""Boards whose centres are closer than this are one board."""
+
+
+def _one_board_per_place(boards: list[SceneNode]) -> list[SceneNode]:
+    """The best-evidenced board at each place on the walls.
+
+    RoomPlan often measures one wall as several overlapping pieces, and the same
+    photographed board lands on every one of them. A board is never itself a
+    wall, so boards already attached are not offered as walls either.
+    """
+    kept: list[SceneNode] = []
+    for board in sorted(boards, key=lambda one: -one.attachment.identity_confidence):
+        where = np.asarray(board.transform.position.as_tuple())
+        if all(np.linalg.norm(where - np.asarray(other.transform.position.as_tuple())) >= BOARD_APART for other in kept):
+            kept.append(board)
+    return kept
+
+
 def apply_secondary_semantic_corrections(
     graph: SceneGraph,
     detections_by_frame: dict[str, list[Detection]],
@@ -312,13 +331,13 @@ def apply_secondary_semantic_corrections(
 
     # 2. Check walls for whiteboard attachments: one board per wall,
     # the best-evidenced view, so many frames of one board are not many boards.
-    whiteboards = [
+    whiteboards = _one_board_per_place([
         board
         for wall in updated_nodes
-        if reads_as_wall(wall)
+        if wall.attachment is None and reads_as_wall(wall)
         for board in [_best_whiteboard(wall, detections_by_frame, cameras_by_id)]
         if board is not None
-    ]
+    ])
 
     all_nodes = [*updated_nodes, *whiteboards]
     return graph.model_copy(update={
