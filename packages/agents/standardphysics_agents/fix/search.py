@@ -42,6 +42,7 @@ from .moves import apply_moves, unlocked, without
 from .pinch import Pinch, pinch_from
 from .placement import placements
 from .strategies import Candidate, candidates
+from .surfaces import lower_surface_moves
 
 PROPOSAL_NAMESPACE = uuid.UUID("7b3c1f04-5e2a-4c6b-9d18-000000000004")
 
@@ -160,9 +161,13 @@ class _Search:
     rejected: list[str] = field(default_factory=list)
 
     def run(self, pinch: Pinch, limit: int) -> tuple[Candidate, SceneGraph] | None:
-        return self.check(pinch, candidates(pinch, limit))
+        return self.check(pinch.finding_id, candidates(pinch, limit))
 
-    def check(self, pinch: Pinch, guesses: Iterable[Candidate]) -> tuple[Candidate, SceneGraph] | None:
+    def set_down(self, finding: Finding) -> tuple[Candidate, SceneGraph] | None:
+        """An item that sits too high, carried to a lower surface: no floor space opens, so no pinch exists."""
+        return self.check(finding.id, (move.candidate for move in lower_surface_moves(self.graph, finding)))
+
+    def check(self, finding_id: UUID, guesses: Iterable[Candidate]) -> tuple[Candidate, SceneGraph] | None:
         from ..evaluation.gate import accepts
 
         known = {finding.id for finding in self.baseline.problems}
@@ -183,7 +188,7 @@ class _Search:
                 ledger=self.ledger,
                 max_tier=self.max_tier,
             )
-            if not _resolves(known, pinch.finding_id, after) or not accepts(self.baseline, after):
+            if not _resolves(known, finding_id, after) or not accepts(self.baseline, after):
                 continue
             if self.candidate_rejection is not None:
                 reason = self.candidate_rejection(self.graph, rearranged)
@@ -230,19 +235,13 @@ def propose_fix(
         result = search.run(pinch, limit)
         if result is None and limit > 0 and time.monotonic() <= deadline:
             finding = next(f for f in problems if f.id == pinch.finding_id)
-            result = search.check(pinch, placements(graph, pinch, finding, rules, limit * 4))
-        if result is None:
-            continue
-        picked, rearranged = result
-        proposal = _build_proposal(graph, rearranged, picked, target_ids)
-        return FixOutcome(
-            proposal=proposal,
-            graph=rearranged,
-            measured=search.measured,
-            rejected=tuple(dict.fromkeys(search.rejected)),
-            message=proposal.rationale,
-            targets=target_ids,
-        )
+            result = search.check(pinch.finding_id, placements(graph, pinch, finding, rules, limit * 4))
+        if result is not None:
+            return _found(graph, search, result, target_ids)
+    for finding in problems:
+        result = search.set_down(finding) if time.monotonic() <= deadline else None
+        if result is not None:
+            return _found(graph, search, result, target_ids)
 
     relaxation = (
         _find_relaxation(
@@ -258,6 +257,20 @@ def propose_fix(
         rejected=tuple(dict.fromkeys(search.rejected)),
         message=no_arrangement(relaxation.question if relaxation else None),
         relaxation=relaxation,
+        targets=target_ids,
+    )
+
+
+def _found(graph: SceneGraph, search: _Search, result: tuple[Candidate, SceneGraph],
+           target_ids: tuple[UUID, ...]) -> FixOutcome:
+    picked, rearranged = result
+    proposal = _build_proposal(graph, rearranged, picked, target_ids)
+    return FixOutcome(
+        proposal=proposal,
+        graph=rearranged,
+        measured=search.measured,
+        rejected=tuple(dict.fromkeys(search.rejected)),
+        message=proposal.rationale,
         targets=target_ids,
     )
 
