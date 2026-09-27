@@ -381,33 +381,76 @@ def _bottleneck_search(
     all the way to that cell, so relaxing an edge takes the minimum of the
     width so far and the neighbour's own clearance. Cells leave the queue
     widest first, so the first goal cell out is the one the widest route
-    reaches. Returns how each cell was reached and that goal cell, or `None`
-    when no goal can be reached.
+    reaches. Returns how each cell on the widest route was reached and that
+    goal cell, or `None` when no goal can be reached.
+
+    The loop runs over flat Python lists of a grid padded by one unwalkable
+    cell on every side, so a neighbour needs no bounds check. A padded flat
+    index orders exactly as its (row, col) does, so the queue breaks ties as
+    the tuple form did, and the route found is the same cell for cell.
     """
-    best = np.full(grid.shape, -1.0)
-    came_from: dict[tuple[int, int], tuple[int, int]] = {}
+    stride = grid.shape[1] + 2
+    walk = _padded(walkable, False).tolist()
+    field = _padded(search_field, -1.0).tolist()
+    goal = _padded(goals, False).tolist()
+    offsets = [d_row * stride + d_col for d_row, d_col in NEIGHBOURS]
+    best = [-1.0] * len(walk)
+    came_from: dict[int, int] = {}
 
     queue = []
     for row, col in sources:
-        best[row, col] = search_field[row, col]
-        queue.append((-best[row, col], (int(row), int(col))))
+        at = (int(row) + 1) * stride + int(col) + 1
+        best[at] = field[at]
+        queue.append((-field[at], at))
     heapq.heapify(queue)
 
-    while queue:
-        negative_width, cell = heapq.heappop(queue)
-        width = -negative_width
-        if width < best[cell]:
-            continue
-        if goals[cell]:
-            return came_from, cell
-        for neighbour in _walkable_neighbours(grid, walkable, cell):
-            candidate = min(width, search_field[neighbour])
-            if candidate > best[neighbour]:
-                best[neighbour] = candidate
-                came_from[neighbour] = cell
-                heapq.heappush(queue, (-candidate, neighbour))
+    arrival = _widest_first(queue, walk, field, goal, offsets, best, came_from)
+    return _unpadded(came_from, arrival, stride)
 
-    return came_from, None
+
+def _padded(values: np.ndarray, border) -> np.ndarray:
+    rows, cols = values.shape
+    padded = np.full((rows + 2, cols + 2), border, dtype=values.dtype)
+    padded[1:-1, 1:-1] = values
+    return padded.ravel()
+
+
+def _widest_first(queue, walk, field, goal, offsets, best, came_from) -> int | None:
+    """Pop cells widest first until a goal comes out; relax each neighbour on the way."""
+    pop, push = heapq.heappop, heapq.heappush
+    while queue:
+        negative_width, at = pop(queue)
+        width = -negative_width
+        if width < best[at]:
+            continue
+        if goal[at]:
+            return at
+        for offset in offsets:
+            neighbour = at + offset
+            if walk[neighbour]:
+                candidate = field[neighbour]
+                if width < candidate:
+                    candidate = width
+                if candidate > best[neighbour]:
+                    best[neighbour] = candidate
+                    came_from[neighbour] = at
+                    push(queue, (-candidate, neighbour))
+    return None
+
+
+def _unpadded(came_from: dict[int, int], arrival: int | None, stride: int):
+    """The route back from the arrival in (row, col) cells; the rest of the search is never read."""
+    def cell(at: int) -> tuple[int, int]:
+        row, col = divmod(at, stride)
+        return row - 1, col - 1
+
+    if arrival is None:
+        return {}, None
+    reached, at = {}, arrival
+    while at in came_from:
+        reached[cell(at)] = cell(came_from[at])
+        at = came_from[at]
+    return reached, cell(arrival)
 
 
 def _walkable_neighbours(grid: Grid, walkable: np.ndarray, cell: tuple[int, int]):
