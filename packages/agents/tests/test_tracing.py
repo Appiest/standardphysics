@@ -24,9 +24,13 @@ class FakeWeave:
         self.projects: list[str] = []
         self.ops: list[str] = []
         self.calls: list[str] = []
+        self.flushes = 0
 
     def init(self, project: str) -> None:
         self.projects.append(project)
+
+    def finish(self) -> None:
+        self.flushes += 1
 
     def op(self, *args, **kwargs):
         """Both spellings Weave has used, so the wrapper survives either.
@@ -203,6 +207,60 @@ class TestWithAnAccount:
         tracing.shutdown()
         noop()
         assert len(weave.calls) == 1
+
+
+class TestStatusAndShutdown:
+    def test_the_status_says_why_tracing_is_off(self, monkeypatch):
+        monkeypatch.delenv("WANDB_PROJECT", raising=False)
+        tracing.init()
+        assert tracing.tracing_status() == {
+            "active": False, "project_url": None, "off_because": "WANDB_PROJECT is not set",
+        }
+
+    def test_the_status_names_a_failed_init(self, monkeypatch):
+        def reject(project: str) -> None:
+            raise RuntimeError("401 bad key")
+
+        broken = FakeWeave()
+        broken.init = reject
+        monkeypatch.setitem(sys.modules, "weave", broken)
+        monkeypatch.setenv("WANDB_PROJECT", "standardphysics")
+        tracing.init()
+        assert tracing.tracing_status()["active"] is False
+        assert "weave.init failed" in tracing.tracing_status()["off_because"]
+
+    def test_the_status_points_at_live_traces(self, weave):
+        tracing.init()
+        assert tracing.tracing_status() == {
+            "active": True, "project_url": "https://wandb.ai/standardphysics/weave", "off_because": None,
+        }
+
+    def test_shutting_down_flushes_queued_traces_once(self, weave):
+        tracing.init()
+        tracing.shutdown()
+        tracing.shutdown()
+        assert weave.flushes == 1
+
+    def test_a_flush_that_fails_does_not_stop_the_shutdown(self, weave, caplog):
+        def refuse() -> None:
+            raise ConnectionError("no network")
+
+        weave.finish = refuse
+        tracing.init()
+        with caplog.at_level("WARNING", logger=tracing.__name__):
+            tracing.shutdown()
+        assert not tracing.is_live()
+        assert "no network" in caplog.text
+
+    def test_a_process_that_exits_without_shutting_down_still_flushes(self, weave, monkeypatch):
+        registered: list = []
+        monkeypatch.setattr(tracing.atexit, "register", registered.append)
+        monkeypatch.setattr(tracing, "_TRACING", tracing._Tracing())
+        tracing.init()
+        tracing.init()
+        assert len(registered) == 1
+        registered[0]()
+        assert weave.flushes == 1
 
 
 class TestEverythingIsTraced:
