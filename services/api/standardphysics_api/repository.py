@@ -37,15 +37,16 @@ def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _artifacts(connection: sqlite3.Connection, scan_id: str) -> list[Artifact]:
+def _artifacts(connection: sqlite3.Connection, scan_id: str, with_photos: bool = True) -> list[Artifact]:
     rows = connection.execute(
-        "SELECT id, kind, sha256, bytes FROM artifacts WHERE scan_id = ? ORDER BY created_at, id",
-        (scan_id,),
+        "SELECT id, kind, sha256, bytes FROM artifacts WHERE scan_id = ? AND (? OR kind != 'frames')"
+        " ORDER BY created_at, id",
+        (scan_id, with_photos),
     )
     return [Artifact(id=r["id"], kind=r["kind"], sha256=r["sha256"], bytes=r["bytes"]) for r in rows]
 
 
-def _scan(connection: sqlite3.Connection, row: sqlite3.Row) -> Scan:
+def _scan(connection: sqlite3.Connection, row: sqlite3.Row, with_photos: bool = True) -> Scan:
     return Scan(
         id=row["id"],
         name=row["name"],
@@ -53,7 +54,7 @@ def _scan(connection: sqlite3.Connection, row: sqlite3.Row) -> Scan:
         device_model=row["device_model"],
         duration_seconds=row["duration_seconds"],
         state=row["state"],
-        artifacts=_artifacts(connection, row["id"]),
+        artifacts=_artifacts(connection, row["id"], with_photos),
         coverage=[SurfaceCoverage.model_validate(c) for c in json.loads(row["coverage_json"])],
         content_hash=row["content_hash"],
     )
@@ -102,6 +103,7 @@ def list_shops(connection: sqlite3.Connection, owner_id: uuid.UUID) -> list[Scan
 
     A replaced scan stays listed while its replacement is still coming in, and
     again if the replacement fails, so the owner always has results to open.
+    Photos are left out, since a floor keeps thousands; the scan itself lists them.
     """
     rows = connection.execute(
         "SELECT * FROM scans WHERE owner_id = ? AND id NOT IN ("
@@ -109,7 +111,7 @@ def list_shops(connection: sqlite3.Connection, owner_id: uuid.UUID) -> list[Scan
         ") ORDER BY created_at DESC",
         (str(owner_id),),
     ).fetchall()
-    return [_scan(connection, row) for row in rows]
+    return [_scan(connection, row, with_photos=False) for row in rows]
 
 
 def scan_exists(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
