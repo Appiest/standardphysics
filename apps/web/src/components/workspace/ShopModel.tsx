@@ -27,7 +27,7 @@ export type ArrangeHandlers = {
   onDrop: (nodeId: string) => void;
 };
 
-function boxMatrix(node: SceneNode): Matrix4 {
+export function boxMatrix(node: SceneNode): Matrix4 {
   const [sx, sy, sz] = displayScale(node);
   const scale = new Matrix4().makeScale(sx, sy, sz);
   const matrix = toViewerMatrix(node.transform);

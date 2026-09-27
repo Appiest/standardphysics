@@ -29,8 +29,28 @@ function applyPose(camera: PerspectiveCamera, controls: OrbitControlsImpl, from:
   controls.update();
 }
 
+/**
+ * Slides the picture right by some pixels without moving the camera, so a panel
+ * laid over the canvas's left edge doesn't sit on the middle of the shop. Orbiting
+ * and picking still work, because the shift lives in the projection.
+ */
+function useFrameShift(pixels: number) {
+  const camera = useThree((state) => state.camera) as PerspectiveCamera;
+  const size = useThree((state) => state.size);
+  const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => {
+    if (pixels === 0) return;
+    camera.setViewOffset(size.width, size.height, -pixels, 0, size.width, size.height);
+    invalidate();
+    return () => {
+      camera.clearViewOffset();
+      invalidate();
+    };
+  }, [camera, size.width, size.height, pixels, invalidate]);
+}
+
 /** Orbit controls, plus a 700 ms ease-out flight whenever the requested pose changes. */
-export function CameraRig({ pose: requestedPose, bounds, locked = false, zoom }: { pose: ViewerPose; bounds?: Box3 | null; locked?: boolean; zoom?: { min: number; max: number } }) {
+export function CameraRig({ pose: requestedPose, bounds, locked = false, zoom, frameShift = 0 }: { pose: ViewerPose; bounds?: Box3 | null; locked?: boolean; zoom?: { min: number; max: number }; frameShift?: number }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const tween = useRef<Tween | null>(null);
   const camera = useThree((state) => state.camera) as PerspectiveCamera;
@@ -69,6 +89,8 @@ export function CameraRig({ pose: requestedPose, bounds, locked = false, zoom }:
   useEffect(() => {
     if (controls.current && !tween.current) controls.current.enabled = !locked;
   }, [locked]);
+
+  useFrameShift(frameShift);
 
   return (
     <OrbitControls

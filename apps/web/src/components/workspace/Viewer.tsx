@@ -6,6 +6,7 @@ import { clipPlanes, zoomRange, type ViewerPose } from "@/lib/camera";
 import type { Focus } from "@/lib/findings";
 import type { NodeTextureCoverage, SceneGraph, SceneNode } from "@/types/contracts";
 import { FindingAnnotation } from "./Annotation";
+import { type FoundHandles, FoundOutlines } from "./FoundOutlines";
 import { CameraRig } from "./CameraRig";
 import { MODEL, outcomeColor, SCAN_CUT_HEIGHT } from "./palette";
 import { type ArrangeHandlers, BoxShopModel, GlbShopModel } from "./ShopModel";
@@ -32,6 +33,10 @@ type ViewerProps = {
   dragAllNodes?: boolean;
   lightweight?: boolean;
   route: RouteHandles | null;
+  /** The pieces the scan found, outlined and linked to the owner's list of them. */
+  found?: FoundHandles | null;
+  /** Pixels to slide the picture right, clear of a panel laid over the canvas's left edge. */
+  frameShift?: number;
   dragging: boolean;
   cutWalls: boolean;
   glbUrl: string | null;
@@ -280,7 +285,7 @@ export default function Viewer(viewerProps: ViewerProps) {
     >
       <color attach="background" args={BG_COLOR_ARGS} />
       <Lights castShadow={!lightweight} />
-      {!wheelchairMode && <CameraRig pose={pose} locked={dragging} bounds={null} zoom={zoomRange(scene)} />}
+      {!wheelchairMode && <CameraRig pose={pose} locked={dragging} bounds={null} zoom={zoomRange(scene)} frameShift={viewerProps.frameShift} />}
       <Wheelchair
         scene={scene}
         wheelchairMode={wheelchairMode}
@@ -300,6 +305,7 @@ export default function Viewer(viewerProps: ViewerProps) {
       <ShopSurfaces {...viewerProps} />
       {selected && <FindingAnnotation finding={selected} />}
       {route && <StopMarkers route={route} />}
+      <FoundOutlines scene={scene} handles={viewerProps.found} />
     </Canvas>
   );
 }
