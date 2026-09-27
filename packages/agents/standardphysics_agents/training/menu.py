@@ -14,8 +14,9 @@ illegally let code own the geometry. So the model here chooses, and code places.
    After Holodeck (Yang et al., CVPR 2024, arXiv:2312.09067), where the language
    model states relations and a solver enforces no-collision and in-bounds.
 2. Mask. Only guesses `reward.constrained` finds nothing wrong with survive:
-   `fix.violations`, and `relocation_violations` for a relocated fixture, the
-   same test that refuses an answer. An illegal move can never be offered.
+   `fix.violations`, `relocation_violations` for a relocated fixture, and the
+   veto of any ADA layout directive for the room's space type, the same test
+   that refuses an answer. An illegal move can never be offered.
    After invalid action masking (Huang & Ontanon, FLAIRS 2022, arXiv:2006.14171).
 3. Measure. The training checker runs on every survivor, and each option is
    labelled with what it clears, what it improves (before -> after inches),
@@ -44,7 +45,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from standardphysics_contracts import Finding, NodeMove, SceneGraph, SceneNode, to_inches, to_meters
 
 from ..evaluation.gate import accepts
-from ..fix import candidates, describe, pinch_from, snap_moves
+from ..fix import CandidateRejection, candidates, pinch_from, snap_moves
 from ..fix.placement import placements
 from ..fix.strategies import Candidate
 from ..fix.surfaces import lower_surface_moves
@@ -109,6 +110,8 @@ class Menu:
     """Each current fixable problem's finding id, and the label the model reads it by."""
     options: list[Option]
     problem_view: list[dict] = field(default_factory=list)
+    veto: CandidateRejection | None = None
+    """The room's directive refusal, which picks and free-form construction are held to as well."""
 
     def option(self, number: int) -> Option | None:
         return next((option for option in self.options if option.number == number), None)
@@ -219,13 +222,13 @@ def _fixture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingCheck
     return found
 
 
-def _legal(room: SceneGraph, edits: TrainingEdits) -> SceneGraph | None:
-    """The room these edits make, or None when any hard constraint breaks."""
+def _legal(room: SceneGraph, edits: TrainingEdits, veto: CandidateRejection | None = None) -> SceneGraph | None:
+    """The room these edits make, or None when any hard constraint breaks or a directive refuses it."""
     try:
-        candidate, broken = constrained(room, edits)
+        legality = constrained(room, edits, veto)
     except ValueError:
         return None
-    return None if broken else candidate
+    return None if legality.refusal else legality.candidate
 
 
 def _effect(room, candidate, checker, before, after, problems: dict[UUID, str], edits: TrainingEdits) -> dict:
@@ -274,6 +277,7 @@ class _Measurer:
     checker: TrainingChecker
     before: object
     labels: dict[UUID, str]
+    veto: CandidateRejection | None = None
     worded: set = field(default_factory=set)
 
     def options(self, guesses: list[_Guess], tries: int) -> list[tuple[_Guess, dict]]:
@@ -281,7 +285,7 @@ class _Measurer:
         for guess in guesses:
             if tries == 0 or len(found) == OPTIONS_PER_PROBLEM:
                 break
-            candidate = None if guess.wording in self.worded else _legal(self.room, guess.edits)
+            candidate = None if guess.wording in self.worded else _legal(self.room, guess.edits, self.veto)
             if candidate is None:
                 continue
             tries -= 1
@@ -305,15 +309,16 @@ def build_menu(room: SceneGraph, checker: TrainingChecker) -> Menu:
     before = checker.assess(room)
     problems = checker.fixable_problems(before)
     labels = {finding.id: f"P{index}" for index, finding in enumerate(problems, start=1)}
-    measurer = _Measurer(room, checker, before, labels)
+    veto = checker.directive_veto(room)
+    measurer = _Measurer(room, checker, before, labels, veto)
     measured = [pair for finding in problems for pair in measurer.for_problem(finding)]
     measured.sort(key=lambda pair: _rank(pair[1]))
     options = [Option(number, guess.wording, guess.edits, effect)
                for number, (guess, effect) in enumerate(measured[:MENU_SIZE], start=1)]
     for option in options:
         option.effect["clashes_with"] = [other.number for other in options if other is not option
-                                         and _why_dropped(room, option.edits, other)]
-    return Menu(problems=labels, options=options, problem_view=_problem_view(room, problems, labels))
+                                         and _why_dropped(room, option.edits, other, veto)]
+    return Menu(problems=labels, options=options, problem_view=_problem_view(room, problems, labels), veto=veto)
 
 
 def menu_messages(room: SceneGraph, checker: TrainingChecker, menu: Menu, last_result: dict | None) -> list[dict]:
@@ -369,16 +374,16 @@ def _touched(edits: TrainingEdits) -> set[UUID]:
     return {move.node_id for move in edits.moves} | {move.node_id for move in edits.fixture_moves}
 
 
-def _why_dropped(room: SceneGraph, applied: TrainingEdits, option: Option | None) -> str | None:
+def _why_dropped(room: SceneGraph, applied: TrainingEdits, option: Option | None,
+                 veto: CandidateRejection | None) -> str | None:
     if option is None:
         return "no such option"
     if _touched(applied) & _touched(option.edits):
         return "moves a piece an earlier pick already moved"
     try:
-        _, broken = constrained(room, _combined(applied, option.edits))
+        return constrained(room, _combined(applied, option.edits), veto).refusal
     except ValueError:
         return "unbuildable construction"
-    return describe(broken[0]) if broken else None
 
 
 def resolve_choice(room: SceneGraph, menu: Menu, choice: MenuChoice) -> Resolution:
@@ -387,7 +392,7 @@ def resolve_choice(room: SceneGraph, menu: Menu, choice: MenuChoice) -> Resoluti
     applied = EMPTY
     for number in choice.choose:
         option = menu.option(number)
-        reason = _why_dropped(room, applied, option)
+        reason = _why_dropped(room, applied, option, menu.veto)
         if reason:
             resolution.dropped.append({"option": number, "reason": reason})
             continue
@@ -397,15 +402,20 @@ def resolve_choice(room: SceneGraph, menu: Menu, choice: MenuChoice) -> Resoluti
     return resolution
 
 
-def _legal_construction(room: SceneGraph, edits: TrainingEdits) -> TrainingEdits:
-    """The answer's construction, or none of it when it is unbuildable or relocates a fixture onto something."""
+def _legal_construction(room: SceneGraph, edits: TrainingEdits, veto: CandidateRejection | None) -> TrainingEdits:
+    """The answer's construction, or none of it when it is unbuildable or `reward.constrained` refuses it."""
     construction = TrainingEdits(wall_shifts=edits.wall_shifts, fixture_moves=edits.fixture_moves)
-    return construction if _legal(room, construction) is not None else EMPTY
+    return construction if _legal(room, construction, veto) is not None else EMPTY
 
 
-def resolve_free_moves(room: SceneGraph, edits: TrainingEdits, pinned=frozenset()) -> Resolution:
-    """A free-form answer with each furniture move snapped to the nearest legal spot (`fix/snap.py`)."""
-    construction = _legal_construction(room, edits)
+def resolve_free_moves(room: SceneGraph, edits: TrainingEdits, pinned=frozenset(),
+                       veto: CandidateRejection | None = None) -> Resolution:
+    """A free-form answer with each furniture move snapped to the nearest legal spot (`fix/snap.py`).
+
+    Snapping keeps furniture off other pieces and on the floor; a snapped move a
+    directive refuses is left for the scorer to refuse.
+    """
+    construction = _legal_construction(room, edits, veto)
     built = build(room, construction.wall_shifts, construction.fixture_moves)
     asked = [move for move in node_moves(edits) if move.node_id not in pinned]
     snapped = snap_moves(built, asked)
@@ -426,5 +436,5 @@ def resolve(reply: str, room: SceneGraph, menu: Menu, pinned=frozenset()) -> Res
         return resolve_choice(room, menu, choice)
     edits = parse_edits(reply)
     if edits is not None:
-        return resolve_free_moves(room, edits, pinned)
+        return resolve_free_moves(room, edits, pinned, menu.veto)
     return Resolution(completion=edits_json(EMPTY), interface="unparseable")

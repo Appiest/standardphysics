@@ -13,10 +13,13 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from standardphysics_contracts import Finding, MeasurementProvider, Scenario, SceneGraph
+from standardphysics_contracts.precedents import SpaceTypology
 from standardphysics_contracts.rules import Tier
 from standardphysics_pipeline import PipelineMeasurements
 
 from ..assess import Pass, assess
+from ..fix.search import CandidateRejection
+from ..precedents import rejection_for_space
 from ..rules import AgentRulePack, VerificationLedger, load_ledger, load_pack
 
 UNSURE_QUALITY = "needs_another_look"
@@ -46,6 +49,8 @@ class TrainingChecker:
     """Pieces the phantom filter holds still; moving one scores zero."""
     owner_layout: SceneGraph | None = None
     """The room as its owner has it, before any scramble, for judging how a layout looks."""
+    space_typology: SpaceTypology | None = None
+    """What kind of space the room is, which picks its ADA layout directives; None applies none."""
 
     def assess(self, graph: SceneGraph) -> Pass:
         return assess(
@@ -56,6 +61,10 @@ class TrainingChecker:
             ledger=self.ledger,
             max_tier=self.max_tier,
         )
+
+    def directive_veto(self, room: SceneGraph) -> CandidateRejection | None:
+        """The refusal the room's ADA layout directives put on a rearrangement of it, or None when none apply."""
+        return rejection_for_space(self.space_typology, room)
 
     def fixable_problems(self, result: Pass) -> list[Finding]:
         """Problems a rearrangement is allowed to address."""

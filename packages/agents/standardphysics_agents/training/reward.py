@@ -2,8 +2,8 @@
 
 Zero for anything the application would refuse: an answer that does not
 parse, edits that move a piece the phantom filter holds still, edits that name
-the wrong furniture, a layout that breaks a hard constraint, or one the gate
-rejects. An accepted partial fix earns at most 0.55; a fix clearing every
+the wrong furniture, a layout that breaks a hard constraint, one an ADA layout
+directive for the room's space type refuses, or one the gate rejects. An accepted partial fix earns at most 0.55; a fix clearing every
 fixable finding earns at least 0.65. Recovery helps rank partial fixes, while
 usability and movement break ties within each tier. This makes a complete fix
 the training objective without paying for rejected layouts. A fix that needs
@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass
 from standardphysics_contracts import SceneGraph
 
 from ..evaluation.gate import accepts
-from ..fix import Violation, apply_moves, describe, relocation_violations, violations
+from ..fix import CandidateRejection, Violation, apply_moves, describe, relocation_violations, violations
 from ..fix.strategies import TURN_DISRUPTION_METERS
 from .checker import TrainingChecker
 from .construction import build, construction_inches
@@ -97,25 +97,44 @@ def score_completion(completion: str, room: SceneGraph, checker: TrainingChecker
     if complaint:
         return Verdict(0.0, parsed=True, reason=complaint)
     try:
-        candidate, broken = constrained(room, edits)
+        legality = constrained(room, edits, checker.directive_veto(room))
     except ValueError:
         return Verdict(0.0, parsed=True, reason="unbuildable_construction")
-    if broken:
-        return Verdict(0.0, parsed=True, reason="; ".join(sorted({describe(item) for item in broken})))
-    return _gated(room, candidate, checker, disruption_meters(node_moves(edits)),
+    if legality.refusal:
+        return Verdict(0.0, parsed=True, hard_constraints_pass=not legality.broken, reason=legality.refusal)
+    return _gated(room, legality.candidate, checker, disruption_meters(node_moves(edits)),
                   construction_inches(edits.wall_shifts, edits.fixture_moves))
 
 
-def constrained(room: SceneGraph, edits: TrainingEdits) -> tuple[SceneGraph, list[Violation]]:
-    """The room the edits make, and every hard constraint it breaks; raises ValueError for unbuildable construction.
+@dataclass(frozen=True)
+class Legality:
+    """The room some edits make, and everything that would make the application refuse it."""
+
+    candidate: SceneGraph
+    broken: list[Violation]
+    vetoed: str | None = None
+    """Why an ADA layout directive refuses the room; asked only once no hard constraint is broken."""
+
+    @property
+    def refusal(self) -> str | None:
+        if self.broken:
+            return "; ".join(sorted({describe(item) for item in self.broken}))
+        return self.vetoed
+
+
+def constrained(room: SceneGraph, edits: TrainingEdits, veto: CandidateRejection | None = None) -> Legality:
+    """The room the edits make, what it breaks and any directive veto; raises ValueError if unbuildable.
 
     This is the one legality test: the scorer refuses what it finds, and the
-    menu of moves offers nothing it finds.
+    menu of moves offers nothing it finds. `veto` is the room's directive
+    refusal (`TrainingChecker.directive_veto`), judged against the room before
+    any edit, so a moved built-in counter counts as moved.
     """
     built = build(room, edits.wall_shifts, edits.fixture_moves)
     candidate = apply_moves(built, node_moves(edits))
     relocated = {move.node_id for move in edits.fixture_moves}
-    return candidate, [*violations(built, candidate), *relocation_violations(room, candidate, relocated)]
+    broken = [*violations(built, candidate), *relocation_violations(room, candidate, relocated)]
+    return Legality(candidate, broken, veto(room, candidate) if veto and not broken else None)
 
 
 def summarize(verdicts: list[Verdict]) -> dict:
