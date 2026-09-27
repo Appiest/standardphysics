@@ -34,6 +34,8 @@ from standardphysics_agents import (
 from standardphysics_agents.ask import Answer, ask
 from standardphysics_agents.fix import FixOutcome, propose_fix
 from standardphysics_agents.loop import loop_steps
+from standardphysics_agents.rules.verification import PREVIEW_REVIEWER as PREVIEW_REVIEWER
+from standardphysics_agents.rules.verification import preview_ledger as preview_ledger
 from standardphysics_contracts import Assessment, Finding, Scenario, SceneGraph, Stop, Vec3
 from standardphysics_pipeline import PipelineMeasurements, blender, parse_room_json, reconstruct
 from standardphysics_pipeline.discovery import DiscoveryError, DiscoveryInputs, DiscoveryResult, discover_objects
@@ -42,8 +44,6 @@ from standardphysics_pipeline.textures import BakeInputs, BakeResult, bake_textu
 from .scope_manifest import build_scope_manifest
 
 log = logging.getLogger(__name__)
-
-PREVIEW_REVIEWER = "unverified preview (development only)"
 
 ROUTE_SUBJECTS = frozenset({"route", "route_leg", "route_turn", "route_dead_end"})
 
@@ -104,13 +104,6 @@ class DiscoveryOutcome:
             example = str(self.failures[0])[:200]
             parts.append(f"{len(self.failures)} frame(s) unread, e.g. {example}")
         return "discovery: " + ", ".join(parts)
-
-
-def preview_ledger() -> VerificationLedger:
-    ledger = VerificationLedger()
-    for rule in load_pack().rules:
-        ledger = ledger.record(rule, verified_by=PREVIEW_REVIEWER)
-    return ledger
 
 
 def configured_router() -> TypeSafeRouter | LocalPolicyRouter:

@@ -15,7 +15,7 @@ from standardphysics_agents import (
     load_ledger,
     load_pack,
 )
-from standardphysics_agents.rules.verification import PREVIEW_REVIEWER
+from standardphysics_agents.rules.verification import PREVIEW_REVIEWER, preview_ledger
 
 
 def _book(pack):
@@ -104,3 +104,10 @@ class TestNoInventedTelevisionRule:
             text = " ".join([rule.id, rule.title, rule.source_text]).casefold()
             assert "television" not in text
             assert "tv " not in text
+
+
+def test_the_preview_ledger_enables_every_rule_without_naming_a_reviewer(pack):
+    book = preview_ledger()
+    assert {entry.rule_id for entry in book.entries} == {rule.id for rule in pack.rules}
+    assert all(entry.is_preview for entry in book.entries)
+    assert book.reviewers() == [PREVIEW_REVIEWER]
