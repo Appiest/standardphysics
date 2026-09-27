@@ -136,6 +136,18 @@ def _floor_heading(outline: Polygon) -> float:
     return math.atan2(end[1] - start[1], end[0] - start[0])
 
 
+def room_heading(graph: SceneGraph) -> float | None:
+    """The room's own x axis, in radians: the same frame `interior_polygon` trims floor to.
+
+    Anything judging whether a piece stands square to the room, rather than to
+    the world, reads its heading from here instead of rederiving it from the
+    walls or the floor outline itself.
+    """
+    floor = next((node for node in graph.nodes if lies_flat(node)), None)
+    outline = floor_polygon(floor) if floor else []
+    return _floor_heading(outline) if len(outline) >= 3 else None
+
+
 def _turned(points, radians: float) -> Polygon:
     cos_t, sin_t = math.cos(radians), math.sin(radians)
     return [(x * cos_t - y * sin_t, x * sin_t + y * cos_t) for x, y in points]

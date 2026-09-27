@@ -15,6 +15,7 @@ from .constraints import (
     is_allowed,
     on_a_surface,
     relocation_violations,
+    room_heading,
     violations,
 )
 from .moves import apply_moves, move_node, unlocked, without
@@ -48,7 +49,7 @@ __all__ = [
     "CANDIDATE_LIMIT", "Candidate", "CandidateRejection", "FixOutcome", "Pinch", "Relaxation",
     "Violation", "apply_moves", "candidates", "collision_shape", "combine_rejections",
     "describe", "door_keep_clear", "interior_polygon", "is_allowed", "move_node", "on_a_surface",
-    "pinch_from", "proposal_id", "propose_fix", "relocation_violations", "Snapped", "snap_moves",
+    "pinch_from", "proposal_id", "propose_fix", "relocation_violations", "room_heading", "Snapped", "snap_moves",
     "unlocked", "violations",
     "without",
     "ApproachResult", "ReachRecord", "evaluate_approach", "suggestion_stop",

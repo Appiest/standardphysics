@@ -8,10 +8,13 @@ import pytest
 from standardphysics_agents.fix import relocation_violations, violations
 from standardphysics_agents.training import TrainingChecker, score_completion
 from standardphysics_agents.training.construction import build
-from standardphysics_agents.training.edits import apply_edits, parse_edits
+from standardphysics_agents.training.edits import TrainingEdits, apply_edits, parse_edits
 from standardphysics_agents.training.menu import (
     MENU_SYSTEM_PROMPT,
     MenuChoice,
+    _drop_covered_diagonals,
+    _Guess,
+    _square_to_room,
     build_menu,
     menu_messages,
     parse_choice,
@@ -157,3 +160,42 @@ def test_a_shuffled_menu_with_wishes_hidden_offers_the_same_moves_without_the_hi
     assert not any("breaks_wishes" in option.effect for option in blind.options)
     assert blind.wish_view == []
     assert [o.number for o in blind.options] == list(range(1, len(blind.options) + 1))
+
+
+def test_every_option_says_whether_it_ends_square(menu):
+    assert menu.options
+    for option in menu.options:
+        assert isinstance(option.effect["ends_square"], bool)
+
+
+ROOM_HEADING_DEGREES = 20.0
+
+
+@pytest.mark.parametrize("heading_degrees", [0, 90, 180, 30, 45])
+def test_world_aligned_headings_are_diagonal_in_a_room_turned_20_degrees(heading_degrees):
+    assert not _square_to_room(heading_degrees, ROOM_HEADING_DEGREES)
+
+
+@pytest.mark.parametrize("heading_degrees", [20, 110, 200, -70])
+def test_headings_square_to_a_turned_room_read_as_square(heading_degrees):
+    assert _square_to_room(heading_degrees, ROOM_HEADING_DEGREES)
+
+
+def _measured(clears: list[str], ends_square: bool) -> tuple:
+    guess = _Guess(edits=TrainingEdits(), wording=f"wording {clears} {ends_square}")
+    effect = {"clears": clears, "ends_square": ends_square, "fixable_left": 0, "construction_inches": 0.0,
+              "usable": 1.0, "inches_moved": 0.0}
+    return guess, effect
+
+
+def test_a_diagonal_option_is_dropped_when_a_square_option_clears_the_same_problem():
+    square = _measured(["P1"], True)
+    diagonal = _measured(["P1"], False)
+    assert _drop_covered_diagonals([square, diagonal]) == [square]
+
+
+def test_a_diagonal_option_stays_when_it_alone_clears_a_problem():
+    square_elsewhere = _measured(["P2"], True)
+    only_diagonal = _measured(["P1"], False)
+    kept = _drop_covered_diagonals([square_elsewhere, only_diagonal])
+    assert kept == [square_elsewhere, only_diagonal]
