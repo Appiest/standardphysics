@@ -56,7 +56,9 @@ STALLED_AFTER_SECONDS = 120.0
 LONGEST_RETRY_SECONDS between retries, so an idle loop that has not beaten for
 this long is stuck somewhere. A loop running a job is never called stalled,
 because a photo bake takes up to fifteen minutes and the loop beats only when
-it ends."""
+it ends. A job that runs past its kind's deadline is reported overdue instead."""
+PROBLEM_STATES = ("stopped", "stalled", "overdue")
+"""Loop states that mean jobs are not getting done, worst first."""
 LOOP_NAMES = {False: "jobs", True: "textures"}
 MAX_CLAIMS_BEFORE_START = 3
 """How many times a job may be claimed and put back because of an error before it ran."""
@@ -128,7 +130,7 @@ class LoopPulse:
         if not self.thread.is_alive():
             return "stopped"
         if self.job is not None:
-            return "busy"
+            return "overdue" if self.job.overdue(now) else "busy"
         if self.beat_at is None or now - self.beat_at > STALLED_AFTER_SECONDS:
             return "stalled"
         return "idle"
@@ -229,11 +231,21 @@ class Worker:
             "loops": {LOOP_NAMES[texture_only]: pulse.report(now) for texture_only, pulse in self.pulses.items()},
         }
 
-    def summary(self) -> str:
-        """One word for /health. Only "stopped" is unhealthy: a loop that should be running has died."""
+    def problems(self) -> list[str]:
+        """Each loop that has died, is stuck outside any job, or is running a job past its deadline."""
+        if self._stop.is_set():
+            return []
         now = time.monotonic()
-        if not self._stop.is_set() and any(pulse.state(now) == "stopped" for pulse in self.pulses.values()):
-            return "stopped"
+        states = {LOOP_NAMES[texture_only]: pulse.state(now) for texture_only, pulse in self.pulses.items()}
+        return [f"the {name} loop is {state}" for name, state in states.items() if state in PROBLEM_STATES]
+
+    def summary(self) -> str:
+        """One word for /health: the worst loop problem first, otherwise whether this process holds the queue."""
+        now = time.monotonic()
+        states = set() if self._stop.is_set() else {pulse.state(now) for pulse in self.pulses.values()}
+        worst = next((state for state in PROBLEM_STATES if state in states), None)
+        if worst is not None:
+            return worst
         if self.lock.held:
             return "running"
         return "standby" if self._standby else "not_started"

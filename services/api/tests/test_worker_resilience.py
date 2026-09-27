@@ -46,6 +46,12 @@ def _fast_retries(monkeypatch) -> None:
     monkeypatch.setattr(worker_module, "LONGEST_RETRY_SECONDS", 0.05)
 
 
+def _quick_stall_detection(monkeypatch) -> None:
+    """A loop is called stalled after 0.25 s without a beat, and an idle one beats every 0.02 s."""
+    monkeypatch.setattr(worker_module, "STALLED_AFTER_SECONDS", 0.25)
+    monkeypatch.setattr(worker_module, "IDLE_WAIT_SECONDS", 0.02)
+
+
 def test_the_loop_survives_a_locked_database_and_keeps_claiming(make_client, monkeypatch, caplog):
     _fast_retries(monkeypatch)
     real_claim = repo.claim_job
@@ -112,7 +118,7 @@ def test_details_report_an_idle_worker_and_the_oldest_queued_job(make_client):
 
 def test_a_long_job_looks_busy_not_dead(make_client, monkeypatch):
     release = threading.Event()
-    monkeypatch.setattr(worker_module, "STALLED_AFTER_SECONDS", 0.1)
+    _quick_stall_detection(monkeypatch)
     monkeypatch.setattr(worker_module, "run_texture", lambda *args: release.wait(timeout=20))
     with make_client() as client:
         scan_id = create_scan(client)
@@ -126,8 +132,72 @@ def test_a_long_job_looks_busy_not_dead(make_client, monkeypatch):
             assert textures()["state"] == "busy"
             assert textures()["job"]["kind"] == TEXTURE
             assert client.get("/health").status_code == 200
+            assert client.get("/health/ready").status_code == 200
         finally:
             release.set()
+            worker.stop()
+
+
+def test_a_job_past_its_deadline_degrades_readiness_but_not_liveness(make_client, monkeypatch):
+    release = threading.Event()
+    monkeypatch.setattr(worker_module, "run_texture", lambda *args: release.wait(timeout=20))
+    with make_client(bake_timeout_seconds=0.2) as client:
+        scan_id = create_scan(client)
+        _queue(client, scan_id, TEXTURE)
+        worker = client.app.state.worker
+        worker.start()
+        try:
+            details = lambda: client.get("/health/details").json()  # noqa: E731
+            assert _wait_for(lambda: details()["worker"]["loops"]["textures"]["state"] == "overdue")
+            assert details()["status"] == "degraded"
+            assert details()["problems"] == ["the textures loop is overdue"]
+            ready = client.get("/health/ready")
+            assert ready.status_code == 503
+            assert ready.json()["problems"] == ["the textures loop is overdue"]
+            live = client.get("/health")
+            assert live.status_code == 200
+            assert live.json()["worker"] == "overdue"
+        finally:
+            release.set()
+            worker.stop()
+
+
+def test_a_loop_stuck_outside_any_job_is_reported_stalled(make_client, monkeypatch):
+    stuck = threading.Event()
+    release = threading.Event()
+
+    def hang(self):
+        stuck.set()
+        release.wait(timeout=20)
+
+    _quick_stall_detection(monkeypatch)
+    monkeypatch.setattr(Worker, "_sweep_due_settled", hang)
+    with make_client() as client:
+        worker = client.app.state.worker
+        worker.start()
+        try:
+            assert stuck.wait(timeout=10)
+            assert _wait_for(lambda: worker.summary() == "stalled")
+            assert client.get("/health").status_code == 200
+            ready = client.get("/health/ready")
+            assert ready.status_code == 503
+            assert ready.json() == {"status": "degraded", "problems": ["the jobs loop is stalled"]}
+        finally:
+            release.set()
+            worker.stop()
+
+
+def test_an_idle_worker_is_ready(make_client):
+    with make_client() as client:
+        worker = client.app.state.worker
+        worker.start()
+        try:
+            assert _wait_for(lambda: client.get("/health/details").json()["worker"]["loops"]["jobs"]["state"] == "idle")
+            ready = client.get("/health/ready")
+            assert ready.status_code == 200
+            assert ready.json() == {"status": "ready", "problems": []}
+            assert client.get("/health/details").json()["status"] == "ok"
+        finally:
             worker.stop()
 
 
