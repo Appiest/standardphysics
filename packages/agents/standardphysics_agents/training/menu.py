@@ -8,9 +8,14 @@ illegally let code own the geometry. So the model here chooses, and code places.
 
 1. Generate. For each fixable problem, the solver's own guesses: the slide
    ladder of `fix/strategies.py` and the placement beam of `fix/placement.py`,
-   slides that set a too-high item down on a lower surface (`fix/surfaces.py`),
-   plus short slides of a built-in fixture the problem names. Each is worded as
-   a relation ("slide Chair [3f2a] 14 in away from the Cafe table, for P1").
+   and slides that set a too-high item down on a lower surface
+   (`fix/surfaces.py`). When none of those clears the problem, three more
+   families get their own tries: every piece inside a turning circle pushed
+   out at once (`fix/clearing.py`), a table carried together with its seats
+   (`fix/groups.py`), and short nudges of each named piece along its own sides
+   (`fix/nudges.py`). Last come short slides of a built-in fixture the problem
+   names. Each is worded as a relation ("slide Chair [3f2a] 14 in away from the
+   Cafe table, for P1").
    After Holodeck (Yang et al., CVPR 2024, arXiv:2312.09067), where the language
    model states relations and a solver enforces no-collision and in-bounds.
 2. Mask. Only guesses `reward.constrained` finds nothing wrong with survive:
@@ -47,6 +52,9 @@ from standardphysics_contracts import Finding, NodeMove, SceneGraph, SceneNode, 
 
 from ..evaluation.gate import accepts
 from ..fix import CandidateRejection, candidates, combine_rejections, pinch_from, snap_moves
+from ..fix.clearing import circle_clearing_moves
+from ..fix.groups import group_moves
+from ..fix.nudges import nudge_moves
 from ..fix.placement import placements
 from ..fix.strategies import Candidate
 from ..fix.surfaces import lower_surface_moves
@@ -56,6 +64,7 @@ from .construction import MAX_FIXTURE_MOVE_INCHES, FixtureMove, build, construct
 from .edits import TrainingEdits, _json_text, edits_json, node_moves, parse_edits
 from .owner import WishBook
 from .prompt import room_view
+from .quality import seat_table_pairs
 from .reward import constrained
 from .usability import usability
 from .wishes import Wish, infer_wishes, kept
@@ -66,11 +75,13 @@ FIXTURE_STEPS_INCHES = (6.0, 12.0, MAX_FIXTURE_MOVE_INCHES)
 FIXTURE_DIRECTIONS = tuple((math.cos(math.radians(angle)), math.sin(math.radians(angle)))
                            for angle in range(0, 360, 45))
 FURNITURE_TRIES = 12
+CLEARING_TRIES = 18
 FIXTURE_TRIES = 6
 """Legal guesses measured per problem; each costs one full checker pass.
 
-Fixture slides are construction, so they are only measured for a problem no
-furniture option clears.
+The clearing families and then fixture slides are only measured for a problem
+no earlier option clears, and fixture slides are construction, so they come
+last.
 """
 OPTIONS_PER_PROBLEM = 4
 MENU_SIZE = 12
@@ -212,6 +223,41 @@ def _furniture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChe
     return _varied([guess for _, guess in found if not _touched(guess.edits) & set(checker.pinned)])
 
 
+def _groups(graph: SceneGraph) -> list[frozenset]:
+    """Each table with the seats standing at it, as the room's layout shows them."""
+    by_table: dict = {}
+    for seat, table in seat_table_pairs(graph):
+        by_table.setdefault(table, {table}).add(seat)
+    return [frozenset(members) for members in by_table.values()]
+
+
+def _set_words(graph: SceneGraph, candidate: Candidate, finding: Finding) -> str:
+    table = max((graph.by_id(move.node_id) for move in candidate.moves),
+                key=lambda node: node.dimensions.x * node.dimensions.y)
+    delta = candidate.moves[0].delta_translation
+    seats = len(candidate.moves) - 1
+    return f"{_slide_words(graph, table, finding, delta.x, delta.y, 'slide')} with its {seats} seat{'s' * (seats > 1)}"
+
+
+def _clearing_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:
+    """A turning circle emptied at once, a table moved with its seats, and short nudges, taken in turn."""
+    pinned = frozenset(checker.pinned)
+
+    def worded(candidate: Candidate, words: str) -> _Guess:
+        return _Guess(TrainingEdits(moves=[_furniture(move) for move in candidate.moves]), f"{words}, for {label}")
+
+    def slides(candidate: Candidate) -> str:
+        return "; ".join(_move_words(graph, move, finding) for move in candidate.moves)
+
+    families = [
+        [worded(found, slides(found)) for found in circle_clearing_moves(graph, finding, pinned)],
+        _varied([worded(found, _set_words(graph, found, finding))
+                 for found in group_moves(graph, finding, _groups(graph), pinned)]),
+        _varied([worded(found, slides(found)) for found in nudge_moves(graph, finding, pinned)]),
+    ]
+    return [guess for guess in chain.from_iterable(zip_longest(*families)) if guess is not None]
+
+
 def _varied(guesses: list[_Guess]) -> list[_Guess]:
     """The least disruptive guess for each set of pieces first, then the next of each, and so on.
 
@@ -243,6 +289,11 @@ def _fixture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingCheck
                                      "move built-in")
                 found.append(_Guess(TrainingEdits(fixture_moves=[move]), f"{words} (construction), for {label}"))
     return found
+
+
+TIERS = ((_furniture_guesses, FURNITURE_TRIES), (_clearing_guesses, CLEARING_TRIES),
+         (_fixture_guesses, FIXTURE_TRIES))
+"""Guess families in the order they are measured, each with its own tries."""
 
 
 def _legal(room: SceneGraph, edits: TrainingEdits, veto: CandidateRejection | None = None) -> SceneGraph | None:
@@ -282,6 +333,10 @@ def _inches(finding: Finding) -> float | None:
 def _rank(effect: dict) -> tuple:
     return (-len(effect["clears"]), effect["fixable_left"], len(effect.get("breaks_wishes", [])),
             effect["construction_inches"], -effect["usable"], effect["inches_moved"])
+
+
+def _clears(found: list, label: str) -> bool:
+    return any(label in effect["clears"] for _, effect in found)
 
 
 def _ordered(measured: list, view: MenuView) -> list:
@@ -326,28 +381,44 @@ class _Measurer:
     def breaks(self, candidate: SceneGraph) -> list[str]:
         return [label for label, wish in self.wishes if not kept(wish, self.room, candidate, self.checker.measure)]
 
-    def options(self, guesses: list[_Guess], tries: int) -> list[tuple[_Guess, dict]]:
+    def measured(self, guess: _Guess, candidate: SceneGraph) -> dict | None:
+        """What the guess does to the room, or None when the gate refuses it."""
+        after = self.checker.assess(candidate)
+        if not accepts(self.before, after):
+            return None
+        self.worded.add(guess.wording)
+        effect = _effect(self.room, candidate, self.checker, self.before, after, self.labels, guess.edits)
+        return {**effect, "breaks_wishes": self.breaks(candidate)} if self.wishes else effect
+
+    def options(self, guesses: list[_Guess], tries: int, label: str) -> list[tuple[_Guess, dict]]:
+        """Up to `tries` legal guesses measured, the best few of them kept.
+
+        Measuring stops early once enough options are found and one of them
+        clears the problem. Until then it goes on, so a family whose first few
+        guesses only improve the problem still gets to try its larger moves.
+        """
         found: list[tuple[_Guess, dict]] = []
         for guess in guesses:
-            if tries == 0 or len(found) == OPTIONS_PER_PROBLEM:
+            if tries == 0 or (len(found) >= OPTIONS_PER_PROBLEM and _clears(found, label)):
                 break
             candidate = None if guess.wording in self.worded else _legal(self.room, guess.edits, self.veto)
             if candidate is None:
                 continue
             tries -= 1
-            after = self.checker.assess(candidate)
-            if accepts(self.before, after):
-                self.worded.add(guess.wording)
-                effect = _effect(self.room, candidate, self.checker, self.before, after, self.labels, guess.edits)
-                found.append((guess, {**effect, "breaks_wishes": self.breaks(candidate)} if self.wishes else effect))
-        return found
+            effect = self.measured(guess, candidate)
+            if effect is not None:
+                found.append((guess, effect))
+        return sorted(found, key=lambda pair: _rank(pair[1]))[:OPTIONS_PER_PROBLEM]
 
     def for_problem(self, finding: Finding) -> list[tuple[_Guess, dict]]:
+        """Each tier of guesses in turn, stopping at the first tier that offers an option clearing the problem."""
         label = self.labels[finding.id]
-        found = self.options(_furniture_guesses(self.room, finding, self.checker, label), FURNITURE_TRIES)
-        if any(label in effect["clears"] for _, effect in found):
-            return found
-        return [*found, *self.options(_fixture_guesses(self.room, finding, self.checker, label), FIXTURE_TRIES)]
+        found: list[tuple[_Guess, dict]] = []
+        for guesses, tries in TIERS:
+            found.extend(self.options(guesses(self.room, finding, self.checker, label), tries, label))
+            if _clears(found, label):
+                break
+        return found
 
 
 def build_menu(room: SceneGraph, checker: TrainingChecker, stated: WishBook | None = None,
