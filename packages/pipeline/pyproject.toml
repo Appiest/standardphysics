@@ -13,10 +13,11 @@ dependencies = [
   "scipy>=1.11",
   "pydantic>=2.7",
   "Pillow>=10.0",
+  "fast-simplification>=0.2.0",
 ]
 
 [project.optional-dependencies]
-reconstruction = ["numba>=0.61", "opencv-python-headless>=4.10", "trimesh>=4.5", "fast-simplification>=0.1"]
+reconstruction = ["numba>=0.61", "opencv-python-headless>=4.10", "trimesh>=4.5"]
 # The DeepFusion splat model. Heavy, and nothing in the API path imports it,
 # so it stays out of the default install and its tests skip without it.
 splats = ["torch>=2.2"]

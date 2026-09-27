@@ -293,13 +293,33 @@ def _inside_box(
     grow_x: float = 0.0,
     grow_y: float = 0.0,
 ) -> np.ndarray:
+    """Cells whose centre lies in the node's oriented box, grown by (grow_x, grow_y).
+
+    Only the cells under the box's axis-aligned extent are tested. A floor the
+    size of a library is over a million cells, and testing each of a hundred and
+    seventy boxes against all of them took seconds on every page that asked.
+    """
     p = node.transform.position
     cos_t, sin_t = _rotation_2d(node)
-    dx, dy = world_x - p.x, world_y - p.y
-    local_x = dx * cos_t + dy * sin_t
-    local_y = -dx * sin_t + dy * cos_t
-    return (np.abs(local_x) <= node.dimensions.x / 2 + grow_x) & (
-        np.abs(local_y) <= node.dimensions.y / 2 + grow_y
+    half_x, half_y = node.dimensions.x / 2 + grow_x, node.dimensions.y / 2 + grow_y
+    rows, cols = _window(
+        world_x, world_y, p.x, p.y,
+        abs(cos_t) * half_x + abs(sin_t) * half_y, abs(sin_t) * half_x + abs(cos_t) * half_y,
+    )
+    dx, dy = world_x[rows, cols] - p.x, world_y[rows, cols] - p.y
+    inside = np.zeros(world_x.shape, dtype=bool)
+    inside[rows, cols] = (np.abs(dx * cos_t + dy * sin_t) <= half_x) & (np.abs(-dx * sin_t + dy * cos_t) <= half_y)
+    return inside
+
+
+def _window(
+    world_x: np.ndarray, world_y: np.ndarray, x: float, y: float, reach_x: float, reach_y: float
+) -> tuple[slice, slice]:
+    """The rows and columns of a regular grid of cell centres within reach of (x, y)."""
+    columns, rows = world_x[0], world_y[:, 0]
+    return (
+        slice(np.searchsorted(rows, y - reach_y, "left"), np.searchsorted(rows, y + reach_y, "right")),
+        slice(np.searchsorted(columns, x - reach_x, "left"), np.searchsorted(columns, x + reach_x, "right")),
     )
 
 

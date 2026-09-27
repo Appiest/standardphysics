@@ -323,14 +323,16 @@ def test_deleting_room_cleans_queued_simulation(make_client):
         drain(client)
 
 
-def test_deletion_waits_for_running_jobs(make_client):
+def test_deletion_during_a_running_job_hides_the_shop_and_keeps_its_rows_for_the_worker(make_client):
     with make_client(seed=True) as client:
         scan_id = shop(client)
         client.post(f'/api/scans/{scan_id}/simulations', json={'base_revision': 0, 'samples': 1})
         with client.app.state.database.transaction() as connection:
             connection.execute("UPDATE jobs SET state='running' WHERE scan_id=? AND kind='simulate'", (scan_id,))
-        assert client.delete(f'/api/scans/{scan_id}').status_code == 409
-        assert client.get(f'/api/scans/{scan_id}').status_code == 200
+        assert client.delete(f'/api/scans/{scan_id}').status_code == 204
+        assert client.get(f'/api/scans/{scan_id}').status_code == 404
+        with client.app.state.database.connect() as connection:
+            assert connection.execute("SELECT 1 FROM scans WHERE id=?", (scan_id,)).fetchone() is not None
 
 
 def test_auto_deep_campaign_waits_for_route_and_is_idempotent(

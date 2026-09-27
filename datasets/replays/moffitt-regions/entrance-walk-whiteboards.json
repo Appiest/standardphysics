@@ -1,0 +1,357 @@
+[
+ {
+  "id": "2b4514e0-2a3f-5cb3-8dc7-e8213e84c25d",
+  "kind": "whiteboard",
+  "label": "Whiteboard",
+  "raw_category": "whiteboard",
+  "dimensions": {
+   "x": 3.0,
+   "y": 0.02,
+   "z": 2.0
+  },
+  "transform": {
+   "m": [
+    -0.928673,
+    -0.370899,
+    0.0,
+    8.833011,
+    0.370899,
+    -0.928673,
+    0.0,
+    5.433157,
+    0.0,
+    -0.0,
+    1.0,
+    0.012407,
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "quality": "needs_another_look",
+  "movable": false,
+  "labeled_by": "roomplan",
+  "parent_id": "e9c06081-05dd-4f06-b7fa-fa86cf952e2a",
+  "relation": "attached_to",
+  "attachment": {
+   "support_node_id": "e9c06081-05dd-4f06-b7fa-fa86cf952e2a",
+   "support_type": "lidar_surface",
+   "local_anchor": null,
+   "normal": {
+    "x": -0.3708990898412502,
+    "y": -0.9286731745640832,
+    "z": -0.0
+   },
+   "observed_region": [],
+   "sockets": [],
+   "observations": [
+    {
+     "frame_id": "frame-0512",
+     "sensor_box": [
+      264.96000000000004,
+      4.320000000000004,
+      1244.16,
+      679.68
+     ],
+     "confidence": 0.98,
+     "image_url": null,
+     "provenance": "automatic",
+     "marked_by": null,
+     "marked_at": null,
+     "note": null
+    }
+   ],
+   "identity_confidence": 0.98,
+   "localization_quality": "verified_support",
+   "review_status": "detected",
+   "uncertainty_reasons": [
+    "extent is an estimate from the wall-plane span of the observed region, not a physical device size; never read as a measured whiteboard"
+   ]
+  }
+ },
+ {
+  "id": "4ee927c5-a60d-5745-8b29-3e9866cb0d21",
+  "kind": "whiteboard",
+  "label": "Whiteboard",
+  "raw_category": "whiteboard",
+  "dimensions": {
+   "x": 3.0,
+   "y": 0.02,
+   "z": 1.951
+  },
+  "transform": {
+   "m": [
+    0.39107,
+    -0.920361,
+    0.0,
+    13.921548,
+    0.920361,
+    0.39107,
+    0.0,
+    -1.07327,
+    -0.0,
+    0.0,
+    1.0,
+    0.111004,
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "quality": "needs_another_look",
+  "movable": false,
+  "labeled_by": "roomplan",
+  "parent_id": "37de3dde-3809-4aa0-b21e-6f71e46f5587",
+  "relation": "attached_to",
+  "attachment": {
+   "support_node_id": "37de3dde-3809-4aa0-b21e-6f71e46f5587",
+   "support_type": "lidar_surface",
+   "local_anchor": null,
+   "normal": {
+    "x": -0.9203611154173839,
+    "y": 0.39106958105645195,
+    "z": 0.0
+   },
+   "observed_region": [],
+   "sockets": [],
+   "observations": [
+    {
+     "frame_id": "frame-0298",
+     "sensor_box": [
+      161.28,
+      537.12,
+      946.56,
+      766.08
+     ],
+     "confidence": 0.97,
+     "image_url": null,
+     "provenance": "automatic",
+     "marked_by": null,
+     "marked_at": null,
+     "note": null
+    }
+   ],
+   "identity_confidence": 0.97,
+   "localization_quality": "verified_support",
+   "review_status": "detected",
+   "uncertainty_reasons": [
+    "extent is an estimate from the wall-plane span of the observed region, not a physical device size; never read as a measured whiteboard"
+   ]
+  }
+ },
+ {
+  "id": "d5c21e38-3246-5f73-88fb-a3cbc79a5dcc",
+  "kind": "whiteboard",
+  "label": "Whiteboard",
+  "raw_category": "whiteboard",
+  "dimensions": {
+   "x": 3.0,
+   "y": 0.02,
+   "z": 2.0
+  },
+  "transform": {
+   "m": [
+    0.920361,
+    0.39107,
+    0.0,
+    8.618819,
+    -0.39107,
+    0.920361,
+    0.0,
+    -4.129855,
+    0.0,
+    -0.0,
+    1.0,
+    1.57043,
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "quality": "needs_another_look",
+  "movable": false,
+  "labeled_by": "roomplan",
+  "parent_id": "cbac681d-7d33-493d-b299-49fe8c72f183",
+  "relation": "attached_to",
+  "attachment": {
+   "support_node_id": "cbac681d-7d33-493d-b299-49fe8c72f183",
+   "support_type": "lidar_surface",
+   "local_anchor": null,
+   "normal": {
+    "x": 0.39106958360073396,
+    "y": 0.920361114336296,
+    "z": -0.0
+   },
+   "observed_region": [],
+   "sockets": [],
+   "observations": [
+    {
+     "frame_id": "frame-0674",
+     "sensor_box": [
+      0.0,
+      410.40000000000003,
+      1148.1599999999999,
+      721.44
+     ],
+     "confidence": 0.95,
+     "image_url": null,
+     "provenance": "automatic",
+     "marked_by": null,
+     "marked_at": null,
+     "note": null
+    }
+   ],
+   "identity_confidence": 0.95,
+   "localization_quality": "verified_support",
+   "review_status": "detected",
+   "uncertainty_reasons": [
+    "extent is an estimate from the wall-plane span of the observed region, not a physical device size; never read as a measured whiteboard"
+   ]
+  }
+ },
+ {
+  "id": "0fe1cc19-094d-5598-9b73-6148778f6ecb",
+  "kind": "whiteboard",
+  "label": "Whiteboard",
+  "raw_category": "whiteboard",
+  "dimensions": {
+   "x": 3.0,
+   "y": 0.02,
+   "z": 2.0
+  },
+  "transform": {
+   "m": [
+    -0.39107,
+    0.920361,
+    0.0,
+    8.883673,
+    -0.920361,
+    -0.39107,
+    0.0,
+    -4.191448,
+    0.0,
+    -0.0,
+    1.0,
+    1.568062,
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "quality": "needs_another_look",
+  "movable": false,
+  "labeled_by": "roomplan",
+  "parent_id": "d27f27ee-8806-4e4d-a366-d9de706eab54",
+  "relation": "attached_to",
+  "attachment": {
+   "support_node_id": "d27f27ee-8806-4e4d-a366-d9de706eab54",
+   "support_type": "lidar_surface",
+   "local_anchor": null,
+   "normal": {
+    "x": 0.9203608679784403,
+    "y": -0.39107016339011585,
+    "z": -0.0
+   },
+   "observed_region": [],
+   "sockets": [],
+   "observations": [
+    {
+     "frame_id": "frame-0674",
+     "sensor_box": [
+      0.0,
+      410.40000000000003,
+      1148.1599999999999,
+      721.44
+     ],
+     "confidence": 0.95,
+     "image_url": null,
+     "provenance": "automatic",
+     "marked_by": null,
+     "marked_at": null,
+     "note": null
+    }
+   ],
+   "identity_confidence": 0.95,
+   "localization_quality": "verified_support",
+   "review_status": "detected",
+   "uncertainty_reasons": [
+    "extent is an estimate from the wall-plane span of the observed region, not a physical device size; never read as a measured whiteboard"
+   ]
+  }
+ },
+ {
+  "id": "f6122bfb-ca4f-53f0-9de5-7b2fcf5832c6",
+  "kind": "whiteboard",
+  "label": "Whiteboard",
+  "raw_category": "whiteboard",
+  "dimensions": {
+   "x": 1.737,
+   "y": 0.02,
+   "z": 1.783
+  },
+  "transform": {
+   "m": [
+    0.920361,
+    0.39107,
+    0.0,
+    17.064273,
+    -0.39107,
+    0.920361,
+    0.0,
+    -6.193014,
+    0.0,
+    0.0,
+    1.0,
+    1.56401,
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  "quality": "needs_another_look",
+  "movable": false,
+  "labeled_by": "roomplan",
+  "parent_id": "5fab4de3-7429-49b3-9bdc-29096eac00c4",
+  "relation": "attached_to",
+  "attachment": {
+   "support_node_id": "5fab4de3-7429-49b3-9bdc-29096eac00c4",
+   "support_type": "lidar_surface",
+   "local_anchor": null,
+   "normal": {
+    "x": 0.3910697089539377,
+    "y": 0.9203610610726001,
+    "z": 0.0
+   },
+   "observed_region": [],
+   "sockets": [],
+   "observations": [
+    {
+     "frame_id": "frame-0697",
+     "sensor_box": [
+      0.0,
+      610.5600000000001,
+      808.3199999999999,
+      1440.0
+     ],
+     "confidence": 0.98,
+     "image_url": null,
+     "provenance": "automatic",
+     "marked_by": null,
+     "marked_at": null,
+     "note": null
+    }
+   ],
+   "identity_confidence": 0.98,
+   "localization_quality": "verified_support",
+   "review_status": "detected",
+   "uncertainty_reasons": [
+    "extent is an estimate from the wall-plane span of the observed region, not a physical device size; never read as a measured whiteboard"
+   ]
+  }
+ }
+]

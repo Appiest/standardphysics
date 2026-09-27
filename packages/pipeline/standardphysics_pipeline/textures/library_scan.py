@@ -29,10 +29,10 @@ from scipy.spatial import KDTree
 from standardphysics_contracts import Mat4
 
 from .camera import PhotoCamera, load_cameras
+from .project import evenly_spread
 from .scan_colour import (
     MAX_PHOTOS,
     ColouredScan,
-    _evenly_spread,
     _photo,
     colour_the_scan,
     scan_geometry,
@@ -42,6 +42,12 @@ from .scan_colour import (
 
 MAX_FLOOR_TRIANGLES = 850_000
 """What the merged floor is decimated to before it is written, so the viewer can load it."""
+JOINED_FLOOR_TRIANGLES = 1_100_000
+"""Enough for four walks already thinned to 260,000 each, so joining them never thins them again.
+
+A second thinning moves the corners of faces whose texels were baked where the
+corners were, and the photographs slide across the surface.
+"""
 
 
 @dataclass(frozen=True)
@@ -116,7 +122,7 @@ def _cameras_for(room: RoomCapture) -> list[PhotoCamera]:
     ]
     if not cameras:
         raise ValueError(f"{room.name}: no stored photo has a usable camera pose")
-    return _evenly_spread(cameras, room.max_photos)
+    return evenly_spread(cameras, room.max_photos)
 
 
 def painted_room(room: RoomCapture) -> tuple[ColouredScan, int]:
@@ -127,6 +133,30 @@ def painted_room(room: RoomCapture) -> tuple[ColouredScan, int]:
     resized = [camera.resized(*image.shape[1::-1]) for camera, image in zip(cameras, images)]
     scan = unused_vertices_removed(colour_the_scan(vertices, triangles, resized, images))
     return moved_to_floor(unobserved_filled_from_nearest(scan), room.to_floor), len(cameras)
+
+
+def painted_scans_joined(
+    scans: Sequence[tuple[pathlib.Path, np.ndarray]],
+    out_path: pathlib.Path,
+    max_triangles: int = JOINED_FLOOR_TRIANGLES,
+) -> pathlib.Path:
+    """Rooms already painted one by one, each moved by its 4x4 `to_floor` and written as one glTF.
+
+    Painting a floor in one pass spreads one photo budget over every room, so each
+    room is painted from a fraction of the photos it gets alone. Rooms that were
+    already painted keep their own paint, and only their placement is new.
+    """
+    from ..blender import _run
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    command = ["--out", str(out_path), "--max-triangles", str(max_triangles)]
+    for glb_path, to_floor in scans:
+        values = np.asarray(to_floor, dtype=np.float64).reshape(16)
+        command.extend(["--scan", str(glb_path), "--placement", " ".join(f"{value:.9g}" for value in values)])
+    output = _run("join_scans.py", command)
+    if "FLOOR_GLB_WRITTEN" not in output:
+        raise RuntimeError(f"Blender did not write the floor:\n{output[-1500:]}")
+    return out_path
 
 
 def paint_the_rooms(

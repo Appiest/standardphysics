@@ -18,6 +18,7 @@ from standardphysics_contracts import (
     Scan,
     Scenario,
     SceneGraph,
+    SpaceTypology,
     SurfaceCoverage,
     graph_hash,
 )
@@ -37,15 +38,16 @@ def now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _artifacts(connection: sqlite3.Connection, scan_id: str) -> list[Artifact]:
+def _artifacts(connection: sqlite3.Connection, scan_id: str, with_photos: bool = True) -> list[Artifact]:
     rows = connection.execute(
-        "SELECT id, kind, sha256, bytes FROM artifacts WHERE scan_id = ? ORDER BY created_at, id",
-        (scan_id,),
+        "SELECT id, kind, sha256, bytes FROM artifacts WHERE scan_id = ? AND (? OR kind != 'frames')"
+        " ORDER BY created_at, id",
+        (scan_id, with_photos),
     )
     return [Artifact(id=r["id"], kind=r["kind"], sha256=r["sha256"], bytes=r["bytes"]) for r in rows]
 
 
-def _scan(connection: sqlite3.Connection, row: sqlite3.Row) -> Scan:
+def _scan(connection: sqlite3.Connection, row: sqlite3.Row, with_photos: bool = True) -> Scan:
     return Scan(
         id=row["id"],
         name=row["name"],
@@ -53,9 +55,10 @@ def _scan(connection: sqlite3.Connection, row: sqlite3.Row) -> Scan:
         device_model=row["device_model"],
         duration_seconds=row["duration_seconds"],
         state=row["state"],
-        artifacts=_artifacts(connection, row["id"]),
+        artifacts=_artifacts(connection, row["id"], with_photos),
         coverage=[SurfaceCoverage.model_validate(c) for c in json.loads(row["coverage_json"])],
         content_hash=row["content_hash"],
+        space_typology=row["space_typology"],
     )
 
 
@@ -67,12 +70,31 @@ def insert_scan(
     state: str = "uploading",
 ) -> uuid.UUID:
     scan_id = scan_id or uuid.uuid4()
+    replaces = str(request.replaces) if request.replaces else None
     connection.execute(
-        "INSERT INTO scans (id, name, created_at, device_model, duration_seconds, state, owner_id)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (str(scan_id), request.name, now(), request.device_model, request.duration_seconds, state, str(owner_id)),
+        "INSERT INTO scans (id, name, created_at, device_model, duration_seconds, state, owner_id, space_typology,"
+        " replaces_scan_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            str(scan_id), request.name, now(), request.device_model, request.duration_seconds, state,
+            str(owner_id), _typology_value(request.space_typology), replaces,
+        ),
     )
     return scan_id
+
+
+def _typology_value(typology: SpaceTypology | None) -> str | None:
+    return None if typology is None else typology.value
+
+
+def set_space_typology(connection: sqlite3.Connection, scan_id: uuid.UUID, typology: SpaceTypology | None) -> None:
+    connection.execute(
+        "UPDATE scans SET space_typology = ? WHERE id = ?", (_typology_value(typology), str(scan_id))
+    )
+
+
+def space_typology(connection: sqlite3.Connection, scan_id: uuid.UUID) -> SpaceTypology | None:
+    row = connection.execute("SELECT space_typology FROM scans WHERE id = ?", (str(scan_id),)).fetchone()
+    return SpaceTypology(row["space_typology"]) if row and row["space_typology"] else None
 
 
 def get_scan(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Scan | None:
@@ -95,16 +117,57 @@ def list_scans(connection: sqlite3.Connection, owner_id: uuid.UUID) -> list[Scan
     return [_scan(connection, row) for row in rows]
 
 
+def list_shops(connection: sqlite3.Connection, owner_id: uuid.UUID) -> list[Scan]:
+    """The owner's shops: every scan except one a later walk of the same shop has replaced.
+
+    A replaced scan stays listed while its replacement is still coming in, and
+    again if the replacement fails, so the owner always has results to open.
+    Photos are left out, since a floor keeps thousands; the scan itself lists them.
+    """
+    rows = connection.execute(
+        "SELECT * FROM scans WHERE owner_id = ? AND id NOT IN ("
+        " SELECT replaces_scan_id FROM scans WHERE replaces_scan_id IS NOT NULL AND state = 'ready'"
+        ") ORDER BY created_at DESC",
+        (str(owner_id),),
+    ).fetchall()
+    return [_scan(connection, row, with_photos=False) for row in rows]
+
+
 def scan_exists(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
     return connection.execute("SELECT 1 FROM scans WHERE id = ?", (str(scan_id),)).fetchone() is not None
 
 
-CHILD_TABLES = ("texture_builds", "simulations", "assessments", "scenarios", "revisions", "jobs", "artifacts")
+def other_running_job(connection: sqlite3.Connection, scan_id: uuid.UUID, job_id: int | None = None) -> bool:
+    """True when a job for this scan is running, not counting the one given."""
+    return connection.execute(
+        "SELECT 1 FROM jobs WHERE scan_id = ? AND state = 'running' AND id IS NOT ?", (str(scan_id), job_id)
+    ).fetchone() is not None
+
+
+def mark_for_deletion(connection: sqlite3.Connection, scan_id: uuid.UUID) -> None:
+    """Hide a scan whose job is still running, for the worker to delete when the job ends.
+
+    With no owner the scan answers 404 to everyone and leaves every list, so to
+    the owner it is gone the moment they ask.
+    """
+    connection.execute("UPDATE scans SET owner_id = NULL, deleting_at = ? WHERE id = ?", (now(), str(scan_id)))
+
+
+def marked_for_deletion(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
+    row = connection.execute("SELECT deleting_at FROM scans WHERE id = ?", (str(scan_id),)).fetchone()
+    return row is not None and row["deleting_at"] is not None
+
+
+CHILD_TABLES = (
+    "owner_requests", "checklist_items", "share_links", "layout_plans",
+    "texture_builds", "simulations", "assessments", "evidence_bundles", "scenarios", "revisions",
+    "job_attempts", "jobs", "artifacts",
+)
 """Everything that references a scan, deepest first.
 
-SQLite does not enforce the foreign keys by default, so leaving a child row
-behind would not fail loudly. It would sit in the database pointing at a scan
-that no longer exists until something joined on it.
+Connections turn foreign keys on, so a table missing from this list makes
+deleting any scan that has rows in it fail. Job attempts and evidence bundles
+were missing, which meant no scan the worker had processed could be deleted.
 """
 
 

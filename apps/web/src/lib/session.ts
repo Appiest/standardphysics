@@ -1,13 +1,15 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import type { Session } from "@/types/contracts";
 import { API_ORIGIN } from "./api-origin";
 
 export const SESSION_COOKIE = "sp_session";
 
-export interface Session {
-  owner_id: string;
-  email: string;
-  shop_name: string;
+export type { Session };
+
+/** Team accounts see the builders' tools; owners never do. */
+export function isTeam(session: Session): boolean {
+  return session.role === "team";
 }
 
 /** The signed-in owner, or null when the cookie is missing, expired or revoked. */

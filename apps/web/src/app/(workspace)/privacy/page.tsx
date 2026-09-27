@@ -3,10 +3,10 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Privacy at Standard Physics",
-  description: "What a scan of your shop contains, where it goes, and how to delete it.",
+  description: "What a scan of your shop contains, who can see it, and how to delete it.",
 };
 
-const UPDATED = "20 September 2026";
+const UPDATED = "September 26, 2026";
 const CONTACT = "privacy@standardphysics.app";
 
 function Section({ heading, children }: { heading: string; children: React.ReactNode }) {
@@ -36,8 +36,25 @@ export default function PrivacyPage() {
           anyone who happened to be standing in it.
         </p>
         <p>
-          Your account holds the email address you signed up with, the name you gave your shop, and
-          your password, which is stored as a scrypt hash and cannot be read back.
+          The app also asks for a few close-up photos, like one of the front door handle. Each photo
+          you send is stored with the shop.
+        </p>
+      </Section>
+
+      <Section heading="Your account">
+        <p>
+          The app makes a guest account the first time you open it, so you can walk your shop before
+          you sign up. A guest account is saved when you add an email address and a password, or when
+          you use Sign in with Apple.
+        </p>
+        <p>
+          A saved account holds your email address, the name you gave your shop, and your password.
+          The password is stored as a scrypt hash, so it can&apos;t be read back.
+        </p>
+        <p>
+          Sign in with Apple shares only what Apple sends us. That is an ID that stays the same for
+          you, and an email address. The email address may be a private relay address that Apple
+          forwards to your own.
         </p>
       </Section>
 
@@ -51,13 +68,38 @@ export default function PrivacyPage() {
           provider that identifies and counts objects in them. Nothing else about you is sent with
           them, and the provider is set to retain nothing.
         </p>
+        <p>
+          A person on the Standard Physics team checks each photo you send. They see the photo and
+          your shop&apos;s name. Then we tell you what they found.
+        </p>
+      </Section>
+
+      <Section heading="Report links">
+        <p>
+          When you share your report, we make a link to it. Anyone who has the link can open
+          the report without signing in. The report shows your shop&apos;s name, its floor plan, a
+          picture of each spot to fix drawn from the room model, and what we measured.
+        </p>
+        <p>
+          A link stops working 30 days after you make it. You can stop the links to a shop sooner,
+          and deleting the shop stops them too.
+        </p>
+      </Section>
+
+      <Section heading="Notifications">
+        <p>
+          If you allow notifications, the app sends one only when your results are ready, when a
+          photo you sent has been checked, or when a guest shop is about to be deleted. To send them,
+          we keep the address Apple gives your phone for notifications.
+        </p>
       </Section>
 
       <Section heading="What we do not do">
         <p>
-          Your scans are not sold, rented or shared with anyone else. There is no advertising in
-          Standard Physics, no tracking across other apps or websites, and no profile built about
-          you. Nobody outside the account sees your shop.
+          Your scans are not sold or rented. There is no advertising in Standard Physics, no
+          tracking across other apps or websites, and no profile built about you. Outside your
+          account, your shop is seen only by people you send a report link to and by the person who
+          checks a photo you send.
         </p>
       </Section>
 
@@ -70,6 +112,11 @@ export default function PrivacyPage() {
           Deleting your whole account removes the account, every shop in it and every file stored
           for those shops. The button is on the home screen of the app and at the top of the
           workspace. It happens immediately, there is no grace period, and it cannot be undone.
+        </p>
+        <p>
+          A guest account&apos;s shops are deleted 30 days after you last opened one of them. We
+          remind you 3 days before, with a notification and a note in the app. Saving the account
+          keeps them.
         </p>
       </Section>
 

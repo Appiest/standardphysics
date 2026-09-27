@@ -14,11 +14,14 @@ paint onto it.
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
 
 from .camera import PhotoCamera
+from .stages import advanced
 
 NEAR_LIMIT = 0.15
 OCCLUDER_TOLERANCE = 0.025
@@ -37,6 +40,8 @@ EXPOSURE_ITERATIONS = 8
 MAX_EXPOSURE_POINTS = 20_000
 MAX_LOG_GAIN = 0.7
 GUTTER_PASSES = 8
+BLOCK_METRES = 1.0
+"""The size of the cubes points are grouped into, so a photo only projects the points it could see."""
 
 
 @dataclass(frozen=True)
@@ -81,6 +86,12 @@ def face_normals(world: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return cross / np.maximum(length, 1e-12)[:, None], length / 2
 
 
+ATLAS_BATCH_SIDES = (4, 8, 12, 24, 48)
+"""The candidate squares faces are sorted into and rasterized together in; faces wider than the last are drawn one at a time."""
+ATLAS_BATCH_CANDIDATES = 1_500_000
+"""Candidate texels tested in one step, in doubles about a hundred megabytes."""
+
+
 def rasterize_atlas(
     world: np.ndarray, uv: np.ndarray, owners: np.ndarray, size: int,
     base_colours: np.ndarray | None = None,
@@ -88,23 +99,93 @@ def rasterize_atlas(
     """Every texel centre inside a triangle, with the surface point and owner it lands on.
 
     UV v runs up and image rows run down, so row = (1 - v) * size, with texel
-    centres at integer coordinates.
+    centres at integer coordinates. Where faces overlap, the later face owns the texel.
+
+    Packed faces are a few texels across, and drawing them one by one was most
+    of a floor's texel step: a Python call per face, a quarter of a million per
+    atlas. Small faces are drawn together with the same arithmetic.
     """
     normals, areas = face_normals(world)
     if base_colours is None:
         base_colours = np.full((len(world), 3), 0.65, dtype=np.float32)
-    pieces = [
-        _triangle_texels(world[index], uv[index], normals[index], owners[index], base_colours[index], size)
-        for index in np.flatnonzero(areas > 1e-10)
-    ]
-    pieces = [piece for piece in pieces if piece is not None]
+    x = uv[:, :, 0] * size - 0.5
+    y = (1.0 - uv[:, :, 1]) * size - 0.5
+    first_column, first_row = np.maximum(0, np.floor(x.min(axis=1))), np.maximum(0, np.floor(y.min(axis=1)))
+    width = np.minimum(size - 1, np.ceil(x.max(axis=1))) - first_column + 1
+    height = np.minimum(size - 1, np.ceil(y.max(axis=1))) - first_row + 1
+    drawn = (areas > 1e-10) & (width > 0) & (height > 0)
+    side = np.maximum(width, height)
+    pieces = [_small_texels(x, y, first_column, first_row, width, height, faces, size, square)
+              for faces, square in _batches(np.flatnonzero(drawn), side)]
+    pieces += [_large_texels(world, uv, index, size) for index in np.flatnonzero(drawn & (side > ATLAS_BATCH_SIDES[-1]))]
+    pieces = [_placed(world, *piece) for piece in pieces if piece is not None and len(piece[0])]
     if not pieces:
         empty = np.empty((0, 3), dtype=np.float32)
         return Texels(np.empty(0, np.int32), np.empty(0, np.int32), empty, empty, np.empty(0, np.int32), empty)
-    rows, columns, positions, normals_out, owners_out, colours_out = (np.concatenate(parts) for parts in zip(*pieces))
-    _, last = np.unique((rows.astype(np.int64) * size + columns)[::-1], return_index=True)
-    keep = len(rows) - 1 - last
-    return Texels(rows[keep], columns[keep], positions[keep], normals_out[keep], owners_out[keep], colours_out[keep])
+    faces, rows, columns, positions = (np.concatenate(parts) for parts in zip(*pieces))
+    keep = _last_face_per_texel(faces, rows.astype(np.int64) * size + columns)
+    faces = faces[keep]
+    return Texels(
+        rows[keep], columns[keep], positions[keep],
+        normals[faces].astype(np.float32), owners[faces].astype(np.int32), np.asarray(base_colours, dtype=np.float32)[faces],
+    )
+
+
+def _placed(world, faces, rows, columns, weights):
+    """A batch's texels with their surface points, kept compact: the weights are dropped once the points are made."""
+    corners = world[faces]
+    positions = (weights[:, 0, None] * corners[:, 0] + weights[:, 1, None] * corners[:, 1] + weights[:, 2, None] * corners[:, 2]).astype(np.float32)
+    return faces.astype(np.int32), rows.astype(np.int32), columns.astype(np.int32), positions
+
+
+def _last_face_per_texel(faces: np.ndarray, keys: np.ndarray) -> np.ndarray:
+    """For each texel, sorted by texel, the entry of the latest face that covers it."""
+    order = np.lexsort((faces, keys))
+    last = np.append(keys[order][1:] != keys[order][:-1], True)
+    return order[last]
+
+
+def _batches(faces: np.ndarray, side: np.ndarray):
+    """The faces in groups of one candidate square each, a square's worth of candidates at a time."""
+    smaller = 0
+    for square in ATLAS_BATCH_SIDES:
+        chosen = faces[(side[faces] > smaller) & (side[faces] <= square)]
+        smaller = square
+        batch = max(1, ATLAS_BATCH_CANDIDATES // square ** 2)
+        for start in range(0, len(chosen), batch):
+            yield chosen[start:start + batch], square
+
+
+def _small_texels(x, y, first_column, first_row, width, height, faces, size, square):
+    """Texel centres inside many small faces at once, as (faces, rows, columns, barycentric weights)."""
+    offsets = np.arange(square)
+    down, across = np.meshgrid(offsets, offsets, indexing="ij")
+    down, across = down.ravel(), across.ravel()
+    x, y = x[faces], y[faces]
+    within = (across[None] < width[faces, None]) & (down[None] < height[faces, None])
+    determinant = (y[:, 1] - y[:, 2]) * (x[:, 0] - x[:, 2]) + (x[:, 2] - x[:, 1]) * (y[:, 0] - y[:, 2])
+    within &= (np.abs(determinant) >= 1e-12)[:, None]
+    face, slot = np.nonzero(within)
+    px = first_column[faces][face] + across[slot]
+    py = first_row[faces][face] + down[slot]
+    x, y, determinant = x[face], y[face], determinant[face]
+    first = ((y[:, 1] - y[:, 2]) * (px - x[:, 2]) + (x[:, 2] - x[:, 1]) * (py - y[:, 2])) / determinant
+    second = ((y[:, 2] - y[:, 0]) * (px - x[:, 2]) + (x[:, 0] - x[:, 2]) * (py - y[:, 2])) / determinant
+    weights = np.stack([first, second, 1.0 - first - second], axis=1)
+    inside = np.all(weights >= -1e-9, axis=1)
+    return faces[face[inside]], py[inside].astype(np.int64), px[inside].astype(np.int64), weights[inside]
+
+
+def _large_texels(world, uv, index, size):
+    """A face too large to batch, drawn on its own with the same arithmetic."""
+    texels = _triangle_texels(world[index], uv[index], np.zeros(3), 0, np.zeros(3), size)
+    if texels is None:
+        return None
+    rows, columns = texels[0].astype(np.int64), texels[1].astype(np.int64)
+    x = uv[index, :, 0] * size - 0.5
+    y = (1.0 - uv[index, :, 1]) * size - 0.5
+    weights = _barycentric(x, y, columns.astype(np.float64), rows.astype(np.float64)).T
+    return np.full(len(rows), index), rows, columns, weights
 
 
 def _triangle_texels(world, uv, normal, owner, colour, size):
@@ -158,6 +239,210 @@ def sample_surface(world: np.ndarray, spacing: float, seed: int = 0) -> tuple[np
     return points.astype(np.float32), normals[owner].astype(np.float32)
 
 
+def evenly_spread(cameras: list[PhotoCamera], limit: int) -> list[PhotoCamera]:
+    """At most `limit` cameras spread evenly through the walk, keeping the first and the last.
+
+    Neighbouring video frames are nearly the same view, so thinning a long walk
+    this way loses little while every per-photo step gets cheaper in proportion.
+    """
+    if len(cameras) <= limit:
+        return cameras
+    picks = np.linspace(0, len(cameras) - 1, limit).round().astype(int)
+    return [cameras[index] for index in dict.fromkeys(picks.tolist())]
+
+
+def in_parallel(work, items, counted: bool = True):
+    """`work` over every item on all cores, in bounded batches, yielding results in item order.
+
+    The per-photo work is array arithmetic that lets go of the interpreter lock,
+    so threads run it side by side while sharing the points rather than copying
+    them. Results come back in photo order, so the outcome is the same as one
+    run photo by photo. Only one photo per core is in hand at a time, because
+    each holds its share of the texels and a small server has little memory
+    to spare.
+    """
+    workers = os.cpu_count() or 4
+    finished = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for start in range(0, len(items), workers):
+            for result in pool.map(work, items[start:start + workers]):
+                finished += 1
+                if counted:
+                    advanced(finished, len(items))
+                yield result
+
+
+FRAME_MARGIN_PIXELS = 16.0
+"""How far past the frame's edge a sphere still counts as in it, so rounding to a buffer's coarse pixels never drops a point."""
+
+
+def spheres_in_frame(camera: PhotoCamera, centres: np.ndarray, radius: float | np.ndarray) -> np.ndarray:
+    """Which spheres reach into the camera's frame, counting any the camera stands inside."""
+    local = centres @ camera.room_to_camera[:3, :3].T + camera.room_to_camera[:3, 3]
+    lens = np.asarray([camera.fx, camera.fy, camera.cx, camera.cy, camera.width, camera.height], dtype=np.float64)
+    return _in_frustum(local, lens, radius)
+
+
+def _in_frustum(local: np.ndarray, lens: np.ndarray, radius: float | np.ndarray) -> np.ndarray:
+    """Whether spheres at camera-frame centres cross all four side planes of the view and are not wholly behind it.
+
+    Each side of the frame is a plane through the camera; a sphere reaches the
+    frame when its centre is no further than its radius outside every one of
+    them. Comparing the projected centre with a projected radius instead
+    misses nearby spheres toward the frame's corners, which project larger
+    than their radius over their depth suggests.
+    """
+    fx, fy, cx, cy, width, height = np.moveaxis(np.atleast_2d(lens), -1, 0)
+    x, y, z = local[:, 0], local[:, 1], local[:, 2]
+    low_u, high_u = cx + FRAME_MARGIN_PIXELS, width - cx + FRAME_MARGIN_PIXELS
+    low_v, high_v = cy + FRAME_MARGIN_PIXELS, height - cy + FRAME_MARGIN_PIXELS
+    inside = z > -radius
+    for along, focal, low, high in ((x, fx, low_u, high_u), (y, fy, low_v, high_v)):
+        inside &= (focal * along + low * z) / np.hypot(focal, low) > -radius
+        inside &= (-focal * along + high * z) / np.hypot(focal, high) > -radius
+    return inside
+
+
+class CameraArray:
+    """Every camera's pose and lens as arrays, so all of them can be tested against one region at once."""
+
+    def __init__(self, cameras: list[PhotoCamera]):
+        matrices = np.asarray([camera.room_to_camera for camera in cameras], dtype=np.float64).reshape(-1, 4, 4)
+        self.rotations, self.translations = matrices[:, :3, :3], matrices[:, :3, 3]
+        self.lens = np.asarray([[c.fx, c.fy, c.cx, c.cy, c.width, c.height] for c in cameras], dtype=np.float64).reshape(-1, 6)
+
+    def reaching(self, centre: np.ndarray, radius: float) -> np.ndarray:
+        """Indices of the cameras whose frame a sphere reaches into, the same test `spheres_in_frame` makes."""
+        local = self.rotations @ centre + self.translations
+        return np.flatnonzero(_in_frustum(local, self.lens, radius))
+
+
+class PointBlocks:
+    """Points grouped into cubes, so each photo projects only the cubes inside its frame.
+
+    A photo of one corner of a library floor sees a small share of it, so
+    projecting every point through every photo spends nearly all its time on
+    points that land outside the frame and are thrown away.
+    """
+
+    def __init__(self, points: np.ndarray):
+        keys = np.floor(points / BLOCK_METRES).astype(np.int64).reshape(-1, 3)
+        low = keys.min(axis=0) if len(keys) else np.zeros(3, dtype=np.int64)
+        span = keys.max(axis=0) - low + 1 if len(keys) else np.ones(3, dtype=np.int64)
+        shifted = keys - low
+        flat = (shifted[:, 0] * span[1] + shifted[:, 1]) * span[2] + shifted[:, 2]
+        self.order = np.argsort(flat, kind="stable").astype(np.int32 if len(flat) < 2**31 else np.int64)
+        ordered = flat[self.order]
+        edges = [np.flatnonzero(np.diff(ordered)) + 1, [len(flat)]] if len(flat) else []
+        self.starts = np.concatenate([[0], *edges]).astype(np.int64)
+        cubes = ordered[self.starts[:-1]]
+        unique = np.stack([cubes // (span[1] * span[2]), cubes // span[2] % span[1], cubes % span[2]], axis=1) + low
+        self.centres = (unique + 0.5) * BLOCK_METRES
+        self.radius = BLOCK_METRES * np.sqrt(3) / 2
+
+    def seen_by(self, camera: PhotoCamera) -> np.ndarray:
+        """Indices of every point in a cube that reaches into the camera's frame."""
+        return self.members(self.cubes_seen_by(camera))
+
+    def cubes_seen_by(self, camera: PhotoCamera) -> np.ndarray:
+        return np.flatnonzero(spheres_in_frame(camera, self.centres, self.radius))
+
+    def members(self, cubes: np.ndarray) -> np.ndarray:
+        """Indices of every point in these cubes."""
+        first, count = self.starts[cubes], self.starts[cubes + 1] - self.starts[cubes]
+        offsets = np.arange(count.sum()) - np.repeat(np.cumsum(count) - count, count)
+        return self.order[np.repeat(first, count) + offsets]
+
+    def radii(self, cubes: np.ndarray) -> np.ndarray:
+        return np.broadcast_to(self.radius, (len(self.centres),))[cubes]
+
+
+class DepthPyramid:
+    """A depth buffer's farthest recorded depth over aligned squares of 1, 2, 4 and more pixels.
+
+    A cube whose nearest point lies beyond the farthest depth over every pixel
+    it covers is hidden entirely. The pyramid answers that for a whole cube
+    with four lookups, at the level where the cube's rectangle spans at most
+    two squares each way.
+    """
+
+    def __init__(self, buffer: np.ndarray):
+        self.levels = [buffer]
+        while max(self.levels[-1].shape) > 1:
+            level = self.levels[-1]
+            padded = np.pad(level, ((0, level.shape[0] % 2), (0, level.shape[1] % 2)), constant_values=np.inf)
+            self.levels.append(padded.reshape(padded.shape[0] // 2, 2, padded.shape[1] // 2, 2).max(axis=(1, 3)))
+
+    def farthest(self, left: np.ndarray, right: np.ndarray, top: np.ndarray, bottom: np.ndarray) -> np.ndarray:
+        """The farthest depth over each inclusive pixel rectangle, clipped to the buffer beforehand."""
+        span = np.maximum(right - left, bottom - top) + 1
+        level = np.clip(np.ceil(np.log2(np.maximum(span, 1))).astype(np.int64), 0, len(self.levels) - 1)
+        result = np.full(len(left), np.inf, dtype=np.float64)
+        for k in np.unique(level):
+            chosen = np.flatnonzero(level == k)
+            grid = self.levels[k]
+            first_row, last_row = np.minimum(top[chosen] >> k, grid.shape[0] - 1), np.minimum(bottom[chosen] >> k, grid.shape[0] - 1)
+            first_column, last_column = np.minimum(left[chosen] >> k, grid.shape[1] - 1), np.minimum(right[chosen] >> k, grid.shape[1] - 1)
+            result[chosen] = np.maximum.reduce([
+                grid[first_row, first_column], grid[first_row, last_column], grid[last_row, first_column], grid[last_row, last_column],
+            ])
+        return result
+
+
+@dataclass(frozen=True)
+class SphereFootprints:
+    """Where spheres land in a low-resolution camera: nearest depth and the pixel rectangle each covers."""
+
+    usable: np.ndarray
+    """Whether the sphere stays in front of the near plane, so its footprint can be trusted."""
+    nearest: np.ndarray
+    left: np.ndarray
+    right: np.ndarray
+    top: np.ndarray
+    bottom: np.ndarray
+
+
+def sphere_footprints(small: PhotoCamera, centres: np.ndarray, radii: np.ndarray, margin: int) -> SphereFootprints:
+    """Each sphere's nearest depth, and the rectangle its bounding box projects to, grown by `margin` pixels and clipped.
+
+    The box's eight corners bound the sphere's projection whenever all of them
+    are in front of the camera; a sphere reaching the near plane is marked unusable.
+    """
+    signs = np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)], dtype=np.float64)
+    corners = centres[:, None, :] + signs[None] * radii[:, None, None]
+    local = small.to_camera(corners.reshape(-1, 3).astype(np.float64)).reshape(-1, 8, 3)
+    depth = local[..., 2]
+    usable = (depth > NEAR_LIMIT).all(axis=1)
+    safe = np.where(depth > NEAR_LIMIT, depth, NEAR_LIMIT)
+    u, v = small.fx * local[..., 0] / safe + small.cx, small.fy * local[..., 1] / safe + small.cy
+    nearest = small.to_camera(centres.astype(np.float64))[:, 2] - radii
+    return SphereFootprints(
+        usable, nearest,
+        np.clip(np.floor(u.min(axis=1)) - margin, 0, small.width - 1).astype(np.int64),
+        np.clip(np.ceil(u.max(axis=1)) + margin, 0, small.width - 1).astype(np.int64),
+        np.clip(np.floor(v.min(axis=1)) - margin, 0, small.height - 1).astype(np.int64),
+        np.clip(np.ceil(v.max(axis=1)) + margin, 0, small.height - 1).astype(np.int64),
+    )
+
+
+class TriangleBlocks(PointBlocks):
+    """Faces grouped by the cube their centre lies in, so each photo rasterizes only the cubes inside its frame.
+
+    A face can reach outside the cube its centre falls in, so each cube's
+    sphere is grown to hold every corner of every face assigned to it. A face
+    outside every frame plane by more than the margin draws no pixel, so the
+    buffer is the one the whole mesh would have drawn.
+    """
+
+    def __init__(self, triangles: np.ndarray):
+        super().__init__(triangles.mean(axis=1))
+        block_of = np.empty(len(triangles), dtype=np.int64)
+        block_of[self.order] = np.repeat(np.arange(len(self.centres)), np.diff(self.starts))
+        corners_reach = np.linalg.norm(triangles - self.centres[block_of][:, None, :], axis=2).max(axis=1)
+        self.radius = np.zeros(len(self.centres))
+        np.maximum.at(self.radius, block_of, corners_reach)
+
+
 def depth_buffer(camera: PhotoCamera, points: np.ndarray) -> np.ndarray:
     """Nearest depth per low-resolution pixel, eroded one pixel so occluders grow and holes close."""
     small = camera.resized(max(1, camera.width // DEPTH_BUFFER_DIVISOR), max(1, camera.height // DEPTH_BUFFER_DIVISOR))
@@ -165,8 +450,7 @@ def depth_buffer(camera: PhotoCamera, points: np.ndarray) -> np.ndarray:
     columns, rows = np.rint(u).astype(np.int64), np.rint(v).astype(np.int64)
     valid = (depth > NEAR_LIMIT) & (columns >= 0) & (columns < small.width) & (rows >= 0) & (rows < small.height)
     buffer = np.full(small.width * small.height, np.inf, dtype=np.float32)
-    order = np.argsort(-depth[valid])
-    buffer[(rows[valid] * small.width + columns[valid])[order]] = depth[valid][order]
+    np.minimum.at(buffer, rows[valid] * small.width + columns[valid], depth[valid].astype(np.float32))
     return _erode(buffer.reshape(small.height, small.width))
 
 
@@ -180,6 +464,39 @@ nearest of whatever it is shown, and taking a minimum does not care what order
 it sees things in, so a chunked pass writes the same buffer the whole mesh
 would have, face for face, while holding memory flat.
 """
+
+
+DEPTH_EXTRAPOLATION = 1.07
+"""How much nearer than its nearest corner a face may draw: the rasterizer lets barycentrics reach -0.03, which extrapolates inverse depth by up to six per cent."""
+FIRST_ROUND_CUBES = 32
+
+
+def occluder_depth_buffer(camera: PhotoCamera, triangles: np.ndarray, blocks: TriangleBlocks) -> np.ndarray:
+    """`triangle_depth_buffer` of the cubes in frame, drawn nearest first, skipping cubes wholly behind what is already drawn.
+
+    On a library floor a photo's frame holds dozens of layers of shelving and
+    floor, and drawing every layer was the costliest step left in a build. A
+    skipped cube could only have drawn depths beyond what the buffer already
+    holds over its footprint, and the buffer keeps the nearest, so the result
+    is the buffer drawing everything would have made.
+    """
+    scale = min(1.0 / DEPTH_BUFFER_DIVISOR, MAX_DEPTH_BUFFER_SIDE / max(camera.width, camera.height))
+    small = camera.resized(max(1, round(camera.width * scale)), max(1, round(camera.height * scale)))
+    buffer = np.full((small.height, small.width), np.inf, dtype=np.float32)
+    cubes = blocks.cubes_seen_by(camera)
+    footprints = sphere_footprints(small, blocks.centres[cubes], blocks.radii(cubes), margin=1)
+    order = np.argsort(footprints.nearest, kind="stable")
+    start, size = 0, FIRST_ROUND_CUBES
+    while start < len(order):
+        batch = order[start:start + size]
+        if start:
+            farthest = DepthPyramid(buffer).farthest(footprints.left[batch], footprints.right[batch], footprints.top[batch], footprints.bottom[batch])
+            batch = batch[~(footprints.usable[batch] & (footprints.nearest[batch] / DEPTH_EXTRAPOLATION > farthest))]
+        chosen = blocks.members(cubes[batch])
+        for first in range(0, len(chosen), DEPTH_TRIANGLE_CHUNK):
+            _draw_depth(buffer, small, triangles[chosen[first:first + DEPTH_TRIANGLE_CHUNK]])
+        start, size = start + size, size * 2
+    return _erode(buffer)
 
 
 def triangle_depth_buffer(camera: PhotoCamera, triangles: np.ndarray) -> np.ndarray:
@@ -214,8 +531,86 @@ def _draw_depth(buffer: np.ndarray, small: PhotoCamera, triangles: np.ndarray) -
         (u.max(axis=1) >= -1) & (u.min(axis=1) <= small.width)
         & (v.max(axis=1) >= -1) & (v.min(axis=1) <= small.height)
     )
-    for corners_u, corners_v, corners_depth in zip(u[visible], v[visible], depth[visible]):
+    u, v, depth = u[visible], v[visible], depth[visible]
+    few_pixels = _pixel_spans(buffer, u, v).max(axis=0) <= SMALL_TRIANGLE_SIDES[-1]
+    _rasterize_small_triangles(buffer, u[few_pixels], v[few_pixels], depth[few_pixels])
+    for corners_u, corners_v, corners_depth in zip(u[~few_pixels], v[~few_pixels], depth[~few_pixels]):
         _rasterize_depth_triangle(buffer, corners_u, corners_v, corners_depth)
+
+
+SMALL_TRIANGLE_PIXELS = 8
+"""Faces whose pixel box, margin included, is at most this wide and tall are drawn all at once.
+
+A LiDAR face is a centimetre or two, and the buffer is a few hundred pixels
+across, so nearly every face covers a pixel or two, which the one-pixel margin
+drawn around every face makes a box of four or five. Drawing them one at a time
+in Python took most of a photo bake: millions of faces for each of up to 192
+photos. Drawn together they give the same buffer, pixel for pixel, because each
+pixel is tested and filled exactly as the loop tests and fills it.
+"""
+
+
+def _pixel_box(buffer: np.ndarray, u: np.ndarray, v: np.ndarray) -> tuple[np.ndarray, ...]:
+    """Each face's pixel box, grown one pixel all round and clipped to the buffer, as the loop draws it."""
+    left = np.maximum(0, np.floor(u.min(axis=1)).astype(np.int64) - 1)
+    right = np.minimum(buffer.shape[1] - 1, np.ceil(u.max(axis=1)).astype(np.int64) + 1)
+    top = np.maximum(0, np.floor(v.min(axis=1)).astype(np.int64) - 1)
+    bottom = np.minimum(buffer.shape[0] - 1, np.ceil(v.max(axis=1)).astype(np.int64) + 1)
+    return left, right, top, bottom
+
+
+def _pixel_spans(buffer: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
+    left, right, top, bottom = _pixel_box(buffer, u, v)
+    return np.stack([right - left + 1, bottom - top + 1])
+
+
+SMALL_TRIANGLE_BATCH = 40_000
+"""Faces drawn together per step, so the per-pixel arrays stay near a hundred megabytes."""
+
+
+SMALL_TRIANGLE_SIDES = (3, 5, SMALL_TRIANGLE_PIXELS, 16, 32, 64)
+"""The candidate squares faces are sorted into, so a face two pixels wide is not tested against sixty-four.
+
+A thinned floor's faces are ten or twenty centimetres across and cover dozens
+of pixels near the camera; drawn one by one in Python they were two thirds of
+a depth buffer. Only faces wider than the largest square are still drawn alone.
+"""
+BATCH_CANDIDATES = 2_500_000
+"""Candidate pixels tested in one step, so a batch of large faces holds as much as one of small faces."""
+
+
+def _rasterize_small_triangles(buffer: np.ndarray, u: np.ndarray, v: np.ndarray, depth: np.ndarray) -> None:
+    """`_rasterize_depth_triangle` for many small faces at once, a batch at a time, each size with its own square."""
+    spans = _pixel_spans(buffer, u, v).max(axis=0)
+    smaller = 0
+    for side in SMALL_TRIANGLE_SIDES:
+        faces = np.flatnonzero((spans > smaller) & (spans <= side))
+        smaller = side
+        batch = max(1, min(SMALL_TRIANGLE_BATCH, BATCH_CANDIDATES // max(side, 1) ** 2))
+        for start in range(0, len(faces), batch):
+            chosen = faces[start:start + batch]
+            _rasterize_small_batch(buffer, u[chosen], v[chosen], depth[chosen], side)
+
+
+def _rasterize_small_batch(buffer: np.ndarray, u: np.ndarray, v: np.ndarray, depth: np.ndarray, side: int = SMALL_TRIANGLE_PIXELS) -> None:
+    """Every candidate pixel of every face tested and filled as the per-face loop would."""
+    if not len(u):
+        return
+    left, right, top, bottom = _pixel_box(buffer, u, v)
+    determinant = (v[:, 1] - v[:, 2]) * (u[:, 0] - u[:, 2]) + (u[:, 2] - u[:, 1]) * (v[:, 0] - v[:, 2])
+    offsets = np.arange(side)
+    columns = (left[:, None] + offsets[None, :])[:, None, :]
+    rows = (top[:, None] + offsets[None, :])[:, :, None]
+    wanted = (columns <= right[:, None, None]) & (rows <= bottom[:, None, None]) & (np.abs(determinant) >= 1e-9)[:, None, None]
+    safe = np.where(np.abs(determinant) < 1e-9, 1.0, determinant)[:, None, None]
+    du, dv = columns - u[:, 2, None, None], rows - v[:, 2, None, None]
+    first = ((v[:, 1] - v[:, 2])[:, None, None] * du + (u[:, 2] - u[:, 1])[:, None, None] * dv) / safe
+    second = ((v[:, 2] - v[:, 0])[:, None, None] * du + (u[:, 0] - u[:, 2])[:, None, None] * dv) / safe
+    third = 1.0 - first - second
+    inverse_depth = first / depth[:, 0, None, None] + second / depth[:, 1, None, None] + third / depth[:, 2, None, None]
+    inside = wanted & (first >= -0.03) & (second >= -0.03) & (third >= -0.03) & (inverse_depth > 0)
+    pixels = np.broadcast_to(rows * buffer.shape[1] + columns, inside.shape)[inside]
+    np.minimum.at(buffer.reshape(-1), pixels, (1.0 / inverse_depth[inside]).astype(buffer.dtype))
 
 
 def _rasterize_depth_triangle(buffer: np.ndarray, u: np.ndarray, v: np.ndarray, depth: np.ndarray) -> None:
@@ -323,9 +718,9 @@ def to_srgb(linear: np.ndarray) -> np.ndarray:
 class TopViews:
     """The strongest few views per texel, with their colors, plus how often the scan contradicted the model."""
 
-    def __init__(self, count: int):
-        self.weights = np.zeros((count, TOP_VIEWS), dtype=np.float32)
-        self.colors = np.zeros((count, TOP_VIEWS, 3), dtype=np.float32)
+    def __init__(self, count: int, slots: int = TOP_VIEWS, color_type=np.float32):
+        self.weights = np.zeros((count, slots), dtype=np.float32)
+        self.colors = np.zeros((count, slots, 3), dtype=color_type)
         self.accepted = np.zeros(count, dtype=np.int16)
         self.disagreed = np.zeros(count, dtype=np.int16)
 
@@ -396,16 +791,29 @@ def pad_gutters(image: np.ndarray, filled: np.ndarray, passes: int = GUTTER_PASS
     held base colour, so a photographed table came out flecked with brown. A
     few passes fill those specks from their neighbours. It changes only what is
     displayed: the coverage mask still records where photos genuinely landed.
+
+    Each pass fills the unfilled pixels beside a filled one with the mean of
+    their filled neighbours, wrapping at the image edge. Only that frontier is
+    worked on: redoing the whole 4096-pixel image each pass was most of an
+    atlas's image step on the droplet.
     """
     image, filled = image.copy(), filled.copy()
+    height, width = filled.shape
+    pixels = image.reshape(height * width, -1)
     for _ in range(passes):
-        total = np.zeros_like(image)
-        count = np.zeros(filled.shape, dtype=np.float32)
-        for axis, step in ((0, 1), (0, -1), (1, 1), (1, -1)):
-            shifted_filled = np.roll(filled, step, axis=axis)
-            total += np.roll(image, step, axis=axis) * shifted_filled[..., None]
-            count += shifted_filled
-        grow = ~filled & (count > 0)
-        image[grow] = total[grow] / count[grow][:, None]
-        filled |= grow
+        beside = np.roll(filled, 1, axis=0) | np.roll(filled, -1, axis=0) | np.roll(filled, 1, axis=1) | np.roll(filled, -1, axis=1)
+        rows, columns = np.nonzero(beside & ~filled)
+        if not len(rows):
+            break
+        total = np.zeros((len(rows), pixels.shape[1]), dtype=image.dtype)
+        count = np.zeros(len(rows), dtype=np.float32)
+        for neighbour_rows, neighbour_columns in (
+            ((rows - 1) % height, columns), ((rows + 1) % height, columns),
+            (rows, (columns - 1) % width), (rows, (columns + 1) % width),
+        ):
+            neighbour_filled = filled[neighbour_rows, neighbour_columns]
+            total += pixels[neighbour_rows * width + neighbour_columns] * neighbour_filled[:, None]
+            count += neighbour_filled
+        pixels[rows * width + columns] = total / count[:, None]
+        filled[rows, columns] = True
     return image

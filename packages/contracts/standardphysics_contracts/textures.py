@@ -7,6 +7,7 @@ finding, a scene revision or anything a check reads.
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -132,12 +133,27 @@ class TextureBuild(BaseModel):
     coverage: TextureCoverage
     frames_used: int
     seconds: float
+    box_key: str | None = None
+    """Which bake of the photographed boxes this build carries, so a build that
+    changes only the painted scan copies them instead of baking them again."""
     scan_glb_url: str | None = None
     """The room as it was scanned, painted from the photos, when the build produced one."""
 
 
 class TextureRequest(BaseModel):
     revision: int | None = Field(default=None, exclude_if=lambda value: value is None)
+
+
+class TextureProgress(BaseModel):
+    """The step a running build is on and, when it works through a known number of items, how far it has got."""
+
+    step: str
+    """The pipeline's own name for the step, such as "people removal"; the viewer words it for people."""
+    done: int | None
+    total: int | None
+    step_started_at: datetime
+    reported_at: datetime
+    """When the build wrote this, on the same clock as `step_started_at`, so a rate needs no other clock."""
 
 
 class TextureStatus(BaseModel):
@@ -152,3 +168,5 @@ class TextureStatus(BaseModel):
     """Nodes whose shape changed since `build`; they render with plain materials."""
     error: str | None
     can_retry: bool
+    progress: TextureProgress | None = None
+    """Where a running build has got to, when it has said."""

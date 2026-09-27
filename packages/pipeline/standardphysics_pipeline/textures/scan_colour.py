@@ -32,17 +32,29 @@ from ..lidar import load_mesh
 from .camera import PhotoCamera, load_cameras
 from .project import (
     MAX_EXPOSURE_POINTS,
+    PointBlocks,
     TopViews,
     bilinear,
     depth_buffer,
+    evenly_spread,
     exposure_gains,
+    in_parallel,
     to_linear,
     to_srgb,
 )
+from .stages import timed
 
 MAX_PHOTOS = 60
 """Photos read for colour. More photos raise coverage; this is where the gain flattens."""
 MAX_PHOTO_EDGE = 1600
+MAX_GEOMETRY_PHOTOS = 400
+"""Photos asked which vertices are people and which are seen through, before anything is coloured.
+
+Both are votes over the photos that frame a point, and a walk's neighbouring
+video frames are nearly the same view: a merged floor's 3,524 photos took a
+small server over twelve minutes for these two steps alone. Four hundred spread
+evenly through the walk still give every surface several distinct views.
+"""
 
 SEEN_TOLERANCE = 0.05
 """How close to the nearest scanned surface a vertex must be to count as seen."""
@@ -101,39 +113,95 @@ def _weights_from(
     normals: np.ndarray,
     buffer: np.ndarray,
     mask: np.ndarray | None = None,
+    slope_aware: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """How good this camera's view of each vertex is, and where to sample it.
 
     ``mask`` must already be resampled to the depth-buffer grid (static
     region = 1); samples outside the static region never paint.
+
+    With ``slope_aware``, the depth a point may sit behind the buffer grows
+    with how steeply the camera sees its surface. One buffer pixel covers a
+    patch of surface whose depth changes by its width times the slope, so on a
+    wall seen at an angle a fixed tolerance hid the far part of every pixel
+    behind its own near part, and the wall came out speckled.
     """
     columns, rows, depth = camera.project(vertices)
-    toward = camera.position[None, :] - vertices
-    distance = np.linalg.norm(toward, axis=1)
-    facing = np.einsum("ij,ij->i", normals, toward) / np.maximum(distance, 1e-9)
-    inside = (
-        (depth > 0.2) & (facing > MIN_FACING)
-        & (columns >= 0) & (columns <= camera.width - 1)
-        & (rows >= 0) & (rows <= camera.height - 1)
+    framed = np.flatnonzero(
+        (depth > 0.2) & (columns >= 0) & (columns <= camera.width - 1) & (rows >= 0) & (rows <= camera.height - 1)
     )
+    weight = np.zeros(len(vertices), dtype=np.float64)
+    weight[framed] = _framed_weights(
+        camera, vertices[framed], PickedRows(normals, framed), columns[framed], rows[framed], depth[framed], buffer, mask, slope_aware,
+    )
+    return weight, columns, rows
+
+
+class PickedRows:
+    """The rows of an array chosen through an index, gathered only for the rows asked for.
+
+    A photo reaches a million texels and paints about one in a hundred, so
+    gathering every normal up front copied a million rows to use ten thousand.
+    """
+
+    def __init__(self, rows, index: np.ndarray):
+        self.rows, self.index = rows, index
+
+    def __getitem__(self, chosen):
+        return self.rows[self.index[chosen]]
+
+
+def _framed_weights(camera, vertices, normals, columns, rows, depth, buffer, mask, slope_aware) -> np.ndarray:
+    """The view weight of points already inside the frame and in front of the camera.
+
+    Only these are worth the arithmetic: a photo's cubes reach well past its
+    frame, and every point outside it weighs nothing whatever its angle. Of
+    those in frame, most on a library floor sit behind a shelf or a wall, so
+    the depth buffer is asked first with the widest tolerance any point could
+    have, and the exact weight is worked out only for the points it lets through.
+    """
     height, width = buffer.shape
-    nearest = buffer[
-        np.clip(np.rint(rows * height / camera.height).astype(np.int64), 0, height - 1),
-        np.clip(np.rint(columns * width / camera.width).astype(np.int64), 0, width - 1),
-    ]
-    unhidden = ~np.isfinite(nearest) | (depth <= nearest + SEEN_TOLERANCE)
+    pixel_rows = np.clip(np.rint(rows * height / camera.height).astype(np.int64), 0, height - 1)
+    pixel_columns = np.clip(np.rint(columns * width / camera.width).astype(np.int64), 0, width - 1)
+    nearest = buffer[pixel_rows, pixel_columns]
+    weight = np.zeros(len(vertices), dtype=np.float64)
+    near = np.flatnonzero(~np.isfinite(nearest) | (depth <= nearest + _widest_tolerance(camera, width, depth, slope_aware)))
+    toward = camera.position[None, :] - vertices[near]
+    distance = np.linalg.norm(toward, axis=1)
+    facing = np.einsum("ij,ij->i", normals[near], toward) / np.maximum(distance, 1e-9)
+    tolerance = _seen_tolerance(camera, width, depth[near], facing, slope_aware)
+    unhidden = ~np.isfinite(nearest[near]) | (depth[near] <= nearest[near] + tolerance)
     border = np.clip(
-        np.minimum.reduce([columns, rows, camera.width - 1 - columns, camera.height - 1 - rows])
+        np.minimum.reduce([columns[near], rows[near], camera.width - 1 - columns[near], camera.height - 1 - rows[near]])
         / BORDER_FALLOFF_PIXELS, 0.0, 1.0,
     )
-    weight = np.where(inside & unhidden, facing ** 2 / np.maximum(distance, 0.5) * border, 0.0)
+    weight[near] = np.where((facing > MIN_FACING) & unhidden, facing ** 2 / np.maximum(distance, 0.5) * border, 0.0)
     if mask is not None:
-        support = mask[
-            np.clip(np.rint(rows * height / camera.height).astype(np.int64), 0, height - 1),
-            np.clip(np.rint(columns * width / camera.width).astype(np.int64), 0, width - 1),
-        ]
-        weight = np.where(support >= 0.5, weight, 0.0)
-    return weight, columns, rows
+        weight = np.where(mask[pixel_rows, pixel_columns] >= 0.5, weight, 0.0)
+    return weight
+
+
+def _widest_tolerance(camera: PhotoCamera, buffer_width: int, depth: np.ndarray, slope_aware: bool):
+    """The most `_seen_tolerance` allows any point at this depth that faces the camera at least MIN_FACING.
+
+    A steeper view widens the tolerance, and MIN_FACING is the steepest a
+    point may be seen and still weigh anything, so this bounds them all; the
+    micrometre keeps rounding from ever making the bound the narrower one.
+    """
+    if not slope_aware:
+        return SEEN_TOLERANCE
+    steepest = np.sqrt(np.clip(1.0 - MIN_FACING ** 2, 0.0, 1.0)) / MIN_FACING
+    per_metre = 1.5 * camera.width / (camera.fx * buffer_width) * steepest
+    return SEEN_TOLERANCE + 1e-6 + per_metre * np.maximum(depth, 0.0)
+
+
+def _seen_tolerance(camera: PhotoCamera, buffer_width: int, depth: np.ndarray, facing: np.ndarray, slope_aware: bool):
+    """SEEN_TOLERANCE, widened by the depth change across a buffer pixel and a half when the surface is seen at a slant."""
+    if not slope_aware:
+        return SEEN_TOLERANCE
+    footprint = np.maximum(depth, 0.0) * camera.width / (camera.fx * buffer_width)
+    slope = np.sqrt(np.clip(1.0 - facing ** 2, 0.0, 1.0)) / np.maximum(facing, MIN_FACING)
+    return SEEN_TOLERANCE + 1.5 * footprint * slope
 
 
 def _small_static_mask(mask: np.ndarray, height: int, width: int) -> np.ndarray:
@@ -277,7 +345,13 @@ def unused_vertices_removed(scan: ColouredScan) -> ColouredScan:
 
 
 def write_scan_glb(scan: ColouredScan, out_path: pathlib.Path, max_triangles: int | None = None) -> pathlib.Path:
-    """Hand the coloured scan to Blender, which writes the glTF the viewer reads."""
+    """Hand the coloured scan to Blender, which writes the glTF the viewer reads.
+
+    glTF vertex colours are linear, and the viewer encodes them for the screen.
+    The scan's colours are the photographs' own sRGB values, so they are made
+    linear on the way out; stored as they were, every colour was brightened a
+    second time and the whole room looked washed out.
+    """
     import tempfile
 
     from ..blender import _run
@@ -289,7 +363,7 @@ def write_scan_glb(scan: ColouredScan, out_path: pathlib.Path, max_triangles: in
             archive,
             vertices=scan.vertices.astype(np.float32),
             triangles=scan.triangles.astype(np.int32),
-            colours=scan.colours.astype(np.float32),
+            colours=to_linear(scan.colours).astype(np.float32),
         )
         command = ["--scan", str(archive), "--out", str(out_path)]
         if max_triangles is not None:
@@ -307,12 +381,6 @@ class ScanPaint:
     photos_used: int
     seconds: float
 
-
-def _evenly_spread(cameras: list[PhotoCamera], limit: int) -> list[PhotoCamera]:
-    if len(cameras) <= limit:
-        return cameras
-    picks = np.linspace(0, len(cameras) - 1, limit).round().astype(int)
-    return [cameras[index] for index in dict.fromkeys(picks.tolist())]
 
 
 def _photo(path: pathlib.Path) -> np.ndarray:
@@ -336,6 +404,28 @@ class DisplayGeometry:
     """For a vertex reflected in to complete an object, the vertex it mirrors; -1 otherwise."""
 
 
+def _people_on(vertices: np.ndarray, graph: SceneGraph, cameras: list[PhotoCamera], people: dict) -> np.ndarray:
+    """The vertices that are mostly people.
+
+    Each photo is asked only about the part of the scan inside its frame, and
+    its depth buffer is made inside the vote, one photo per core at a time, and
+    let go after. A merged floor has thousands of photos: projecting the whole
+    floor through each one took minutes, and holding every buffer at once was
+    over half a gigabyte.
+    """
+    from ..discovery.people import mostly_people
+
+    blocks = PointBlocks(vertices)
+    views = [(camera, people.get(camera.frame_id, []), None) for camera in cameras]
+    return mostly_people(vertices, graph, views, visible_to=blocks.seen_by, depth_buffer_of=depth_buffer)
+
+
+def _depth_buffers(vertices: np.ndarray, cameras: list[PhotoCamera]) -> list[np.ndarray]:
+    """Each camera's depth buffer of the scan, built from only the part of it inside the frame."""
+    blocks = PointBlocks(vertices)
+    return list(in_parallel(lambda camera: depth_buffer(camera, vertices[blocks.seen_by(camera)]), cameras))
+
+
 def _display_geometry(
     vertices: np.ndarray, triangles: np.ndarray, graph: SceneGraph,
     cameras: list[PhotoCamera], people: dict | None,
@@ -345,25 +435,29 @@ def _display_geometry(
     People out, the holes they leave in furniture closed, half-seen furniture
     completed from its other half, and walls and floor made whole, in that order.
     """
-    from ..discovery.people import mostly_people
     from .hole_patches import with_holes_patched
     from .object_holes import closed_object_holes, without_vertices
     from .symmetry import mirrored_completion, seen_through_by
 
+    voters = evenly_spread(cameras, MAX_GEOMETRY_PHOTOS)
     if people:
-        views = [(camera, people.get(camera.frame_id, []), depth_buffer(camera, vertices)) for camera in cameras]
-        vertices, triangles = without_vertices(vertices, triangles, mostly_people(vertices, graph, views))
-    capped = closed_object_holes(vertices, triangles, graph)
-    seen_through = seen_through_by(cameras, [depth_buffer(camera, capped.vertices) for camera in cameras])
-    completed = mirrored_completion(capped.vertices, capped.triangles, graph, seen_through)
+        with timed("people removal"):
+            vertices, triangles = without_vertices(vertices, triangles, _people_on(vertices, graph, voters, people))
+    with timed("object holes"):
+        capped = closed_object_holes(vertices, triangles, graph)
+    with timed("seen-through buffers"):
+        seen_through = seen_through_by(voters, _depth_buffers(capped.vertices, voters))
+    with timed("mirrored completion"):
+        completed = mirrored_completion(capped.vertices, capped.triangles, graph, seen_through)
     added_so_far = np.concatenate([capped.inferred, completed.added[len(capped.vertices):]])
-    patched = with_holes_patched(completed.vertices, completed.triangles, graph)
+    with timed("hole patches"):
+        patched = with_holes_patched(completed.vertices, completed.triangles, graph)
     extra = len(patched.vertices) - len(completed.vertices)
     return DisplayGeometry(
         vertices=patched.vertices,
         triangles=patched.triangles,
         inferred=np.concatenate([added_so_far, np.ones(extra, dtype=bool)]),
-        sheet_patches=patched.inferred,
+        sheet_patches=patched.sheet_patches,
         mirror_source=np.concatenate([completed.source, np.full(extra, -1, dtype=np.int64)]),
     )
 
@@ -404,7 +498,7 @@ def coloured_scan(
         camera for camera in load_cameras(poses_path, frame_paths, capture_to_room)
         if frame_paths.get(camera.frame_id, pathlib.Path()).is_file()
     ]
-    cameras = _evenly_spread(all_cameras, MAX_PHOTOS)
+    cameras = evenly_spread(all_cameras, MAX_PHOTOS)
     if not cameras:
         raise ValueError("no stored photo has a usable camera pose")
     vertices, triangles = scan_geometry(mesh_path, capture_to_room)
@@ -425,6 +519,35 @@ def coloured_scan(
     return unused_vertices_removed(scan), cameras
 
 
+def shown_scan(
+    mesh_path: pathlib.Path,
+    poses_path: pathlib.Path,
+    frame_paths: dict[str, pathlib.Path],
+    graph: SceneGraph,
+    people: dict | None = None,
+) -> tuple[ColouredScan, list[PhotoCamera]]:
+    """The scan made fit to show, with no photograph on it yet, and every camera that took a stored photo.
+
+    People out, holes closed and patched, exactly as `coloured_scan` prepares it,
+    without painting its vertices from a sample of the photos: the atlas paints
+    from every photo, and its own photographed texels are the better fallback.
+    """
+    cameras = [
+        camera for camera in load_cameras(poses_path, frame_paths, graph.capture_to_room)
+        if frame_paths.get(camera.frame_id, pathlib.Path()).is_file()
+    ]
+    if not cameras:
+        raise ValueError("no stored photo has a usable camera pose")
+    with timed("mesh load"):
+        vertices, triangles = scan_geometry(mesh_path, graph.capture_to_room)
+    shown = _display_geometry(vertices, triangles, graph, cameras, people)
+    blank = ColouredScan(
+        shown.vertices, shown.triangles, np.tile(UNSEEN, (len(shown.vertices), 1)), np.zeros(len(shown.vertices), bool),
+        inferred=shown.inferred, sheet_patches=shown.sheet_patches, mirror_source=shown.mirror_source,
+    )
+    return unused_vertices_removed(blank), cameras
+
+
 def paint_the_scan(
     mesh_path: pathlib.Path,
     poses_path: pathlib.Path,
@@ -435,6 +558,11 @@ def paint_the_scan(
     people: dict | None = None,
 ) -> ScanPaint:
     """The captured surface, coloured from the photos, as a glTF the viewer can show.
+
+    The surface is thinned, unwrapped and baked from every photo into an atlas,
+    which is what makes a shelf of books read as books rather than a smear. A
+    texel no photo reached takes the nearest photographed colour, and failing
+    that the room's generated material.
 
     People found by discovery (`people`, detections per frame id) are taken out
     and the holes they leave in furniture closed. Holes the LiDAR left in walls
@@ -449,12 +577,11 @@ def paint_the_scan(
     """
     import time
 
+    from .scan_atlas import bake_scan_atlas
     from .surface_materials import room_materials, unseen_surfaces_filled
 
     started = time.monotonic()
-    scan, cameras = coloured_scan(
-        mesh_path, poses_path, frame_paths, graph.capture_to_room, patch_holes_from=graph, people=people,
-    )
+    scan, every_photo = shown_scan(mesh_path, poses_path, frame_paths, graph, people=people)
     filled = with_mirrored_colours(unseen_surfaces_filled(scan, graph, room_materials(materials_dir)))
-    write_scan_glb(filled, out_path)
-    return ScanPaint(out_path, scan.painted_fraction, len(cameras), time.monotonic() - started)
+    baked = bake_scan_atlas(filled, graph, every_photo, frame_paths, out_path, people=people)
+    return ScanPaint(out_path, baked.painted_fraction, baked.photos_used, time.monotonic() - started)

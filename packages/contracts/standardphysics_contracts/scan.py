@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from .precedents import SpaceTypology
+
 ArtifactKind = Literal[
     "room_usdz", "room_json", "room_metadata", "walkthrough_mp4",
     "frames", "poses", "coverage", "lidar_mesh", "photo_manifest",
@@ -117,3 +119,5 @@ class Scan(BaseModel):
     artifacts: list[Artifact] = []
     coverage: list[SurfaceCoverage] = []
     content_hash: str | None = None
+    space_typology: SpaceTypology | None = None
+    """What kind of space this is, as the owner said. None until they say; no ADA layout directive applies without it."""

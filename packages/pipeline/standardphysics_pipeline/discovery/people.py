@@ -20,12 +20,14 @@ that is not there.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 import numpy as np
 from standardphysics_contracts import SceneGraph
 
 from ..textures.camera import PhotoCamera
+from ..textures.project import in_parallel
 from .boxes import structure_points
 from .carve import NEAR_LIMIT, nearest_band, unoccluded
 from .detect import Detection
@@ -76,7 +78,9 @@ def _visible(points: np.ndarray, camera: PhotoCamera, depth_buffer: np.ndarray |
 def mostly_people(
     points: np.ndarray,
     graph: SceneGraph,
-    views: list[tuple[PhotoCamera, list[Detection], np.ndarray | None]],
+    views: Iterable[tuple[PhotoCamera, list[Detection], np.ndarray | None]],
+    visible_to: Callable[[PhotoCamera], np.ndarray] | None = None,
+    depth_buffer_of: Callable[[PhotoCamera, np.ndarray], np.ndarray] | None = None,
 ) -> np.ndarray:
     """Points that were a person in most of the photos that saw them.
 
@@ -87,19 +91,38 @@ def mostly_people(
     surface in some person's outline once. A table is seen in plenty of photos
     with nobody over it, so a vote over every photo that saw the point keeps it,
     while someone who sat in one chair all session is still voted out.
+
+    `visible_to` narrows each photo to the points it could frame, and
+    `depth_buffer_of`, when given, builds the photo's depth buffer from those
+    points in place of the one in its view. The photos vote side by side and
+    their votes are added in photo order, so the result is the same as one
+    photo at a time.
     """
     seen_count = np.zeros(len(points), dtype=np.int32)
     person_count = np.zeros(len(points), dtype=np.int32)
-    for camera, detections, depth_buffer in views:
-        seen_count += _visible(points, camera, depth_buffer)
-        in_person = np.zeros(len(points), dtype=bool)
-        for detection in detections:
-            if detection.is_person:
-                in_person |= _person_surface(points, camera, detection, depth_buffer)
-        person_count += in_person
+
+    def vote(view):
+        camera, detections, depth_buffer = view
+        indices = visible_to(camera) if visible_to is not None else slice(None)
+        near = points[indices]
+        if depth_buffer_of is not None:
+            depth_buffer = depth_buffer_of(camera, near)
+        return indices, _visible(near, camera, depth_buffer), _in_a_person(near, camera, detections, depth_buffer)
+
+    for indices, seen, in_person in in_parallel(vote, list(views)):
+        seen_count[indices] += seen
+        person_count[indices] += in_person
     share = person_count / np.maximum(seen_count, 1)
     voted = (share >= MIN_PERSON_SHARE) & (person_count >= MIN_PERSON_VIEWS)
     return voted & ~structure_points(points, graph)
+
+
+def _in_a_person(points: np.ndarray, camera: PhotoCamera, detections: list[Detection], depth_buffer) -> np.ndarray:
+    inside = np.zeros(len(points), dtype=bool)
+    for detection in detections:
+        if detection.is_person:
+            inside |= _person_surface(points, camera, detection, depth_buffer)
+    return inside
 
 
 def without_people(

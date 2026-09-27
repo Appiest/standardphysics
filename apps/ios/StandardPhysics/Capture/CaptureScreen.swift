@@ -3,12 +3,33 @@ import simd
 
 struct CaptureScreen: View {
     @ObservedObject var model: AppModel
-    @StateObject private var capture = CaptureSessionStore()
+    @StateObject private var capture: CaptureSessionStore
     @Environment(\.scenePhase) private var scenePhase
+    private let isPreview: Bool
+
+    init(model: AppModel, preview: CaptureSessionStore? = nil) {
+        self.model = model
+        _capture = StateObject(wrappedValue: preview ?? CaptureSessionStore())
+        isPreview = preview != nil
+    }
+
+    /// The room paints itself in, so the arrow, the map and the tally all go:
+    /// an unpainted wall says where to walk and how much is left at once.
+    private var painting: Bool { model.developerMode }
+
+    /// The arrow points at the nearest gap, so it waits until RoomPlan has
+    /// found a wall to point at and goes once there are no gaps.
+    private var showsArrow: Bool {
+        !painting && capture.phase == .scanning && !capture.surfaces.isEmpty && !capture.coverage.isComplete
+    }
 
     var body: some View {
         ZStack {
-            RoomCaptureContainer(store: capture).ignoresSafeArea()
+            if isPreview {
+                CameraStandIn().ignoresSafeArea()
+            } else {
+                RoomCaptureContainer(store: capture).ignoresSafeArea()
+            }
             LinearGradient(
                 colors: [AppTheme.captureScrimTop, AppTheme.transparent, AppTheme.captureScrimBottom],
                 startPoint: .top,
@@ -17,14 +38,23 @@ struct CaptureScreen: View {
             .ignoresSafeArea()
             .allowsHitTesting(false)
 
+            if painting {
+                PaintedCoverageView(session: capture.controller?.arSession, paint: capture.paint)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+
             VStack(spacing: AppTheme.Spacing.control) {
                 captureHeader
                 Spacer()
-                if capture.phase == .scanning && !capture.coverage.isComplete {
+                if showsArrow {
                     GuidanceArrow(angle: capture.coverage.unfinishedDirection.radians)
                 }
-                CoverageMapView(surfaces: capture.surfaces, coverage: capture.coverage)
-                    .frame(height: AppTheme.Size.coverageMapHeight)
+                if !painting {
+                    CoverageMapView(surfaces: capture.surfaces, coverage: capture.coverage)
+                        .frame(height: AppTheme.Size.coverageMapHeight)
+                }
                 if capture.hasDetailedGeometry && capture.phase == .scanning {
                     Label("Recording room details", systemImage: "checkmark")
                         .font(AppTheme.Typography.secondary).foregroundStyle(AppTheme.onDark)
@@ -36,16 +66,16 @@ struct CaptureScreen: View {
         }
         .onChange(of: capture.phase) { _, phase in
             if phase == .ready, let scan = capture.capturedScan {
-                model.screen = .review(scan)
+                model.walkFinished(scan)
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { capture.finish() }
+            if phase != .active, !isPreview { capture.finish() }
         }
     }
 
     private var captureHeader: some View {
-        HStack(spacing: AppTheme.Spacing.compact) {
+        HStack(alignment: .top, spacing: AppTheme.Spacing.compact) {
             Button {
                 capture.cancel()
                 model.showStart()
@@ -59,14 +89,11 @@ struct CaptureScreen: View {
             .foregroundStyle(AppTheme.onDark)
             .accessibilityLabel("Cancel scan")
 
-            Text(capture.instruction)
-                .font(AppTheme.Typography.heading)
-                .foregroundStyle(AppTheme.onDark)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, AppTheme.Spacing.card)
-                .frame(minHeight: 52)
-                .background(AppTheme.captureChrome)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.control, style: .continuous))
+            InstructionPanel(
+                instruction: capture.instruction,
+                isComplete: capture.coverage.isComplete,
+                timeLimit: capture.timeLimit
+            )
         }
     }
 
@@ -88,13 +115,65 @@ struct CaptureScreen: View {
                 }
                 Button("Start a new scan") { model.beginCapture() }
                     .buttonStyle(AppButtonStyle(.capture))
-                Button("Back to saved scans") { model.showStart() }
+                Button("Go to home") { model.showStart() }
                     .buttonStyle(AppButtonStyle(.capture))
             }
         case .scanning:
             Button("Done") { capture.finish() }
-                .buttonStyle(AppButtonStyle(capture.coverage.isComplete ? .primary : .capture))
+                .buttonStyle(AppButtonStyle(capture.coverage.isComplete ? .captureFinish : .capture))
+                .animation(AppTheme.Motion.quick, value: capture.coverage.isComplete)
         }
+    }
+}
+
+/// The one instruction, with a mark for the two states that change what the
+/// owner should do: finished, and running out of time.
+private struct InstructionPanel: View {
+    let instruction: String
+    let isComplete: Bool
+    let timeLimit: Date?
+
+    var body: some View {
+        HStack(spacing: AppTheme.Spacing.small) {
+            if isComplete {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(AppTheme.scanLine)
+                    .accessibilityHidden(true)
+            } else if let timeLimit {
+                Countdown(until: timeLimit)
+            }
+            Text(instruction)
+                .font(AppTheme.Typography.heading)
+                .foregroundStyle(AppTheme.onDark)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .contentTransition(.opacity)
+                .animation(AppTheme.Motion.quick, value: instruction)
+        }
+        .padding(.horizontal, AppTheme.Spacing.card)
+        .padding(.vertical, AppTheme.Spacing.small)
+        .frame(minHeight: 52)
+        .background(AppTheme.captureChrome)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.control, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Seconds until the walk stops on its own.
+private struct Countdown: View {
+    let until: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let seconds = max(0, Int(until.timeIntervalSince(context.date).rounded(.up)))
+            Label("0:\(String(format: "%02d", seconds))", systemImage: "timer")
+                .font(AppTheme.Typography.measurement)
+                .foregroundStyle(AppTheme.coverageMissing)
+                .monospacedDigit()
+                .accessibilityLabel("\(seconds) seconds left")
+        }
+        .fixedSize()
     }
 }
 
@@ -121,7 +200,8 @@ private struct CoverageMapView: View {
 
     var body: some View {
         Canvas { context, size in
-            let coverageByID = Dictionary(uniqueKeysWithValues: coverage.surfaces.map { ($0.id, $0) })
+            let coverageByID = Dictionary(
+                coverage.surfaces.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
             let walls = surfaces.filter(\.isWall)
             let points = walls.flatMap(endpoints)
             guard let bounds = MapBounds(points: points) else { return }
@@ -146,7 +226,14 @@ private struct CoverageMapView: View {
             withAnimation(AppTheme.Motion.pulse) { pulse.toggle() }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(coverage.isComplete ? "The room is covered" : "Room coverage map")
+        .accessibilityLabel(accessibilitySummary)
+    }
+
+    private var accessibilitySummary: String {
+        if coverage.isComplete { return "Every wall is done" }
+        let walls = coverage.wallCount
+        guard walls > 0 else { return "Looking for the walls" }
+        return "\(coverage.finishedWallIDs.count) of \(walls) walls done"
     }
 
     private func endpoints(_ surface: SurfaceSnapshot) -> [SIMD2<Float>] {
@@ -172,9 +259,9 @@ private struct CoverageMapView: View {
                 path,
                 with: .color(isObserved
                     ? AppTheme.scanLine
-                    : (pulse ? AppTheme.coveragePendingBright : AppTheme.coveragePendingDim)),
+                    : AppTheme.coverageMissing.opacity(pulse ? 1 : 0.55)),
                 style: StrokeStyle(
-                    lineWidth: isObserved ? 7 : 4,
+                    lineWidth: isObserved ? 8 : 5,
                     lineCap: .round,
                     dash: isObserved ? [] : [7, 7]
                 )
@@ -212,6 +299,19 @@ private struct MapBounds {
         return CGPoint(
             x: CGFloat((point.x - minX) / width) * size.width,
             y: CGFloat((point.y - minY) / height) * size.height
+        )
+    }
+}
+
+/// What sits behind the walk's controls in a Debug preview, where there is
+/// no camera: a dim room so the controls are judged against something like a
+/// real feed.
+private struct CameraStandIn: View {
+    var body: some View {
+        LinearGradient(
+            colors: [Color(hex: 0x6B6660), Color(hex: 0x3E3A36), Color(hex: 0x57524C)],
+            startPoint: .top,
+            endPoint: .bottom
         )
     }
 }

@@ -14,7 +14,11 @@ from uuid import UUID
 
 from standardphysics_contracts import SceneGraph, SceneNode, stands_upright
 
-TEXTURE_PIPELINE_VERSION = "16"
+BOX_BAKE_VERSION = "18"
+"""Bump when the photographed boxes (bake.py) come out differently."""
+SCAN_PAINT_VERSION = "27"
+"""Bump when the painted scan (scan_atlas.py, scan_colour.py) comes out differently."""
+TEXTURE_PIPELINE_VERSION = f"{BOX_BAKE_VERSION}.{SCAN_PAINT_VERSION}"
 PRECISION = 6
 PORTAL_KINDS = frozenset({"door", "window", "opening"})
 PLACEMENT_BOUND_KINDS = frozenset({"wall", "floor", "door", "window", "opening"})
@@ -35,9 +39,18 @@ def bake_graph_for(requested: SceneGraph, capture: SceneGraph) -> SceneGraph:
     })
 
 
+def box_bake_key(bake_graph: SceneGraph, manifest_sha256: str) -> str:
+    """Names the photographed boxes alone, so a build that changes only the painted scan can keep them."""
+    return _key(BOX_BAKE_VERSION, bake_graph, manifest_sha256)
+
+
 def texture_build_key(bake_graph: SceneGraph, manifest_sha256: str) -> str:
+    return _key(TEXTURE_PIPELINE_VERSION, bake_graph, manifest_sha256)
+
+
+def _key(version: str, bake_graph: SceneGraph, manifest_sha256: str) -> str:
     payload = {
-        "version": TEXTURE_PIPELINE_VERSION,
+        "version": version,
         "manifest": manifest_sha256,
         "capture_to_room": _rounded(bake_graph.capture_to_room.m) if bake_graph.capture_to_room else None,
         "nodes": sorted(_placed_fingerprint(node) for node in bake_graph.nodes),

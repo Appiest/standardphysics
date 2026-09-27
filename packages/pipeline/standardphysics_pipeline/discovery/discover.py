@@ -36,7 +36,7 @@ from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
 
 from ..lidar import LidarMeshError, room_cloud
 from ..textures.camera import CameraMetadataError, PhotoCamera, load_cameras
-from ..textures.project import depth_buffer
+from ..textures.project import depth_buffer, evenly_spread
 from . import taxonomy
 from .boxes import claimed_by_any, contained_fraction, resting_parent
 from .cache import DetectionCache
@@ -51,6 +51,7 @@ from .detect import (
     Transport,
     detect_objects,
 )
+from .grow import grown, regions_of, seen_from
 from .merge import Candidate, DiscoveredObject, merge_candidates
 from .people import without_people
 from .reconcile import reconcile_outlets
@@ -157,10 +158,10 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
     unclaimed = removal.points[~claimed_by_any(removal.points, graph)]
     candidates = _carve_all(cameras, detections, unclaimed, buffers)
     found = [
-        (object_, _viewpoints(object_, cameras))
-        for object_ in merge_candidates(candidates)
+        (object_, _viewpoints(object_, cameras, grew, buffers), grew)
+        for object_, grew in grown(merge_candidates(candidates), regions_of(unclaimed, graph))
     ]
-    kept = [pair for pair in found if _worth_keeping(pair[0], graph, pair[1])]
+    kept = [(object_, viewpoints) for object_, viewpoints, grew in found if _worth_keeping(object_, graph, viewpoints, grew)]
     objects = [object_ for object_, _ in kept]
     carved_nodes = [_node_for(object_, graph, viewpoints) for object_, viewpoints in kept]
 
@@ -219,14 +220,7 @@ def _cameras(inputs: DiscoveryInputs, graph: SceneGraph) -> list[PhotoCamera]:
     stored = [camera for camera in cameras if inputs.frame_paths.get(camera.frame_id, pathlib.Path()).is_file()]
     if not stored:
         raise DiscoveryError("no stored photo has a matching camera pose")
-    return _evenly_spread(stored, FRAME_LIMIT)
-
-
-def _evenly_spread(cameras: list[PhotoCamera], limit: int) -> list[PhotoCamera]:
-    if len(cameras) <= limit:
-        return cameras
-    picks = np.linspace(0, len(cameras) - 1, limit).round().astype(int)
-    return [cameras[index] for index in dict.fromkeys(picks.tolist())]
+    return evenly_spread(stored, FRAME_LIMIT)
 
 
 def _orientations(poses_path: pathlib.Path) -> dict[str, str]:
@@ -348,11 +342,23 @@ def _carve_all(
     return candidates
 
 
-def _viewpoints(object_: DiscoveredObject, cameras: list[PhotoCamera]) -> int:
-    """How many separate places this was seen from, rather than how many frames saw it."""
-    positions = [
-        camera.position for camera in cameras if camera.frame_id in set(object_.frame_ids)
-    ]
+def _viewpoints(
+    object_: DiscoveredObject,
+    cameras: list[PhotoCamera],
+    grew: bool = False,
+    buffers: dict[str, np.ndarray] | None = None,
+) -> int:
+    """How many separate places this was seen from, rather than how many frames saw it.
+
+    An object grown to its whole region is measured by the mesh, so every place
+    that saw the region counts, not only the photos that named it.
+    """
+    if grew:
+        return _apart(seen_from(object_.box.points, cameras, buffers or {}))
+    return _apart([camera.position for camera in cameras if camera.frame_id in set(object_.frame_ids)])
+
+
+def _apart(positions: list[np.ndarray]) -> int:
     kept: list[np.ndarray] = []
     for position in positions:
         if all(float(np.linalg.norm(position - other)) >= APART for other in kept):
@@ -360,10 +366,16 @@ def _viewpoints(object_: DiscoveredObject, cameras: list[PhotoCamera]) -> int:
     return len(kept)
 
 
-def _worth_keeping(object_: DiscoveredObject, graph: SceneGraph, viewpoints: int) -> bool:
+def _worth_keeping(object_: DiscoveredObject, graph: SceneGraph, viewpoints: int, grew: bool = False) -> bool:
+    """Whether a found object is worth a node.
+
+    One place is enough for an object grown to its whole region: the rule that
+    asks for two exists to drop fragments of something else, and a whole
+    region is not one. It still comes back asking for another look.
+    """
     if object_.name.strip().lower() in ALREADY_THE_ROOM:
         return False
-    if viewpoints < MIN_VIEWS:
+    if viewpoints < (1 if grew else MIN_VIEWS):
         return False
     if object_.box.volume < MIN_VOLUME or object_.box.floor_clearance > MAX_FLOOR_CLEARANCE:
         return False

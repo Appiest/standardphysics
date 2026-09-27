@@ -52,6 +52,20 @@ RelaxationKind = Literal["unlock", "set_aside"]
 CandidateRejection = Callable[[SceneGraph, SceneGraph], str | None]
 
 
+def combine_rejections(*rejections: CandidateRejection | None) -> CandidateRejection | None:
+    """One rejection that asks each given one in turn and reports the first refusal."""
+    present = [rejection for rejection in rejections if rejection is not None]
+    if not present:
+        return None
+    if len(present) == 1:
+        return present[0]
+
+    def _reject(base: SceneGraph, candidate: SceneGraph) -> str | None:
+        return next((reason for rejection in present if (reason := rejection(base, candidate))), None)
+
+    return _reject
+
+
 @dataclass(frozen=True)
 class Relaxation:
     kind: RelaxationKind

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import math
 import uuid
 
 from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3
 
-from standardphysics_api.combine import RoomPlacement, apply_room_placements
+from standardphysics_api.combine import RoomPlacement, apply_room_placements, placement_since_capture
 
 
 def _node(identifier: str, x: float, y: float) -> tuple[uuid.UUID, SceneNode]:
@@ -97,3 +98,22 @@ def test_combine_endpoint_revises_a_scan(make_client):
     response = client.post(f"/api/scans/{scan_id}/combine", json={"base_revision": 0, "rooms": []})
     assert response.status_code == 201, response.text
     assert response.json()["revision"] == 1
+
+
+def test_a_walk_is_found_where_it_was_placed_after_several_saves() -> None:
+    """The capture frame's motion is the whole way across: the merge's spread and every save since."""
+    captured = [_node(name, x, y) for name, x, y in (("desk", 0.0, 0.0), ("shelf", 4.0, 0.0), ("chair", 1.0, 3.0))]
+    ids = [node_id for node_id, _ in captured]
+    spread = apply_room_placements(
+        _graph(*captured), [RoomPlacement(node_ids=ids, yaw_degrees=0.0, tx=20.0, ty=6.0, cx=0.0, cy=0.0)]
+    )
+    placed = apply_room_placements(
+        spread, [RoomPlacement(node_ids=ids, yaw_degrees=92.0, tx=-3.0, ty=1.5, cx=21.0, cy=7.0)]
+    )
+
+    motion = placement_since_capture(_graph(*captured), placed, [str(node_id) for node_id in ids])
+
+    assert abs(math.degrees(motion.yaw) - 92.0) < 1e-9
+    for (_, node), moved in zip(captured, placed.nodes):
+        x, y = motion.apply((node.transform.m[3], node.transform.m[7]))
+        assert abs(x - moved.transform.m[3]) < 1e-9 and abs(y - moved.transform.m[7]) < 1e-9

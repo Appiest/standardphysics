@@ -7,6 +7,7 @@ same transforms to collision as to export, and never merge or drop nodes.
 
 from __future__ import annotations
 
+import json
 import math
 import uuid
 
@@ -14,7 +15,9 @@ import pytest
 from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3
 from standardphysics_pipeline.blender import display_graph
 from standardphysics_pipeline.footprints import gap_between_nodes
+from standardphysics_pipeline.ingest import parse_room_json
 
+from conftest import REPO
 from standardphysics_api.combine import RoomPlacement, apply_room_placements
 
 
@@ -167,3 +170,20 @@ def test_placing_a_room_leaves_unmoved_pieces_without_a_record() -> None:
     node_id, node = _node("untouched", 1.0, 0.0)
     placed = apply_room_placements(_graph((node_id, node)), [_placement([node_id], yaw=30.0, tx=1.0, ty=1.0)])
     assert placed.by_id(node_id).measured_position is None
+
+
+def test_a_placed_room_keeps_what_lies_flat_lying_flat() -> None:
+    """A real scan's floor lies flat in its own frame; placing the room turns it, never stands it up."""
+    graph = parse_room_json(json.loads((REPO / "datasets/phone/test1/room.json").read_text()))
+    ids = [node.id for node in graph.nodes]
+    moved = apply_room_placements(graph, [_placement(ids, yaw=92.0, tx=10.0, ty=5.0)])
+
+    turn = math.radians(92.0)
+    cos, sin = math.cos(turn), math.sin(turn)
+    for before, after in zip(graph.nodes, moved.nodes):
+        m, n = before.transform.m, after.transform.m
+        for column in range(3):
+            x, y, z = m[column], m[4 + column], m[8 + column]
+            assert n[column] == pytest.approx(cos * x - sin * y, abs=1e-9)
+            assert n[4 + column] == pytest.approx(sin * x + cos * y, abs=1e-9)
+            assert n[8 + column] == pytest.approx(z, abs=1e-9)

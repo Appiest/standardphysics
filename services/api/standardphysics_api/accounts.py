@@ -20,6 +20,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 SESSION_LIFETIME = timedelta(days=30)
+GUEST_SESSION_LIFETIME = timedelta(days=365)
+"""A guest has no password to sign in again with, so its session has to outlast
+the 30 days after which an unopened guest shop is deleted anyway."""
+
+GUEST_SHOPS_KEPT = timedelta(days=30)
+
+GUEST_EMAIL_DOMAIN = "guests.standardphysics.app"
+"""A guest has no email yet, but the owners table needs a unique one. This
+domain is ours and receives no mail, and no screen ever shows the address."""
 
 SCRYPT_COST = 2**14
 SCRYPT_BLOCK_SIZE = 8
@@ -39,11 +48,20 @@ class WeakPassword(Exception):
     pass
 
 
+class NotAGuest(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class Owner:
     id: uuid.UUID
     email: str
     shop_name: str
+    guest: bool = False
+
+    @property
+    def shown_email(self) -> str | None:
+        return None if self.email.endswith(f"@{GUEST_EMAIL_DOMAIN}") else self.email
 
 
 def normalize_email(email: str) -> str:
@@ -91,8 +109,91 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def owner_from_row(row: sqlite3.Row) -> Owner:
+    return _owner(row)
+
+
 def _owner(row: sqlite3.Row) -> Owner:
-    return Owner(id=uuid.UUID(row["id"]), email=row["email"], shop_name=row["shop_name"])
+    return Owner(id=uuid.UUID(row["id"]), email=row["email"], shop_name=row["shop_name"], guest=bool(row["guest"]))
+
+
+def _owner_where(connection: sqlite3.Connection, column: str, value: str) -> Owner | None:
+    row = connection.execute(f"SELECT * FROM owners WHERE {column} = ?", (value,)).fetchone()
+    return _owner(row) if row else None
+
+
+def create_guest(connection: sqlite3.Connection, shop_name: str = "My shop") -> Owner:
+    """An account for an owner who hasn't given an email yet. Nobody can sign in to it with a password."""
+    owner_id = uuid.uuid4()
+    email = f"guest-{owner_id}@{GUEST_EMAIL_DOMAIN}"
+    connection.execute(
+        "INSERT INTO owners (id, email, shop_name, password_hash, created_at, guest) VALUES (?, ?, ?, ?, ?, 1)",
+        (str(owner_id), email, shop_name, hash_password(secrets.token_urlsafe(32)), _now().isoformat()),
+    )
+    return Owner(id=owner_id, email=email, shop_name=shop_name, guest=True)
+
+
+def save_guest(
+    connection: sqlite3.Connection, owner: Owner, email: str, password: str, shop_name: str | None = None
+) -> Owner:
+    """Give a guest an email and a password, so it becomes an account like any other."""
+    if not owner.guest:
+        raise NotAGuest
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise WeakPassword
+    address = normalize_email(email)
+    name = (shop_name or owner.shop_name).strip()
+    try:
+        connection.execute(
+            "UPDATE owners SET email = ?, password_hash = ?, shop_name = ?, guest = 0 WHERE id = ?",
+            (address, hash_password(password), name, str(owner.id)),
+        )
+    except sqlite3.IntegrityError as exc:
+        raise EmailAlreadyRegistered from exc
+    return Owner(id=owner.id, email=address, shop_name=name)
+
+
+def owner_by_email(connection: sqlite3.Connection, email: str) -> Owner | None:
+    return _owner_where(connection, "email", normalize_email(email))
+
+
+def owner_by_apple(connection: sqlite3.Connection, subject: str) -> Owner | None:
+    return _owner_where(connection, "apple_sub", subject)
+
+
+def attach_apple(connection: sqlite3.Connection, owner: Owner, subject: str, email: str | None) -> Owner:
+    """Link an Apple ID to this account. A guest takes the Apple email, when it has one and nobody else does."""
+    address = normalize_email(email) if email and owner.guest and owner_by_email(connection, email) is None else None
+    connection.execute(
+        "UPDATE owners SET apple_sub = ?, guest = 0, email = COALESCE(?, email) WHERE id = ?",
+        (subject, address, str(owner.id)),
+    )
+    return Owner(id=owner.id, email=address or owner.email, shop_name=owner.shop_name)
+
+
+def create_apple_owner(connection: sqlite3.Connection, subject: str, email: str | None, shop_name: str) -> Owner:
+    guest = create_guest(connection, shop_name)
+    return attach_apple(connection, guest, subject, email)
+
+
+def move_shops(connection: sqlite3.Connection, source: Owner, destination: Owner) -> None:
+    """Hand every shop from one account to another, then close the old account."""
+    connection.execute("UPDATE scans SET owner_id = ? WHERE owner_id = ?", (str(destination.id), str(source.id)))
+    connection.execute("UPDATE devices SET owner_id = ? WHERE owner_id = ?", (str(destination.id), str(source.id)))
+    delete_owner(connection, source.id)
+
+
+def guest_deletes_at(connection: sqlite3.Connection, owner: Owner) -> datetime | None:
+    """When a guest's shops go, 30 days after the most recent was last opened."""
+    if not owner.guest:
+        return None
+    row = connection.execute(
+        "SELECT MAX(COALESCE(scans.last_opened_at, scans.created_at)) AS opened FROM scans WHERE owner_id = ?",
+        (str(owner.id),),
+    ).fetchone()
+    created = connection.execute("SELECT created_at FROM owners WHERE id = ?", (str(owner.id),)).fetchone()
+    latest = row["opened"] or created["created_at"]
+    return datetime.fromisoformat(latest) + GUEST_SHOPS_KEPT
 
 
 def register(connection: sqlite3.Connection, email: str, password: str, shop_name: str) -> Owner:
@@ -129,13 +230,15 @@ def token_digest(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def open_session(connection: sqlite3.Connection, owner_id: uuid.UUID) -> str:
+def open_session(
+    connection: sqlite3.Connection, owner_id: uuid.UUID, lifetime: timedelta = SESSION_LIFETIME
+) -> str:
     """Start a session and return the token to hand back to the browser."""
     token = secrets.token_urlsafe(_TOKEN_BYTES)
     opened = _now()
     connection.execute(
         "INSERT INTO sessions (token_hash, owner_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-        (token_digest(token), str(owner_id), opened.isoformat(), (opened + SESSION_LIFETIME).isoformat()),
+        (token_digest(token), str(owner_id), opened.isoformat(), (opened + lifetime).isoformat()),
     )
     return token
 
@@ -161,6 +264,7 @@ def delete_owner(connection: sqlite3.Connection, owner_id: uuid.UUID) -> None:
     even for the moment between the two statements.
     """
     connection.execute("DELETE FROM sessions WHERE owner_id = ?", (str(owner_id),))
+    connection.execute("DELETE FROM devices WHERE owner_id = ?", (str(owner_id),))
     connection.execute("DELETE FROM owners WHERE id = ?", (str(owner_id),))
 
 

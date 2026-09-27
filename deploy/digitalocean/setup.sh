@@ -97,6 +97,18 @@ close_ports() {
   ufw --force enable >/dev/null
 }
 
+# Cubic halves its window on every lost packet, so one download over home
+# Wi-Fi crawled at 1.5 MB/s; BBR paces by measured bandwidth and holds
+# 11 MB/s on the same path. Caddy's compose entry asks for bbr too, which
+# only works once the module is loaded here.
+use_bbr() {
+  log "Sending with BBR"
+  echo tcp_bbr > /etc/modules-load.d/bbr.conf
+  modprobe tcp_bbr
+  printf 'net.core.default_qdisc = fq\nnet.ipv4.tcp_congestion_control = bbr\n' > /etc/sysctl.d/90-bbr.conf
+  sysctl -q -p /etc/sysctl.d/90-bbr.conf
+}
+
 enable_unattended_upgrades() {
   log "Turning on security updates"
   apt-get install -y -qq unattended-upgrades
@@ -109,6 +121,7 @@ main() {
   mount_volume
   add_swap
   close_ports
+  use_bbr
   enable_unattended_upgrades
 
   cat <<NEXT

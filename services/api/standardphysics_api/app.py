@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import io
-import json
 import logging
 import pathlib
 import re
@@ -39,6 +38,7 @@ from standardphysics_contracts import (
     ProposalResult,
     RebuildRequest,
     Report,
+    RouteLegs,
     SaveLayoutRequest,
     Scan,
     ScanList,
@@ -46,6 +46,7 @@ from standardphysics_contracts import (
     SceneGraph,
     SimulationRequest,
     SimulationStatus,
+    SpaceTypologyRequest,
     graph_hash,
 )
 from standardphysics_contracts.textures import FRAME_ID_PATTERN
@@ -56,7 +57,7 @@ from . import repository as repo
 from .approach import evaluate as evaluate_approach
 from .architecture_export import install_architecture_export_routes
 from .auth import install_auth, owner_of
-from .combine import SaveCombineRequest, save_combine
+from .combine import SaveCombineRequest, rooms_of, save_combine
 from .coverage import parse_coverage
 from .db import Database
 from .errors import ApiProblem
@@ -66,13 +67,20 @@ from .layout import check_layout, save_layout
 from .lidar_mesh import InvalidLidarMesh, validate_lidar_mesh
 from .loop_run import run as run_loop_on
 from .loop_run import stream as stream_loop_on
+from .notifications import notifier_from
+from .owner_accounts import install_account_routes
+from .owner_requests import carry_answers
+from .owner_routes import answered, install_owner_routes
+from .plans import install_plan_routes
 from .proposals import propose
 from .questions import answer_question
 from .replays import install_replay_routes
 from .report import build_report
-from .route import confirm, suggestion
+from .route import confirm, legs, suggestion
+from .scenario import DESTINATIONS
 from .seed import seed_sample_shop
 from .settings import Settings
+from .sharing import install_share_routes
 from .simulations import queue_simulation, simulation_status
 from .splats import install_splat_routes
 from .stages import Stages, preview_ledger
@@ -80,6 +88,8 @@ from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId
 from .textures import install_texture_routes, maybe_queue_texture, validate_manifest
 from .usdz_validation import InvalidUsdz, validate_room_usdz
 from .worker import ASSESS, PROCESS, Worker
+
+PLACES = {*DESTINATIONS, "pickup"}
 
 log = logging.getLogger(__name__)
 
@@ -126,6 +136,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     database = Database(settings.database_path)
     store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes)
     worker = Worker(database, store, stages, settings)
+    worker.notifier = notifier_from(settings)
 
     @contextlib.asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -147,12 +158,15 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
 
     app = FastAPI(title="Standard Physics API", version="0.1.0", lifespan=lifespan)
     app.state.database, app.state.store, app.state.worker = database, store, worker
+    app.state.notifier = worker.notifier
     _install_error_handlers(app)
-    install_auth(app, database, store)
+    install_auth(app, database, store, settings.team_emails)
+    install_account_routes(app, database, settings.team_emails, settings.apple_audiences)
     install_architecture_export_routes(app, database)
     _install_scan_routes(app, database, store)
     _install_upload_routes(app, database, store, worker, settings)
-    _install_workspace_routes(app, database, store)
+    _install_workspace_routes(app, database, store, stages)
+    install_owner_routes(app, database, store, stages, settings.team_emails)
     _install_combine_routes(app, database, store, worker)
     _install_file_routes(app, database, store)
     _install_layout_routes(app, database, stages, worker)
@@ -163,9 +177,13 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     install_splat_routes(app, database, store)
     _install_label_routes(app, database, store, worker)
 
-    @app.get("/api/scans/{scan_id}/report", response_model=Report)
-    def report(scan_id: uuid.UUID) -> Report:
-        return build_report(database, stages.ledger_factory(), scan_id)
+    _install_report_route(app, database, stages)
+    install_plan_routes(app, database, stages)
+    install_share_routes(
+        app, database, lambda scan_id: answered_report(database, stages, scan_id),
+        lambda scan_id: _scene_glb_response(database, scan_id, None),
+        lambda scan_id, finding_id: _render_response(store, database, scan_id, finding_id),
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -181,6 +199,21 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     return app
 
 
+def answered_report(database: Database, stages: Stages, scan_id: uuid.UUID) -> Report:
+    """The report with the owner's answers laid over its findings."""
+    built = build_report(database, stages.ledger_factory(), scan_id)
+    if built.assessment is None:
+        return built
+    with database.connect() as connection:
+        return built.model_copy(update={"assessment": answered(connection, stages, scan_id, built.assessment)})
+
+
+def _install_report_route(app: FastAPI, database: Database, stages: Stages) -> None:
+    @app.get("/api/scans/{scan_id}/report", response_model=Report)
+    def report(scan_id: uuid.UUID) -> Report:
+        return answered_report(database, stages, scan_id)
+
+
 def _scan_or_404(connection, scan_id: uuid.UUID) -> Scan:
     scan = repo.get_scan(connection, scan_id)
     if scan is None:
@@ -191,14 +224,19 @@ def _scan_or_404(connection, scan_id: uuid.UUID) -> Scan:
 def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore) -> None:
     @app.post("/api/scans", status_code=201, response_model=Scan)
     def create_scan(body: CreateScanRequest, request: Request) -> Scan:
+        owner = owner_of(request)
         with database.transaction() as connection:
-            scan_id = repo.insert_scan(connection, body, owner_of(request).id)
+            if body.replaces is not None and repo.scan_owner(connection, body.replaces) != owner.id:
+                raise ApiProblem(404, "no scan")
+            scan_id = repo.insert_scan(connection, body, owner.id)
+            if body.replaces is not None:
+                carry_answers(connection, store, body.replaces, scan_id)
             return repo.get_scan(connection, scan_id)
 
     @app.get("/api/scans", response_model=ScanList)
     def list_scans(request: Request) -> ScanList:
         with database.connect() as connection:
-            return ScanList(scans=repo.list_scans(connection, owner_of(request).id))
+            return ScanList(scans=repo.list_shops(connection, owner_of(request).id))
 
     @app.get("/api/scans/{scan_id}", response_model=Scan)
     def get_scan(scan_id: uuid.UUID) -> Scan:
@@ -211,15 +249,15 @@ def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore)
 
         The rows go first and the files second. A stored file with no scan row
         is invisible and reclaimable; a scan row whose files have gone is a
-        listing that breaks the moment anyone opens it.
+        listing that breaks the moment anyone opens it. A scan still being
+        measured is hidden now and deleted by the worker when its job ends, so
+        a job that never ends can't keep a shop on anyone's list.
         """
         with database.transaction() as connection:
             _scan_or_404(connection, scan_id)
-            running = connection.execute(
-                "SELECT 1 FROM jobs WHERE scan_id=? AND state='running'", (str(scan_id),)
-            ).fetchone()
-            if running:
-                raise ApiProblem(409, "Wait for this room's running job to finish before deleting it")
+            if repo.other_running_job(connection, scan_id):
+                repo.mark_for_deletion(connection, scan_id)
+                return Response(status_code=204)
             repo.delete_scan(connection, scan_id)
         store.remove_scan(scan_id)
         return Response(status_code=204)
@@ -402,7 +440,7 @@ def _frame_entry(store: ArtifactStore, scan_id: uuid.UUID, artifact: Artifact) -
     )
 
 
-def _install_workspace_routes(app: FastAPI, database: Database, store: ArtifactStore) -> None:
+def _install_workspace_routes(app: FastAPI, database: Database, store: ArtifactStore, stages: Stages) -> None:
     @app.get("/api/scans/{scan_id}/scene", response_model=SceneGraph)
     def scene(scan_id: uuid.UUID, revision: int | None = None) -> SceneGraph:
         with database.connect() as connection:
@@ -430,20 +468,17 @@ def _install_workspace_routes(app: FastAPI, database: Database, store: ArtifactS
                 if revision is None
                 else repo.assessment_for_revision(connection, scan_id, revision)
             )
-        if found is None:
-            raise ApiProblem(404, "not ready")
-        return found
+            if found is None:
+                raise ApiProblem(404, "not ready")
+            return answered(connection, stages, scan_id, found)
 
 
 def _install_combine_routes(app: FastAPI, database: Database, store: ArtifactStore, worker: Worker) -> None:
     @app.get("/api/scans/{scan_id}/rooms")
-    def rooms(scan_id: uuid.UUID) -> dict:
+    def rooms(scan_id: uuid.UUID, revision: int | None = None) -> dict:
         with database.connect() as connection:
             _scan_or_404(connection, scan_id)
-        manifest = store.scan_dir(scan_id) / "rooms.json"
-        if not manifest.exists():
-            return {"rooms": []}
-        return json.loads(manifest.read_text())
+        return rooms_of(database, store, scan_id, revision)
 
     @app.post("/api/scans/{scan_id}/combine", response_model=SceneGraph, status_code=201)
     def combine(scan_id: uuid.UUID, body: SaveCombineRequest) -> SceneGraph:
@@ -525,10 +560,32 @@ def _install_label_routes(app: FastAPI, database: Database, store: ArtifactStore
         )
 
 
+def _destinations(raw: str | None) -> list[str] | None:
+    if raw is None:
+        return None
+    named = [part.strip() for part in raw.split(",") if part.strip()]
+    unknown = [part for part in named if part not in PLACES]
+    if unknown:
+        raise ApiProblem(400, "unknown destination", need=unknown)
+    return named
+
+
 def _install_route_routes(app: FastAPI, database: Database, stages: Stages, worker: Worker) -> None:
     @app.get("/api/scans/{scan_id}/scenario/suggestion", response_model=Scenario)
-    def scenario_suggestion(scan_id: uuid.UUID) -> Scenario:
-        return suggestion(database, scan_id)
+    def scenario_suggestion(scan_id: uuid.UUID, destinations: str | None = None) -> Scenario:
+        """The café template with no `destinations`, or a path through the places named, comma separated."""
+        return suggestion(database, scan_id, _destinations(destinations))
+
+    @app.post("/api/scans/{scan_id}/scenario/legs", response_model=RouteLegs)
+    def scenario_legs(scan_id: uuid.UUID, body: Scenario) -> RouteLegs:
+        return legs(database, stages, scan_id, body)
+
+    @app.put("/api/scans/{scan_id}/space-type", response_model=Scan)
+    def set_space_type(scan_id: uuid.UUID, body: SpaceTypologyRequest) -> Scan:
+        with database.transaction() as connection:
+            _scan_or_404(connection, scan_id)
+            repo.set_space_typology(connection, scan_id, body.space_typology)
+            return repo.get_scan(connection, scan_id)
 
     @app.put("/api/scans/{scan_id}/scenario", response_model=Scenario)
     def confirm_scenario(scan_id: uuid.UUID, body: Scenario) -> Scenario:
@@ -599,6 +656,18 @@ def _frame_listing(store: ArtifactStore, scan_id: uuid.UUID, stored: list[Artifa
     return FrameListing(frames=entries, unreadable=unreadable)
 
 
+def _render_response(
+    store: ArtifactStore, database: Database, scan_id: uuid.UUID, finding_id: uuid.UUID
+) -> FileResponse:
+    with database.connect() as connection:
+        revision = repo.get_revision(connection, scan_id)
+    if revision is None:
+        raise ApiProblem(404, "not ready")
+    directory = store.scan_dir(scan_id) / "revisions"
+    matches = sorted(directory.glob(f"*/renders/{finding_id}.png"), key=lambda path: int(path.parent.parent.name))
+    return _file_or_404(matches[-1] if matches else None, "image/png")
+
+
 def _install_file_routes(app: FastAPI, database: Database, store: ArtifactStore) -> None:
     @app.head("/api/scans/{scan_id}/scene.glb")
     @app.get("/api/scans/{scan_id}/scene.glb")
@@ -615,13 +684,7 @@ def _install_file_routes(app: FastAPI, database: Database, store: ArtifactStore)
 
     @app.get("/api/scans/{scan_id}/renders/{finding_id}.png")
     def render(scan_id: uuid.UUID, finding_id: uuid.UUID) -> FileResponse:
-        with database.connect() as connection:
-            revision = repo.get_revision(connection, scan_id)
-        if revision is None:
-            raise ApiProblem(404, "not ready")
-        directory = store.scan_dir(scan_id) / "revisions"
-        matches = sorted(directory.glob(f"*/renders/{finding_id}.png"), key=lambda path: int(path.parent.parent.name))
-        return _file_or_404(matches[-1] if matches else None, "image/png")
+        return _render_response(store, database, scan_id, finding_id)
 
     @app.get("/api/scans/{scan_id}/crops/{crop_id}")
     def get_crop(scan_id: uuid.UUID, crop_id: str) -> FileResponse:

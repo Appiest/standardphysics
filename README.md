@@ -17,6 +17,7 @@ Owners spend less on consultants and more time building the shop of their dreams
 | Lane C, checks and evaluation | [`docs/lanes/LANE_C.md`](docs/lanes/LANE_C.md) |
 | Lane D, contracts, API, web | [`docs/lanes/LANE_D.md`](docs/lanes/LANE_D.md) |
 | Anyone writing UI or copy | [`CLAUDE.md`](CLAUDE.md), then section 2 of the plan |
+| Anyone touching a screen an owner sees | [`docs/UX.md`](docs/UX.md) |
 | Anyone pointing ARIA at the evaluation | [`docs/aria.md`](docs/aria.md) |
 | Anyone putting this in front of a real shop | [`docs/DEPLOY.md`](docs/DEPLOY.md), then [`docs/APP_STORE.md`](docs/APP_STORE.md) |
 | Anyone opening the reactive notebook | [`docs/marimo.md`](docs/marimo.md) |
@@ -86,6 +87,25 @@ ipconfig getifaddr en0     # the address to type on the phone
 
 Then `http://<that address>:3000` in Safari. For the whole thing, API included,
 `start.sh` says how at the top of the file.
+
+### Without opening Xcode
+
+```bash
+scripts/run-ios.sh              # the connected phone, or the simulator
+scripts/run-ios.sh --simulator  # always the simulator
+```
+
+The simulator has no LiDAR, so it cannot scan, and the run sets
+`SIMULATOR_CAPTURE_DEMO=1` to get past the unsupported-device screen. Every
+screen but the scan itself can be worked on there, which is most of them.
+
+```bash
+scripts/ship-ios.sh
+```
+
+Bumps the build number, archives, and uploads to TestFlight. It needs an App
+Store Connect API key, which is what lets xcodebuild make the distribution
+certificate on its own; the script says how to get one and where to put it.
 
 ### Deploying
 

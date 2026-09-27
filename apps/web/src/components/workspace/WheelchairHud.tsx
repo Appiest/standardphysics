@@ -7,7 +7,7 @@ import {
   ArrowsIn,
   ArrowUp,
   Compass,
-  Crosshair,
+  Info,
   Speedometer,
   Wheelchair,
   X,
@@ -19,7 +19,6 @@ import {
   boundsEstimate,
   INCHES_PER_METER,
   inspectionCategory,
-  inspectionCategoryLabel,
   inspectionLimitations,
   isDockableInspectionTarget,
 } from "@/lib/wheelchair-inspection";
@@ -63,16 +62,19 @@ function dispatchKeyTap(code: string, releaseAfterMs: number, onRelease: () => v
   }, releaseAfterMs);
 }
 
-function VirtualButton({
+export function VirtualButton({
   code,
   label,
   children,
   className = "",
+  large = false,
 }: {
   code: string;
   label: string;
   children: React.ReactNode;
   className?: string;
+  /** Thumb-sized, for the owner's driving pad on a phone. */
+  large?: boolean;
 }) {
   const activePointerId = useRef<number | null>(null);
   const pointerDownAt = useRef<number | null>(null);
@@ -146,60 +148,49 @@ function VirtualButton({
       onLostPointerCapture={handlePointerUp}
       onPointerLeave={handlePointerUp}
       onClick={handleClick}
-      className={`flex h-10 w-10 touch-none select-none items-center justify-center rounded-lg bg-sheet/95 text-ink shadow-sm transition-colors hover:bg-sheet active:bg-ink active:text-sheet ${className}`}
+      className={`flex touch-none select-none items-center justify-center bg-sheet/95 text-ink transition-colors hover:bg-sheet active:bg-ink active:text-sheet ${large ? "size-14 rounded-xl shadow-float" : "h-10 w-10 rounded-lg shadow-sm"} ${className}`}
     >
       {children}
     </button>
   );
 }
 
-function ScanInspection({
-  node,
-  distance,
-}: {
-  node: SceneNode;
-  distance: number;
-}) {
-  const category = inspectionCategory(node);
-  const dimensions = boundsEstimate(node);
-  const distanceInches = distance * INCHES_PER_METER;
-  const limitations = inspectionLimitations(category);
-
+/** The object's measured size, as three figures a glance can take in. */
+function ObjectSize({ node }: { node: SceneNode }) {
+  const { widthInches, depthInches, heightInches } = boundsEstimate(node);
+  const figures = [["Wide", widthInches], ["Deep", depthInches], ["Tall", heightInches]] as const;
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-rule/60 bg-sheet/95 p-2.5 text-xs">
-      <div className="flex items-center justify-between font-semibold text-ink">
-        <span>LiDAR scan inspection</span>
-        <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-700">
-          Estimate only
-        </span>
-      </div>
+    <dl className="grid grid-cols-3 gap-2">
+      {figures.map(([name, inches]) => (
+        <div key={name} className="rounded-lg bg-ink/[0.04] px-3 py-2">
+          <dd className="text-lg font-semibold tabular-nums text-ink">{inches.toFixed(0)}″</dd>
+          <dt className="text-sm text-ink-muted">{name}</dt>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
-      <p className="text-ink-muted">{inspectionCategoryLabel(category)}</p>
-
-      <div className="rounded bg-sheet/70 p-2 text-ink-muted">
-        <p>Object bounds estimate: {dimensions.widthInches.toFixed(0)}″ W × {dimensions.depthInches.toFixed(0)}″ D × {dimensions.heightInches.toFixed(0)}″ H</p>
-        <p className="mt-1">Horizontal center distance: {distanceInches.toFixed(0)}″ ({distance.toFixed(2)} m)</p>
-        <p className="mt-1 text-[10px]">Target-center geometry only; not a reach measurement.</p>
-      </div>
-
-      <div>
-        <p className="font-semibold text-ink">Not measured from this scan</p>
-        <ul className="mt-1 space-y-0.5 text-ink-muted">
-          {limitations.map((limitation) => <li key={limitation}>• {limitation}</li>)}
-        </ul>
-      </div>
-
-      <div className="border-t border-rule/60 pt-2">
-        <p className="font-semibold text-ink">Rules that may apply</p>
-        <ul className="mt-1 space-y-1 text-[10px] text-ink-muted">
-          {ADA_RULES.map((rule) => (
-            <li key={rule.section}>
-              <a className="font-semibold text-sky-700 underline" href={rule.url} rel="noreferrer" target="_blank">§{rule.section} {rule.label}</a>: {rule.caveat}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
+/** What the scan cannot tell about this object, and the rules that would need it, for whoever asks. */
+function WhyUnchecked({ node }: { node: SceneNode }) {
+  const limitations = inspectionLimitations(inspectionCategory(node));
+  return (
+    <details className="group text-sm text-ink-muted">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 font-medium text-ink">
+        <Info size={16} aria-hidden />
+        Why the rules can&apos;t be checked yet
+      </summary>
+      <ul className="mt-2 flex flex-col gap-1 pl-6">
+        {limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
+      </ul>
+      <ul className="mt-2 flex flex-col gap-1 pl-6">
+        {ADA_RULES.map((rule) => (
+          <li key={rule.section}>
+            <a className="font-medium text-ink underline" href={rule.url} rel="noreferrer" target="_blank">§{rule.section} {rule.label}</a>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -406,48 +397,23 @@ export function WheelchairHud({
           </div>
         </div>
 
-        {/* Center: In-Range Object Card */}
         {node && (
-          <div className="pointer-events-auto max-w-sm rounded-xl border border-sky-400/30 bg-sheet/95 p-3.5 shadow-float backdrop-blur">
-            <div className="mb-2 flex items-start justify-between gap-2">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <Crosshair size={16} weight="bold" className="text-sky-600" />
-                  <h3 className="text-sm font-bold text-ink">{node.label}</h3>
-                </div>
-                <p className="text-xs text-ink-muted capitalize">
-                  LiDAR object bounds estimate •{" "}
-                  {(node.dimensions.x * INCHES_PER_METER).toFixed(0)}″W ×{" "}
-                  {(node.dimensions.y * INCHES_PER_METER).toFixed(0)}″D ×{" "}
-                  {(node.dimensions.z * INCHES_PER_METER).toFixed(0)}″H
-                </p>
-              </div>
-
-              <span className="rounded bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">
-                {(reachDistance * INCHES_PER_METER).toFixed(0)}″ center distance
-              </span>
+          <div className="pointer-events-auto flex max-w-sm flex-col gap-3 rounded-xl bg-sheet/95 p-4 shadow-float backdrop-blur">
+            <div className="flex items-baseline justify-between gap-3">
+              <h3 className="text-lg font-semibold text-ink">{node.label}</h3>
+              <span className="text-sm tabular-nums text-ink-muted">{(reachDistance * INCHES_PER_METER).toFixed(0)}″ away</span>
             </div>
-
-            <ScanInspection node={node} distance={reachDistance} />
-
-            {/* Object Actions */}
-            <div className="mt-3 flex items-center gap-2">
+            <ObjectSize node={node} />
+            <WhyUnchecked node={node} />
+            <div className="flex items-center gap-2">
               {isDockable && (
-                <Button
-                  variant="primary"
-                  onClick={() => onDock(node)}
-                  className="flex-1 text-xs"
-                >
-                  <ArrowsIn size={15} weight="bold" />
-                  Position near object
+                <Button variant="primary" onClick={() => onDock(node)} className="flex-1">
+                  <ArrowsIn size={18} weight="bold" aria-hidden />
+                  Move next to it
                 </Button>
               )}
-              <Button
-                variant="quiet"
-                onClick={() => onSelectNode(node.id)}
-                className="text-xs"
-              >
-                Inspect
+              <Button variant="quiet" onClick={() => onSelectNode(node.id)}>
+                Select it
               </Button>
             </div>
           </div>
@@ -455,9 +421,7 @@ export function WheelchairHud({
 
         {/* Bottom Right: On-screen Touch/Mouse Steering Pad */}
         <div className="pointer-events-auto flex flex-col items-center gap-1 rounded-2xl bg-sheet/95 p-2 shadow-float backdrop-blur">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">
-            Steering
-          </p>
+          <p className="text-sm text-ink-muted">Steering</p>
           <div className="flex gap-1">
             <VirtualButton code="KeyQ" label="Strafe Left" className="text-xs font-bold">
               Q

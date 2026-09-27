@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, RootModel
 from .findings import Finding, Locus
 from .geometry import Vec3
 from .loop import Assessment, NodeMove, Proposal, RouterAction
+from .precedents import SpaceTypology
 from .rules import Check
 from .scan import Scan
 from .scene import Scenario, SceneGraph
@@ -24,6 +25,14 @@ class CreateScanRequest(BaseModel):
     name: str
     device_model: str
     duration_seconds: float
+    space_typology: SpaceTypology | None = None
+    replaces: UUID | None = None
+    """A shop this walk joins. The new walk replaces that scan once it's in, and
+    keeps the owner's in-shop answers and photos. Leave it out for a new shop."""
+
+
+class SpaceTypologyRequest(BaseModel):
+    space_typology: SpaceTypology | None
 
 
 class ScanList(BaseModel):

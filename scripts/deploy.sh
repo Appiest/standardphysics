@@ -15,15 +15,36 @@ set -euo pipefail
 
 HOST="${SP_DEPLOY_HOST:-root@api.standardphysics.app}"
 DIR="${SP_DEPLOY_DIR:-/root/standardphysics}"
+LOCK="${SP_DEPLOY_LOCK:-/var/lock/standardphysics-deploy}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 say() { printf '\n== %s\n' "$1"; }
 
+# Whichever remote is the one the Droplet pulls from. A fork has it as
+# "upstream"; a plain clone has it as "origin". Checking against the wrong one
+# silently skips the guard below, so find it rather than assume it.
+master_remote() {
+  local remote
+  for remote in upstream origin; do
+    if git remote get-url "$remote" >/dev/null 2>&1; then
+      echo "$remote"
+      return 0
+    fi
+  done
+  return 1
+}
+
 warn_about_unpushed() {
   cd "$REPO_ROOT"
-  git fetch upstream --quiet 2>/dev/null || return 0
+  local remote
+  remote="$(master_remote)" || {
+    echo "No upstream or origin remote here, so I cannot tell whether master has your work." >&2
+    echo "Deploying anyway; check yourself that what you want is on master." >&2
+    return 0
+  }
+  git fetch "$remote" --quiet 2>/dev/null || return 0
   local ahead
-  ahead="$(git rev-list --count upstream/master..HEAD 2>/dev/null || echo 0)"
+  ahead="$(git rev-list --count "$remote/master..HEAD" 2>/dev/null || echo 0)"
   if [ "$ahead" -gt 0 ]; then
     echo "You have $ahead commit(s) not on master. The Droplet pulls master, so they will not ship." >&2
     echo "Push them first, or run with SP_DEPLOY_ANYWAY=1 to deploy master as it stands." >&2
@@ -36,13 +57,26 @@ warn_about_unpushed() {
 
 deploy() {
   say "Deploying master to $HOST"
-  ssh "$HOST" bash -euo pipefail -s <<REMOTE
-cd "$DIR"
+  # The commands go as an argument, not on stdin. A heredoc takes stdin over,
+  # and ssh then has no way to ask for a key passphrase: it gives up and
+  # reports publickey, which reads as a key the server will not accept rather
+  # than a question it could not ask. -t gives the prompt a terminal to use.
+  #
+  # The lock is on the box and not on this machine, because two people on two
+  # laptops collide the same way one person running it twice does. Two deploys
+  # racing to recreate a container leave the name taken, the stack half torn
+  # down and the site answering 502, which is how this was learned.
+  ssh -t "$HOST" "set -euo pipefail
+exec 9>'$LOCK'
+if ! flock -n 9; then
+  echo 'Another deploy is already running on this box. Wait for it to finish.' >&2
+  exit 75
+fi
+cd '$DIR'
 git pull --ff-only
 cd deploy/digitalocean
 docker compose up -d --build
-./doctor.sh
-REMOTE
+./doctor.sh"
 }
 
 main() {

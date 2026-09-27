@@ -17,6 +17,15 @@ export const MODEL = {
 
 export const WALL_CUT_HEIGHT = 1.2;
 
+/**
+ * Where the scanned surface is cut in the overview, in metres.
+ *
+ * Higher than the boxes' cut, because the scan is worth looking at for the
+ * shelving and signage the photos show, and lower than a ceiling, so the lid
+ * closing the ceiling's holes never roofs over the room seen from above.
+ */
+export const SCAN_CUT_HEIGHT = 2.2;
+
 const NODE_COLORS: Record<string, string> = {
   outlet: MODEL.outlet,
   candidate_outlet: MODEL.candidate_outlet,

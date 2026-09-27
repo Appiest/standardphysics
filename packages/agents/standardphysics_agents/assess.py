@@ -81,9 +81,15 @@ class Pass:
         return {gap.rule_id: gap.waiting_on for gap in self.unevaluated}
 
 
-def _assessment_id(graph_fingerprint: str, version: str, pass_number: int) -> uuid.UUID:
+def _assessment_id(scan_id: uuid.UUID, graph_fingerprint: str, version: str, pass_number: int) -> uuid.UUID:
+    """The same for the same scan, geometry, rules and pass, and different for any other scan.
+
+    Two scans of the same room have the same fingerprint. Without the scan in
+    the id, the second scan's assessment took the first one's id, and saving it
+    overwrote the first scan's results while leaving the second with none.
+    """
     return uuid.uuid5(
-        ASSESSMENT_NAMESPACE, f"{graph_fingerprint}|{version}|{pass_number}"
+        ASSESSMENT_NAMESPACE, f"{scan_id}|{graph_fingerprint}|{version}|{pass_number}"
     )
 
 
@@ -107,7 +113,7 @@ def assess(
     result = run_checks(context, max_tier)
     fingerprint = graph_hash(graph)
     assessment = Assessment(
-        id=_assessment_id(fingerprint, pack.version, pass_number),
+        id=_assessment_id(graph.scan_id, fingerprint, pack.version, pass_number),
         scan_id=graph.scan_id,
         graph_revision=graph.revision,
         graph_hash=fingerprint,

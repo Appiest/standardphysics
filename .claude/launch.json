@@ -4,14 +4,54 @@
     {
       "name": "scenario-sweep",
       "runtimeExecutable": ".venv/bin/marimo",
-      "runtimeArgs": ["run", "notebooks/scenario_sweep.py", "--port", "2718", "--headless", "--no-token"],
+      "runtimeArgs": [
+        "run",
+        "notebooks/scenario_sweep.py",
+        "--port",
+        "2718",
+        "--headless",
+        "--no-token"
+      ],
       "port": 2718
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": [
+        "-m",
+        "standardphysics_api"
+      ],
+      "port": 8788,
+      "env": {
+        "SP_API_PORT": "8788",
+        "SP_API_HOST": "127.0.0.1"
+      }
     },
     {
       "name": "web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "apps/web"],
-      "port": 3000
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "apps/web"
+      ],
+      "port": 3000,
+      "env": {
+        "SP_API_PORT": "8788",
+        "SP_API_ORIGIN": "http://127.0.0.1:8788"
+      }
+    },
+    {
+      "name": "rate-pairs",
+      "runtimeExecutable": "/Users/yanzihao/Documents/standardphysics/.venv/bin/python",
+      "runtimeArgs": [
+        "/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/scripts/finetune/rate_pairs.py"
+      ],
+      "port": 8791,
+      "env": {
+        "PYTHONPATH": "/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/packages/agents:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/packages/contracts:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/packages/pipeline:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/packages/fixtures"
+      }
     }
   ]
 }

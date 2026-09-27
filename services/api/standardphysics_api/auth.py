@@ -15,10 +15,13 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
+from standardphysics_contracts import Session
+from standardphysics_contracts.owner import Role
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from . import accounts
@@ -32,6 +35,9 @@ COOKIE_NAME = "sp_session"
 GUARDED_PREFIX = "/api/scans"
 BEARER = re.compile(r"^Bearer\s+(?P<token>[A-Za-z0-9_\-]+)$")
 SCAN_IN_PATH = re.compile(r"^/api/scans/(?P<scan_id>[0-9a-fA-F-]{36})(?:/|$)")
+TEAM_ONLY = re.compile(r"^/api/scans/[0-9a-fA-F-]{36}/(ask|loop|loop/stream|simulations|rebuild|combine)$")
+"""The builders' tools: the ask box, the improvement loop, simulations, rebuilds and combining rooms.
+Owners don't see them (docs/UX.md, owner tools and team tools)."""
 
 SIGN_IN_ATTEMPTS = 10
 SIGN_IN_WINDOW_SECONDS = 300
@@ -48,14 +54,6 @@ class SignInRequest(BaseModel):
     password: str = Field(min_length=1, max_length=1024)
 
 
-class Session(BaseModel):
-    """What the browser is told about the signed-in owner. Never the token."""
-
-    owner_id: uuid.UUID
-    email: str
-    shop_name: str
-
-
 @dataclass
 class AttemptLimiter:
     """Slows password guessing within this process.
@@ -66,6 +64,7 @@ class AttemptLimiter:
 
     limit: int = SIGN_IN_ATTEMPTS
     window: int = SIGN_IN_WINDOW_SECONDS
+    message: str = "Too many sign-in attempts. Wait a few minutes and try again."
     attempts: dict[str, list[float]] = field(default_factory=dict)
 
     def check(self, key: str) -> None:
@@ -73,7 +72,7 @@ class AttemptLimiter:
         recent = [at for at in self.attempts.get(key, []) if now - at < self.window]
         self.attempts[key] = recent
         if len(recent) >= self.limit:
-            raise ApiProblem(429, "Too many sign-in attempts. Wait a few minutes and try again.")
+            raise ApiProblem(429, self.message)
 
     def record(self, key: str) -> None:
         self.attempts.setdefault(key, []).append(time.monotonic())
@@ -90,6 +89,21 @@ def token_from(request: Request) -> str | None:
     return request.cookies.get(COOKIE_NAME)
 
 
+def signed_in(database: Database, request: Request) -> Owner:
+    """The signed-in owner, for a route outside /api/scans that the middleware doesn't guard."""
+    owner = resolve_owner(database, request)
+    if owner is None:
+        raise ApiProblem(401, "Sign in to continue.")
+    return owner
+
+
+def team_member(database: Database, team_emails: frozenset[str], request: Request) -> Owner:
+    owner = signed_in(database, request)
+    if role_of(owner, team_emails) != "team":
+        raise ApiProblem(403, "This is for the Standard Physics team.")
+    return owner
+
+
 def owner_of(request: Request) -> Owner:
     """The signed-in owner. Only call this from a route the middleware guards."""
     owner = getattr(request.state, "owner", None)
@@ -103,7 +117,7 @@ def _scan_id_in(path: str) -> uuid.UUID | None:
     return uuid.UUID(match.group("scan_id")) if match else None
 
 
-def _resolve_owner(database: Database, request: Request) -> Owner | None:
+def resolve_owner(database: Database, request: Request) -> Owner | None:
     token = token_from(request)
     if token is None:
         return None
@@ -125,39 +139,76 @@ def _owns_scan(database: Database, scan_id: uuid.UUID, owner: Owner) -> bool:
         return not repo.scan_exists(connection, scan_id)
 
 
-def install_auth(app: FastAPI, database: Database, store: ArtifactStore) -> None:
+def role_of(owner: Owner, team_emails: frozenset[str]) -> Role:
+    return "team" if owner.email.casefold() in team_emails else "owner"
+
+
+def install_auth(
+    app: FastAPI, database: Database, store: ArtifactStore, team_emails: frozenset[str] = frozenset()
+) -> None:
     limiter = AttemptLimiter()
 
     class RequireOwner(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
             if not request.url.path.startswith(GUARDED_PREFIX):
                 return await call_next(request)
-            owner = _resolve_owner(database, request)
+            owner = resolve_owner(database, request)
             if owner is None:
                 return _problem(401, "Sign in to continue.")
             scan_id = _scan_id_in(request.url.path)
             if scan_id is not None and not _owns_scan(database, scan_id, owner):
                 return _problem(404, "no scan")
+            if _team_only(request, owner, team_emails):
+                return _problem(403, "This is for the Standard Physics team.")
+            if scan_id is not None and request.method == "GET":
+                _mark_opened(database, scan_id)
             request.state.owner = owner
             return await call_next(request)
 
     app.add_middleware(RequireOwner)
-    _install_auth_routes(app, database, store, limiter)
+    _install_auth_routes(app, database, store, limiter, team_emails)
+
+
+def _team_only(request: Request, owner: Owner, team_emails: frozenset[str]) -> bool:
+    """A team tool asked for by someone off the team. A server with no team named keeps them open."""
+    if not team_emails or not TEAM_ONLY.match(request.url.path):
+        return False
+    return role_of(owner, team_emails) != "team"
+
+
+OPENED_RESOLUTION = timedelta(hours=1)
+
+
+def _mark_opened(database: Database, scan_id: uuid.UUID) -> None:
+    """Remember when a shop was last looked at, to the hour, so a guest's shop is kept while it's used."""
+    now = datetime.now(UTC)
+    with database.connect() as connection:
+        connection.execute(
+            "UPDATE scans SET last_opened_at = ? WHERE id = ? AND (last_opened_at IS NULL OR last_opened_at < ?)",
+            (now.isoformat(), str(scan_id), (now - OPENED_RESOLUTION).isoformat()),
+        )
 
 
 def _problem(status: int, message: str) -> JSONResponse:
     return JSONResponse(ApiProblem(status, message).body.model_dump(exclude_none=True), status_code=status)
 
 
-def _session_of(owner: Owner) -> Session:
-    return Session(owner_id=owner.id, email=owner.email, shop_name=owner.shop_name)
+def session_of(database: Database, owner: Owner, team_emails: frozenset[str]) -> Session:
+    with database.connect() as connection:
+        deletes_at = accounts.guest_deletes_at(connection, owner)
+    return Session(
+        owner_id=owner.id, email=owner.shown_email, shop_name=owner.shop_name, role=role_of(owner, team_emails),
+        guest=owner.guest, deletes_at=deletes_at,
+    )
 
 
-def _set_cookie(response: Response, request: Request, token: str) -> None:
+def set_session_cookie(
+    response: Response, request: Request, token: str, lifetime: timedelta = accounts.SESSION_LIFETIME
+) -> None:
     response.set_cookie(
         COOKIE_NAME,
         token,
-        max_age=int(accounts.SESSION_LIFETIME.total_seconds()),
+        max_age=int(lifetime.total_seconds()),
         httponly=True,
         samesite="lax",
         secure=request.url.scheme == "https",
@@ -192,6 +243,30 @@ def _authenticate(database: Database, body: SignInRequest, limiter: AttemptLimit
     return owner
 
 
+EMAIL_TAKEN_BY_ANOTHER = "That email already has an account. Sign in with it and we'll move this shop there."
+
+
+def take_guest_shops(database: Database, request: Request, owner: Owner) -> None:
+    """When a guest signs in to an account, the shops they walked as a guest go with them."""
+    current = resolve_owner(database, request)
+    if current is None or not current.guest or current.id == owner.id:
+        return
+    with database.transaction() as connection:
+        accounts.move_shops(connection, current, owner)
+
+
+def save_guest(database: Database, guest: Owner, email: str, password: str, shop_name: str | None) -> Owner:
+    with database.transaction() as connection:
+        try:
+            return accounts.save_guest(connection, guest, email, password, shop_name)
+        except accounts.NotAGuest:
+            raise ApiProblem(409, "This account already has an email.") from None
+        except EmailAlreadyRegistered:
+            raise ApiProblem(409, EMAIL_TAKEN_BY_ANOTHER) from None
+        except WeakPassword:
+            raise ApiProblem(400, f"Use at least {accounts.MIN_PASSWORD_LENGTH} characters.") from None
+
+
 def _erase_owner(database: Database, owner: Owner) -> list[uuid.UUID]:
     """Drop every row belonging to this owner, and say which scans to unfile.
 
@@ -214,20 +289,32 @@ def _erase_owner(database: Database, owner: Owner) -> list[uuid.UUID]:
 
 
 def _install_auth_routes(
-    app: FastAPI, database: Database, store: ArtifactStore, limiter: AttemptLimiter
+    app: FastAPI, database: Database, store: ArtifactStore, limiter: AttemptLimiter, team_emails: frozenset[str]
 ) -> None:
     @app.post("/api/auth/sign-up", status_code=201, response_model=Session)
     def sign_up(body: SignUpRequest, request: Request, response: Response) -> Session:
+        current = resolve_owner(database, request)
+        if current is not None and current.guest:
+            saved = save_guest(database, current, body.email, body.password, body.shop_name)
+            return session_of(database, saved, team_emails)
         owner, token = _open(database, _register(database, body))
-        _set_cookie(response, request, token)
-        return _session_of(owner)
+        set_session_cookie(response, request, token)
+        return session_of(database, owner, team_emails)
 
     @app.post("/api/auth/sign-in", response_model=Session)
     def sign_in(body: SignInRequest, request: Request, response: Response) -> Session:
-        owner, token = _open(database, _authenticate(database, body, limiter))
-        _set_cookie(response, request, token)
-        return _session_of(owner)
+        owner = _authenticate(database, body, limiter)
+        take_guest_shops(database, request, owner)
+        owner, token = _open(database, owner)
+        set_session_cookie(response, request, token)
+        return session_of(database, owner, team_emails)
 
+    _install_session_routes(app, database, store, team_emails)
+
+
+def _install_session_routes(
+    app: FastAPI, database: Database, store: ArtifactStore, team_emails: frozenset[str]
+) -> None:
     @app.post("/api/auth/sign-out", status_code=204)
     def sign_out(request: Request) -> Response:
         token = token_from(request)
@@ -247,7 +334,7 @@ def _install_auth_routes(
         owed the same. There is no undo and no grace period: the scans are gone
         when this returns.
         """
-        owner = _resolve_owner(database, request)
+        owner = resolve_owner(database, request)
         if owner is None:
             raise ApiProblem(401, "Sign in to continue.")
         for scan_id in _erase_owner(database, owner):
@@ -258,7 +345,7 @@ def _install_auth_routes(
 
     @app.get("/api/auth/session", response_model=Session)
     def current_session(request: Request) -> Session:
-        owner = _resolve_owner(database, request)
+        owner = resolve_owner(database, request)
         if owner is None:
             raise ApiProblem(401, "Sign in to continue.")
-        return _session_of(owner)
+        return session_of(database, owner, team_emails)

@@ -1,6 +1,6 @@
 {
   "lane": "D",
-  "updated": "2026-09-23T08:00:00Z",
+  "updated": "2026-09-26T17:04:55Z",
   "done": [
     "contracts and fixture shop (21bbc65)",
     "Stop.anchor_node_id and WidthResult.needs_measurement (audit A-6, A-9)",
@@ -41,9 +41,22 @@
     "audit A-6: the endpoint exemption keeps only what a stop stands at (1084818)",
     "audit A-14, A-15, A-16: 403.5.2 widths measured across the gaps the route runs through (1d6a685)",
     "audit A-17 camera over the floor (790381d), A-26 overlap tolerance (a2ed9d2), A-47 coverage history (93a720c, gate thresholds left to Lane A)",
-    "rule review: 403.5.1 separation condition, 404.2.9 asks about inside doors, Advisory 904.2 quoted word for word (9944fbf); 403.5.3 square passing space (2382bd3); 904.4.1 approach beside the lowered section (4bff1bc)"
+    "rule review: 403.5.1 separation condition, 404.2.9 asks about inside doors, Advisory 904.2 quoted word for word (9944fbf); 403.5.3 square passing space (2382bd3); 904.4.1 approach beside the lowered section (4bff1bc)",
+    "docs/UX.md: the owner journey spec, routes and bridge (571ed14)",
+    "phase 0 web: team role from SP_TEAM_EMAILS; developer mode, the loop and scoped checks for the team only; no scoped counts or early all-clear for owners; report link in the findings panel (3bcfdfd)",
+    "owner contracts: session, requests, checklist, journey, share links, plans, devices; Finding.asks (77889a1)",
+    "requests and answers settle findings; checklist; journey; team photo reviews (973b8ef)",
+    "guest accounts, save, Sign in with Apple, guest shops move on sign-in (832a202)",
+    "push notifications through APNs; guest shops deleted 30 days after last opened, reminder at 27 (563e4b4)",
+    "report links and the example shop; saved layout plans; paths for any business (dd6314a)",
+    "owner view /shops/[id] and /example (06c9b57); shared report /r/[token], privacy page, /team/reviews (891faea..8d0ee89)",
+    "assessment ids are per scan: two scans of one room no longer overwrite each other (cd82c22)",
+    "new walks replace a shop's scan and keep its answers (58be909); wheelchair walk-through and turning pieces for owners (e9162ca)",
+    "team tools gated by role once a team is named; guest rate limit (812868e); owner funnel /team/funnel (cc7d6a5)",
+    "iPhone half of the owner journey on master (aa63877): first run, guest and Apple accounts, push registration, the next-step card, the web bridge, adding a room and the shared PDF. 117 simulator tests pass and the unsigned release build compiles",
+    "Deployed to the Droplet on 2026-09-26 with team emails and the APNs key set; build 7 is in internal TestFlight (BJDB Team)"
   ],
-  "in_progress": null,
+  "in_progress": "",
   "blocked_on": null,
   "ready_for_others": [
     "python -m standardphysics_api serves the real upload contract on :8787 (Lane A can point API_BASE_URL at the demo machine)",
@@ -68,10 +81,13 @@
     "notebooks/scenario_sweep.py, opened with .venv/bin/marimo edit; start.sh installs the notebook extra",
     "PipelineMeasurements.route_runs_below: every stretch of a leg below a threshold, as inches along the leg",
     "PipelineMeasurements.largest_square: the largest clear square at a point, turned to a heading",
-    "widest_path(anchors=...): stops' anchor_node_id, which narrows the endpoint exemption"
+    "widest_path(anchors=...): stops' anchor_node_id, which narrows the endpoint exemption",
+    "Owner API for the app: /api/auth/guest|save|apple, /api/devices/{token}, /api/journeys, /api/scans/{id}/requests|journey|checklist|shares|plans, POST /api/scans with replaces (docs/UX.md, How it's built)",
+    "Web owner view at /shops/{id} and /example, and the standardPhysics bridge messages it posts (docs/UX.md, The bridge)"
   ],
   "needs_human": [
-    "Verify the rule pack thresholds and record a second check (docs/handoffs/D-to-C-rule-review.md). Until then real scans report no findings; SP_PREVIEW_UNVERIFIED_RULES=1 is for development only",
+    "Record the second check on the rules (docs/handoffs/D-to-C-rule-review.md). Until then every report carries the preview notice.",
+    "Try build 7 from TestFlight on a LiDAR iPhone: first launch with no account, a real walk and the in-shop questions, the results push, Sign in with Apple, adding a room and sharing the report",
     "Lane A: decide what the capture gate requires; PROGRESS.md A-47 has the data",
     "Decide whether dead-end turning space (304.3.1) is a recommendation, which needs a new Finding outcome in contracts",
     "Decide whether door_clearance_blocked should report the chair in the doorway as a route finding too (relabelled in 1084818)",

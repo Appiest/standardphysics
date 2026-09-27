@@ -28,6 +28,7 @@ from PIL import Image
 from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room, stands_upright
 
 from .project import to_linear, to_srgb
+from .regions import VertexIndex
 from .scan_colour import ColouredScan, vertex_normals
 
 MATERIALS_DIR = pathlib.Path(__file__).parent / "materials"
@@ -161,23 +162,29 @@ def room_owners(
     of a cabinet pressed against a wall is not taken for the wall. Room graphs
     carry no ceiling, so a ceiling belongs to nothing. `patches` marks vertices
     that patch a hole in a wall or floor; they are that sheet by construction, so
-    the floor patched under a chair never takes the chair's fabric.
+    the floor patched under a chair never takes the chair's fabric. Each node
+    tests only the vertices around its own box, since testing a merged floor's
+    millions of vertices against every one of its hundreds of nodes took minutes.
     """
     owners = np.full(len(vertices), -1, dtype=np.int32)
     claimable = ~patches if patches is not None else np.ones(len(vertices), dtype=bool)
     objects = [(index, node) for index, node in enumerate(graph.nodes) if not _is_room_sheet(node)]
     sheets = [(index, node) for index, node in enumerate(graph.nodes) if _is_room_sheet(node)]
+    regions = VertexIndex(vertices)
     for index, node in objects:
-        owners[_inside(node, vertices, OBJECT_REACH) & (owners < 0) & claimable] = index
+        near = regions.near_box(node, OBJECT_REACH)
+        owners[near[_inside(node, vertices[near], OBJECT_REACH) & (owners[near] < 0) & claimable[near]]] = index
     for index, node in sheets:
-        owners[_on_sheet(node, vertices, normals) & (owners < 0)] = index
+        near = regions.near_box(node, SURFACE_REACH)
+        owners[near[_on_sheet(node, vertices[near], normals[near]) & (owners[near] < 0)]] = index
     return owners
 
 
 def _wrapped_bilinear(tile: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
     height, width = tile.shape[:2]
     x, y = np.mod(u, width), np.mod(v, height)
-    x0, y0 = np.floor(x).astype(np.int64), np.floor(y).astype(np.int64)
+    # A hair below zero wraps to exactly `width` in float32, so the pixel index wraps too.
+    x0, y0 = np.floor(x).astype(np.int64) % width, np.floor(y).astype(np.int64) % height
     x1, y1 = (x0 + 1) % width, (y0 + 1) % height
     fx, fy = (x - x0)[:, None], (y - y0)[:, None]
     top = tile[y0, x0] * (1 - fx) + tile[y0, x1] * fx

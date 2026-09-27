@@ -18,6 +18,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    # Every download leaves through this container's own network namespace,
+    # which does not follow the host's choice; setup.sh loads the module.
+    sysctls:
+      net.ipv4.tcp_congestion_control: bbr
     environment:
       API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
       APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN in .env}
@@ -46,6 +50,14 @@ services:
       # Secure flag. Trusting any hop is safe here because the API publishes no
       # port: nothing but Caddy can reach it.
       FORWARDED_ALLOW_IPS: "*"
+      # The photo bake's threads each keep their own pool of freed memory, and
+      # with the default of one pool per thread a floor's bake crept up atlas by
+      # atlas until the droplet killed it. Two pools hold that creep down.
+      MALLOC_ARENA_MAX: "2"
+      # The bake already runs one worker thread per core. OpenBLAS starting its
+      # own threads inside each one made two cores fight over every matrix
+      # product: 153 ms per transform instead of 85 on the droplet.
+      OPENBLAS_NUM_THREADS: "1"
     volumes:
       # create_host_path: false is the whole point of the long form here. The
       # short form lets Docker invent a missing directory, owned by root, which
@@ -71,6 +83,16 @@ services:
     environment:
       PORT: "3000"
       SP_API_ORIGIN: http://api:8787
+    # The image's own healthcheck asks port 8787 for /health, which is the API
+    # and not this. Inherited unchanged, the workspace reports unhealthy while
+    # serving every page correctly, and a status column that is always wrong is
+    # one nobody reads on the day it is right.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/sign-in').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       api:
         condition: service_healthy

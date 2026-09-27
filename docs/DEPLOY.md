@@ -118,7 +118,9 @@ scripts/deploy.sh
 ```
 
 It pulls master on the Droplet, rebuilds, and runs `doctor.sh`, streaming the
-lot back. It stops if you have commits master does not, because the Droplet
+lot back. Only one deploy runs at a time: a second is refused rather than
+queued, because two of them racing to recreate a container leave the name
+taken, the stack half torn down and the site answering 502. It stops if you have commits master does not, because the Droplet
 pulls from GitHub and a deploy that quietly ships the previous commit is worse
 than one that refuses. `SP_DEPLOY_HOST` moves it to another box.
 

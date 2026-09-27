@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import type { Assessment, EvidenceStatus, Report, Scan, ScanList, Scenario, SceneGraph, SimulationReplay, TextureStatus } from "@/types/contracts";
+import type { Assessment, Checklist, EvidenceStatus, Journey, JourneyList, Report, Scan, ScanList, Scenario, SceneGraph, ShopRequests, SimulationReplay, TextureStatus } from "@/types/contracts";
 import type { RoomGroup } from "./room-groups";
 import type { CapturedSplats } from "./captured-splats";
 import { API_ORIGIN } from "./api-origin";
@@ -59,11 +59,27 @@ export const getSimulationReplay = (scanId: string, revision: number) =>
 export const getTextureStatus = (scanId: string, revision: number) =>
   getOptional<TextureStatus>(`/api/scans/${scanId}/textures?revision=${revision}`);
 
-export const getRooms = (scanId: string) =>
-  getOptional<{ rooms: RoomGroup[] }>(`/api/scans/${scanId}/rooms`);
+export const getRooms = (scanId: string, revision: number) =>
+  getOptional<{ rooms: RoomGroup[] }>(`/api/scans/${scanId}/rooms?revision=${revision}`);
 
 export const getCapturedSplats = (scanId: string, revision: number) =>
   getOptional<CapturedSplats>(`/api/scans/${scanId}/splats?revision=${revision}`);
 
 export const getEvidence = (scanId: string) =>
   getOptional<EvidenceStatus>(`/api/scans/${scanId}/evidence`);
+
+export const getJourney = (scanId: string) => getOptional<Journey>(`/api/scans/${scanId}/journey`);
+export const listJourneys = async () => (await getJson<JourneyList>("/api/journeys")).journeys;
+export const getRequests = async (scanId: string) => (await getOptional<ShopRequests>(`/api/scans/${scanId}/requests`))?.requests ?? [];
+export const getPathSuggestion = (scanId: string, places: string[]) =>
+  getOptional<Scenario>(`/api/scans/${scanId}/scenario/suggestion?destinations=${encodeURIComponent(places.join(","))}`);
+/** A report behind a share link, or the example shop behind the token "example". No sign-in needed. */
+export const getSharedReport = (token: string) => getOptional<Report>(`/api/shared/${encodeURIComponent(token)}`);
+
+export const getChecklist = (scanId: string) => getOptional<Checklist>(`/api/scans/${scanId}/checklist`);
+
+/** The exported model's address, once the server has one to send. */
+export async function readyGlbUrl(scanId: string): Promise<string | null> {
+  const response = await headSceneGlb(scanId);
+  return response.ok ? sceneGlbUrl(scanId) : null;
+}

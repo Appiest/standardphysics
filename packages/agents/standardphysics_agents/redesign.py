@@ -6,11 +6,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from standardphysics_contracts import NodeMove, SceneGraph, Vec3, bounds_the_room
+from standardphysics_contracts.precedents import PrecedentDirective
 
 from .assess import assess
 from .evaluation.gate import accepts
 from .fix import apply_moves, violations
 from .models import ModelAnswer, OpenRouter
+from .precedents import PrecedentCompiler, precedent_rejection_for
 from .router import Rejected
 from .workflows import workflow_candidate_rejection
 
@@ -53,7 +55,10 @@ INSTRUCTION = (
 )
 
 
-def propose_redesign(graph, workflows, profiles, feedback, measure, *, rules, ledger, model=None, collision_index=None) -> RedesignResult:
+def propose_redesign(
+    graph, workflows, profiles, feedback, measure, *, rules, ledger, model=None, collision_index=None,
+    directives: tuple[PrecedentDirective, ...] = (),
+) -> RedesignResult:
     client = model or OpenRouter()
     movable_objects = [
         {
@@ -86,10 +91,21 @@ def propose_redesign(graph, workflows, profiles, feedback, measure, *, rules, le
         ],
         "workflow_feedback": feedback,
         "verified_rules": [rule.model_dump(mode="json") for rule in rules.enabled(ledger, max_tier=3)],
+        **_directive_context(directives),
     }, RoomEdits.model_json_schema(), "room_furniture_edits")
     if isinstance(answer, Rejected):
         return RedesignResult(None, client.model, False, (answer.reason,))
-    return validate_redesign(graph, answer, workflows, profiles, measure, rules=rules, ledger=ledger, collision_index=collision_index)
+    return validate_redesign(
+        graph, answer, workflows, profiles, measure,
+        rules=rules, ledger=ledger, collision_index=collision_index, directives=directives,
+    )
+
+
+def _directive_context(directives: tuple[PrecedentDirective, ...]) -> dict:
+    """The space type's ADA layout constraints, in the prompt only when some apply."""
+    if not directives:
+        return {}
+    return {"ada_layout_constraints": PrecedentCompiler(list(directives)).format_qwen_precedent_prompt(list(directives))}
 
 
 def _edit_complaint(graph, edits: RoomEdits) -> str | None:
@@ -135,7 +151,8 @@ def _scored_against_workflows(graph, candidate, workflows, measure, rules, ledge
 
 
 def validate_redesign(
-    graph, answer: ModelAnswer, workflows, profiles, measure, *, rules, ledger, collision_index=None
+    graph, answer: ModelAnswer, workflows, profiles, measure, *, rules, ledger, collision_index=None,
+    directives: tuple[PrecedentDirective, ...] = (),
 ) -> RedesignResult:
     def rejected(*reasons: str) -> RedesignResult:
         return RedesignResult(None, answer.model, False, tuple(reasons))
@@ -162,7 +179,7 @@ def validate_redesign(
 
     regression = workflow_candidate_rejection(
         graph, candidate, workflows=workflows, profiles=profiles, measure=measure, collision_index=collision_index
-    )
+    ) or (precedent_rejection_for(list(directives))(graph, candidate) if directives else None)
     if regression or not improved:
         return rejected(regression or "nothing_measurable_improved")
     return RedesignResult(candidate, answer.model, True, ())

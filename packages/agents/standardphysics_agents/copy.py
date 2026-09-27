@@ -246,12 +246,12 @@ def _exit_path(observation: Observation, rule: RuleSpec) -> FindingCopy:
 
 QUESTIONS = {
     "entrance_threshold": FindingCopy(
-        title="Send a photo of the front doorway from the side",
-        detail="Get the floor and the bottom of the door in frame. We'll measure the step and check it against the half inch the standard allows.",
+        title="Send a low photo of the front doorway",
+        detail="Open the door, crouch just outside and hold your phone a few inches off the ground, pointed into the shop. If you have a tape measure, stand it next to the threshold so we can read its height against the half inch the standard allows.",
     ),
     "door_hardware": FindingCopy(
         title="Send a photo of the front door handle",
-        detail="Straight on, close enough to see its shape. We'll check it opens with a closed fist and sits between 34 and 48 inches up.",
+        detail="Stand in front of the handle and get close enough that its shape is clear. We'll check it opens with a closed fist and sits between 34 and 48 inches up.",
     ),
     "door_opening_force": FindingCopy(
         title="Check how hard the doors inside the shop are to push open",

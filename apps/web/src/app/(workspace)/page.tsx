@@ -4,7 +4,7 @@ import { HomeTitleBlock } from "@/components/home/HomeTitleBlock";
 import { SheetIndex } from "@/components/home/SheetIndex";
 import { loadShopSheet, sheetNumber } from "@/components/home/shopSheet";
 import { listScans } from "@/lib/api";
-import { requireSession } from "@/lib/session";
+import { isTeam, requireSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,8 @@ function EmptySheet() {
 
 export default async function ShopsPage() {
   const session = await requireSession();
-  const sheets = await Promise.all((await listScans()).map(loadShopSheet));
+  const team = isTeam(session);
+  const sheets = await Promise.all((await listScans()).map((scan) => loadShopSheet(scan, team)));
   const [featured, ...others] = sheets;
 
   return (

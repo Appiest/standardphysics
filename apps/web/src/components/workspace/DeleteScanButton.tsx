@@ -3,7 +3,9 @@
 import { Trash } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonClassName } from "@/components/ui/Button";
+import { MENU_ITEM } from "@/components/ui/Menu";
+import { tellApp } from "@/lib/native-bridge";
 
 /**
  * Removing one shop, from the page that shows it.
@@ -13,11 +15,21 @@ import { Button } from "@/components/ui/Button";
  * whole account.
  *
  * Asks in place rather than in a dialog, so the consequence is on screen beside
- * the button that carries it out. A room still being measured cannot be
- * deleted, and the server says so in its own words rather than ours, because it
- * knows which job is holding it.
+ * the button that carries it out. A room still being measured goes from the
+ * owner's list at once, and the server finishes deleting it when the measuring
+ * stops. Inside the iPhone app the page tells the app, which goes back home.
  */
-export function DeleteScanButton({ scanId, name }: { scanId: string; name: string }) {
+const TRIGGER = {
+  menu: `${MENU_ITEM} hover:bg-problem/10 hover:text-problem`,
+  page: `${buttonClassName("quiet")} self-start text-ink-muted hover:text-problem`,
+};
+
+const CONFIRMATION = {
+  menu: "flex max-w-72 flex-col items-start gap-2 p-3",
+  page: "flex max-w-sm flex-col items-start gap-2",
+};
+
+export function DeleteScanButton({ scanId, name, look = "menu" }: { scanId: string; name: string; look?: keyof typeof TRIGGER }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -32,6 +44,7 @@ export function DeleteScanButton({ scanId, name }: { scanId: string; name: strin
       setFailure(await refusal(response));
       return;
     }
+    tellApp({ type: "shopDeleted", scanId });
     router.replace("/");
     router.refresh();
   }
@@ -41,16 +54,16 @@ export function DeleteScanButton({ scanId, name }: { scanId: string; name: strin
       <button
         type="button"
         onClick={() => setConfirming(true)}
-        className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-ink-muted hover:bg-problem/10 hover:text-problem"
+        className={TRIGGER[look]}
       >
-        <Trash size={16} weight="bold" aria-hidden />
-        Delete
+        <Trash size={18} aria-hidden />
+        Delete this shop
       </button>
     );
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className={CONFIRMATION[look]}>
       <p className="text-sm text-ink-muted">
         Delete {name}? The room, the walkthrough and every finding go with it.
       </p>

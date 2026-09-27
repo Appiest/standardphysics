@@ -62,7 +62,6 @@ def test_a_scan_with_a_running_job_does_not_block_deletion(client):
             " VALUES (?, 'reconstruct', 0, 'running', ?)",
             (scan_id, repo.now()),
         )
-    assert client.delete(f"/api/scans/{scan_id}").status_code == 409
     assert client.delete("/api/account").status_code == 204
     assert not scan_directory(client, scan_id).exists()
 

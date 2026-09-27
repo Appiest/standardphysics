@@ -44,7 +44,7 @@ def test_geometry_exports_the_object_graph_before_considering_a_scan(tmp_path, m
     out = tmp_path / "scene.glb"
     calls = []
 
-    def export_graph(actual_graph, actual_out):
+    def export_graph(actual_graph, actual_out, lidar_mesh=None):
         calls.append((actual_graph, actual_out))
         return actual_out
 

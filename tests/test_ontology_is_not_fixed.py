@@ -24,7 +24,7 @@ ONTOLOGY_LITERAL = re.compile(
     r'^(?:NodeKind|Relation|QueryKind|Dimension|LabelSource)\s*(?::\s*\w+\s*)?=\s*Literal\[', re.M
 )
 
-BRANCHES_BASELINE = 24
+BRANCHES_BASELINE = 30
 """Places that ask what kind of thing something is. Target: nothing above the
 interpretation layer asks, because a name is for showing a person.
 
@@ -45,6 +45,11 @@ Raising this baseline is only ever an audit, never a shortcut. The last audit
   portals and mounts differently.
 Previously 15; the growth came from the A/G/K/E integrations above, not from
 this file's owner. Any count above 34 must fail and be audited here.
+
+Audit 2026-09-26, lane D: 24 rose to 30 with the owner journey. All six are in
+api/owner_requests.py and branch on how the owner answers a request (a yes or
+no, a number, a photo, or another walk of the shop). That is the form of an
+answer, like the artefact kinds above, not what a thing in the room is.
 """
 
 LITERALS_BASELINE = 0

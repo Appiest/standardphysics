@@ -19,7 +19,7 @@ PNG = b"\x89PNG\r\n\x1a\n"
 def no_blender_stages(**overrides) -> Stages:
     """Every Lane B and C stage is real except the ones that launch Blender."""
 
-    def export_glb(graph, out: pathlib.Path) -> pathlib.Path:
+    def export_glb(graph, out: pathlib.Path, lidar_mesh: pathlib.Path | None = None) -> pathlib.Path:
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(FIXTURE_DATA / "shop.glb", out)
         return out

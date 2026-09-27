@@ -24,6 +24,7 @@ from .adaptive_redesign import AdaptiveRedesignResult, run_adaptive_redesign
 from .ask import Answer, Query, ask, query_schema
 from .assess import Pass, assess
 from .checks import CheckContext, Observation, Unevaluated, run_checks
+from .compliance import ComplianceResult, RequirementEntry, RequirementEvidence, evaluate_candidate_room
 from .copy import FindingCopy, describe
 from .entrypoint import RULEPACK_VERSION, findings_for
 from .environment_physics import (
@@ -99,6 +100,7 @@ __all__ = [
     "ChoiceJudgment",
     "ClaimVerification",
     "ConfidenceThresholds",
+    "ComplianceResult",
     "DownstreamGuardResult",
     "EvaluationResult",
     "EvidenceAudit",
@@ -123,6 +125,8 @@ __all__ = [
     "RankedLayout",
     "RankedRegulation",
     "RegulationCandidate",
+    "RequirementEntry",
+    "RequirementEvidence",
     "Rejected",
     "Relaxation",
     "ReportClaim",
@@ -157,6 +161,7 @@ __all__ = [
     "dataset",
     "describe",
     "evaluate",
+    "evaluate_candidate_room",
     "evaluate_workflow",
     "finding_id",
     "findings_for",

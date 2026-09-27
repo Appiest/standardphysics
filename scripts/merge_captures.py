@@ -87,7 +87,28 @@ def _slid(graph: SceneGraph, dx: float, dy: float, scan_id: uuid.UUID) -> list:
     return moved
 
 
-def merge(directories: list[pathlib.Path], scan_id: uuid.UUID) -> tuple[SceneGraph, dict]:
+def _source_scan_of(directory: pathlib.Path, scans: pathlib.Path) -> str | None:
+    """The scan this walk was already uploaded as, so its textured mesh can be shown.
+
+    Placing four walks against each other means recognising them, and one white
+    box is much like another. The captures were imported as scans of their own
+    and those have been photographed onto their meshes, so the merged scan
+    points back at them and the owner drags a room they can actually see.
+    """
+    mesh = directory / "lidar-mesh.json"
+    if not mesh.is_file() or not scans.is_dir():
+        return None
+    size = mesh.stat().st_size
+    for candidate in scans.iterdir():
+        theirs = candidate / "artifacts" / "lidar-mesh"
+        if theirs.is_file() and theirs.stat().st_size == size:
+            return candidate.name
+    return None
+
+
+def merge(
+    directories: list[pathlib.Path], scan_id: uuid.UUID, scans: pathlib.Path
+) -> tuple[SceneGraph, dict]:
     """One graph holding every walk, spread out, and the manifest naming each.
 
     Laid out in a square rather than a line. Four walks of thirty metres set end
@@ -112,7 +133,11 @@ def merge(directories: list[pathlib.Path], scan_id: uuid.UUID) -> tuple[SceneGra
             scan_id,
         )
         nodes.extend(placed)
-        rooms.append({"name": _capture_name(directory), "node_ids": [str(n.id) for n in placed]})
+        rooms.append({
+            "name": _capture_name(directory),
+            "node_ids": [str(n.id) for n in placed],
+            "source_scan_id": _source_scan_of(directory, scans),
+        })
     return SceneGraph(scan_id=scan_id, revision=0, nodes=nodes), {"rooms": rooms}
 
 
@@ -126,7 +151,7 @@ def main() -> int:
     args = parser.parse_args()
 
     scan_id = uuid.uuid4()
-    graph, manifest = merge(args.directories, scan_id)
+    graph, manifest = merge(args.directories, scan_id, args.scans)
 
     database = Database(args.db)
     with database.transaction() as connection:

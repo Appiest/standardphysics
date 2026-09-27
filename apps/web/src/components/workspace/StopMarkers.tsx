@@ -1,6 +1,6 @@
 "use client";
 
-import { Html } from "@react-three/drei";
+import { Html, Line } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useRef } from "react";
 import { Plane, Vector3 } from "three";
@@ -16,6 +16,8 @@ export type RouteHandles = {
   onGrab: () => void;
   onDrag: (marker: StopMarker, dx: number, dy: number) => void;
   onDrop: () => void;
+  /** The route a customer walks between stops, one line per leg, around what's in the way. */
+  legs?: { x: number; y: number }[][];
 };
 
 function useMarkerDrag(marker: StopMarker, route: RouteHandles) {
@@ -44,6 +46,17 @@ function useMarkerDrag(marker: StopMarker, route: RouteHandles) {
   };
 }
 
+/**
+ * Crowded labels take turns below and above their marker. Lifting every one
+ * upward put a label straight onto its neighbour's whenever that neighbour sat
+ * just above it on screen, which from overhead is most of the time.
+ */
+function labelOffset(tier: number): number {
+  if (tier === 0) return 0;
+  const direction = tier % 2 === 1 ? 1 : -1;
+  return direction * Math.ceil(tier / 2) * LABEL_STEP_PERCENT;
+}
+
 function Marker({ marker, route }: { marker: StopMarker; route: RouteHandles }) {
   const drag = useMarkerDrag(marker, route);
   return (
@@ -55,7 +68,7 @@ function Marker({ marker, route }: { marker: StopMarker; route: RouteHandles }) 
       <Html position={[0, 0.3, 0]} center style={{ pointerEvents: "none" }}>
         <span
           className="block whitespace-nowrap rounded-md bg-accent px-2 py-1 text-sm font-semibold text-paper shadow-md"
-          style={{ transform: `translateY(${-marker.labelTier * LABEL_STEP_PERCENT}%)` }}
+          style={{ transform: `translateY(${labelOffset(marker.labelTier)}%)` }}
         >
           {marker.label}
         </span>
@@ -64,9 +77,16 @@ function Marker({ marker, route }: { marker: StopMarker; route: RouteHandles }) 
   );
 }
 
+function WalkingLeg({ path }: { path: { x: number; y: number }[] }) {
+  if (path.length < 2) return null;
+  const points = path.map(({ x, y }) => [x, 0.03, -y] as [number, number, number]);
+  return <Line points={points} color={MODEL.accent} lineWidth={3} dashed dashSize={0.25} gapSize={0.18} depthTest={false} renderOrder={2} />;
+}
+
 export function StopMarkers({ route }: { route: RouteHandles }) {
   return (
     <group>
+      {route.legs?.map((leg, index) => <WalkingLeg key={index} path={leg} />)}
       {route.markers.map((marker) => (
         <Marker key={marker.key} marker={marker} route={route} />
       ))}

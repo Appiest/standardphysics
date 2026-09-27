@@ -68,7 +68,9 @@ class PhotoCamera:
         )
 
     def to_camera(self, points: np.ndarray) -> np.ndarray:
-        return points @ self.room_to_camera[:3, :3].T + self.room_to_camera[:3, 3]
+        """Camera-frame points, in single precision when the points are: a tenth of a millimetre across a library floor, and half the time and memory of doubles."""
+        transform = self.room_to_camera.astype(np.float32) if points.dtype == np.float32 else self.room_to_camera
+        return points @ transform[:3, :3].T + transform[:3, 3]
 
     def project(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Pixel column, pixel row and forward depth for room-frame points. Depth <= 0 is behind."""

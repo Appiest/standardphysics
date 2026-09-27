@@ -21,9 +21,9 @@ import numpy as np
 from standardphysics_contracts import SceneGraph, TextureBuild, TextureCoverage
 from standardphysics_pipeline.ingest import capture_to_room_from_payload
 from standardphysics_pipeline.textures.camera import load_cameras
+from standardphysics_pipeline.textures.project import evenly_spread
 from standardphysics_pipeline.textures.scan_colour import (
     ColouredScan,
-    _evenly_spread,
     _photo,
     colour_the_scan,
     scan_geometry,
@@ -133,7 +133,7 @@ def main():
             for camera in load_cameras(poses_path, frame_paths, c2r)
             if frame_paths.get(camera.frame_id, pathlib.Path()).is_file()
         ]
-        cameras = _evenly_spread(cameras, max_photos)
+        cameras = evenly_spread(cameras, max_photos)
         print(f"  Selected {len(cameras)} cameras from {len(poses)} available poses")
 
         t_img = time.time()

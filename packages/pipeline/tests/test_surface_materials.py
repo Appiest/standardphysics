@@ -19,6 +19,7 @@ from standardphysics_pipeline.textures.surface_materials import (
     MANIFEST,
     MaterialFill,
     SurfaceMaterial,
+    _wrapped_bilinear,
     load_materials,
     material_key,
     materials_digest,
@@ -213,3 +214,10 @@ def test_a_room_material_keeps_its_own_colour():
         colours, photographed, np.zeros((2, 3)), np.tile([0.0, 1.0, 0.0], (2, 1)), owners,
     )
     np.testing.assert_allclose(filled[1], 0.6, atol=1e-6)
+
+
+def test_a_point_a_hair_below_a_tile_edge_samples_inside_the_tile():
+    """In float32 a tiny negative coordinate wraps to exactly the tile's width, one past its last pixel."""
+    tile = np.arange(512 * 512 * 3, dtype=np.float32).reshape(512, 512, 3)
+    edge = np.array([-1e-9], dtype=np.float32)
+    assert _wrapped_bilinear(tile, edge, edge).shape == (1, 3)

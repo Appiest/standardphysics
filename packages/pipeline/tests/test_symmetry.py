@@ -11,6 +11,7 @@ import uuid
 
 import numpy as np
 from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3
+from standardphysics_pipeline.textures.camera import PhotoCamera
 from standardphysics_pipeline.textures.scan_colour import (
     ColouredScan,
     unused_vertices_removed,
@@ -117,18 +118,15 @@ def test_mirror_links_survive_dropping_unused_vertices():
     np.testing.assert_array_equal(kept.mirror_source, [-1, -1, 0, 1])
 
 
-class StraightAhead:
-    """A camera that sees every point at the middle of its frame, one metre away."""
-
-    width, height = 10, 10
-
-    def project(self, points):
-        count = len(points)
-        return np.full(count, 5.0), np.full(count, 5.0), np.full(count, 1.0)
+def straight_ahead() -> PhotoCamera:
+    """A camera one metre from the origin, looking at it through the middle of a ten-pixel frame."""
+    room_to_camera = np.eye(4)
+    room_to_camera[2, 3] = 1.0
+    return PhotoCamera("ahead", room_to_camera, fx=10.0, fy=10.0, cx=5.0, cy=5.0, width=10, height=10, timestamp=0.0)
 
 
 def test_one_camera_seeing_past_a_point_is_not_enough_to_call_it_empty():
     beyond = np.full((10, 10), 3.0)
     point = np.zeros((1, 3))
-    assert not seen_through_by([StraightAhead()], [beyond])(point).any()
-    assert seen_through_by([StraightAhead(), StraightAhead()], [beyond, beyond])(point).all()
+    assert not seen_through_by([straight_ahead()], [beyond])(point).any()
+    assert seen_through_by([straight_ahead(), straight_ahead()], [beyond, beyond])(point).all()
