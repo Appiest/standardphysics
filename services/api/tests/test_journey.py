@@ -146,7 +146,7 @@ def test_no_problems_is_not_an_all_clear_while_checks_are_waiting():
 
 
 def test_the_team_sees_how_far_owners_get(make_client):
-    client = make_client(seed=True, team_emails=frozenset({"demo@standardphysics.app"})).__enter__()
+    client = make_client(seed=True, team=True).__enter__()
     drain(client)
     scan_id = client.get("/api/scans").json()["scans"][0]["id"]
     item = client.get(f"/api/scans/{scan_id}/checklist").json()["items"][0]["finding_id"]

@@ -127,12 +127,10 @@ def _photo_response(store: ArtifactStore, scan_id: uuid.UUID, request: OwnerRequ
     raise ApiProblem(404, "no photo")
 
 
-def install_owner_routes(
-    app: FastAPI, database: Database, store: ArtifactStore, stages: Stages, team_emails: frozenset[str]
-) -> None:
+def install_owner_routes(app: FastAPI, database: Database, store: ArtifactStore, stages: Stages) -> None:
     _install_request_routes(app, database, store, stages)
     _install_progress_routes(app, database, stages)
-    _install_review_routes(app, database, store, stages, team_emails)
+    _install_review_routes(app, database, store, stages)
 
 
 def _install_request_routes(app: FastAPI, database: Database, store: ArtifactStore, stages: Stages) -> None:
@@ -218,16 +216,14 @@ def _tell_owner(app: FastAPI, database: Database, stages: Stages, scan_id: uuid.
     app.state.notifier.send(database, owner_id, Push(title="We checked your photo", body=result.title, scan_id=scan_id))
 
 
-def _install_review_routes(
-    app: FastAPI, database: Database, store: ArtifactStore, stages: Stages, team_emails: frozenset[str]
-) -> None:
+def _install_review_routes(app: FastAPI, database: Database, store: ArtifactStore, stages: Stages) -> None:
     def reviewable(scan_id: uuid.UUID, request_id: str) -> OwnerRequest:
         with database.connect() as connection:
             return asks.find(load_shop(connection, stages, scan_id).requests, request_id)
 
     @app.get("/api/team/reviews", response_model=ReviewQueue)
     def queue(request: Request) -> ReviewQueue:
-        team_member(database, team_emails, request)
+        team_member(database, request)
         with database.connect() as connection:
             waiting = asks.pending_reviews(connection)
             reviews = []
@@ -240,18 +236,18 @@ def _install_review_routes(
 
     @app.get("/api/team/reviews/{scan_id}/{request_id}/photo")
     def review_photo(scan_id: uuid.UUID, request_id: str, request: Request) -> FileResponse:
-        team_member(database, team_emails, request)
+        team_member(database, request)
         return _photo_response(store, scan_id, reviewable(scan_id, request_id))
 
     @app.get("/api/team/funnel", response_model=Funnel)
     def owner_funnel(request: Request) -> Funnel:
-        team_member(database, team_emails, request)
+        team_member(database, request)
         with database.connect() as connection:
             return funnel(connection)
 
     @app.put("/api/team/reviews/{scan_id}/{request_id}", response_model=OwnerRequest)
     def review(scan_id: uuid.UUID, request_id: str, body: ReviewAnswer, request: Request) -> OwnerRequest:
-        reviewer = team_member(database, team_emails, request)
+        reviewer = team_member(database, request)
         with database.transaction() as connection:
             found = asks.find(load_shop(connection, stages, scan_id).requests, request_id)
             asks.record_review(connection, scan_id, found, body.outcome, reviewer.email)

@@ -27,6 +27,29 @@ class ArtifactTooLarge(ValueError):
     pass
 
 
+class ScanFull(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class ScanQuota:
+    """How much one scan may hold, so a client can't fill the disk one allowed artifact at a time.
+
+    The largest walk on file holds 3,526 artifacts and 2.4 GiB: about 3,500 photo
+    frames of 600 KB, a 390 MB LiDAR mesh and the room files. The defaults leave
+    room for a walk around three times that.
+    """
+
+    max_artifacts: int = 10_000
+    max_bytes: int = 8 * 1024 * 1024 * 1024
+
+    def admit(self, held: int, held_bytes: int, incoming_bytes: int) -> None:
+        if held + 1 > self.max_artifacts:
+            raise ScanFull(f"this scan already holds {self.max_artifacts} artifacts")
+        if held_bytes + incoming_bytes > self.max_bytes:
+            raise ScanFull(f"this scan would hold more than {self.max_bytes} bytes")
+
+
 @dataclass(frozen=True)
 class StagedUpload:
     temp_path: pathlib.Path
@@ -35,9 +58,10 @@ class StagedUpload:
 
 
 class ArtifactStore:
-    def __init__(self, root: pathlib.Path, max_bytes: int):
+    def __init__(self, root: pathlib.Path, max_bytes: int, quota: ScanQuota = ScanQuota()):
         self.root = root.resolve()
         self.max_bytes = max_bytes
+        self.quota = quota
 
     def artifact_path(self, scan_id: uuid.UUID, artifact_id: str) -> pathlib.Path:
         if not ARTIFACT_ID.fullmatch(artifact_id):

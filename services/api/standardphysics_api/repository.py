@@ -189,6 +189,15 @@ def find_artifact(connection: sqlite3.Connection, scan_id: uuid.UUID, artifact_i
     return Artifact(id=row["id"], kind=row["kind"], sha256=row["sha256"], bytes=row["bytes"]) if row else None
 
 
+def artifact_usage(connection: sqlite3.Connection, scan_id: uuid.UUID) -> tuple[int, int]:
+    """How many artifacts a scan holds, and their bytes together."""
+    row = connection.execute(
+        "SELECT COUNT(*) AS held, COALESCE(SUM(bytes), 0) AS held_bytes FROM artifacts WHERE scan_id = ?",
+        (str(scan_id),),
+    ).fetchone()
+    return row["held"], row["held_bytes"]
+
+
 def artifact_of_kind(connection: sqlite3.Connection, scan_id: uuid.UUID, kind: str) -> Artifact | None:
     row = connection.execute(
         "SELECT id, kind, sha256, bytes FROM artifacts WHERE scan_id = ? AND kind = ? ORDER BY created_at DESC LIMIT 1",
@@ -414,20 +423,37 @@ def mark_finalized(connection: sqlite3.Connection, scan: Scan, coverage: list[Su
 
 
 def enqueue_job(connection: sqlite3.Connection, scan_id: uuid.UUID, kind: str, revision: int) -> None:
+    queued_at = now()
     connection.execute(
-        "INSERT OR IGNORE INTO jobs (scan_id, kind, revision, state, created_at) VALUES (?, ?, ?, 'queued', ?)",
-        (str(scan_id), kind, revision, now()),
+        "INSERT OR IGNORE INTO jobs (scan_id, kind, revision, state, created_at, queued_at)"
+        " VALUES (?, ?, ?, 'queued', ?, ?)",
+        (str(scan_id), kind, revision, queued_at, queued_at),
     )
 
 
 def queue_job_again(connection: sqlite3.Connection, scan_id: uuid.UUID, kind: str, revision: int) -> None:
     """Queue a job whether or not it ran before, unless it is running now."""
+    queued_at = now()
     connection.execute(
-        "INSERT INTO jobs (scan_id, kind, revision, state, created_at) VALUES (?, ?, ?, 'queued', ?)"
-        " ON CONFLICT (scan_id, kind, revision) DO UPDATE SET state = 'queued', error = NULL"
-        " WHERE jobs.state != 'running'",
-        (str(scan_id), kind, revision, now()),
+        "INSERT INTO jobs (scan_id, kind, revision, state, created_at, queued_at) VALUES (?, ?, ?, 'queued', ?, ?)"
+        " ON CONFLICT (scan_id, kind, revision) DO UPDATE SET state = 'queued', error = NULL,"
+        " queued_at = excluded.queued_at WHERE jobs.state != 'running'",
+        (str(scan_id), kind, revision, queued_at, queued_at),
     )
+
+
+def oldest_queued_job_seconds(connection: sqlite3.Connection) -> float | None:
+    """How long the job at the front of the queue has waited, or None when nothing is queued.
+
+    A number that keeps growing while the worker reports itself idle means jobs
+    are arriving and nothing is taking them.
+    """
+    row = connection.execute(
+        "SELECT MIN(COALESCE(queued_at, created_at)) AS since FROM jobs WHERE state = 'queued'"
+    ).fetchone()
+    if row["since"] is None:
+        return None
+    return round((datetime.now(UTC) - datetime.fromisoformat(row["since"])).total_seconds(), 1)
 
 
 def claim_job(connection: sqlite3.Connection, texture_only: bool | None = None) -> sqlite3.Row | None:
@@ -460,14 +486,14 @@ def retry_failed_jobs(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Non
     state = "measuring" if "process" in kinds else "checking"
     connection.execute("UPDATE scans SET state = ? WHERE id = ?", (state, str(scan_id)))
     connection.execute(
-        "UPDATE jobs SET state = 'queued', error = NULL WHERE scan_id = ? AND state = 'failed'"
+        "UPDATE jobs SET state = 'queued', error = NULL, queued_at = ? WHERE scan_id = ? AND state = 'failed'"
         " AND kind NOT IN ('display', 'simulate', 'texture')",
-        (str(scan_id),),
+        (now(), str(scan_id)),
     )
 
 
 def requeue_interrupted_jobs(connection: sqlite3.Connection) -> None:
-    connection.execute("UPDATE jobs SET state = 'queued' WHERE state = 'running'")
+    connection.execute("UPDATE jobs SET state = 'queued', queued_at = ? WHERE state = 'running'", (now(),))
 
 
 _REVISION_WRITE = {"owner": "INSERT INTO", "ingest": "INSERT INTO", "other": "INSERT OR IGNORE INTO"}

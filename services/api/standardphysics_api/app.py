@@ -84,7 +84,8 @@ from .sharing import install_share_routes
 from .simulations import queue_simulation, simulation_status
 from .splats import install_splat_routes
 from .stages import Stages, preview_ledger
-from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId
+from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId, ScanFull, ScanQuota
+from .team import adopt_allowlist
 from .textures import install_texture_routes, maybe_queue_texture, validate_manifest
 from .usdz_validation import InvalidUsdz, validate_room_usdz
 from .worker import ASSESS, PROCESS, Worker
@@ -134,7 +135,9 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     if stages is None:
         stages = Stages(ledger_factory=preview_ledger) if settings.preview_unverified_rules else Stages()
     database = Database(settings.database_path)
-    store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes)
+    adopt_allowlist(database, settings.team_emails)
+    quota = ScanQuota(settings.max_scan_artifacts, settings.max_scan_bytes)
+    store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes, quota)
     worker = Worker(database, store, stages, settings)
     worker.notifier = notifier_from(settings)
 
@@ -160,13 +163,13 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     app.state.database, app.state.store, app.state.worker = database, store, worker
     app.state.notifier = worker.notifier
     _install_error_handlers(app)
-    install_auth(app, database, store, settings.team_emails)
-    install_account_routes(app, database, settings.team_emails, settings.apple_audiences)
+    install_auth(app, database, store)
+    install_account_routes(app, database, settings.apple_audiences)
     install_architecture_export_routes(app, database)
     _install_scan_routes(app, database, store)
     _install_upload_routes(app, database, store, worker, settings)
     _install_workspace_routes(app, database, store, stages)
-    install_owner_routes(app, database, store, stages, settings.team_emails)
+    install_owner_routes(app, database, store, stages)
     _install_combine_routes(app, database, store, worker)
     _install_file_routes(app, database, store)
     _install_layout_routes(app, database, stages, worker)
@@ -186,15 +189,28 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     )
 
     @app.get("/health")
-    def health() -> dict[str, str]:
+    def health():
         """Reachable without a session, so a load balancer can ask.
 
         It touches the database, because a process that is listening but cannot
-        read its own scans is not healthy in any way that matters.
+        read its own scans is not healthy in any way that matters. It fails when
+        a worker loop has died, since then uploads are accepted and never
+        measured. It stays healthy while a loop is busy with a fifteen-minute
+        bake, and in a second process that found the worker lock taken, because
+        restarting either one would fix nothing. /health/details says which.
         """
         with database.connect() as connection:
             connection.execute("SELECT 1 FROM scans LIMIT 1").fetchone()
-        return {"status": "ok"}
+        state = worker.summary()
+        body = {"status": "ok" if state != "stopped" else "worker stopped", "worker": state}
+        return JSONResponse(body, status_code=503 if state == "stopped" else 200)
+
+    @app.get("/health/details")
+    def health_details() -> dict:
+        """What each worker loop is doing, how long since it last beat, and how long the queue has waited."""
+        with database.connect() as connection:
+            oldest = repo.oldest_queued_job_seconds(connection)
+        return {"worker": worker.status(), "oldest_queued_job_seconds": oldest}
 
     return app
 
@@ -277,10 +293,31 @@ def _accept_staged(database, store, scan_id, artifact_id, kind, claimed, staged)
             if existing.sha256 != staged.sha256:
                 raise ApiProblem(409, "artifact already stored with different content")
             return 200, existing
+        try:
+            _admit(connection, store, scan_id, staged.bytes)
+        except ApiProblem:
+            store.discard(staged)
+            raise
         artifact = Artifact(id=artifact_id, kind=kind, sha256=staged.sha256, bytes=staged.bytes)
         repo.insert_artifact(connection, scan_id, artifact)
         store.commit(staged, store.artifact_path(scan_id, artifact_id))
         return 201, artifact
+
+
+def _admit(connection, store: ArtifactStore, scan_id: uuid.UUID, incoming_bytes: int) -> None:
+    """Refuse an artifact the scan has no room left for, with a 413 that says which limit it hit."""
+    try:
+        store.quota.admit(*repo.artifact_usage(connection, scan_id), incoming_bytes)
+    except ScanFull as full:
+        raise ApiProblem(413, str(full)) from None
+
+
+def _refuse_a_full_scan_early(database: Database, store: ArtifactStore, scan_id: uuid.UUID, artifact_id: str) -> None:
+    """Say no before reading the body when a new artifact could not fit anyway. A repeat upload still gets its 200."""
+    with database.connect() as connection:
+        _scan_or_404(connection, scan_id)
+        if repo.find_artifact(connection, scan_id, artifact_id) is None:
+            _admit(connection, store, scan_id, 0)
 
 
 def _finalize(database: Database, store: ArtifactStore, scan_id: uuid.UUID) -> tuple[Scan, bool]:
@@ -377,8 +414,7 @@ def _install_upload_routes(
         x_checksum_sha256: Annotated[str, Header()],
         x_artifact_kind: Annotated[ArtifactKind, Header()],
     ):
-        with database.connect() as connection:
-            _scan_or_404(connection, scan_id)
+        _refuse_a_full_scan_early(database, store, scan_id, artifact_id)
         staged = await _stage_upload(store, scan_id, artifact_id, request)
         _validate_staged(store, staged, x_artifact_kind)
         status, artifact = _accept_staged(

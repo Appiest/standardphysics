@@ -54,3 +54,31 @@ def test_accepted_usdz_archive_parses_and_reaches_completion(client):
     payload = _zip_with({"model.usdc": b"#usda 1.0\n", "textures/tex.png": b"\x89PNG\r\n\x1a\n"})
     assert put_artifact(client, scan_id, "room-usdz", payload, "room_usdz").status_code == 201
     assert put_artifact(client, scan_id, "room-json", b'{"walls": []}', "room_json").status_code == 201
+
+
+def _bomb(expanded_mib: int) -> bytes:
+    """A usd entry of zeros that deflates a thousandfold, so a small upload claims a huge room."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        with archive.open("model.usdc", "w", force_zip64=True) as entry:
+            megabyte = bytes(1 << 20)
+            for _ in range(expanded_mib):
+                entry.write(megabyte)
+    return buffer.getvalue()
+
+
+def test_usdz_that_expands_past_the_limit_is_rejected(client):
+    scan_id = create_scan(client)
+    payload = _bomb(257)
+    assert len(payload) < 1 << 20
+    response = put_artifact(client, scan_id, "room-usdz", payload, "room_usdz")
+    assert response.status_code == 400, response.text
+    assert "invalid usdz archive" in response.text
+
+
+def test_usdz_with_too_many_entries_is_rejected(client):
+    scan_id = create_scan(client)
+    payload = _zip_with({"model.usdc": b"#usda 1.0\n"} | {f"textures/{n}.png": b"" for n in range(1000)})
+    response = put_artifact(client, scan_id, "room-usdz", payload, "room_usdz")
+    assert response.status_code == 400, response.text
+    assert "invalid usdz archive" in response.text

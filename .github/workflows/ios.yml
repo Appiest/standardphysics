@@ -1,0 +1,67 @@
+name: iOS app
+
+on:
+  push:
+    paths:
+      - "apps/ios/**"
+      - "packages/fixtures/standardphysics_fixtures/data/real/apple_bedroom3.room.json"
+      - "packages/fixtures/standardphysics_fixtures/data/real/apple_livingroom.room.json"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "apps/ios/**"
+      - "packages/fixtures/standardphysics_fixtures/data/real/apple_bedroom3.room.json"
+      - "packages/fixtures/standardphysics_fixtures/data/real/apple_livingroom.room.json"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
+  XCODEGEN_VERSION: 2.45.3
+  SIMULATOR: platform=iOS Simulator,name=iPhone 17,OS=latest
+
+jobs:
+  simulator:
+    name: Build and test on the simulator
+    runs-on: macos-26
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/ios
+    steps:
+      - uses: actions/checkout@v4
+      - run: xcodebuild -version
+      # project.pbxproj is committed as XcodeGen writes it, so a project.yml
+      # edit without regenerating shows up here instead of on someone's laptop.
+      - name: Fail if the Xcode project is stale against project.yml
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
+          git diff --exit-code -- .
+      - name: Build the app and tests
+        run: >
+          xcodebuild build-for-testing
+          -project StandardPhysics.xcodeproj
+          -scheme StandardPhysics
+          -destination "$SIMULATOR"
+          -derivedDataPath build/DerivedData
+          CODE_SIGNING_ALLOWED=NO
+      - name: Run StandardPhysicsTests
+        run: >
+          xcodebuild test-without-building
+          -project StandardPhysics.xcodeproj
+          -scheme StandardPhysics
+          -destination "$SIMULATOR"
+          -derivedDataPath build/DerivedData
+          -resultBundlePath build/StandardPhysicsTests.xcresult
+          CODE_SIGNING_ALLOWED=NO
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: StandardPhysicsTests.xcresult
+          path: apps/ios/build/StandardPhysicsTests.xcresult

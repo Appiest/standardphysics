@@ -14,6 +14,8 @@ from dataclasses import dataclass
 
 from standardphysics_agents.tracing import ENTITY_ENV, PROJECT_ENV
 
+from .store import ScanQuota
+
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 log = logging.getLogger(__name__)
 DEFAULT_DATA_DIR = pathlib.Path(__file__).resolve().parents[1] / "var"
@@ -69,6 +71,10 @@ def _bounded_integer(name: str, default: int, low: int, high: int) -> int:
 class Settings:
     data_dir: pathlib.Path = DEFAULT_DATA_DIR
     max_artifact_bytes: int = 1024 * 1024 * 1024
+    max_scan_artifacts: int = ScanQuota.max_artifacts
+    """How many artifacts one scan may hold, from SP_MAX_SCAN_ARTIFACTS. See `store.ScanQuota`."""
+    max_scan_bytes: int = ScanQuota.max_bytes
+    """How many bytes one scan's artifacts may add up to, from SP_MAX_SCAN_BYTES."""
     preview_unverified_rules: bool = False
     """Development only. Runs every rule as if a person had verified it, so the
     viewer has findings to draw before the rule pack is reviewed."""
@@ -105,11 +111,20 @@ class Settings:
     The server turns this on; tests leave it off so their stand-in bakes run
     where they can see them. SP_BAKE_IN_PROCESS=1 turns it back off.
     """
-    team_emails: frozenset[str] = frozenset()
-    """Accounts that see the team's tools, from SP_TEAM_EMAILS (comma separated).
+    bake_timeout_seconds: float = 45 * 60
+    """How long a bake in its own process may run before it is killed and its job failed.
 
-    Owners never see developer mode, the improvement loop, scoped checks or the
-    other builder tools. Everyone signed in with one of these emails does.
+    The longest real bake, a whole floor on the two-core droplet, takes about
+    fifteen minutes, so three times that only ever stops a bake that has hung.
+    SP_BAKE_TIMEOUT_SECONDS changes it.
+    """
+    team_emails: frozenset[str] = frozenset()
+    """The team's emails before the team was a role, from SP_TEAM_EMAILS (comma separated).
+
+    Read once per database: the saved accounts with these emails on the day the
+    server first starts with the team role are granted it (`team.adopt_allowlist`).
+    A sign-up with one of these emails after that is an owner, because sign-up
+    never confirms an email. Grant anyone later with `python -m standardphysics_api.team`.
     """
     apple_audiences: frozenset[str] = frozenset({"com.standardphysics.capture"})
     """The app ids a Sign in with Apple token may be issued for, from SP_APPLE_AUDIENCES.
@@ -146,12 +161,15 @@ class Settings:
             weave_entity=os.environ.get(ENTITY_ENV) or None,
             auto_deep_simulation=_flag("SP_AUTO_DEEP_SIMULATION"),
             bake_in_own_process=not _flag("SP_BAKE_IN_PROCESS"),
+            bake_timeout_seconds=_bounded_integer("SP_BAKE_TIMEOUT_SECONDS", 45 * 60, 60, 86_400),
             team_emails=_email_set("SP_TEAM_EMAILS"),
             apns_key=_secret("SP_APNS_KEY", "SP_APNS_KEY_PATH"),
             apns_key_id=os.environ.get("SP_APNS_KEY_ID") or None,
             apns_team_id=os.environ.get("SP_APNS_TEAM_ID") or None,
             apns_topic=os.environ.get("SP_APNS_TOPIC") or "com.standardphysics.capture",
             apple_audiences=_email_set("SP_APPLE_AUDIENCES") or frozenset({"com.standardphysics.capture"}),
+            max_scan_artifacts=_bounded_integer("SP_MAX_SCAN_ARTIFACTS", ScanQuota.max_artifacts, 1, 1_000_000),
+            max_scan_bytes=_bounded_integer("SP_MAX_SCAN_BYTES", ScanQuota.max_bytes, 1, 2**50),
             evidence_settle_seconds=_bounded_integer(
                 "SP_EVIDENCE_SETTLE_SECONDS", 30, 0, 86_400
             ),

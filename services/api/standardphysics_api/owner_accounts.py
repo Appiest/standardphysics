@@ -19,7 +19,7 @@ from standardphysics_contracts import DeviceRegistration, Session
 from . import accounts, notifications
 from .accounts import Owner
 from .apple_identity import AppleIdentity, NotFromApple, verify
-from .auth import AttemptLimiter, resolve_owner, save_guest, session_of, set_session_cookie, signed_in
+from .auth import AttemptLimiter, client_address, resolve_owner, save_guest, session_of, set_session_cookie, signed_in
 from .db import Database
 from .errors import ApiProblem
 
@@ -61,9 +61,7 @@ def _apple_owner(connection: sqlite3.Connection, identity: AppleIdentity, curren
     return owner
 
 
-def install_account_routes(
-    app: FastAPI, database: Database, team_emails: frozenset[str], apple_audiences: frozenset[str]
-) -> None:
+def install_account_routes(app: FastAPI, database: Database, apple_audiences: frozenset[str]) -> None:
     guests = AttemptLimiter(limit=GUESTS_PER_ADDRESS, window=GUEST_WINDOW_SECONDS,
                             message="Too many new accounts from this network. Try again in an hour.")
 
@@ -72,20 +70,20 @@ def install_account_routes(
         """A new guest, or whoever is already signed in on this phone. A handful an hour per network."""
         current = resolve_owner(database, request)
         if current is not None:
-            return session_of(database, current, team_emails)
-        address = request.client.host if request.client else "unknown"
+            return session_of(database, current)
+        address = client_address(request)
         guests.check(address)
         guests.record(address)
         with database.transaction() as connection:
             owner = accounts.create_guest(connection)
             token = accounts.open_session(connection, owner.id, accounts.GUEST_SESSION_LIFETIME)
         set_session_cookie(response, request, token, accounts.GUEST_SESSION_LIFETIME)
-        return session_of(database, owner, team_emails)
+        return session_of(database, owner)
 
     @app.post("/api/auth/save", response_model=Session)
     def save(body: SaveRequest, request: Request) -> Session:
         owner = save_guest(database, signed_in(database, request), body.email, body.password, body.shop_name)
-        return session_of(database, owner, team_emails)
+        return session_of(database, owner)
 
     _install_device_routes(app, database)
 
@@ -100,7 +98,7 @@ def install_account_routes(
             owner = _apple_owner(connection, identity, current)
             token = accounts.open_session(connection, owner.id)
         set_session_cookie(response, request, token)
-        return session_of(database, owner, team_emails)
+        return session_of(database, owner)
 
 
 def _install_device_routes(app: FastAPI, database: Database) -> None:

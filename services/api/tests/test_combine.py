@@ -92,7 +92,7 @@ def test_an_unknown_node_is_refused() -> None:
 
 
 def test_combine_endpoint_revises_a_scan(make_client):
-    client = make_client(seed=True)
+    client = make_client(seed=True, team=True)
     scan_id = client.get("/api/scans").json()["scans"][0]["id"]
     assert client.get(f"/api/scans/{scan_id}/rooms").json() == {"rooms": []}
     response = client.post(f"/api/scans/{scan_id}/combine", json={"base_revision": 0, "rooms": []})
