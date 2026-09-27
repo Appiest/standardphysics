@@ -256,7 +256,9 @@ class Worker:
 
     def _texture(self, scan_id, build_id, job=None) -> bool:
         if self.settings.bake_in_own_process:
-            in_own_process(bake_photos, self.settings, scan_id, build_id)
+            in_own_process(
+                bake_photos, self.settings, scan_id, build_id, timeout_seconds=self.settings.bake_timeout_seconds
+            )
         else:
             run_texture(self.database, self.store, self.stages, scan_id, build_id)
         return False
@@ -443,13 +445,32 @@ class Worker:
         return "room.metadata.plist" if head.startswith(b"bplist") else "room.metadata.json"
 
 
-def in_own_process(function, *args) -> None:
-    """Run a module-level function in a fresh interpreter and wait, raising if it did not finish cleanly."""
+class ChildTimedOut(RuntimeError):
+    """A child ran past its time limit and was killed."""
+
+
+def in_own_process(function, *args, timeout_seconds: float | None = None) -> None:
+    """Run a module-level function in a fresh interpreter and wait, raising if it did not finish cleanly.
+
+    A child still running after `timeout_seconds` is killed, so one hung bake
+    can't hold the texture loop, and every bake queued behind it, forever.
+    """
     child = multiprocessing.get_context("spawn").Process(target=function, args=args, daemon=True)
     child.start()
-    child.join()
+    child.join(timeout_seconds)
+    if child.is_alive():
+        child.kill()
+        child.join()
+        raise ChildTimedOut(f"{function.__name__} did not finish within {_duration(timeout_seconds)} and was stopped")
     if child.exitcode != 0:
         raise RuntimeError(f"{function.__name__} exited with code {child.exitcode}")
+
+
+def _duration(seconds: float) -> str:
+    if seconds >= 60 and seconds % 60 == 0:
+        minutes = int(seconds // 60)
+        return f"{minutes} minute{'' if minutes == 1 else 's'}"
+    return f"{seconds:g} second{'' if seconds == 1 else 's'}"
 
 
 def bake_photos(settings: Settings, scan_id: uuid.UUID, build_id: int) -> None:

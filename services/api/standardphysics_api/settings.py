@@ -105,6 +105,13 @@ class Settings:
     The server turns this on; tests leave it off so their stand-in bakes run
     where they can see them. SP_BAKE_IN_PROCESS=1 turns it back off.
     """
+    bake_timeout_seconds: float = 45 * 60
+    """How long a bake in its own process may run before it is killed and its job failed.
+
+    The longest real bake, a whole floor on the two-core droplet, takes about
+    fifteen minutes, so three times that only ever stops a bake that has hung.
+    SP_BAKE_TIMEOUT_SECONDS changes it.
+    """
     team_emails: frozenset[str] = frozenset()
     """Accounts that see the team's tools, from SP_TEAM_EMAILS (comma separated).
 
@@ -146,6 +153,7 @@ class Settings:
             weave_entity=os.environ.get(ENTITY_ENV) or None,
             auto_deep_simulation=_flag("SP_AUTO_DEEP_SIMULATION"),
             bake_in_own_process=not _flag("SP_BAKE_IN_PROCESS"),
+            bake_timeout_seconds=_bounded_integer("SP_BAKE_TIMEOUT_SECONDS", 45 * 60, 60, 86_400),
             team_emails=_email_set("SP_TEAM_EMAILS"),
             apns_key=_secret("SP_APNS_KEY", "SP_APNS_KEY_PATH"),
             apns_key_id=os.environ.get("SP_APNS_KEY_ID") or None,
