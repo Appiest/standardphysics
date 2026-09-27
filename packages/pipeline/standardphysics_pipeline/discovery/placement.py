@@ -1,4 +1,4 @@
-"""Where a carved object really is: part of a scanned piece, or a piece standing on the floor.
+"""Where a carved object really is: part of a scanned piece, on one, or on the floor.
 
 Carving keeps what the camera saw, which for a counter is its lid and its
 front edge: the scanned box below already owns the rest. Left alone, each of
@@ -7,6 +7,9 @@ backrest becomes a second chair over the first.
 
 **Part of a scanned piece.** A carved object mostly inside a scanned piece of
 the same kind, give or take a hand's width round its footprint, is that piece.
+
+**On a piece.** A small thing standing on a counter stands on the counter's
+top, not a few inches into it where the carve reached down its front edge.
 
 **On the floor.** A table or a counter stands on the floor. Carved from a view
 that only saw its top, it is extended down when the mesh shows a solid body
@@ -21,8 +24,8 @@ from dataclasses import replace
 import numpy as np
 from standardphysics_contracts import SceneGraph, bounds_the_room
 
-from .boxes import RESTING_GAP, resting_parent, share_within
-from .carve import CarvedBox
+from .boxes import RESTING_GAP, resting_parent, share_within, top_of
+from .carve import MIN_EXTENT, CarvedBox
 from .merge import DiscoveredObject
 from .semantic_corrections import is_work_surface, same_furniture
 
@@ -34,6 +37,13 @@ BODY_STEP = 0.05
 BODY_POINTS = 3
 SOLID_BENEATH = 0.6
 """Share of the height under a carved top in which the mesh shows the body continuing down."""
+RING = 0.10
+"""How far round a small object's footprint its supporting surface is read."""
+SURFACE_POINTS = 10
+SURFACE_SKIN = 0.015
+SURFACE_SHARE = 0.3
+"""Share of the points near the underside one height must hold to be a flat surface, not a wall or a leg."""
+LEVEL_STEP = 0.01
 SPREAD = 0.5
 """How much of the box's width or depth the points at one height must span to be its body."""
 
@@ -58,6 +68,41 @@ def standing_on_the_floor(object_: DiscoveredObject, graph: SceneGraph, points: 
     if resting_parent(box, graph) is not None or not solid_beneath(box, points):
         return None
     return replace(object_, box=box.standing_on(0.0))
+
+
+def seated(box: CarvedBox, graph: SceneGraph, points: np.ndarray) -> CarvedBox:
+    """The box set down on the surface it stands on, so its underside is that surface.
+
+    The surface is measured round the object's footprint, where the counter
+    top shows past it; the object itself hides what is directly under it.
+    Where too little of it shows, the top of the scanned piece it rests on
+    stands in. A carve reaches a few inches down a counter's front edge, and
+    without this a card reader on a 34 inch counter would report the 31 inch
+    underside of that edge.
+    """
+    if box.floor_clearance <= RESTING_GAP:
+        return box
+    surface = surface_around(box, points)
+    if surface is None:
+        parent = resting_parent(box, graph)
+        surface = None if parent is None else top_of(graph.by_id(parent))
+    top = box.centre[2] + box.dimensions[2] / 2
+    return box.standing_on(surface) if surface is not None and top - surface >= MIN_EXTENT else box
+
+
+def surface_around(box: CarvedBox, points: np.ndarray) -> float | None:
+    """The height of the flat surface showing round the box's footprint near its underside, if there is one."""
+    local = _in_box_frame(box, points)
+    half = np.asarray(box.dimensions[:2]) / 2
+    ring = np.all(np.abs(local) <= half + RING, axis=1) & ~np.all(np.abs(local) <= half, axis=1)
+    heights = points[ring, 2]
+    near = heights[np.abs(heights - box.floor_clearance) <= RESTING_GAP]
+    if len(near) < SURFACE_POINTS:
+        return None
+    levels = np.arange(box.floor_clearance - RESTING_GAP, box.floor_clearance + RESTING_GAP, LEVEL_STEP)
+    counts = np.asarray([np.count_nonzero(np.abs(near - level) <= SURFACE_SKIN) for level in levels])
+    best = int(np.argmax(counts))
+    return float(levels[best]) if counts[best] >= len(near) * SURFACE_SHARE else None
 
 
 def solid_beneath(box: CarvedBox, points: np.ndarray) -> bool:

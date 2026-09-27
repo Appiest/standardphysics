@@ -29,7 +29,7 @@ import logging
 import os
 import pathlib
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
@@ -53,7 +53,7 @@ from .detect import (
 )
 from .merge import Candidate, DiscoveredObject, merge_candidates
 from .people import without_people
-from .placement import part_of_a_scanned_piece, standing_on_the_floor
+from .placement import part_of_a_scanned_piece, seated, standing_on_the_floor
 from .reconcile import reconcile_outlets
 from .semantic_corrections import apply_secondary_semantic_corrections
 from .surface_attach import attach_detection_to_surface
@@ -160,7 +160,7 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
     graph = _with_replaced(graph, worktops)
     renamed = _semantic_corrections(graph, detections, cameras)
     graph = _with_replaced(graph, renamed)
-    kept = _carved_objects(graph, cameras, detections, removal.points, buffers)
+    kept = _carved_objects(graph, cameras, detections, removal.points)
     objects = [object_ for object_, _ in kept]
     carved_nodes = [_node_for(object_, graph, viewpoints) for object_, viewpoints in kept]
     attached_nodes = _attached_targets(inputs, graph, cameras, detections, buffers)
@@ -193,15 +193,22 @@ def _carved_objects(
     cameras: list[PhotoCamera],
     detections: dict[str, list[Detection]],
     points: np.ndarray,
-    buffers: dict[str, np.ndarray],
 ) -> list[tuple[DiscoveredObject, int]]:
-    """Every object worth a node, with how many separate places it was seen from."""
+    """Every object worth a node, with how many separate places it was seen from.
+
+    Carving looks through a depth buffer built from the mesh with the people
+    already taken out. A customer standing at the till leaves a body in the
+    mesh, and a buffer built with it hides the till behind that body in every
+    frame of the walk, including the frames the detector saw the till in
+    because the customer had stepped away.
+    """
+    clear_view = {camera.frame_id: depth_buffer(camera, points) for camera in cameras}
     unclaimed = points[~claimed_by_any(points, graph)]
-    candidates = _carve_all(cameras, detections, unclaimed, buffers)
+    candidates = _carve_all(cameras, detections, unclaimed, clear_view)
     found = [(object_, _viewpoints(object_, cameras)) for object_ in merge_candidates(candidates)]
     loose = points[~structure_points(points, graph)]
     return [
-        (standing, viewpoints)
+        (replace(standing, box=seated(standing.box, graph, loose)), viewpoints)
         for object_, viewpoints in found
         if _worth_keeping(object_, graph, viewpoints)
         for standing in [standing_on_the_floor(object_, graph, loose)]

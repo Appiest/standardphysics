@@ -1,8 +1,9 @@
 """Where discovered and scanned pieces stand, pinned against geometry with a known answer.
 
-A café scan put all of these wrong at once: RoomPlan's counter lid an inch
-high, the counter itself filed as storage, and its carved lid floating as a
-second counter at chest height.
+A café scan put every one of these wrong at once: RoomPlan's counter lid an
+inch high, the counter itself filed as storage, its carved lid floating as a
+second counter at chest height, and a card reader sunk into the counter's
+edge.
 """
 
 from __future__ import annotations
@@ -19,7 +20,11 @@ from standardphysics_pipeline.coords import capture_to_room
 from standardphysics_pipeline.discovery.carve import CarvedBox, fit_box
 from standardphysics_pipeline.discovery.detect import Detection
 from standardphysics_pipeline.discovery.merge import DiscoveredObject
-from standardphysics_pipeline.discovery.placement import part_of_a_scanned_piece, standing_on_the_floor
+from standardphysics_pipeline.discovery.placement import (
+    part_of_a_scanned_piece,
+    seated,
+    standing_on_the_floor,
+)
 from standardphysics_pipeline.discovery.semantic_corrections import apply_secondary_semantic_corrections
 from standardphysics_pipeline.discovery.worktops import measure_worktops, measured_top
 from standardphysics_pipeline.textures.camera import PhotoCamera
@@ -186,6 +191,26 @@ class TestCountersStandOnTheFloor:
     def test_things_that_are_not_tables_or_counters_are_left_alone(self):
         sign = carved("sign", slab((3.0, 0.0, 1.4), (0.4, 0.1, 0.3)))
         assert standing_on_the_floor(sign, graph_of(), sign.box.points) is sign
+
+
+class TestATerminalSitsOnTheCounter:
+    def test_a_reader_carved_down_the_counter_edge_stands_on_the_surface_round_it(self):
+        reader = carved("card reader", slab((0.4, 0.0, COUNTER_TOP + 0.02), (0.1, 0.15, 0.18))).box
+        assert reader.floor_clearance < COUNTER_TOP - 0.05
+        around = slab((0.4, 0.0, COUNTER_TOP), (0.5, 0.5, 0.0))
+        standing = seated(reader, graph_of(scanned_counter()), around)
+        assert standing.floor_clearance == pytest.approx(COUNTER_TOP, abs=0.015)
+        assert top(standing) == pytest.approx(top(reader))
+
+    def test_with_the_surface_hidden_the_counter_top_stands_in(self):
+        counter = piece("Counter", (0.0, 0.0, COUNTER_TOP / 2), (1.7, 0.7, COUNTER_TOP))
+        reader = carved("card reader", slab((0.4, 0.0, COUNTER_TOP + 0.02), (0.1, 0.15, 0.18))).box
+        standing = seated(reader, graph_of(counter), np.zeros((0, 3)))
+        assert standing.floor_clearance == pytest.approx(COUNTER_TOP)
+
+    def test_something_on_the_floor_is_not_moved(self):
+        bin_ = carved("bin", slab((2.0, 0.0, 0.3), (0.4, 0.4, 0.6))).box
+        assert seated(bin_, graph_of(), slab((2.0, 0.0, 0.0), (1.0, 1.0, 0.0))) == bin_
 
 
 def test_a_box_stood_on_a_height_keeps_its_top():
