@@ -105,8 +105,16 @@ def lowered_sections(graph: SceneGraph) -> list[SceneNode]:
     ]
 
 
+MAX_OPERABLE_EXTENT_METERS = 1.0
+"""A switch, dispenser or extinguisher fits in a metre; a 'dispenser' 1.2 m tall is a bad carve, not a control."""
+
+
 def operable_parts(graph: SceneGraph) -> list[SceneNode]:
-    return [node for node in graph.nodes if not bounds_the_room(node) and is_operable_part(node.label)]
+    return [
+        node for node in graph.nodes
+        if not bounds_the_room(node) and is_operable_part(node.label)
+        and max(node.dimensions.as_tuple()) <= MAX_OPERABLE_EXTENT_METERS
+    ]
 
 
 def is_operable_part(label: str) -> bool:

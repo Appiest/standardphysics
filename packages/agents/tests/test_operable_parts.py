@@ -30,3 +30,10 @@ def test_a_discovered_sanitizer_dispenser_is_an_operable_part():
                           raw_category="hand_sanitizer_dispenser", dimensions=Vec3(x=0.15, y=0.1, z=0.3),
                           transform=Mat4.translation(0.0, 0.0, 1.35))
     assert operable_parts(SceneGraph(scan_id=uuid.uuid4(), nodes=[dispenser])) == [dispenser]
+
+
+def test_something_too_big_to_be_a_control_is_not_one_whatever_its_name():
+    pillar = SceneNode(id=uuid.uuid4(), kind="object", label="Paper towel dispenser",
+                       raw_category="paper_towel_dispenser", dimensions=Vec3(x=0.15, y=0.27, z=1.2),
+                       transform=Mat4.translation(0.0, 0.0, 1.97))
+    assert operable_parts(SceneGraph(scan_id=uuid.uuid4(), nodes=[pillar])) == []
