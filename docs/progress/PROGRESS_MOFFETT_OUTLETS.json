@@ -31,8 +31,8 @@
       "status": "ready",
       "time": "2026-09-20T03:02:00-07:00",
       "artifacts": [
-        "docs/moffett-outlet-build-plan.txt",
-        "PROGRESS_MOFFETT_OUTLETS.json"
+        "docs/research/moffett-outlet-build-plan.txt",
+        "docs/progress/PROGRESS_MOFFETT_OUTLETS.json"
       ],
       "next_action": "Execute Phase A upon approval: lock pilot manifest and implement Phase A data flow documentation."
     },

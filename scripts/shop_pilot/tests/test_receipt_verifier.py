@@ -1,6 +1,6 @@
 """Regression and adversarial tests for the independent receipt verifier.
 
-Mirrors the FIRST section of docs/deepseek-shop-pilot/05-adversarial-tests.txt:
+Mirrors the FIRST section of docs/research/deepseek-shop-pilot/05-adversarial-tests.txt:
 the old G9 receipt shape must fail, a digest for a nonexistent file must fail,
 a changed file with an old digest must fail, an empty graph claimed to contain
 an outlet must fail, and a wrong-owner/wrong-revision artifact must fail.
@@ -17,7 +17,7 @@ from scripts.shop_pilot.evidence import canonical_dirty_digest, sha256_bytes, sh
 from scripts.shop_pilot.receipt_verifier import verify_receipt
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
-POLICY = REPO_ROOT / "docs" / "deepseek-shop-pilot" / "04-hard-gates.json"
+POLICY = REPO_ROOT / "docs" / "research" / "deepseek-shop-pilot" / "04-hard-gates.json"
 
 
 def _artifact(path: pathlib.Path, relative: str) -> dict:

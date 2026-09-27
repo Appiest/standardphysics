@@ -3,7 +3,7 @@
   "benchmark_version": 4,
   "kind": "coverage_recovery_requirements_not_measured_results",
   "supersedes_for_this_run": {
-    "path": "docs/deepseek-lidar-experiment-policy-v2.json",
+    "path": "docs/research/deepseek-lidar-experiment-policy-v2.json",
     "sha256": "43ec7e3d69ca30f1bcc2011e78d85ca7329ef35a1a1ec0f88f0e089baf32d61b"
   },
   "priority": "Recover supported room coverage from preserved photos, then demonstrate appearance and local web usability. Do not optimize a weighted efficiency score before coverage works.",

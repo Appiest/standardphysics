@@ -1,6 +1,6 @@
 """Executable acceptance harness and completion verifier for the outlet feature repair.
 
-Validates receipts in PROGRESS_MOFFETT_OUTLET_REPAIR.json against docs/outlet-repair-acceptance.json.
+Validates receipts in docs/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json against docs/research/outlet-repair-acceptance.json.
 Checks:
 - All required cases present and passed with required receipt fields.
 - No synthetic artifacts claimed as real_capture.
@@ -24,7 +24,7 @@ def _check_case(case: dict, receipts: dict, required_receipt_fields: list) -> tu
     if case_id not in receipts:
         return "missing", [
             f"Case {case_id} (Gate {case['gate']}) has no receipt in "
-            "PROGRESS_MOFFETT_OUTLET_REPAIR.json"
+            "docs/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json"
         ]
 
     receipt = receipts[case_id]
@@ -110,8 +110,8 @@ def _terminal_status(gate_results: dict[str, str], required_gate_ids: list) -> s
 
 
 def verify_acceptance(root_dir: pathlib.Path) -> dict[str, Any]:
-    contract_path = root_dir / "docs/outlet-repair-acceptance.json"
-    progress_path = root_dir / "PROGRESS_MOFFETT_OUTLET_REPAIR.json"
+    contract_path = root_dir / "docs/research/outlet-repair-acceptance.json"
+    progress_path = root_dir / "docs/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json"
 
     if not contract_path.is_file():
         return {"ok": False, "error": f"Contract file not found: {contract_path}"}

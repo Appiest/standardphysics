@@ -1,6 +1,6 @@
 # Audit log
 
-Every push to `master` is audited against its lane document, the plan's invariants, `packages/contracts`, CI on the pushed commit, path ownership in `docs/AGENT_PROTOCOL.md`, and whether `PROGRESS_<LANE>.json` matches the code. A finding is recorded only after it is reproduced by running code or read directly from the diff.
+Every push to `master` is audited against its lane document, the plan's invariants, `packages/contracts`, CI on the pushed commit, path ownership in `docs/AGENT_PROTOCOL.md`, and whether `docs/progress/PROGRESS_<LANE>.json` matches the code. A finding is recorded only after it is reproduced by running code or read directly from the diff.
 
 Status is one of `open`, `fixed in <commit>`, or `blocked` with the person or lane it waits on.
 
@@ -68,7 +68,7 @@ The audit fixes code only in files no lane agent is actively changing. For lanes
 | Fixture pinch comes back as 31 in with the right coordinate | Met |
 | Lane C calls the real functions instead of stubs | Met in `9ced7bc` |
 
-Tasks 8 (Astra label) and 9 (Astra clean) wait on an OpenRouter key. Task 4 is covered by `usdz_to_glb`, which has not met a real RoomPlan export. `PROGRESS_B.json` lists the 403.5.2 turn rule as done, which A-14 and A-15 contradicted until the audit fix.
+Tasks 8 (Astra label) and 9 (Astra clean) wait on an OpenRouter key. Task 4 is covered by `usdz_to_glb`, which has not met a real RoomPlan export. `docs/progress/PROGRESS_B.json` lists the 403.5.2 turn rule as done, which A-14 and A-15 contradicted until the audit fix.
 
 ## Findings
 
@@ -85,7 +85,7 @@ Low. `fixed in 2a5f763`.
 ### A-3 Lane B pushes edit files outside Lane B's paths
 Low. `blocked` on Boris agreeing who owns root files and `tests/`.
 
-Lane B owns `packages/pipeline/**`, `PROGRESS_B.json` and `docs/handoffs/B-to-*.md`. Its pushes also changed `pytest.ini` (`a95c77e`), `.gitignore` and `.env.example` (`bb6e303`), `docs/lanes/LANE_C.md`, `docs/lanes/LANE_D.md` and Lane D's `packages/fixtures/standardphysics_fixtures/data/shop.glb` (`d0d0ea5`), and `.github/workflows/ci.yml` and `pyproject.toml` (`d2a982a`). No damage found, but the protocol says to write a handoff instead.
+Lane B owns `packages/pipeline/**`, `docs/progress/PROGRESS_B.json` and `docs/handoffs/B-to-*.md`. Its pushes also changed `pytest.ini` (`a95c77e`), `.gitignore` and `.env.example` (`bb6e303`), `docs/lanes/LANE_C.md`, `docs/lanes/LANE_D.md` and Lane D's `packages/fixtures/standardphysics_fixtures/data/shop.glb` (`d0d0ea5`), and `.github/workflows/ci.yml` and `pyproject.toml` (`d2a982a`). No damage found, but the protocol says to write a handoff instead.
 
 ### A-4 CI was red from `1a6487e` through `1a06655`
 High. `fixed in d2a982a`.
@@ -130,7 +130,7 @@ Reproduced: the fixture's 0.900 m door reports 35.43 in with no deduction. `Widt
 ### A-10 The 180 degree turn width is the route width
 Medium. Superseded by `28e64c1`, which measures the turn; see A-14 and A-15.
 
-Build task 7 requires clear width at a 180 degree turn, which is a tier 1 check in `LANE_C.md` (ADA 2010 403.5.2). `turn_clear_width` returns `route_clear_width`. `B-to-C.md` discloses this, but `PROGRESS_B.json` marks the provider done.
+Build task 7 requires clear width at a 180 degree turn, which is a tier 1 check in `LANE_C.md` (ADA 2010 403.5.2). `turn_clear_width` returns `route_clear_width`. `B-to-C.md` discloses this, but `docs/progress/PROGRESS_B.json` marks the provider done.
 
 ### A-11 Ingest invents a confidence when the export has none
 Medium. `fixed in 77dd362`.

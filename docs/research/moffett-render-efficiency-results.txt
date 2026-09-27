@@ -4,7 +4,7 @@ Run r001 (final) · 2026-09-20 · benchmark version 2
 1. WHAT WAS IMPLEMENTED AND WHERE
 
 Deterministic surface-Gaussian pipeline plus a frozen benchmark, executed
-through all four phases of docs/deepseek-overnight-lidar-render-plan.txt.
+through all four phases of docs/research/deepseek-overnight-lidar-render-plan.txt.
 
 - Evaluator (Phase 0): packages/pipeline/standardphysics_pipeline/render_efficiency/
   (metrics, scoring, manifest, surface_splats, builder, calibration). 46 fixtures

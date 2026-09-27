@@ -40,7 +40,7 @@
     "publish_to_weave returns the dataset's real URL from Weave's own path builder, and a run carries it on disk and prints it (e02bc1d)",
     "TypeSafe's confidence and per-action probabilities are traced as router.typesafe.systemone, because a Decision has no room for them and how close the call was matters (ae92f10)",
     "experiments: the same 39 cases and 7 scorers as a grid of W&B runs for ARIA, nine configurations over cell size and fix ladder depth, each with a cold measurement provider and a deterministic count of every measurement asked for",
-    "ARIA read the grid and said the fix ladder does nothing; its own proposed next run disproved that. The three cell sizes it had all find every fix in the first four rungs, and at 20 and 30 mm the ladder decides whether a third of the fixes are found. The evaluation's ladder went 8 -> 16 and the grid's axis values changed. docs/aria_responses.md, docs/aria.md",
+    "ARIA read the grid and said the fix ladder does nothing; its own proposed next run disproved that. The three cell sizes it had all find every fix in the first four rungs, and at 20 and 30 mm the ladder decides whether a third of the fixes are found. The evaluation's ladder went 8 -> 16 and the grid's axis values changed. docs/research/aria_responses.md, docs/aria.md",
     "turn_clear_width is wrong in both directions depending on the occupancy grid it is handed: six spurious findings at 20 mm, a missed real one at 40 mm, nothing at 25 mm. ARIA isolated the same two cases from the tables on its own (handed to Lane B)"
   ],
   "in_progress": null,

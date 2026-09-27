@@ -206,8 +206,8 @@ def _write_receipt(report: dict, log_path: pathlib.Path, head: str) -> None:
         "source_commit": head,
         "dirty_source_digest": canonical_dirty_digest({}),
         "dirty_source_files": {},
-        "contract_hash": sha256_file(pathlib.Path("docs/deepseek-shop-pilot/05-adversarial-tests.txt")),
-        "policy_hash": sha256_file(pathlib.Path("docs/deepseek-shop-pilot/04-hard-gates.json")),
+        "contract_hash": sha256_file(pathlib.Path("docs/research/deepseek-shop-pilot/05-adversarial-tests.txt")),
+        "policy_hash": sha256_file(pathlib.Path("docs/research/deepseek-shop-pilot/04-hard-gates.json")),
         "input_artifacts": [],
         "output_artifacts": [{
             "path": log_path.name,
@@ -278,7 +278,7 @@ def _write_receipt(report: dict, log_path: pathlib.Path, head: str) -> None:
     }
     target = OUT_DIR / "WB-AUDIT.receipt.json"
     target.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
-    verdict = verify_receipt(receipt, artifacts_dir=OUT_DIR, policy_path=pathlib.Path("docs/deepseek-shop-pilot/04-hard-gates.json"), git_worktree=None)
+    verdict = verify_receipt(receipt, artifacts_dir=OUT_DIR, policy_path=pathlib.Path("docs/research/deepseek-shop-pilot/04-hard-gates.json"), git_worktree=None)
     receipt["_verification"] = verdict["status"]
     target.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
 

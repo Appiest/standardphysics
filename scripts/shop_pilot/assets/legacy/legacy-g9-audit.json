@@ -1,6 +1,6 @@
 {
   "kind": "legacy_g9_receipt_audit",
-  "source": "PROGRESS_MOFFETT_OUTLET_REPAIR.json",
+  "source": "docs/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json",
   "policy": "existing_G9_rebuilt_graph_100_receipts must be invalid_evidence",
   "results": [
     {

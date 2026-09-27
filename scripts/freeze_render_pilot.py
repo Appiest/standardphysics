@@ -121,7 +121,7 @@ def main():
         return min(abs(l["pose_index"] - r["pose_index"]) for l in left for r in right)
 
     manifest = {
-        "policy": "docs/deepseek-lidar-experiment-policy.json",
+        "policy": "docs/research/deepseek-lidar-experiment-policy.json",
         "seed": args.seed,
         "version": 2,
         "split_unit": "ARKit pose_index trajectory order",

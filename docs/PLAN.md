@@ -472,7 +472,7 @@ Venue closes 9:00 PM Saturday, reopens 9:00 AM Sunday, submissions due 1:00 PM.
 | Sun 12:00-12:30 | Submit a working version. |
 | Sun 12:30-13:00 | Buffer. Verified fixes only. |
 
-Integrate at 14:00, 16:00, 18:00, 21:00, then hourly Sunday. Each lane keeps `PROGRESS.json` with status, commits, blockers and next handoff.
+Integrate at 14:00, 16:00, 18:00, 21:00, then hourly Sunday. Each lane keeps `docs/progress/PROGRESS.json` with status, commits, blockers and next handoff.
 
 ---
 

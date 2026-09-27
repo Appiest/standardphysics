@@ -12,7 +12,7 @@ packages/fixtures/**
 services/api/**
 apps/web/**
 .github/**
-PROGRESS_D.json
+docs/progress/PROGRESS_D.json
 docs/handoffs/D-to-*.md
 ```
 

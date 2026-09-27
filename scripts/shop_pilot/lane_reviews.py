@@ -17,7 +17,7 @@ from .evidence import sha256_bytes, sha256_file
 from .receipt_verifier import verify_receipt
 
 ASSETS = pathlib.Path("scripts/shop_pilot/assets/slices")
-POLICY_DOC = pathlib.Path("docs/deepseek-shop-pilot/04-hard-gates.json")
+POLICY_DOC = pathlib.Path("docs/research/deepseek-shop-pilot/04-hard-gates.json")
 
 REVIEWED_LANES = [
     {

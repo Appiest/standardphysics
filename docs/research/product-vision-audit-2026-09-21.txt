@@ -49,7 +49,7 @@ CAPABILITY SCORECARD
    estimated wheelchair approach/reach exist. They have regression fixtures.
    Current A-102 revision 4 has zero outlet/candidate nodes, zero attachments and
    zero photographic observations. A synthetic demo is not an actual detection.
-   PROGRESS_MOFFETT_OUTLET_REPAIR.json still has real acceptance unfinished.
+   docs/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json still has real acceptance unfinished.
 
 5. Locate televisions — BASIC CATEGORY SUPPORT; NO DEDICATED VERIFIED FLOW.
    RoomPlan/generic labeling can represent televisions; one other stored scan

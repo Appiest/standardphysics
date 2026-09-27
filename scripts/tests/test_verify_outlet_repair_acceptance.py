@@ -33,7 +33,7 @@ def mock_repo(tmp_path: pathlib.Path):
             {"id": "M01", "change": "Restore omitted-attachment", "must_fail": "LIST-01"},
         ]
     }
-    contract_file = tmp_path / "docs" / "outlet-repair-acceptance.json"
+    contract_file = tmp_path / "docs" / "research" / "outlet-repair-acceptance.json"
     contract_file.parent.mkdir(parents=True, exist_ok=True)
     with open(contract_file, "w") as f:
         json.dump(contract, f)
@@ -60,7 +60,8 @@ def mock_repo(tmp_path: pathlib.Path):
 
 def test_verify_01_fails_on_missing_skipped_or_failed_test(mock_repo):
     tmp_path, contract, make_receipt = mock_repo
-    progress_file = tmp_path / "PROGRESS_MOFFETT_OUTLET_REPAIR.json"
+    progress_file = tmp_path / "docs/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json"
+    progress_file.parent.mkdir(parents=True, exist_ok=True)
 
     # Case A: Missing test ID
     progress_data = {
@@ -106,7 +107,8 @@ def test_verify_01_fails_on_missing_skipped_or_failed_test(mock_repo):
 
 def test_verify_02_fails_on_synthetic_artifact_for_real_capture_and_survived_mutation(mock_repo):
     tmp_path, contract, make_receipt = mock_repo
-    progress_file = tmp_path / "PROGRESS_MOFFETT_OUTLET_REPAIR.json"
+    progress_file = tmp_path / "docs/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json"
+    progress_file.parent.mkdir(parents=True, exist_ok=True)
 
     # Case A: Synthetic artifact claimed for real_capture
     progress_data = {
@@ -143,7 +145,8 @@ def test_verify_02_fails_on_synthetic_artifact_for_real_capture_and_survived_mut
 
 def test_verify_03_emits_expected_terminal_status(mock_repo):
     tmp_path, contract, make_receipt = mock_repo
-    progress_file = tmp_path / "PROGRESS_MOFFETT_OUTLET_REPAIR.json"
+    progress_file = tmp_path / "docs/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json"
+    progress_file.parent.mkdir(parents=True, exist_ok=True)
 
     # All gates pass
     progress_data = {

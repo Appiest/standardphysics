@@ -18,7 +18,7 @@ Run this continuously. Never go more than about fifteen minutes without a pull.
 5. git add -A && git commit
 6. git pull --rebase origin master
 7. git push origin master
-8. Update PROGRESS_<LANE>.json, commit, push
+8. Update docs/progress/PROGRESS_<LANE>.json, commit, push
 9. Go to 1
 ```
 
@@ -59,7 +59,7 @@ If a test fails for a reason outside your lane, push nothing, write the handoff,
 
 ## Progress
 
-Keep `PROGRESS_<LANE>.json` at the repo root current. Other lanes read it to know what they can rely on.
+Keep `docs/progress/PROGRESS_<LANE>.json` at the repo root current. Other lanes read it to know what they can rely on.
 
 ```json
 {

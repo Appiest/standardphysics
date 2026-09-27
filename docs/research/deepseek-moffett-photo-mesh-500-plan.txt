@@ -17,12 +17,12 @@ judge the final perceptual result; automated scores cannot certify naked-eye
 quality. A detail that occupies two pixels cannot be required to be readable.
 Allow approaching an object and provide an original-photo evidence view.
 
-Read docs/deepseek-moffett-photo-mesh-500-policy.json with this plan. Its values
+Read docs/research/deepseek-moffett-photo-mesh-500-policy.json with this plan. Its values
 are proposed engineering acceptance targets, not observed results, published
 standards, validated psychophysical limits or centimetre-accuracy claims.
 
 EXISTING WORK: EXTEND IT, DO NOT REBUILD IT
-- PROGRESS_MOFFETT.json records the existing photographic surface prototype and
+- docs/progress/PROGRESS_MOFFETT.json records the existing photographic surface prototype and
   its failed visual review. It is historical; reconcile with current files.
 - scripts/bake_moffett_photo_mesh.py already projects original photographs onto
   actual LiDAR triangles. It uses a decimated display mesh, original geometry
@@ -274,7 +274,7 @@ REQUIRED TESTS AND EVIDENCE
   hashes unchanged; all selected frames belong to the bake split; no overwrite.
 - Evaluator CLI refuses empty evidence, missing/wrong-sized images, stale hashes,
   duplicate/missing views, changed masks, NaN metrics and caller-supplied pass=true.
-  Reproduce the known policy bypass from docs/deepseek-render-r003-audit.txt;
+  Reproduce the known policy bypass from docs/research/deepseek-render-r003-audit.txt;
   do not inherit its selected_for_review claim as proof. Extend only the necessary
   existing evaluator path, not a general experiment platform.
 - Viewer: actual active mesh loader, framebuffer size, texture preservation,

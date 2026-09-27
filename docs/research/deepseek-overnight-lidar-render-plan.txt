@@ -1,7 +1,7 @@
 OVERNIGHT IMPLEMENTATION PROMPT: EFFICIENT, PHOTO-SUPPORTED LIDAR RENDERING ON MAC
 Prepared 2026-09-20. Paste this entire file into the DeepSeek coding agent with
 access to /Users/yanzihao/Documents/standardphysics and a terminal.
-Companion configuration: docs/deepseek-lidar-experiment-policy.json.
+Companion configuration: docs/research/deepseek-lidar-experiment-policy.json.
 These are proposed engineering acceptance thresholds, not measured performance.
 
 MISSION AND SCOPE
@@ -29,14 +29,14 @@ READ FIRST AND PROTECT THE WORKSPACE
    branch/status and current processes. Preserve all concurrent/uncommitted work.
    Branch first if on the default branch. Do not reset, clean, stash others' work,
    change global model/provider settings, or push remotely.
-2. Read PROGRESS_MOFFETT.json and the latest relevant experiment/final-review and
+2. Read docs/progress/PROGRESS_MOFFETT.json and the latest relevant experiment/final-review and
    queue-status files. Old process IDs are historical, not proof a job is running.
    The finish-moffett-reconstruction automation was paused after evaluated trials;
    do not resume it or repeat failed native runs automatically.
 3. Read these local research records, following referenced evidence as needed:
-   docs/moffett-efficient-splats-build-plan.txt
-   docs/moffett-mac-research-report-audit.txt
-   docs/moffett-splat-audit-evidence.json
+   docs/research/moffett-efficient-splats-build-plan.txt
+   docs/research/moffett-mac-research-report-audit.txt
+   docs/research/moffett-splat-audit-evidence.json
    runs/moffett/algorithm-audit/assessment.json
    runs/moffett/splat-training/center-original-masked-hq/final-review.json
    runs/moffett/splat-training/center-original-masked-hq/experiment.json
@@ -148,8 +148,8 @@ No 30k-step full-room rerun unless an earlier controlled result justifies it and
 the time reserve remains intact. A backend installation gets 45 minutes maximum.
 
 Create a run directory runs/moffett/render-efficiency/<run-id> and checkpoint
-PROGRESS_MOFFETT_RENDER_EFFICIENCY.json. Plan/checkpoints use .txt/.json, never new
-.md. Do not rewrite PROGRESS_MOFFETT.json with an invented overall success.
+docs/progress/PROGRESS_MOFFETT_RENDER_EFFICIENCY.json. Plan/checkpoints use .txt/.json, never new
+.md. Do not rewrite docs/progress/PROGRESS_MOFFETT.json with an invented overall success.
 
 Checkpoint fields: phase/status, input/code/evaluator hashes, exact commands and
 exit codes, config ID, changed files, process identity, wall time, resource traces,
@@ -522,7 +522,7 @@ input/output/evaluator hashes; per-view metrics; validation/gate results;
 paired render/contact-sheet paths; provenance; conclusion and failure reasons.
 Exact names may follow existing conventions; every item must be traceable.
 
-Final report (docs/moffett-render-efficiency-results.txt):
+Final report (docs/research/moffett-render-efficiency-results.txt):
 1. What was implemented and where to view it; actual local launch command/URL.
 2. Baseline/candidate table with exact workload, quality, time, memory, bytes,
    rendered-frame measurement, hard-gate statuses and score; nulls stay explicit.

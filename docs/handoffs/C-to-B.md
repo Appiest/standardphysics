@@ -157,7 +157,7 @@ a finding, it changes what the router decides to do next.
 Running the cell sizes between the ones we had first sharpens the question. At
 20 mm, six cases pick up a spurious `turn_clear_width` rather than two. At
 40 mm, `finding_recall` drops to 0.9375 — the check now misses a real finding
-instead of inventing one. The full set is in `docs/aria_responses.md`.
+instead of inventing one. The full set is in `docs/research/aria_responses.md`.
 
 So the answer we need from you has not changed, and it matters more than it did:
 whether those shops contain a 180 degree turn. The check is wrong in both

@@ -234,7 +234,7 @@
   },
   "benchmark_version": 3,
   "supersedes": {
-    "path": "docs/deepseek-lidar-experiment-policy.json",
+    "path": "docs/research/deepseek-lidar-experiment-policy.json",
     "sha256": "2c663fad382486699907d5f48d393617c276476559f0d4ea763814f2ca601b38"
   },
   "revision_reason": "Audit found geometry encoded as RGB, nonmatching photographic inputs, unsupported mask parity, additive alpha calibration, and incomplete policy enforcement.",
@@ -396,7 +396,7 @@
     }
   ],
   "acceptance_references": {
-    "handoff": "docs/deepseek-splatx-acceleration-handoff-v2.txt",
-    "audit": "docs/deepseek-splatx-policy-audit-v2.txt"
+    "handoff": "docs/research/deepseek-splatx-acceleration-handoff-v2.txt",
+    "audit": "docs/research/deepseek-splatx-policy-audit-v2.txt"
   }
 }

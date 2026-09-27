@@ -29,7 +29,7 @@ def _old_style_repo(tmp_path: pathlib.Path) -> pathlib.Path:
         "cases": [{"id": "REAL-01", "gate": "G9", "kind": "real_capture"}],
         "mutations": [],
     }
-    contract_dir = tmp_path / "docs"
+    contract_dir = tmp_path / "docs" / "research"
     contract_dir.mkdir(parents=True, exist_ok=True)
     (contract_dir / "outlet-repair-acceptance.json").write_text(json.dumps(contract), encoding="utf-8")
     receipt = {
@@ -48,7 +48,9 @@ def _old_style_repo(tmp_path: pathlib.Path) -> pathlib.Path:
         "review_identity": "self_review",
     }
     progress = {"receipts": {"REAL-01": receipt}, "mutation_receipts": {}}
-    (tmp_path / "PROGRESS_MOFFETT_OUTLET_REPAIR.json").write_text(json.dumps(progress), encoding="utf-8")
+    progress_path = tmp_path / "docs/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json"
+    progress_path.parent.mkdir(parents=True, exist_ok=True)
+    progress_path.write_text(json.dumps(progress), encoding="utf-8")
     return tmp_path
 
 
@@ -61,7 +63,7 @@ def test_old_verifier_accepts_fabricated_receipt(tmp_path):
 
 def test_new_verifier_rejects_same_fabricated_receipt(tmp_path):
     root = _old_style_repo(tmp_path)
-    legacy_receipt = json.loads((root / "PROGRESS_MOFFETT_OUTLET_REPAIR.json").read_text())["receipts"]["REAL-01"]
+    legacy_receipt = json.loads((root / "docs/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json").read_text())["receipts"]["REAL-01"]
     result = verify_receipt(legacy_receipt, artifacts_dir=root)
     assert result["status"] == "invalid"
     assert any("missing required field" in reason for reason in result["invalid_reasons"])

@@ -4,8 +4,8 @@ The current candidate encodes world coordinates as colors. Fix that and input
 parity before any further training, backend research or parameter sweep.
 
 Work in /Users/yanzihao/Documents/standardphysics. Read:
-1. docs/deepseek-splatx-policy-audit-v2.txt
-2. docs/deepseek-lidar-experiment-policy-v2.json
+1. docs/research/deepseek-splatx-policy-audit-v2.txt
+2. docs/research/deepseek-lidar-experiment-policy-v2.json
 3. runs/moffett/acceleration-audit-v2/counterexamples.json
 Do not claim completion from existing passing tests or the prior “all phases”
 checkpoint. Reuse verified assets and explain exactly what each proves.

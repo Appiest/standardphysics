@@ -134,8 +134,8 @@ Runtime mask usage, full GPU footprint, browser correctness and physical phone
 acceptance remain unproved. Intent cannot be inferred from erroneous claims.
 
 Feed the next agent
-- docs/deepseek-splatx-acceleration-handoff-v2.txt
-- docs/deepseek-lidar-experiment-policy-v2.json
+- docs/research/deepseek-splatx-acceleration-handoff-v2.txt
+- docs/research/deepseek-lidar-experiment-policy-v2.json
 Original policy and handoff remain unchanged. New policy schema2 describes a
 new benchmark version3, because version2 inputs and calibration are invalid for
 the proposed claims. Numeric quality gates and score weights are unchanged.

@@ -1,10 +1,10 @@
 {
   "collected_test_count": 1284,
   "contract_hashes": {
-    "docs/deepseek-shop-pilot/01-coordinator.txt": "4ddcacd6b07db3e099d3560f747ffc6df6d834677f15a38657d2a1589cdf4ba4",
-    "docs/deepseek-shop-pilot/02-contracts-and-ownership.txt": "978f84e6df5b33e9e1aa2fa9b6b756f8d37c6ea02e341c15e4e6a7dd0d732d71",
-    "docs/deepseek-shop-pilot/05-adversarial-tests.txt": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
-    "docs/deepseek-shop-pilot/06-phone-and-field-handoff.txt": "4b1d163b737d1fdffe6430c9a4fb5baa8b759fc00cf98c599ad8fb37a1360c73"
+    "docs/research/deepseek-shop-pilot/01-coordinator.txt": "4ddcacd6b07db3e099d3560f747ffc6df6d834677f15a38657d2a1589cdf4ba4",
+    "docs/research/deepseek-shop-pilot/02-contracts-and-ownership.txt": "978f84e6df5b33e9e1aa2fa9b6b756f8d37c6ea02e341c15e4e6a7dd0d732d71",
+    "docs/research/deepseek-shop-pilot/05-adversarial-tests.txt": "e6c9296dd360f8a3081f036771f874bc2e802ba24010e9c3ba1cb15a57f69f37",
+    "docs/research/deepseek-shop-pilot/06-phone-and-field-handoff.txt": "4b1d163b737d1fdffe6430c9a4fb5baa8b759fc00cf98c599ad8fb37a1360c73"
   },
   "holdout_policy": {
     "frozen_before_any_tuning": true,
@@ -21,7 +21,7 @@
     ]
   },
   "kind": "shop_pilot_evaluation_freeze_not_results",
-  "policy_doc": "docs/deepseek-shop-pilot/04-hard-gates.json",
+  "policy_doc": "docs/research/deepseek-shop-pilot/04-hard-gates.json",
   "policy_hash": "8db915a80d13c75600e47f47b2f77c8210c44d34793d5d4c8fb613f755129b81",
   "schema_version": 1,
   "test_inventory": {

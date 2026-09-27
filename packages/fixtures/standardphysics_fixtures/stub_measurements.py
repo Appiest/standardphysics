@@ -1,7 +1,7 @@
 """A working MeasurementProvider for the fixture shop.
 
 Lane C builds every check against this from the first hour, then swaps the
-constructor argument for Lane B's real implementation when PROGRESS_B.json
+constructor argument for Lane B's real implementation when docs/progress/PROGRESS_B.json
 lists it ready. Nothing else in Lane C changes.
 
 This computes widths from the graph rather than returning constants, so moving

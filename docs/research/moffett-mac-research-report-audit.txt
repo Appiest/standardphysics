@@ -14,7 +14,7 @@ Verified corrections
    merely proposing LiDAR initialization is not a new treatment.
 
 2. Deterministic surface splats are a proposed baseline, not a measured <60-second
-   result. docs/moffett-efficient-splats-build-plan.txt:223–236 explicitly calls
+   result. docs/research/moffett-efficient-splats-build-plan.txt:223–236 explicitly calls
    this a stretch target. The reported 4–6 GiB memory is not established there.
    Existing experimental neural scaffold is not a trained surface builder.
 
@@ -24,7 +24,7 @@ Verified corrections
    No verified evidence here establishes a single patch containing the claimed
    outlet, whiteboard, green sofa and moving person. Select the patch from images.
 
-4. PROGRESS_MOFFETT.json records incomplete stronger masks: 109 detection frames,
+4. docs/progress/PROGRESS_MOFFETT.json records incomplete stronger masks: 109 detection frames,
    missed legs/people, and coarse furniture exclusions. "Confirmed detections"
    does not mean complete person removal. The stronger-mask variant is untrained.
    Pose refinement improved fitted reprojection error; the existing comparison

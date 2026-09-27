@@ -19,8 +19,8 @@ from typing import Any
 from .evidence import canonical_dirty_digest, sha256_file
 from .receipt_verifier import verify_receipt
 
-CONTRACT_DOC = pathlib.Path("docs/deepseek-shop-pilot/05-adversarial-tests.txt")
-POLICY_DOC = pathlib.Path("docs/deepseek-shop-pilot/04-hard-gates.json")
+CONTRACT_DOC = pathlib.Path("docs/research/deepseek-shop-pilot/05-adversarial-tests.txt")
+POLICY_DOC = pathlib.Path("docs/research/deepseek-shop-pilot/04-hard-gates.json")
 ASSETS = pathlib.Path("scripts/shop_pilot/assets/mutations")
 
 MUTATIONS: list[dict[str, Any]] = [

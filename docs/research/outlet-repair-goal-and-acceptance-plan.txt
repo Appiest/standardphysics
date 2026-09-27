@@ -1,6 +1,6 @@
 OUTLET FEATURE REPAIR GOAL — EXECUTION PROMPT
 Prepared 2026-09-20. Repository: /Users/yanzihao/Documents/standardphysics
-Companion acceptance contract: docs/outlet-repair-acceptance.json
+Companion acceptance contract: docs/research/outlet-repair-acceptance.json
 
 GOAL TO GIVE THE CODING AGENT
 
@@ -23,8 +23,8 @@ real acceptance. This prompt cannot keep a terminated session running.
 PRIORITY AND SCOPE
 
 Read applicable AGENTS.md files, current git status/log, original prompt
-docs/gemini-overnight-outlet-feature-prompt.txt, audit
-docs/moffett-outlet-implementation-audit.txt, and PROGRESS_MOFFETT_OUTLETS.json.
+docs/research/gemini-overnight-outlet-feature-prompt.txt, audit
+docs/research/moffett-outlet-implementation-audit.txt, and docs/progress/PROGRESS_MOFFETT_OUTLETS.json.
 Read current source before assuming the audit's line numbers still apply. Other
 agents are changing rendering code; preserve their edits and shared architecture.
 This goal repairs outlets, not splat quality, furniture redesign or a new service.
@@ -94,7 +94,7 @@ evidence mode if the product actually supports it; they do not verify automatic
 recognition. An automatic-detection claim requires actual configured detector output.
 
 Checkpoint after each gate, failed repair, and at least every 10 minutes of work.
-Use PROGRESS_MOFFETT_OUTLET_REPAIR.json and a new runs/moffett/outlets/repair-<id>.
+Use docs/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json and a new runs/moffett/outlets/repair-<id>.
 No new .md files. Record source/evaluator/config/input hashes, stage, commands,
 exit codes, artifact paths, failures, call counters, actual costs or unavailable,
 remaining dependencies and next action. Do not erase prior attempts.
