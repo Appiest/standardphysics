@@ -62,6 +62,18 @@ The checks CI runs:
 cd apps/web && npm run lint && npm run typecheck && npm run test
 ```
 
+## Evaluation
+
+The held-out suite is 39 labelled cases: the sample shop as shipped, and variants that move its walls, fixtures and doors so that the right answer changes. `standardphysics-agents weave-eval` scores each configuration of the system against them as a Weave Evaluation, and the [Evals tab](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/evaluations) holds every run with its per-case table. The latest run:
+
+| Configuration | Finding precision | Finding recall | Fix resolves finding | Mean measurement error |
+|---|---|---|---|---|
+| Measured pipeline, fixes on | 0.986 | 0.924 | 1.000 | 0.0008 in |
+| Simplified stand-in measurements | 0.384 | 0.924 | 0.800 | 8.57 in |
+| Measured pipeline, fixes off | 0.986 | 0.924 | not scored | 0.0008 in |
+
+The stand-in row is the control. Swapping the measured geometry for merged boxes keeps recall but loses most of the precision, so nearly all of the score comes from measuring the room correctly.
+
 ## Production readiness
 
 **Jobs survive crashes.** The queue lives in SQLite with WAL and `BEGIN IMMEDIATE` transactions, and a job is claimed atomically ([`repository.py`](services/api/standardphysics_api/repository.py)). At startup every job left running is queued again. An exclusive lock beside the database keeps a second process from running the same jobs ([`worker_lock.py`](services/api/standardphysics_api/worker_lock.py)). The worker loops back off and retry when the database errors, and a photo bake that runs past its time limit is killed and its job marked failed ([`worker.py`](services/api/standardphysics_api/worker.py)). The failure-injection tests are in [`test_worker_resilience.py`](services/api/tests/test_worker_resilience.py) and [`test_job_lifecycle.py`](services/api/tests/test_job_lifecycle.py).
