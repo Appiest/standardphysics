@@ -12,13 +12,15 @@ WORKDIR /app/apps/web
 COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci --no-audit --no-fund --loglevel=error
 COPY apps/web ./
-# Only the rewrite destination is baked in, and the entrypoint overrides it.
 # The deck imports fixture JSON through the @fixtures monorepo alias in
 # tsconfig; the build needs those files where the alias points.
 COPY packages/fixtures/standardphysics_fixtures/data /app/packages/fixtures/standardphysics_fixtures/data
-# Next bakes rewrites() into the build, so the web's API origin is chosen here.
-# The default serves the one-container "all" role; compose running the web
-# alone must pass --build-arg SP_API_ORIGIN=http://api:8787 to its build.
+# next.config.ts reads SP_API_ORIGIN for its /api rewrite, and `next build`
+# writes that destination into routes-manifest.json, so the browser's /api
+# requests go wherever this build says, whatever the container is started
+# with. Setting SP_API_ORIGIN at runtime only moves the fetches the pages make
+# while rendering on the server. The default serves the one-container "all"
+# role; compose running the web on its own passes SP_API_ORIGIN=http://api:8787.
 ARG SP_API_ORIGIN=http://127.0.0.1:8787
 ENV SP_API_ORIGIN=$SP_API_ORIGIN
 ENV NEXT_TELEMETRY_DISABLED=1
