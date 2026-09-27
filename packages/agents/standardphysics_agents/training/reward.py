@@ -24,11 +24,11 @@ from dataclasses import asdict, dataclass
 from standardphysics_contracts import SceneGraph
 
 from ..evaluation.gate import accepts
-from ..fix import apply_moves, relocation_violations, violations
+from ..fix import Violation, apply_moves, relocation_violations, violations
 from ..fix.strategies import TURN_DISRUPTION_METERS
 from .checker import TrainingChecker
 from .construction import construction_inches
-from .edits import built_room, edit_complaint, node_moves, parse_edits
+from .edits import TrainingEdits, built_room, edit_complaint, node_moves, parse_edits
 from .fittings import fitted_ids
 from .prices import capped_construction, construction_price, furniture_price
 from .quality import layout_quality
@@ -96,18 +96,27 @@ def score_completion(completion: str, room: SceneGraph, checker: TrainingChecker
     complaint = edit_complaint(room, edits)
     if complaint:
         return Verdict(0.0, parsed=True, reason=complaint)
-    moves = node_moves(edits)
     try:
-        built = built_room(room, edits)
+        candidate, broken = constrained(room, edits)
     except ValueError:
         return Verdict(0.0, parsed=True, reason="unbuildable_construction")
-    candidate = apply_moves(built, moves)
-    relocated = {move.node_id for move in edits.fixture_moves} | fitted_ids(room, built)
-    broken = [*violations(built, candidate), *relocation_violations(room, candidate, relocated)]
     if broken:
         return Verdict(0.0, parsed=True, reason=",".join(sorted({item.kind for item in broken})))
-    return _gated(room, candidate, checker, disruption_meters(moves), _Construction(
+    return _gated(room, candidate, checker, disruption_meters(node_moves(edits)), _Construction(
         construction_inches(edits.wall_shifts, edits.fixture_moves), construction_price(room, edits)))
+
+
+def constrained(room: SceneGraph, edits: TrainingEdits) -> tuple[SceneGraph, list[Violation]]:
+    """The room the edits make, and every hard constraint it breaks; raises ValueError for unbuildable construction.
+
+    This is the one legality test: the scorer refuses what it finds, and a menu
+    of moves offers nothing it finds. Refitted pieces count as relocated, so a
+    height change or catalog swap is checked like a moved fixture.
+    """
+    built = built_room(room, edits)
+    candidate = apply_moves(built, node_moves(edits))
+    relocated = {move.node_id for move in edits.fixture_moves} | fitted_ids(room, built)
+    return candidate, [*violations(built, candidate), *relocation_violations(room, candidate, relocated)]
 
 
 def _touched(edits) -> set:
