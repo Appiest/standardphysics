@@ -210,6 +210,15 @@ class TestTakingPeopleOut:
         assert removal.removed == 0
         assert len(removal.points) == len(wall)
 
+    def test_a_person_the_detector_is_unsure_of_deletes_nothing(self):
+        """A 0.5 "person" drawn round a whole frame once took half a fire extinguisher."""
+        extinguisher = slab((0.0, 1.0, 1.1), (0.14, 0.08, 0.6))
+        camera = camera_at((0.0, -0.5, 1.1), (0.0, 1.0, 1.1))
+        unsure = Detection("frame-0001", "person", (0.0, 0.0, camera.width, camera.height), True, 0.5)
+        assert without_people(extinguisher, graph_of(), [(camera, [unsure], None)]).removed == 0
+        sure = replace(unsure, confidence=0.9)
+        assert without_people(extinguisher, graph_of(), [(camera, [sure], None)]).removed > 0
+
     def test_a_frame_with_nobody_in_it_removes_nothing(self):
         points = slab((0.0, 1.0, 1.0), (0.4, 0.3, 0.4))
         camera = camera_at((0.0, -1.5, 1.0), (0.0, 1.0, 1.0))
