@@ -124,3 +124,36 @@ def test_each_turn_is_stateless_and_carries_the_last_result(room, checker, menu)
     assert content["last_result"] == last
     assert [option["option"] for option in content["options"]] == [o.number for o in menu.options]
     assert {problem["label"] for problem in content["problems"]} == set(menu.problems.values())
+
+
+def test_no_option_moves_a_piece_the_owner_said_to_keep_where_it_is(room, checker, menu):
+    from standardphysics_agents.training.owner import WishBook
+    from standardphysics_agents.training.wishes import stays_put
+
+    graph = room[0]
+    held = graph.by_id(menu.options[0].edits.moves[0].node_id)
+    book = WishBook()
+    book.add(stays_put(held), graph)
+    held_menu = build_menu(graph, checker, stated=book)
+    assert not any(move.node_id == held.id for option in held_menu.options for move in option.edits.moves)
+    assert {"wish": stays_put(held).text, "source": "stated"} in held_menu.wish_view
+    resolution = resolve_choice(graph, held_menu, MenuChoice(choose=[1]))
+    assert not resolution.dropped
+
+
+def test_options_name_the_inferred_wishes_they_would_break_and_the_model_is_told_them(room, checker, menu):
+    assert all("breaks_wishes" in option.effect for option in menu.options)
+    labels = {wish["label"] for wish in menu.wish_view if wish["source"] == "inferred"}
+    assert labels and all(set(option.effect["breaks_wishes"]) <= labels for option in menu.options)
+    content = json.loads(menu_messages(room[0], checker, menu, None)[1]["content"])
+    assert content["owner_wishes"] == menu.wish_view
+
+
+def test_a_shuffled_menu_with_wishes_hidden_offers_the_same_moves_without_the_hints(room, checker, menu):
+    from standardphysics_agents.training.menu import MenuView
+
+    blind = build_menu(room[0], checker, view=MenuView(order="shuffled", wishes_shown=False, seed=3))
+    assert sorted(o.wording for o in blind.options) == sorted(o.wording for o in menu.options)
+    assert not any("breaks_wishes" in option.effect for option in blind.options)
+    assert blind.wish_view == []
+    assert [o.number for o in blind.options] == list(range(1, len(blind.options) + 1))

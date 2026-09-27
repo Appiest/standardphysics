@@ -22,6 +22,7 @@ from dataclasses import dataclass, field, replace
 
 from standardphysics_contracts import MeasurementProvider, SceneGraph
 
+from ..fix import CandidateRejection
 from .wishes import Wish, infer_wishes, kept, stays_near, stays_put
 
 INCH = 0.0254
@@ -48,6 +49,17 @@ class WishBook:
     def broken(self, after: SceneGraph, measure: MeasurementProvider, hard_only: bool = False) -> list[Wish]:
         return [wish for wish, reference in self.entries
                 if (wish.hard or not hard_only) and not kept(wish, reference, after, measure)]
+
+    def rejection(self, measure: MeasurementProvider) -> CandidateRejection | None:
+        """The stated wishes as a veto, in the same shape as a room's ADA directives; None when there are none."""
+        if not self.stated:
+            return None
+
+        def refuse(_before: SceneGraph, after: SceneGraph) -> str | None:
+            broken_now = self.broken(after, measure, hard_only=True)
+            return f"owner_wish: {broken_now[0].text}" if broken_now else None
+
+        return refuse
 
     def newly_broken(self, before: SceneGraph, after: SceneGraph, measure: MeasurementProvider) -> list[Wish]:
         """Wishes `before` kept and `after` breaks."""

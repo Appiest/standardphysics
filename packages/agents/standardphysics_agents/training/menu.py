@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import json
 import math
+import random
 from dataclasses import dataclass, field
 from itertools import chain, zip_longest
 from uuid import UUID
@@ -45,7 +46,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from standardphysics_contracts import Finding, NodeMove, SceneGraph, SceneNode, to_inches, to_meters
 
 from ..evaluation.gate import accepts
-from ..fix import CandidateRejection, candidates, pinch_from, snap_moves
+from ..fix import CandidateRejection, candidates, combine_rejections, pinch_from, snap_moves
 from ..fix.placement import placements
 from ..fix.strategies import Candidate
 from ..fix.surfaces import lower_surface_moves
@@ -53,9 +54,11 @@ from ..redesign import FurnitureMove
 from .checker import TrainingChecker
 from .construction import MAX_FIXTURE_MOVE_INCHES, FixtureMove, build, construction_inches, fixture_ids
 from .edits import TrainingEdits, _json_text, edits_json, node_moves, parse_edits
+from .owner import WishBook
 from .prompt import room_view
 from .reward import constrained
 from .usability import usability
+from .wishes import Wish, infer_wishes, kept
 
 GUESSES_PER_PROBLEM = 24
 PLACEMENTS_PER_PROBLEM = 24
@@ -82,7 +85,10 @@ MENU_INSTRUCTION = (
     "Pick the options that together clear the most problems with the least disruption. Options apply in the "
     "order you list them; one that would clash with an earlier pick or moves the same piece again is skipped "
     "and reported to you, and `clashes_with` names the options each one cannot be combined with. "
-    "`last_result` says what happened to your previous answer, if any."
+    "`last_result` says what happened to your previous answer, if any, including what the owner said. "
+    "`owner_wishes` lists what the owner wants kept: stated ones are the owner's own words and no option breaks "
+    "them; inferred ones are read from where things stand now, and `breaks_wishes` on an option names any it "
+    "would break. Prefer options that keep the owner's layout."
 )
 MENU_ANSWER_FORMAT = (
     'Answer with JSON only: {"choose":[<option numbers in the order to apply>],"why":"<one sentence>"}. '
@@ -111,10 +117,27 @@ class Menu:
     options: list[Option]
     problem_view: list[dict] = field(default_factory=list)
     veto: CandidateRejection | None = None
-    """The room's directive refusal, which picks and free-form construction are held to as well."""
+    """The room's directive refusal and the owner's stated wishes, which picks and free-form construction are
+    held to as well."""
+    wish_view: list[dict] = field(default_factory=list)
+    """The owner's wishes as the model reads them."""
 
     def option(self, number: int) -> Option | None:
         return next((option for option in self.options if option.number == number), None)
+
+
+@dataclass(frozen=True)
+class MenuView:
+    """How the menu is shown: ranked best first or shuffled, and whether inferred wishes are labelled.
+
+    Shuffling and hiding the inferred wishes leave the model to judge the
+    options and read the owner's layout itself, which is what an evaluation of
+    the model's own judgment needs.
+    """
+
+    order: str = "ranked"
+    wishes_shown: bool = True
+    seed: int = 0
 
 
 @dataclass(frozen=True)
@@ -257,8 +280,27 @@ def _inches(finding: Finding) -> float | None:
 
 
 def _rank(effect: dict) -> tuple:
-    return (-len(effect["clears"]), effect["fixable_left"], effect["construction_inches"], -effect["usable"],
-            effect["inches_moved"])
+    return (-len(effect["clears"]), effect["fixable_left"], len(effect.get("breaks_wishes", [])),
+            effect["construction_inches"], -effect["usable"], effect["inches_moved"])
+
+
+def _ordered(measured: list, view: MenuView) -> list:
+    if view.order == "shuffled":
+        shuffled = list(measured)
+        random.Random(view.seed).shuffle(shuffled)
+        return shuffled
+    return sorted(measured, key=lambda pair: _rank(pair[1]))
+
+
+def _wishes_shown(room: SceneGraph, checker: TrainingChecker, stated: WishBook | None,
+                  view: MenuView) -> tuple[list[tuple[str, Wish]], list[dict]]:
+    """Inferred wishes to label options with, and every wish the model is told about."""
+    inferred = infer_wishes(room, checker.measure) if view.wishes_shown else []
+    labelled = [(f"W{index}", wish) for index, wish in enumerate(inferred, start=1)]
+    said = stated.stated if stated else []
+    told = [*[{"label": label, "wish": wish.text, "source": "inferred"} for label, wish in labelled],
+            *[{"wish": wish.text, "source": "stated"} for wish in said]]
+    return labelled, told
 
 
 def _problem_view(graph: SceneGraph, problems: list[Finding], labels: dict[UUID, str]) -> list[dict]:
@@ -278,7 +320,11 @@ class _Measurer:
     before: object
     labels: dict[UUID, str]
     veto: CandidateRejection | None = None
+    wishes: list[tuple[str, Wish]] = field(default_factory=list)
     worded: set = field(default_factory=set)
+
+    def breaks(self, candidate: SceneGraph) -> list[str]:
+        return [label for label, wish in self.wishes if not kept(wish, self.room, candidate, self.checker.measure)]
 
     def options(self, guesses: list[_Guess], tries: int) -> list[tuple[_Guess, dict]]:
         found: list[tuple[_Guess, dict]] = []
@@ -292,8 +338,8 @@ class _Measurer:
             after = self.checker.assess(candidate)
             if accepts(self.before, after):
                 self.worded.add(guess.wording)
-                found.append((guess, _effect(self.room, candidate, self.checker, self.before, after, self.labels,
-                                             guess.edits)))
+                effect = _effect(self.room, candidate, self.checker, self.before, after, self.labels, guess.edits)
+                found.append((guess, {**effect, "breaks_wishes": self.breaks(candidate)} if self.wishes else effect))
         return found
 
     def for_problem(self, finding: Finding) -> list[tuple[_Guess, dict]]:
@@ -304,21 +350,28 @@ class _Measurer:
         return [*found, *self.options(_fixture_guesses(self.room, finding, self.checker, label), FIXTURE_TRIES)]
 
 
-def build_menu(room: SceneGraph, checker: TrainingChecker) -> Menu:
-    """Legal, gate-accepted options for each of the room's fixable problems, best first, numbered from 1."""
+def build_menu(room: SceneGraph, checker: TrainingChecker, stated: WishBook | None = None,
+               view: MenuView = MenuView()) -> Menu:
+    """Legal, gate-accepted options for each of the room's fixable problems, numbered from 1.
+
+    Nothing offered breaks a hard constraint, a directive for the room's space
+    type, or a wish the owner stated.
+    """
     before = checker.assess(room)
     problems = checker.fixable_problems(before)
     labels = {finding.id: f"P{index}" for index, finding in enumerate(problems, start=1)}
-    veto = checker.directive_veto(room)
-    measurer = _Measurer(room, checker, before, labels, veto)
+    veto = combine_rejections(checker.directive_veto(room), stated.rejection(checker.measure) if stated else None)
+    labelled, told = _wishes_shown(room, checker, stated, view)
+    measurer = _Measurer(room, checker, before, labels, veto, labelled)
     measured = [pair for finding in problems for pair in measurer.for_problem(finding)]
-    measured.sort(key=lambda pair: _rank(pair[1]))
+    kept_best = sorted(measured, key=lambda pair: _rank(pair[1]))[:MENU_SIZE]
     options = [Option(number, guess.wording, guess.edits, effect)
-               for number, (guess, effect) in enumerate(measured[:MENU_SIZE], start=1)]
+               for number, (guess, effect) in enumerate(_ordered(kept_best, view), start=1)]
     for option in options:
         option.effect["clashes_with"] = [other.number for other in options if other is not option
                                          and _why_dropped(room, option.edits, other, veto)]
-    return Menu(problems=labels, options=options, problem_view=_problem_view(room, problems, labels), veto=veto)
+    return Menu(problems=labels, options=options, problem_view=_problem_view(room, problems, labels), veto=veto,
+                wish_view=told)
 
 
 def menu_messages(room: SceneGraph, checker: TrainingChecker, menu: Menu, last_result: dict | None) -> list[dict]:
@@ -328,6 +381,8 @@ def menu_messages(room: SceneGraph, checker: TrainingChecker, menu: Menu, last_r
     view.pop("walls_you_can_move", None)
     content = {"problems": menu.problem_view, "options": [option.as_prompt() for option in menu.options],
                "last_result": last_result, "room": view}
+    if menu.wish_view:
+        content["owner_wishes"] = menu.wish_view
     return [{"role": "system", "content": MENU_SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps(content, separators=(",", ":"))}]
 
