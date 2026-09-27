@@ -246,7 +246,7 @@ def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore)
             scan_id = repo.insert_scan(connection, body, owner.id)
             if body.replaces is not None:
                 carry_answers(connection, store, body.replaces, scan_id)
-            return repo.get_scan(connection, scan_id)
+            return _scan_or_404(connection, scan_id)
 
     @app.get("/api/scans", response_model=ScanList)
     def list_scans(request: Request) -> ScanList:
@@ -324,7 +324,7 @@ def _finalize(database: Database, store: ArtifactStore, scan_id: uuid.UUID) -> t
         scan = _scan_or_404(connection, scan_id)
         if scan.state == "failed":
             repo.retry_failed_jobs(connection, scan_id)
-            return repo.get_scan(connection, scan_id), True
+            return _scan_or_404(connection, scan_id), True
         if scan.state != "uploading":
             return scan, False
         missing = repo.missing_required(scan)
@@ -338,7 +338,7 @@ def _finalize(database: Database, store: ArtifactStore, scan_id: uuid.UUID) -> t
         repo.mark_finalized(connection, scan, coverage)
         record_closure(connection, scan)
         repo.enqueue_job(connection, scan_id, PROCESS, 0)
-        return repo.get_scan(connection, scan_id), True
+        return _scan_or_404(connection, scan_id), True
 
 
 STAGED_VALIDATORS = {
@@ -776,7 +776,7 @@ def _install_simulation_routes(app: FastAPI, database: Database, stages: Stages,
             lidar_mesh_path=lidar_mesh_path, capture_graph=captured,
         ).model_copy(update={"revision": base.revision + 1, "base_hash": graph_hash(base)})
         with database.transaction() as connection:
-            if repo.get_revision(connection, scan_id)["revision"] != base.revision:
+            if repo.latest_revision_number(connection, scan_id) != base.revision:
                 raise ApiProblem(409, STALE_LAYOUT)
             repo.save_revision(connection, rebuilt, source="rebuild", base_revision=base.revision)
             repo.enqueue_job(connection, scan_id, ASSESS, rebuilt.revision)

@@ -30,8 +30,10 @@ STOPPED_PARTWAY = "Unable to finish the loop. Nothing was changed, so you can tr
 
 
 def _kept_moves(step: LoopStep) -> list[NodeMove]:
-    kept = step.result.gate is not None and step.result.gate.accepted and step.result.proposal is not None
-    return list(step.result.proposal.moves) if kept else []
+    gate, proposal = step.result.gate, step.result.proposal
+    if gate is None or not gate.accepted or proposal is None:
+        return []
+    return list(proposal.moves)
 
 
 def _to_pass(step: LoopStep) -> LoopPass:

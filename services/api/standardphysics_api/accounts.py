@@ -192,11 +192,16 @@ def guest_deletes_at(connection: sqlite3.Connection, owner: Owner) -> datetime |
     """When a guest's shops go, 30 days after the most recent was last opened."""
     if not owner.guest:
         return None
+    return guest_shops_expire_at(connection, owner.id)
+
+
+def guest_shops_expire_at(connection: sqlite3.Connection, owner_id: uuid.UUID) -> datetime:
+    """30 days after the owner's most recently opened shop, or after they joined if they have none."""
     row = connection.execute(
         "SELECT MAX(COALESCE(scans.last_opened_at, scans.created_at)) AS opened FROM scans WHERE owner_id = ?",
-        (str(owner.id),),
+        (str(owner_id),),
     ).fetchone()
-    created = connection.execute("SELECT created_at FROM owners WHERE id = ?", (str(owner.id),)).fetchone()
+    created = connection.execute("SELECT created_at FROM owners WHERE id = ?", (str(owner_id),)).fetchone()
     latest = row["opened"] or created["created_at"]
     return datetime.fromisoformat(latest) + GUEST_SHOPS_KEPT
 

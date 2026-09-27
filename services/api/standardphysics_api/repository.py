@@ -523,6 +523,14 @@ def get_revision(connection: sqlite3.Connection, scan_id: uuid.UUID, revision: i
     ).fetchone()
 
 
+def require_revision(connection: sqlite3.Connection, scan_id: uuid.UUID, revision: int) -> sqlite3.Row:
+    """A revision a queued job names. The job was queued after it was saved, so its absence is a fault."""
+    row = get_revision(connection, scan_id, revision)
+    if row is None:
+        raise LookupError(f"scan {scan_id} has no revision {revision}")
+    return row
+
+
 def graph_of(row: sqlite3.Row) -> SceneGraph:
     return SceneGraph.model_validate_json(row["graph_json"])
 

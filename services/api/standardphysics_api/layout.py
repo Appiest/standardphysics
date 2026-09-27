@@ -34,11 +34,11 @@ def _base(database: Database, scan_id: uuid.UUID, base_revision: int):
         if not repo.scan_exists(connection, scan_id):
             raise ApiProblem(404, "no scan")
         row = repo.get_revision(connection, scan_id, base_revision)
-        latest = repo.get_revision(connection, scan_id)
+        latest = repo.latest_revision_number(connection, scan_id)
         scenario = repo.get_scenario(connection, scan_id)
     if row is None:
         raise ApiProblem(404, "no such revision")
-    return repo.graph_of(row), latest["revision"], scenario
+    return repo.graph_of(row), latest, scenario
 
 
 def _candidate(base: SceneGraph, moves: list[NodeMove]) -> tuple[SceneGraph, list[Blocked]]:
@@ -67,7 +67,7 @@ def save_layout(database: Database, worker: Worker, scan_id: uuid.UUID, body: Sa
         raise ApiProblem(409, "that layout breaks a hard constraint", need=[b.detail for b in blocked])
     saved = candidate.model_copy(update={"revision": body.base_revision + 1})
     with database.transaction() as connection:
-        latest = repo.get_revision(connection, scan_id)["revision"]
+        latest = repo.latest_revision_number(connection, scan_id)
         if latest != body.base_revision:
             raise ApiProblem(409, STALE_LAYOUT)
         repo.save_revision(connection, saved, source="owner", base_revision=body.base_revision)

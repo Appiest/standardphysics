@@ -23,6 +23,7 @@ import threading
 import time
 import traceback
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
@@ -226,7 +227,7 @@ class Worker:
             job = repo.claim_job(connection, texture_only)
         if job is None:
             return False
-        pulse = self.pulses.get(texture_only) or LoopPulse()
+        pulse = self.pulses[texture_only] if texture_only is not None else LoopPulse()
         pulse.begin(job)
         try:
             self._settle(job)
@@ -384,7 +385,7 @@ class Worker:
 
     def _run(self, job) -> _JobOutcome:
         scan_id, revision = uuid.UUID(job["scan_id"]), job["revision"]
-        handler = {
+        handler: Callable[..., bool] = {
             PROCESS: self._process,
             ASSESS: self._assess,
             DISPLAY: self._display,
@@ -433,6 +434,8 @@ class Worker:
             raise _UnusableEvidence(association_failure or "uploaded evidence does not parse")
         with self.database.connect() as connection:
             room_json = repo.artifact_of_kind(connection, scan_id, "room_json")
+        if room_json is None:
+            raise _UnusableEvidence("the scan has no room_json to measure")
         frame_paths, poses_path, lidar_mesh_path = self.label_inputs(scan_id)
         # With a declared manifest every state except not_started means the
         # pairing is unfilled or broken; such a run never counts as semantic.
@@ -496,7 +499,7 @@ class Worker:
     def _assess(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
         with self.database.transaction() as connection:
             repo.set_state(connection, scan_id, "checking")
-            graph = repo.graph_of(repo.get_revision(connection, scan_id, revision))
+            graph = repo.graph_of(repo.require_revision(connection, scan_id, revision))
             scenario = repo.get_scenario(connection, scan_id)
         assessment = self.stages.assess(graph, scenario, pass_number=revision + 1)
         with self.database.transaction() as connection:
@@ -550,8 +553,9 @@ class Worker:
 
     def _display(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
         with self.database.connect() as connection:
-            graph = repo.graph_of(repo.get_revision(connection, scan_id, revision))
-            has_glb = repo.get_revision(connection, scan_id, revision)["glb_path"] is not None
+            revision_row = repo.require_revision(connection, scan_id, revision)
+            graph = repo.graph_of(revision_row)
+            has_glb = revision_row["glb_path"] is not None
             assessment = repo.assessment_for_revision(connection, scan_id, revision)
             usdz = repo.artifact_of_kind(connection, scan_id, "room_usdz")
             mapping = repo.artifact_of_kind(connection, scan_id, "room_metadata")
@@ -610,7 +614,7 @@ def in_own_process(function, *args, timeout_seconds: float | None = None) -> Non
     child = multiprocessing.get_context("spawn").Process(target=function, args=args, daemon=True)
     child.start()
     child.join(timeout_seconds)
-    if child.is_alive():
+    if timeout_seconds is not None and child.is_alive():
         child.kill()
         child.join()
         raise ChildTimedOut(f"{function.__name__} did not finish within {_duration(timeout_seconds)} and was stopped")

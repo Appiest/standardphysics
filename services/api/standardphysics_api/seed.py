@@ -18,6 +18,7 @@ import shutil
 import sqlite3
 import uuid
 
+import standardphysics_fixtures
 from standardphysics_contracts import CreateScanRequest
 from standardphysics_fixtures import build_lawsuit_graph, build_lawsuit_scenario
 
@@ -28,7 +29,7 @@ from .store import ArtifactStore
 from .worker import ASSESS
 
 SAMPLE_NAME = "Sample boba shop"
-FIXTURE_GLB = pathlib.Path(__import__("standardphysics_fixtures").__file__).parent / "data" / "shop_lawsuit.glb"
+FIXTURE_GLB = pathlib.Path(standardphysics_fixtures.__path__[0]) / "data" / "shop_lawsuit.glb"
 
 
 def demo_owner(connection: sqlite3.Connection, email: str, password: str) -> uuid.UUID:

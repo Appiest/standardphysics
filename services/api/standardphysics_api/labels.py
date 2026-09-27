@@ -72,7 +72,7 @@ def review_outlet(
     nodes = [_update(node) for node in base.nodes]
     saved = base.model_copy(update={"nodes": nodes, "revision": base_revision + 1})
     with database.transaction() as connection:
-        if repo.get_revision(connection, scan_id)["revision"] != base_revision:
+        if repo.latest_revision_number(connection, scan_id) != base_revision:
             raise ApiProblem(409, STALE_LAYOUT)
         repo.save_revision(connection, saved, source="owner", base_revision=base_revision)
         repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
@@ -137,7 +137,7 @@ def mark_observation(
         })
 
     with database.transaction() as connection:
-        if repo.get_revision(connection, scan_id)["revision"] != base_revision:
+        if repo.latest_revision_number(connection, scan_id) != base_revision:
             raise ApiProblem(409, STALE_LAYOUT)
         repo.save_revision(connection, saved, source="owner", base_revision=base_revision)
         repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
@@ -206,7 +206,7 @@ def _relabel(database, worker, scan_id, base_revision, node_id, change) -> Scene
     nodes = [change(node) if node.id == target.id else node for node in base.nodes]
     saved = base.model_copy(update={"nodes": nodes, "revision": base_revision + 1})
     with database.transaction() as connection:
-        if repo.get_revision(connection, scan_id)["revision"] != base_revision:
+        if repo.latest_revision_number(connection, scan_id) != base_revision:
             raise ApiProblem(409, STALE_LAYOUT)
         repo.save_revision(connection, saved, source="owner", base_revision=base_revision)
         repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)

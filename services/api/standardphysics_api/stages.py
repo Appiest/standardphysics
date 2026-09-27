@@ -286,10 +286,10 @@ class Stages:
             result = assess(graph, scenario, self.measure, ledger=ledger, pass_number=pass_number)
         for missing in result.unevaluated:
             log.info("rule %s not evaluated: %s", missing.rule_id, missing.waiting_on)
-        checked = len(pack.enabled(ledger, max_tier=1))
+        enabled = [rule.as_check() for rule in pack.enabled(ledger, max_tier=1)]
         waiting = {gap.rule_id: gap.waiting_on for gap in result.unevaluated}
-        scope = build_scope_manifest(graph, scenario, result.assessment, pack.enabled(ledger, max_tier=1), waiting)
-        return result.assessment.model_copy(update={"rules_checked": checked, "scope": scope})
+        scope = build_scope_manifest(graph, scenario, result.assessment, enabled, waiting)
+        return result.assessment.model_copy(update={"rules_checked": len(enabled), "scope": scope})
 
     def propose(self, graph: SceneGraph, scenario: Scenario, targets: list[Finding]) -> FixOutcome:
         """Lane C's fix agent: one arrangement that clears the targets, or one thing to ask."""

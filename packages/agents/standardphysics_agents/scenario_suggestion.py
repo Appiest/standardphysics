@@ -117,7 +117,8 @@ class _OpenFloor:
     def __init__(self, graph: SceneGraph):
         self.grid = build_grid(graph)
         clearance = ndimage.distance_transform_edt(~self.grid.occupied) * self.grid.cell_size
-        rows, cols = np.indices(self.grid.occupied.shape)
+        cell_indices = np.indices(self.grid.occupied.shape)
+        rows, cols = cell_indices[0], cell_indices[1]
         xs = self.grid.origin_x + (cols + 0.5) * self.grid.cell_size
         ys = self.grid.origin_y + (rows + 0.5) * self.grid.cell_size
         inside = _inside_hull(_convex_hull(_outline_points(graph)), xs, ys)
