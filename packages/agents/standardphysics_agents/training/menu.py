@@ -14,8 +14,9 @@ illegally let code own the geometry. So the model here chooses, and code places.
    out at once (`fix/clearing.py`), a table carried together with its seats
    (`fix/groups.py`), and short nudges of each named piece along its own sides
    (`fix/nudges.py`). Last come short slides of a built-in fixture the problem
-   names. Each is worded as a relation ("slide Chair [3f2a] 14 in away from the
-   Cafe table, for P1").
+   names, alone or together with the built-ins it touches (`fix/built_ins.py`),
+   so a counter keeps its lowered section. Each is worded as a relation
+   ("slide Chair [3f2a] 14 in away from the Cafe table, for P1").
    After Holodeck (Yang et al., CVPR 2024, arXiv:2312.09067), where the language
    model states relations and a solver enforces no-collision and in-bounds.
 2. Mask. Only guesses `reward.constrained` finds nothing wrong with survive:
@@ -52,6 +53,7 @@ from standardphysics_contracts import Finding, NodeMove, SceneGraph, SceneNode, 
 
 from ..evaluation.gate import accepts
 from ..fix import CandidateRejection, candidates, combine_rejections, pinch_from, snap_moves
+from ..fix.built_ins import built_in_set_moves
 from ..fix.clearing import circle_clearing_moves
 from ..fix.groups import group_moves
 from ..fix.nudges import nudge_moves
@@ -76,7 +78,7 @@ FIXTURE_DIRECTIONS = tuple((math.cos(math.radians(angle)), math.sin(math.radians
                            for angle in range(0, 360, 45))
 FURNITURE_TRIES = 12
 CLEARING_TRIES = 18
-FIXTURE_TRIES = 6
+FIXTURE_TRIES = 12
 """Legal guesses measured per problem; each costs one full checker pass.
 
 The clearing families and then fixture slides are only measured for a problem
@@ -275,9 +277,7 @@ def _furniture(move: NodeMove) -> FurnitureMove:
                          rotation_degrees=move.delta_rotation_z_degrees)
 
 
-def _fixture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:
-    """Short slides of a built-in the problem names, in eight directions; construction, so offered last."""
-    fixtures = fixture_ids(graph) - set(checker.pinned)
+def _single_fixture_guesses(graph: SceneGraph, finding: Finding, fixtures: set, label: str) -> list[_Guess]:
     named = [node_id for node_id in (finding.locus.node_ids if finding.locus else []) if node_id in fixtures]
     found = []
     for node_id in named:
@@ -289,6 +289,32 @@ def _fixture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingCheck
                                      "move built-in")
                 found.append(_Guess(TrainingEdits(fixture_moves=[move]), f"{words} (construction), for {label}"))
     return found
+
+
+def _fixture_move(move: NodeMove) -> FixtureMove:
+    return FixtureMove(node_id=move.node_id, dx_inches=round(to_inches(move.delta_translation.x), 1),
+                       dy_inches=round(to_inches(move.delta_translation.y), 1))
+
+
+def _run_words(graph: SceneGraph, candidate: Candidate, finding: Finding) -> str:
+    first, *rest = (graph.by_id(move.node_id) for move in candidate.moves)
+    delta = candidate.moves[0].delta_translation
+    words = _slide_words(graph, first, finding, delta.x, delta.y, "move built-in")
+    return f"{words} with the {', '.join(node.label for node in rest)} it touches" if rest else words
+
+
+def _fixture_set_guesses(graph: SceneGraph, finding: Finding, fixtures: set, label: str) -> list[_Guess]:
+    return [_Guess(TrainingEdits(fixture_moves=[_fixture_move(move) for move in found.moves]),
+                   f"{_run_words(graph, found, finding)} (construction), for {label}")
+            for found in built_in_set_moves(graph, finding, fixtures)]
+
+
+def _fixture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:
+    """Slides of a built-in the problem names, alone or with the built-ins it touches; construction, so offered last."""
+    fixtures = fixture_ids(graph) - set(checker.pinned)
+    families = [_single_fixture_guesses(graph, finding, fixtures, label),
+                _fixture_set_guesses(graph, finding, fixtures, label)]
+    return [guess for guess in chain.from_iterable(zip_longest(*families)) if guess is not None]
 
 
 TIERS = ((_furniture_guesses, FURNITURE_TRIES), (_clearing_guesses, CLEARING_TRIES),

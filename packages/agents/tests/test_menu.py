@@ -51,7 +51,7 @@ def test_every_option_passes_the_hard_constraints_and_the_gate(room, checker, me
     assert menu.options, "the fixture room has problems furniture can clear"
     for option in menu.options:
         candidate = apply_edits(graph, option.edits)
-        assert not violations(graph, candidate)
+        assert not violations(build(graph, option.edits.wall_shifts, option.edits.fixture_moves), candidate)
         relocated = {move.node_id for move in option.edits.fixture_moves}
         assert not relocation_violations(graph, candidate, relocated)
         verdict = score_completion(json.dumps(option.edits.model_dump(mode="json")), graph, checker)
