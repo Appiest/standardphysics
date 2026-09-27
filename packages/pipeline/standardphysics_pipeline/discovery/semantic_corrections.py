@@ -1,7 +1,7 @@
 """Secondary semantic corrections for Standard Physics (Phase G).
 
-Reuses the evidence/attachment pattern for whiteboards and photo-supported sofa/table
-label corrections.
+Reuses the evidence/attachment pattern for whiteboards and photo-supported sofa, table
+and counter label corrections.
 
 Core Invariants:
 1. Preserve raw_category, measured geometry, provenance, and owner corrections.
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections import Counter
 from typing import Sequence
 
 import numpy as np
@@ -63,6 +64,25 @@ TABLE_NAMES = frozenset({
 })
 
 SEAT_NAMES = frozenset({"chair", "stool", "bar_stool", "seat", "high_chair", "armchair", "dining_chair"})
+
+COUNTER_NAMES = frozenset({
+    "counter",
+    "service_counter",
+    "sales_counter",
+    "checkout_counter",
+    "order_counter",
+})
+
+WORK_SURFACE_NAMES = TABLE_NAMES | COUNTER_NAMES
+"""A table and a counter are one family: a raised top people stand or sit at.
+
+A photo calls a café's bar a counter, and RoomPlan calls it a table; neither
+is wrong, so a scanned table the photos call a counter keeps its name. What
+the family does move is RoomPlan's storage box that every photo calls a
+counter, because storage is not a work surface at all."""
+
+RELABELS = ((SOFA_NAMES, "Sofa"), (TABLE_NAMES, "Table"), (COUNTER_NAMES, "Counter"))
+"""Which detector names can rename a scanned piece, and the label each gives it."""
 
 MIN_FURNITURE_CORRECTION_CONFIDENCE = 0.75
 MIN_DETECTION_ON_NODE = 0.6
@@ -123,10 +143,23 @@ def _names(node: SceneNode, detection: Detection, camera: PhotoCamera) -> bool:
     return node_box is not None and _covered_share(_detection_box(detection), node_box) >= MIN_DETECTION_ON_NODE
 
 
+def _key(name: str) -> str:
+    return name.strip().lower().replace(" ", "_")
+
+
+def is_work_surface(name: str) -> bool:
+    """A table or a counter by name: something that stands on the floor and carries a top."""
+    return _key(name) in WORK_SURFACE_NAMES
+
+
+def same_furniture(first: str, second: str) -> bool:
+    """Whether two names mean the same kind of furniture, so a stool agrees with a scanned chair."""
+    return _family(first) == _family(second)
+
+
 def _family(name: str) -> str:
-    """Names that mean the same kind of furniture, so a stool agrees with a scanned chair."""
-    key = name.strip().lower().replace(" ", "_")
-    for family, names in (("seat", SEAT_NAMES), ("table", TABLE_NAMES), ("sofa", SOFA_NAMES)):
+    key = _key(name)
+    for family, names in (("seat", SEAT_NAMES), ("table", WORK_SURFACE_NAMES), ("sofa", SOFA_NAMES)):
         if key in names:
             return family
     return key
@@ -146,9 +179,11 @@ def correct_furniture_label(
     detection: Detection,
     camera: PhotoCamera,
 ) -> SceneNode | None:
-    """Photo-supported sofa/table label correction.
+    """Photo-supported sofa, table or counter label correction.
 
-    Preserves raw_category, measured dimensions, and transform.
+    A name of the node's own family is no correction: a scanned table the
+    photo calls a counter is still a table. Preserves raw_category, measured
+    dimensions, and transform.
     Rejects length-only heuristics: requires genuine photographic detection evidence.
     """
     if bounds_the_room(node):
@@ -162,18 +197,8 @@ def correct_furniture_label(
         return None
 
     name = _detection_name(detection)
-    label_clean = name.strip().lower().replace(" ", "_")
-    target_label: str | None = None
-    if label_clean in SOFA_NAMES:
-        target_label = "Sofa"
-    elif label_clean in TABLE_NAMES:
-        target_label = "Table"
-
-    if target_label is None:
-        return None
-
-    # Do not re-label if it already has this label
-    if node.label.strip().capitalize() == target_label:
+    target_label = next((label for names, label in RELABELS if _key(name) in names), None)
+    if target_label is None or same_furniture(name, node.label):
         return None
 
     if not _names(node, detection, camera):
@@ -303,31 +328,54 @@ def _best_whiteboard(
 
 def _voted_label(node: SceneNode, detections_by_frame: dict[str, list[Detection]],
                  cameras_by_id: dict[str, PhotoCamera]) -> SceneNode:
-    """The node relabeled only when more frames name it the new thing than name it what it already is.
+    """The node relabeled only when the new name is what most frames call it.
 
-    Each frame casts at most one vote per label, from detections that are
-    pictures of this node. A chair the detector also calls a chair keeps its label.
+    Each frame casts at most one vote per name, from confident detections that
+    are pictures of this node. A name of the node's own family votes to keep
+    it, so a chair the detector also calls a chair keeps its label. Every other
+    name it is called votes against the change too: a storage box most photos
+    call a recycling bin is not a counter because a few of them caught the
+    counter's rectangle over it.
     """
-    own = _family(node.label)
-    votes: dict[str, list[SceneNode]] = {}
-    kept = 0
+    tally: Counter[str] = Counter()
+    proposals: dict[str, SceneNode] = {}
     for frame_id, detections in detections_by_frame.items():
         camera = cameras_by_id.get(frame_id)
-        if camera is None:
-            continue
-        frame_votes = {}
-        for detection in detections:
-            corrected = correct_furniture_label(node, detection, camera)
-            if corrected is not None:
-                frame_votes.setdefault(corrected.label, corrected)
-            elif _family(_detection_name(detection)) == own and _names(node, detection, camera):
-                frame_votes.setdefault(node.label, node)
-        kept += node.label in frame_votes
-        for label, corrected in frame_votes.items():
-            if label != node.label:
-                votes.setdefault(label, []).append(corrected)
-    winner = max(votes.items(), key=lambda item: len(item[1]), default=None)
-    return winner[1][0] if winner and len(winner[1]) > kept else node
+        if camera is not None:
+            tally.update(_frame_votes(node, detections, camera, proposals))
+    return _plurality(node, tally, proposals)
+
+
+def _frame_votes(node: SceneNode, detections: list[Detection], camera: PhotoCamera,
+                 proposals: dict[str, SceneNode]) -> set[str]:
+    """The names this frame calls the node by: a proposed label, its own label, or another family."""
+    node_box = _projected_box(node, camera)
+    votes: set[str] = set()
+    for detection in detections:
+        corrected = correct_furniture_label(node, detection, camera)
+        if corrected is not None:
+            proposals.setdefault(corrected.label, corrected)
+            votes.add(corrected.label)
+        elif _pictures(node_box, detection):
+            name = _detection_name(detection)
+            votes.add(node.label if same_furniture(name, node.label) else _family(name))
+    return votes
+
+
+def _pictures(node_box: tuple[float, float, float, float] | None, detection: Detection) -> bool:
+    return (
+        node_box is not None
+        and detection.confidence >= MIN_FURNITURE_CORRECTION_CONFIDENCE
+        and _covered_share(_detection_box(detection), node_box) >= MIN_DETECTION_ON_NODE
+    )
+
+
+def _plurality(node: SceneNode, tally: Counter[str], proposals: dict[str, SceneNode]) -> SceneNode:
+    if not proposals:
+        return node
+    winner = max(proposals, key=lambda label: tally[label])
+    rivals = max((count for label, count in tally.items() if label != winner), default=0)
+    return proposals[winner] if tally[winner] > rivals else node
 
 
 def apply_secondary_semantic_corrections(

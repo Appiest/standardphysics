@@ -87,6 +87,25 @@ def contained_fraction(carved: CarvedBox, node: SceneNode) -> float:
     return float(inside(carved.points, node, 0.0).mean())
 
 
+def share_within(carved: CarvedBox, node: SceneNode, reach: float) -> float:
+    """The share of a carved object's points over the node's footprint widened by `reach`, and no higher than its top.
+
+    The footprint is widened and the top is not. A stool's backrest carved
+    past the edge of RoomPlan's stool box is still the stool; a cup standing on
+    a table is above the table's top, however close to its edge it stands.
+    """
+    if not len(carved.points):
+        return 0.0
+    _, _, half = _frame(node)
+    local = to_local(carved.points, node)
+    beside = np.all(np.abs(local[:, :2]) <= half[:2] + reach, axis=1)
+    return float((beside & (np.abs(local[:, 2]) <= half[2])).mean())
+
+
+def top_of(node: SceneNode) -> float:
+    return node.transform.position.z + node.dimensions.z / 2
+
+
 def resting_parent(carved: CarvedBox, graph: SceneGraph) -> UUID | None:
     """The node whose top surface this object stands on, when it is not on the floor."""
     underside = carved.floor_clearance
@@ -97,8 +116,7 @@ def resting_parent(carved: CarvedBox, graph: SceneGraph) -> UUID | None:
     for node in graph.nodes:
         if bounds_the_room(node):
             continue
-        top = node.transform.position.z + node.dimensions.z / 2
-        gap = underside - top
+        gap = underside - top_of(node)
         if -RESTING_GAP <= gap <= RESTING_GAP and _over(footprint, node) and (best is None or gap < best[0]):
             best = (gap, node.id)
     return best[1] if best is not None else None
