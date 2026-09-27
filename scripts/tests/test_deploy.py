@@ -81,7 +81,7 @@ def compose_up(box: pathlib.Path) -> list[str]:
 def test_the_image_is_built_for_the_commit_it_pulled_and_the_deploy_is_written_down(box):
     result = deploy(box)
     assert result.returncode == 0, result.stderr
-    assert compose_up(box) == [f"docker compose up -d --build GIT_SHA={COMMIT}"]
+    assert compose_up(box) == [f"docker compose up -d GIT_SHA={COMMIT}"]
     assert (box / "deploys.log").read_text().split()[1] == COMMIT
 
 
@@ -96,7 +96,15 @@ def test_a_deploy_waits_for_queued_and_running_jobs(box):
     assert result.returncode == 75
     assert "2 job(s)" in result.stderr
     assert compose_up(box) == []
-    assert not any(line.startswith("git pull") for line in calls(box))
+    assert not (box / "deploys.log").exists()
+
+
+def test_the_queue_is_read_after_the_build_and_just_before_the_restart(box):
+    """The build takes minutes. Reading the queue before it would leave all of
+    them for an upload to start a job that the restart then kills."""
+    assert deploy(box).returncode == 0
+    compose = [line.split()[2] for line in calls(box) if line.startswith("docker compose")]
+    assert compose == ["build", "exec", "up"]
 
 
 def test_the_container_is_asked_a_query_that_counts_only_unfinished_jobs(box):
@@ -116,7 +124,20 @@ def test_forcing_a_deploy_goes_ahead_with_jobs_in_flight(box):
     assert len(compose_up(box)) == 1
 
 
-def test_a_stopped_api_has_no_jobs_to_interrupt(box):
+def test_a_queue_that_cannot_be_read_is_not_an_empty_one(box):
     result = deploy(box, FAKE_IN_FLIGHT_FAILS="1")
+    assert result.returncode == 69
+    assert "could not read the job queue" in result.stderr
+    assert compose_up(box) == []
+
+
+def test_a_queue_query_that_answers_nonsense_is_refused_too(box):
+    result = deploy(box, FAKE_IN_FLIGHT="Traceback (most recent call last):")
+    assert result.returncode == 69
+    assert compose_up(box) == []
+
+
+def test_forcing_a_deploy_goes_ahead_when_the_queue_cannot_be_read(box):
+    result = deploy(box, FAKE_IN_FLIGHT_FAILS="1", SP_DEPLOY_FORCE="1")
     assert result.returncode == 0, result.stderr
     assert len(compose_up(box)) == 1

@@ -136,17 +136,34 @@ taken, the stack half torn down and the site answering 502. It stops if you have
 pulls from GitHub and a deploy that quietly ships the previous commit is worse
 than one that refuses. `SP_DEPLOY_HOST` moves it to another box.
 
-It also waits while the API has jobs queued or running. The rebuild restarts
+It also waits while the API has jobs queued or running. The restart stops
 the API, and a bake interrupted ten minutes in starts again from nothing, so
-the script counts the unfinished rows in the `jobs` table first, through the
-API container's own Python, and stops if there are any. To deploy anyway:
+the script counts the unfinished rows in the `jobs` table, through the API
+container's own Python, and stops with exit code 75 if there are any. It
+stops with exit code 69 if it cannot read the queue at all, because a
+stopped or wedged API is when nobody knows what it was doing. To deploy
+anyway in either case:
 
 ```bash
 SP_DEPLOY_FORCE=1 scripts/deploy.sh
 ```
 
-Interrupted jobs are requeued on the next start by `requeue_interrupted_jobs`,
-so a forced deploy costs time rather than a scan.
+The order on the box is pull, build, read the queue, restart. The build takes
+minutes and the old API keeps serving through it, so the queue is read after
+the build and immediately before `docker compose up -d` swaps the containers.
+A refused deploy leaves the new image built, and running the script again
+once the queue drains reuses it from the cache. The build also moves the
+`standardphysics:latest` tag to the new image, so a bare `docker compose up -d`
+typed on the box without `GIT_SHA` would start it.
+
+A window remains. An upload that finalises between the queue read and the
+moment the old container stops, about a second, queues a job the check did
+not see. That job is not lost: `requeue_interrupted_jobs` puts every job left
+`running` back in the queue on the next start, and a job still `queued`
+simply waits for the new worker. What the window costs is the progress of a
+job that started in that second. Closing it completely needs the worker to
+stop claiming jobs while a maintenance flag is set, which lives in
+`worker.py` and has not been built.
 
 Each deploy appends the time and the commit to
 `/var/log/standardphysics-deploys.log` on the Droplet. That file is the list of
@@ -157,7 +174,10 @@ On the Droplet itself it is the commands the script runs:
 ```bash
 git checkout master
 git pull
-GIT_SHA=$(git rev-parse HEAD) docker compose up -d --build
+export GIT_SHA=$(git rev-parse HEAD)
+docker compose build
+# count the unfinished jobs, as above, and stop here if there are any
+docker compose up -d
 ```
 
 ## Rolling back
