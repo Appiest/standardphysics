@@ -87,3 +87,36 @@ def test_a_room_with_nothing_to_fix_gets_no_construction():
     assert fitting_candidates(fixed, checker) == []
     solution, _ = room_solver.solve(fixed, checker)
     assert solution is None
+
+
+def test_the_demo_counter_is_cleared_by_setting_the_card_reader_on_its_lowered_section():
+    """Happy Lemon: a 47 in counter that already has a 36 in section, with the card reader on the high part."""
+    graph, checker = shop_fixture.build_lawsuit_graph(), TrainingChecker(shop_fixture.build_lawsuit_scenario(),
+                                                                          scope="fittings")
+    solution, _ = room_solver.solve(graph, checker)
+    edits = TrainingEdits.model_validate_json(solution.completion)
+    reader = next(node for node in graph.nodes if node.label == "Card reader")
+    assert solution.clears and solution.verdict["construction_cost"] == 0
+    assert reader.id in {move.node_id for move in edits.moves}
+    assert not (edits.wall_shifts or edits.fixture_moves or edits.height_changes or edits.add_lowered_section)
+
+
+def _hung_over_a_lavatory():
+    graph = shop_fixture.build_lawsuit_graph()
+    lavatory = SceneNode(id=node_id("lavatory"), kind="object", label="Lavatory", raw_category="sink",
+                         dimensions=Vec3(x=0.5, y=0.45, z=0.85), transform=Mat4.translation(2.0, 0.0, 0.425),
+                         movable=False)
+    towels = SceneNode(id=node_id("towels"), kind="object", label="Paper towel dispenser", raw_category="dispenser",
+                       dimensions=Vec3(x=0.3, y=0.12, z=0.4), transform=Mat4.translation(2.0, 0.0, to_meters(50.0)),
+                       movable=False)
+    return graph.model_copy(update={"nodes": [*graph.nodes, lavatory, towels]})
+
+
+def test_a_dispenser_over_a_lavatory_is_rehung_not_refused_as_resting_on_it():
+    graph = _hung_over_a_lavatory()
+    checker = TrainingChecker(shop_fixture.build_lawsuit_scenario(), scope="fittings")
+    lowered = TrainingEdits(height_changes=[HeightChange(node_id=node_id("towels"), top_inches=47.5)])
+    groups = [candidate for group in fitting_candidates(graph, checker) for candidate in group]
+    slid = [edits for edits in groups if edits.fixture_moves and edits.height_changes]
+    assert apply_edits(graph, lowered).by_id(node_id("towels")) is not None
+    assert slid, "a control over a basin gets candidates that slide it along its wall before lowering it"
