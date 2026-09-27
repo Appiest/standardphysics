@@ -26,7 +26,6 @@ import concurrent.futures
 import hashlib
 import json
 import logging
-import os
 import pathlib
 import uuid
 from collections.abc import Sequence
@@ -44,12 +43,11 @@ from .cache import DetectionCache
 from .carve import FrameView, carve
 from .crops import save_crop
 from .detect import (
-    DEFAULT_MODEL,
-    MODEL_ENV,
     Detection,
     DetectionError,
     ModelRequestInfo,
     Transport,
+    answer_identity,
     detect_objects,
 )
 from .merge import Candidate, DiscoveredObject, merge_candidates
@@ -66,9 +64,15 @@ FRAME_LIMIT = 400
 """Every keyframe of a normal walk. A frame nobody reads is a person left in
 the mesh and an object that was never there: on a real 110-second capture,
 sampling 24 of 218 frames found half the laptops and a quarter of the people."""
-DETECTION_WORKERS = 5
-"""Enough to keep the walk short, few enough that a long capture does not trip
-the model host's rate limit and lose frames to it."""
+DETECTION_WORKERS = 16
+"""Photos in flight at once. The Fireworks account allows 87,890 generated
+tokens a minute and a photo read without reasoning costs about 370 of them in
+about 5.5 s. On Share-Tea sixteen at once read 400 photos in 110 s at about
+81,000 tokens a minute with no rate limit hit; twenty-eight at once took 98 s
+and drew 78 rate limits, all of them waited out. Past the budget, width buys
+nothing but waiting."""
+RETRY_WORKERS = 4
+"""Photos in flight when asking again for the ones the first pass could not read."""
 MIN_VOLUME = 0.0004
 """Forty cubic centimetres, about a card reader lying flat. Smaller is noise."""
 MAX_FLOOR_CLEARANCE = 2.4
@@ -289,7 +293,7 @@ def known_detections(
     A texture build uses this to find the people in its photos without spending
     a request; a photo discovery has not read yet simply has no entry.
     """
-    cache = DetectionCache(cache_dir, os.environ.get(MODEL_ENV) or DEFAULT_MODEL)
+    cache = DetectionCache(cache_dir, answer_identity())
     orientations = _orientations(poses_path)
     known = {}
     for frame_id, path in frame_paths.items():
@@ -311,7 +315,7 @@ def detections_digest(cache_dir: pathlib.Path) -> str:
 def _cache_for(inputs: DiscoveryInputs) -> DetectionCache | None:
     if inputs.cache_dir is None:
         return None
-    return DetectionCache(inputs.cache_dir, os.environ.get(MODEL_ENV) or DEFAULT_MODEL)
+    return DetectionCache(inputs.cache_dir, answer_identity())
 
 
 def _detect_all(
@@ -323,30 +327,58 @@ def _detect_all(
     *,
     recorded: list[ModelRequestInfo] | None = None,
 ) -> tuple[dict[str, list[Detection]], list[str]]:
+    """What the model says about every photo, asked a second time for any the first pass lost.
+
+    A frame that fails is not an empty frame: the objects only it saw would
+    silently never exist. So the photos the first pass could not read are asked
+    for again, fewer at once, after the rest of the walk has finished with the
+    host. Only what still fails then is reported, and never silently.
+    """
     detections: dict[str, list[Detection]] = {}
-    failures: list[str] = []
     wanted = _not_already_read(cameras, frame_paths, cache, detections, orientations)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=DETECTION_WORKERS) as pool:
-        futures = {
-            pool.submit(
-                detect_objects, frame_paths[frame_id], frame_id,
-                orientation=orientations.get(frame_id, ""), transport=transport,
-                recorded=recorded,
-            ): frame_id
-            for frame_id in wanted
-        }
-        for future in concurrent.futures.as_completed(futures):
-            frame_id = futures[future]
-            try:
-                detections[frame_id] = future.result()
-            except DetectionError as error:
-                log.warning("no objects read from %s: %s", frame_id, error)
-                failures.append(f"{frame_id}: {error}")
-                continue
-            if cache is not None:
-                cache.put(frame_paths[frame_id], detections[frame_id], orientations.get(frame_id, ""))
+    ask = _Asker(frame_paths, transport, cache, orientations, recorded, detections)
+    unread = ask.all(wanted, DETECTION_WORKERS)
+    if unread:
+        log.info("asking again for %d photos the first pass could not read", len(unread))
+        unread = ask.all(list(unread), RETRY_WORKERS)
+    for frame_id, error in unread.items():
+        log.warning("no objects read from %s: %s", frame_id, error)
     log.info("read %d photos, %d already known", len(wanted), len(cameras) - len(wanted))
-    return detections, failures
+    return detections, [f"{frame_id}: {error}" for frame_id, error in unread.items()]
+
+
+@dataclass
+class _Asker:
+    """One detection pass over a set of photos, filling `into` and the cache as answers arrive."""
+
+    frame_paths: dict[str, pathlib.Path]
+    transport: Transport | None
+    cache: DetectionCache | None
+    orientations: dict[str, str]
+    recorded: list[ModelRequestInfo] | None
+    into: dict[str, list[Detection]]
+
+    def all(self, frame_ids: list[str], workers: int) -> dict[str, DetectionError]:
+        """The photos that could not be read, with why."""
+        unread: dict[str, DetectionError] = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(self.one, frame_id): frame_id for frame_id in frame_ids}
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()
+                except DetectionError as error:
+                    unread[futures[future]] = error
+        return unread
+
+    def one(self, frame_id: str) -> None:
+        orientation = self.orientations.get(frame_id, "")
+        found = detect_objects(
+            self.frame_paths[frame_id], frame_id,
+            orientation=orientation, transport=self.transport, recorded=self.recorded,
+        )
+        self.into[frame_id] = found
+        if self.cache is not None:
+            self.cache.put(self.frame_paths[frame_id], found, orientation)
 
 
 def _not_already_read(
