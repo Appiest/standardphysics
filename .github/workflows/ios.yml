@@ -36,7 +36,6 @@ concurrency:
 env:
   DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
   XCODEGEN_VERSION: 2.45.3
-  SIMULATOR: platform=iOS Simulator,name=iPhone 17,OS=latest
   LIVE_API: http://127.0.0.1:8798
 
 jobs:
@@ -58,6 +57,20 @@ jobs:
           unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
           "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
           git diff --exit-code -- .
+      # The runner image does not always list the same simulators, and twice it
+      # listed none, so a fixed device name failed the build before any test
+      # ran. This takes any available iPhone, or creates one on the newest iOS
+      # runtime installed, and targets it by id.
+      - name: Pick or create an iPhone simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next((x['udid'] for r,ds in sorted(d.items(), reverse=True) if 'iOS' in r for x in ds if x['name'].startswith('iPhone')), ''))")
+          if [ -z "$udid" ]; then
+            read -r runtime device < <(xcrun simctl list runtimes available -j | python3 -c "import json,sys; rs=[r for r in json.load(sys.stdin)['runtimes'] if r['platform']=='iOS']; r=rs[-1] if rs else None; phones=[d['identifier'] for d in (r or {}).get('supportedDeviceTypes', []) if d['name'].startswith('iPhone')]; print(r['identifier'], phones[-1]) if r and phones else print('')")
+            [ -n "$runtime" ] || { echo "no iOS simulator runtime with an iPhone is installed on this runner" >&2; exit 1; }
+            udid=$(xcrun simctl create "CI iPhone" "$device" "$runtime")
+          fi
+          echo "SIMULATOR=platform=iOS Simulator,id=$udid" >> "$GITHUB_ENV"
+          xcrun simctl list devices | grep "$udid"
       # Ad hoc signing rather than none: an unsigned simulator build has no
       # Keychain access, so SessionStore could never keep a token and the live
       # owner flow would fail at its first sign-in.
