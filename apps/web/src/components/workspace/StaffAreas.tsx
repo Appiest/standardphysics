@@ -4,25 +4,15 @@ import { Html, Line, useCursor } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useMemo, useRef, useState } from "react";
 import { Color, Plane, Vector3 } from "three";
-import { CORNERS, type Corner, cornerPoint, outline } from "@/lib/staff-areas";
+import { CORNERS, type Corner, cornerPoint, isOpen, outline, type StaffHandles } from "@/lib/staff-areas";
 import type { StaffArea } from "@/types/contracts";
 import { MODEL } from "./palette";
+
+export type { StaffHandles };
 
 const FLOOR = new Plane(new Vector3(0, 1, 0), 0);
 const LIFT = 0.015;
 const HANDLE_RADIUS = 0.16;
-
-export type StaffHandles = {
-  areas: StaffArea[];
-  editable: boolean;
-  /** The area whose corners show and which drags; "all" keeps every area open. */
-  chosen: number | "all" | null;
-  onChoose: (index: number) => void;
-  onGrab: () => void;
-  onMove: (index: number, dx: number, dy: number) => void;
-  onResize: (index: number, corner: Corner, to: { x: number; y: number }) => void;
-  onDrop: () => void;
-};
 
 type FloorPoint = { x: number; y: number };
 type Drag = (from: FloorPoint, to: FloorPoint) => void;
@@ -87,10 +77,6 @@ function CornerHandle({ area, corner, index, handles }: { area: StaffArea; corne
   );
 }
 
-function isOpen(handles: StaffHandles, index: number) {
-  return handles.editable && (handles.chosen === "all" || handles.chosen === index);
-}
-
 /** A closed area takes a tap to open, so a drag that starts on it still turns the camera. */
 function useChooseOnTap(handles: StaffHandles, index: number, open: boolean) {
   const [hovered, setHovered] = useState(false);
@@ -128,7 +114,7 @@ function Area({ area, index, handles }: { area: StaffArea; index: number; handle
         <shaderMaterial vertexShader={vertexShader} fragmentShader={fragmentShader} uniforms={uniforms} transparent depthWrite={false} />
       </mesh>
       <Line points={edge} color={MODEL.ink} lineWidth={open ? 3 : 2} dashed={!open} dashSize={0.2} gapSize={0.12} depthTest={false} renderOrder={2} />
-      <Html position={[area.centre.x, 0.3, -area.centre.y]} center style={{ pointerEvents: "none" }}>
+      <Html position={[area.centre.x, 0.3, -area.centre.y]} center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }}>
         <span className="block whitespace-nowrap rounded-md bg-ink px-2 py-1 text-sm font-semibold text-paper shadow-md">Staff only</span>
       </Html>
       {open && CORNERS.map((corner) => (

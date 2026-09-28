@@ -278,7 +278,7 @@ function OwnerShop(props: ShopProps) {
     <>
       <OwnerModel scene={scene} glbUrl={props.glbUrl} scanGlbUrl={props.scanGlbUrl ?? null} setup={setup} lightweight={props.embedded} />
       {panel === "wheelchair" && <DrivingPad />}
-      {trying && <LayoutStage arrangement={arrangement} scanned={scene} trial={trial} pointedIds={pointedNodes(found)} />}
+      {trying && <LayoutStage arrangement={arrangement} scanned={scene} trial={trial} pointedIds={pointedNodes(found)} staff={setup.staff} />}
       <FoundLegend list={found} shown={foundShown} />
     </>
   );
