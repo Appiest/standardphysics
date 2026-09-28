@@ -21,8 +21,8 @@ export function ToolsPanel({ scanId, inApp, onPlan, onWheelchair }: { scanId: st
         </aside>
       )}
       <h2 id="tools-heading" className="text-lg font-semibold">Shop tools</h2>
-      <Tool Icon={ArrowsOutCardinal} title="Plan a layout" detail="Drag furniture to a new spot and see which problems it fixes.">
-        <Button variant="choice" onClick={onPlan}>Start planning</Button>
+      <Tool Icon={ArrowsOutCardinal} title="Try a layout" detail="Drag furniture around a plan of your shop and watch which problems clear as you move it.">
+        <Button variant="choice" onClick={onPlan}>Try moving furniture</Button>
       </Tool>
       <Tool Icon={Wheelchair} title="Wheelchair walk-through" detail="Roll along your customer path at the height of someone in a wheelchair, and see where it gets tight.">
         <Button variant="choice" onClick={onWheelchair}>Start the walk-through</Button>

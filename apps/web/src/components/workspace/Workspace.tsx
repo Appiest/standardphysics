@@ -14,7 +14,7 @@ import { interpolateLayout } from "@/lib/compare";
 import { type FindingGroups, findingForNode, type Focus, focusOnLocus, groupFindings } from "@/lib/findings";
 import { AskBox } from "./AskBox";
 import { type CheckScope, scanStatus } from "@/lib/scan-status";
-import { METERS_PER_INCH } from "@/lib/moves";
+import { nudgeForKey } from "@/lib/moves";
 import { capturedMeshUrl } from "@/lib/lidar-mesh";
 import type { Assessment, EvidenceStatus, Finding, Locus, NodeMove, Scan, Scenario, SceneGraph, SceneNode } from "@/types/contracts";
 import { RoutePanel } from "./RoutePanel";
@@ -107,24 +107,6 @@ function comparisonFor(arrangement: Arrangement, scene: SceneGraph, findings: Fi
   };
 }
 
-const NUDGES: Record<string, [number, number]> = {
-  ArrowUp: [0, 1],
-  ArrowDown: [0, -1],
-  ArrowLeft: [-1, 0],
-  ArrowRight: [1, 0],
-};
-
-function nudgeFor(event: KeyboardEvent, nudge: (dx: number, dy: number, degrees: number) => void) {
-  const inches = (event.shiftKey ? 6 : 1) * METERS_PER_INCH;
-  const move = NUDGES[event.key];
-  if (move) {
-    event.preventDefault();
-    nudge(move[0] * inches, move[1] * inches, 0);
-  } else if (event.key === "r" || event.key === "R") {
-    nudge(0, 0, event.shiftKey ? -15 : 15);
-  }
-}
-
 function useKeyboard(task: Task, arrangement: Arrangement, combine: Combine, clear: () => void, wheelchairMode: boolean) {
   useEffect(() => {
     if (wheelchairMode) return;
@@ -137,8 +119,8 @@ function useKeyboard(task: Task, arrangement: Arrangement, combine: Combine, cle
       }
       const typing = event.target instanceof HTMLElement && event.target.closest("input, textarea, select, nav, [contenteditable=true]");
       if (typing) return;
-      if (task === "arrange" && arrangement.activeId) nudgeFor(event, arrangement.nudge);
-      if (task === "combine" && combine.activeRoom) nudgeFor(event, combine.nudge);
+      if (task === "arrange" && arrangement.activeId) nudgeForKey(event, arrangement.nudge);
+      if (task === "combine" && combine.activeRoom) nudgeForKey(event, combine.nudge);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

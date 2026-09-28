@@ -35,6 +35,33 @@ def test_the_documented_fix_clears_the_aisle(make_client):
     assert route["outcome"] == "passes"
 
 
+def test_a_check_changes_nothing_the_shop_has_saved(make_client):
+    client, scan_id = _sample(make_client)
+    scene_before = client.get(f"/api/scans/{scan_id}/scene").json()
+    assessment_before = client.get(f"/api/scans/{scan_id}/assessment").json()
+    into_the_aisle = _move(CASE_EAST, dx=-0.3)
+    for sequence in range(1, 4):
+        body = {"base_revision": 0, "sequence": sequence, "moves": [into_the_aisle]}
+        assert client.post(f"/api/scans/{scan_id}/layout-checks", json=body).status_code == 200
+    drain(client)
+    assert client.get(f"/api/scans/{scan_id}/scene").json() == scene_before
+    assert client.get(f"/api/scans/{scan_id}/assessment").json() == assessment_before
+
+
+def test_moving_a_piece_back_gives_the_scanned_answer(make_client):
+    client, scan_id = _sample(make_client)
+
+    def check(moves: list[dict]) -> dict:
+        body = {"base_revision": 0, "sequence": 1, "moves": moves}
+        return client.post(f"/api/scans/{scan_id}/layout-checks", json=body).json()
+
+    scanned = check([])
+    moved = check([_move(CASE_EAST, dx=to_meters(FIX_SHIFT_INCHES))])
+    back = check([_move(CASE_EAST, dx=0.0)])
+    assert moved["findings"] != scanned["findings"]
+    assert back["findings"] == scanned["findings"]
+
+
 def test_moving_the_counter_is_blocked(make_client):
     client, scan_id = _sample(make_client)
     body = client.post(

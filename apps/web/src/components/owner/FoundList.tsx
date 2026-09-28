@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretDown, CashRegister, Chair, Check, Cube, FireExtinguisher, SidebarSimple } from "@phosphor-icons/react";
+import { ArrowsOutCardinal, CaretDown, CashRegister, Chair, Check, Cube, FireExtinguisher, SidebarSimple } from "@phosphor-icons/react";
 import { type ComponentType, useId, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
@@ -16,10 +16,13 @@ const GROUP_ICONS: Record<FoundGroupId, IconType> = {
   other: Cube,
 };
 
-type ListProps = Pick<FoundObjects, "groups" | "hoveredRowId" | "selectedRowId" | "hoverRow" | "toggleRow">;
+type ListProps = Pick<FoundObjects, "groups" | "hoveredRowId" | "selectedRowId" | "hoverRow" | "toggleRow"> & {
+  /** Pieces moved in the layout being tried, counted on their row. */
+  movedIds?: Set<string>;
+};
 type LegendProps = ListProps & Pick<FoundObjects, "legendOpen" | "setLegendOpen">;
 
-function RowButton({ row, hovered, selected, onHover, onToggle }: { row: FoundRow; hovered: boolean; selected: boolean; onHover: (rowId: string | null) => void; onToggle: (rowId: string) => void }) {
+function RowButton({ row, hovered, selected, moved, onHover, onToggle }: { row: FoundRow; hovered: boolean; selected: boolean; moved: number; onHover: (rowId: string | null) => void; onToggle: (rowId: string) => void }) {
   const height = heightRange(row.topInches);
   const tone = selected ? "bg-accent/10 ring-2 ring-inset ring-accent" : hovered ? "bg-ink/5" : "hover:bg-ink/5";
   return (
@@ -34,6 +37,7 @@ function RowButton({ row, hovered, selected, onHover, onToggle }: { row: FoundRo
       className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-2.5 py-1.5 text-left transition-colors duration-150 ${tone}`}
     >
       <span className="min-w-0 flex-1 text-pretty">{rowLabel(row)}</span>
+      {moved > 0 && <MovedMark count={moved} total={row.nodeIds.length} />}
       {height && (
         <span className="shrink-0 text-sm text-ink-muted">
           top <span className="measurement text-ink">{height}</span>
@@ -41,6 +45,20 @@ function RowButton({ row, hovered, selected, onHover, onToggle }: { row: FoundRo
       )}
       <Check size={16} weight="bold" aria-hidden className={`shrink-0 text-accent ${selected ? "" : "invisible"}`} />
     </button>
+  );
+}
+
+function movedIn(row: FoundRow, movedIds: Set<string> | undefined): number {
+  return movedIds ? row.nodeIds.filter((nodeId) => movedIds.has(nodeId)).length : 0;
+}
+
+/** How many of a row's pieces the tried layout moved, so the list and the plan agree. */
+function MovedMark({ count, total }: { count: number; total: number }) {
+  return (
+    <span className="flex shrink-0 items-center gap-1 text-sm font-medium text-accent">
+      <ArrowsOutCardinal size={14} weight="bold" aria-hidden />
+      {total === 1 ? "moved" : `${count} moved`}
+    </span>
   );
 }
 
@@ -56,7 +74,7 @@ function GroupSection({ group, list }: { group: FoundGroup; list: ListProps }) {
       <ul className="flex flex-col">
         {group.rows.map((row) => (
           <li key={row.id}>
-            <RowButton row={row} hovered={row.id === list.hoveredRowId} selected={row.id === list.selectedRowId} onHover={list.hoverRow} onToggle={list.toggleRow} />
+            <RowButton row={row} hovered={row.id === list.hoveredRowId} selected={row.id === list.selectedRowId} moved={movedIn(row, list.movedIds)} onHover={list.hoverRow} onToggle={list.toggleRow} />
           </li>
         ))}
       </ul>
@@ -93,12 +111,15 @@ function Groups({ list }: { list: ListProps }) {
   );
 }
 
-/** The found pieces below the step on a phone, where the model sits above and lights up as rows are tapped. */
-export function FoundSection({ list, shown }: { list: ListProps; shown: boolean }) {
+/**
+ * The found pieces below the step on a phone, where the model sits above and lights up as rows are tapped.
+ * While a layout is tried they stay here on every screen, clear of the plan being dragged on.
+ */
+export function FoundSection({ list, shown, everywhere = false }: { list: ListProps; shown: boolean; everywhere?: boolean }) {
   const headingId = useId();
   if (!shown || list.groups.length === 0) return null;
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-3 lg:hidden">
+    <section aria-labelledby={headingId} className={`flex flex-col gap-3 ${everywhere ? "" : "lg:hidden"}`}>
       <h2 id={headingId} className="text-lg font-semibold">What we found</h2>
       <Groups list={list} />
     </section>

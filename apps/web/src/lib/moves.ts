@@ -126,3 +126,29 @@ export function withMove(moves: MoveSet, nodeId: string, dx: number, dy: number,
 }
 
 export const METERS_PER_INCH = 0.0254;
+
+const NUDGE_DIRECTIONS: Record<string, [number, number]> = {
+  ArrowUp: [0, 1],
+  ArrowDown: [0, -1],
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+};
+
+const TURN_STEP_DEGREES = 15;
+
+type KeyPress = Pick<KeyboardEvent, "key" | "shiftKey" | "preventDefault">;
+
+/** Arrow keys slide the piece in hand an inch, six with Shift; R turns it a step, the other way with Shift. */
+export function nudgeForKey(event: KeyPress, nudge: (dx: number, dy: number, degrees: number) => void): boolean {
+  const inches = (event.shiftKey ? 6 : 1) * METERS_PER_INCH;
+  const direction = NUDGE_DIRECTIONS[event.key];
+  if (direction) {
+    event.preventDefault();
+    nudge(direction[0] * inches, direction[1] * inches, 0);
+    return true;
+  }
+  if (event.key.toLowerCase() !== "r") return false;
+  event.preventDefault();
+  nudge(0, 0, event.shiftKey ? -TURN_STEP_DEGREES : TURN_STEP_DEGREES);
+  return true;
+}
