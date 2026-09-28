@@ -82,9 +82,15 @@ def test_an_object_the_photos_agreed_on_is_not_asked_about(photos):
     assert kept.name == "bar stool" and model.bodies == []
 
 
-def test_a_failed_second_look_keeps_the_photos_name(photos):
+def test_a_failed_second_look_keeps_the_photos_name_but_marks_it_unsettled(photos):
     [kept] = second_look([dispenser(SPLIT_VOTES)], photos, transport=Model(fails=True))
-    assert kept.name == "chair"
+    assert kept.name == "chair" and not kept.name_settled
+
+
+def test_an_answered_or_agreed_name_stays_settled(photos):
+    [named] = second_look([dispenser(SPLIT_VOTES)], photos, transport=Model())
+    [agreed] = second_look([dispenser(AGREED_VOTES)], photos, transport=Model())
+    assert named.name_settled and agreed.name_settled
 
 
 def test_an_object_no_photo_shows_is_not_asked_about(photos):

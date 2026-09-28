@@ -110,7 +110,11 @@ def second_look(
     transport: detect.Transport | None = None,
     cache_dir: pathlib.Path | None = None,
 ) -> list[DiscoveredObject]:
-    """Every object, those the photos never agreed on renamed by one look at their best close-ups."""
+    """Every object, those the photos never agreed on renamed by one look at their best close-ups.
+
+    One the look could not settle keeps the photos' name but is marked unsettled, so the room
+    says it needs another look and production asks about it instead of reporting it.
+    """
     asking = [index for index, object_ in enumerate(objects) if undecided(object_)]
     if not asking:
         return objects
@@ -118,8 +122,7 @@ def second_look(
     with concurrent.futures.ThreadPoolExecutor(max_workers=LOOK_WORKERS) as pool:
         answers = pool.map(lambda index: _looked_at(objects[index], photos, transport, cache_dir), asking)
         for index, answer in zip(asking, answers):
-            if answer is not None:
-                renamed[index] = answer
+            renamed[index] = answer if answer is not None else replace(objects[index], name_settled=False)
     log.info("second look at %d of %d objects", len(asking), len(objects))
     return renamed
 
