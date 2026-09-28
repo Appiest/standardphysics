@@ -63,3 +63,14 @@ def test_an_unreachable_model_ends_the_stream_with_a_way_to_recover(make_client,
     client, scan_id = _sample(make_client)
     last = _events(client, scan_id)[-1]
     assert last["kind"] == "failed" and "Try again" in last["message"]
+
+
+def test_a_turn_whose_menu_runs_out_of_time_ends_the_loop_without_asking_the_model(make_client, monkeypatch):
+    asked = []
+    _configure(monkeypatch, lambda self, messages: asked.append(messages) or _first_option(self, messages))
+    monkeypatch.setattr("standardphysics_api.model_loop.MENU_SECONDS", 0.0)
+    client, scan_id = _sample(make_client)
+    events = _events(client, scan_id)
+    assert not asked
+    assert [event["kind"] for event in events] == ["started", "finished"]
+    assert events[-1]["moves"] == [] and events[-1]["fixable_left"] == events[0]["fixable_left"]
