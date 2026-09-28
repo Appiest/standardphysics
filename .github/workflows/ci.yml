@@ -257,7 +257,7 @@ jobs:
   # a new index, so the released digest is the digest the image job tested.
   publish:
     name: Publish the tested image to GHCR
-    needs: [test, contracts, web, e2e, image]
+    needs: [test, contracts, web, e2e, image, supply-chain, image-vulnerabilities]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
