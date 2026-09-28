@@ -190,6 +190,12 @@ def _plan(graph: SceneGraph, moves: list[NodeMove]) -> Plan | str:
     return Plan(start.model_copy(update={"revision": graph.revision}), carried, fixtures)
 
 
+def _proposed(loop: ModelLoop, plan: Plan) -> list[uuid.UUID]:
+    """The pieces whose move differs from the plan the loop started with."""
+    started = {move.node_id: move for move in plan.moves}
+    return [node_id for node_id, move in loop.moves.items() if started.get(node_id) != move]
+
+
 def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: ModelChooser, typology,
             wishes) -> Iterator[ModelLoopEvent]:
     """Turns until the room is clear, the menu runs dry, the model picks nothing, or the turns or time run out."""
@@ -222,7 +228,7 @@ def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: Mo
         left = loop.fixable_left()
     explanation = stages.explain(graph, loop.current, scenario, wishes) if loop.moves else None
     yield ModelLoopEvent(kind="finished", moves=list(loop.moves.values()), built_ins=sorted(loop.built_ins, key=str),
-                         explanation=explanation, fixable_left=left,
+                         proposed=_proposed(loop, plan), explanation=explanation, fixable_left=left,
                          message=loop.stop or f"Stopped after {MODEL_LOOP_TURNS} turns.")
 
 

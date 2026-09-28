@@ -75,10 +75,17 @@ function piecesMoved(count: number, builtIns: number): string {
   return `${count} pieces move. ${contractor}`;
 }
 
-/** What moves, and when the run stopped short, the server's reason why. */
+/** What the run proposes to move, not counting the owner's own moves it started from, and when it stopped short, the server's reason why. */
 export function finishedDetail(finished: ModelLoopEvent, allCleared: boolean): string {
-  const moved = finished.moves.length === 0 ? "The layout stays as it is." : piecesMoved(finished.moves.length, finished.built_ins.length);
+  const proposed = new Set(finished.proposed);
+  const builtIns = finished.built_ins.filter((nodeId) => proposed.has(nodeId)).length;
+  const moved = proposed.size === 0 ? "The layout stays as it is." : piecesMoved(proposed.size, builtIns);
   return allCleared || !finished.message ? moved : `${moved} ${finished.message}`;
+}
+
+/** The button that puts the proposed moves on the plan, counted so the owner knows what to look for. */
+export function showMovesLabel(count: number): string {
+  return count === 1 ? "Show this move on the plan" : `Show these ${count} moves on the plan`;
 }
 
 export function stoppedSentence(turns: number): string {

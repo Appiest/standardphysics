@@ -49,5 +49,7 @@ class ModelLoopEvent(BaseModel):
     """On `finished`, every move the loop made, measured from the layout it started with."""
     built_ins: list[uuid.UUID] = []
     """On `finished`, the pieces among `moves` that are built in, so moving them is construction."""
+    proposed: list[uuid.UUID] = []
+    """On `finished`, the pieces the loop moved beyond the layout it started from: what it proposes, as opposed to the owner's own moves carried along."""
     explanation: ProposalExplanation | None = None
     message: str = ""
