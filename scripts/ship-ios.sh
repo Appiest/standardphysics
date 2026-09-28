@@ -16,6 +16,16 @@
 #
 # The key is a credential. It belongs in a file with 600 on it, never in the
 # repository and never pasted into a chat window.
+#
+# It ships only a commit that is already on origin/master, from a clean tree,
+# with a successful CI run and a successful iOS run for that exact commit, so
+# TestFlight gets what the checks passed. The iOS workflow runs only when its
+# paths change; for any other commit, start it by hand with
+# `gh workflow run ios.yml --ref master` and ship once it passes.
+# SP_SHIP_UNVERIFIED=1 skips those checks, for an emergency, and says so.
+#
+# Each upload appends its build number and commit to apps/ios/testflight-builds.log,
+# which goes into the same commit as the build number.
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/../apps/ios" && pwd)"
@@ -23,8 +33,63 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="${TMPDIR:-/tmp}/standardphysics-ship"
 ARCHIVE="$BUILD_DIR/StandardPhysics.xcarchive"
 EXPORT_DIR="$BUILD_DIR/export"
+SHIPPED_LOG="$PROJECT_DIR/testflight-builds.log"
+REQUIRED_WORKFLOWS=(ci.yml ios.yml)
 
 say() { printf '\n== %s\n' "$1"; }
+refuse() { echo "Not shipping: $1" >&2; exit 1; }
+
+require_clean_tree() {
+  [ -z "$(git -C "$REPO_ROOT" status --porcelain)" ] ||
+    refuse "the working tree has uncommitted changes, so the build would not match any commit."
+}
+
+require_on_origin_master() {
+  git -C "$REPO_ROOT" fetch origin master --quiet ||
+    refuse "could not fetch origin/master to check HEAD against it."
+  git -C "$REPO_ROOT" merge-base --is-ancestor HEAD origin/master ||
+    refuse "HEAD $SHIPPED_COMMIT is not on origin/master. Merge and push it first."
+}
+
+workflow_passed() {
+  local conclusions
+  conclusions="$(gh run list --commit "$SHIPPED_COMMIT" --workflow "$1" --json conclusion --jq '.[].conclusion')" ||
+    return 1
+  grep -qx success <<< "$conclusions"
+}
+
+require_green_workflows() {
+  local workflow
+  for workflow in "${REQUIRED_WORKFLOWS[@]}"; do
+    workflow_passed "$workflow" ||
+      refuse "$workflow has no successful run for $SHIPPED_COMMIT. Check \`gh run list --commit $SHIPPED_COMMIT\`."
+  done
+}
+
+warn_unverified() {
+  echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" >&2
+  echo "!! SP_SHIP_UNVERIFIED=1: shipping $SHIPPED_COMMIT without checking" >&2
+  echo "!! the tree, origin/master or CI. Testers get whatever this is." >&2
+  echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" >&2
+}
+
+require_verified_commit() {
+  SHIPPED_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  if [ "${SP_SHIP_UNVERIFIED:-}" = "1" ]; then
+    warn_unverified
+    VERIFICATION="unverified"
+    return
+  fi
+  require_clean_tree
+  require_on_origin_master
+  require_green_workflows
+  VERIFICATION="verified"
+}
+
+record_shipped_build() {
+  printf '%s build %s commit %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BUILD_NUMBER" \
+    "$SHIPPED_COMMIT" "$VERIFICATION" >> "$SHIPPED_LOG"
+}
 
 require_key() {
   local missing=0
@@ -41,7 +106,8 @@ bump_build_number() {
   current="$(grep -oE 'CFBundleVersion: "[0-9]+"' "$PROJECT_DIR/project.yml" | grep -oE '[0-9]+')"
   next=$((current + 1))
   say "Build $current to $next"
-  sed -i '' "s/CFBundleVersion: \"$current\"/CFBundleVersion: \"$next\"/" "$PROJECT_DIR/project.yml"
+  sed "s/CFBundleVersion: \"$current\"/CFBundleVersion: \"$next\"/" "$PROJECT_DIR/project.yml" > "$PROJECT_DIR/project.yml.next"
+  mv "$PROJECT_DIR/project.yml.next" "$PROJECT_DIR/project.yml"
   (cd "$PROJECT_DIR" && xcodegen generate >/dev/null)
   BUILD_NUMBER="$next"
 }
@@ -97,11 +163,14 @@ upload() {
 
 main() {
   require_key
+  require_verified_commit
+  mkdir -p "$BUILD_DIR"
   bump_build_number
   archive
   export_ipa
   upload
-  say "Build $BUILD_NUMBER is uploaded. It reaches TestFlight once processing finishes."
+  record_shipped_build
+  say "Build $BUILD_NUMBER of $SHIPPED_COMMIT is uploaded. It reaches TestFlight once processing finishes."
   echo "   Commit the build number: git -C $REPO_ROOT add apps/ios && git -C $REPO_ROOT commit -m 'A: build $BUILD_NUMBER'"
 }
 

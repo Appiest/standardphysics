@@ -101,9 +101,12 @@ screen but the scan itself can be worked on there, which is most of them.
 scripts/ship-ios.sh
 ```
 
-Bumps the build number, archives, and uploads to TestFlight. It needs an App
-Store Connect API key, which is what lets xcodebuild make the distribution
-certificate on its own; the script says how to get one and where to put it.
+Bumps the build number, archives, and uploads to TestFlight. It ships only a
+clean checkout of a commit on origin/master whose CI and iOS runs both passed,
+and appends the build number and commit to `apps/ios/testflight-builds.log`.
+It needs an App Store Connect API key, which is what lets xcodebuild make the
+distribution certificate on its own; the script says how to get one and where
+to put it.
 
 ### Deploying
 
