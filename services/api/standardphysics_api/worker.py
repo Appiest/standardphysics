@@ -36,6 +36,7 @@ from . import evidence, guest_sweep
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
+from .furniture import FURNITURE, queue_furniture, run_furniture
 from .notifications import LoggedNotifier, Notifier, Push
 from .rearrangement import (
     INTERRUPTED,
@@ -69,9 +70,10 @@ because a photo bake takes up to fifteen minutes and the loop beats only when
 it ends. A job that runs past its kind's deadline is reported overdue instead."""
 PROBLEM_STATES = ("stopped", "stalled", "overdue")
 """Loop states that mean jobs are not getting done, worst first."""
-LOOP_NAMES: dict[bool | str, str] = {False: "jobs", True: "textures", REARRANGE: "rearrange"}
+LOOP_NAMES: dict[bool | str, str] = {False: "jobs", True: "textures", REARRANGE: "rearrange", FURNITURE: "furniture"}
 """Each worker loop by its lane: False takes every job but the laned kinds, True takes texture bakes,
-and REARRANGE takes layout suggestions, whose provider calls can wait on a cold deployment."""
+REARRANGE takes layout suggestions, whose provider calls can wait on a cold deployment, and FURNITURE
+takes furniture refinement, whose model trials run long after a scan's render is ready."""
 MAX_CLAIMS_BEFORE_START = 3
 """How many times a job may be claimed and put back because of an error before it ran."""
 TRANSIENT_ATTEMPTS = 3
@@ -226,6 +228,7 @@ class Worker:
                 "UPDATE jobs SET state='failed', error=? WHERE kind=? AND state='running'", (INTERRUPTED, REARRANGE)
             )
             repo.requeue_interrupted_jobs(connection)
+
 
     def stop(self) -> None:
         self._stop.set()
@@ -517,7 +520,7 @@ class Worker:
             return _JobOutcome(follow_up=self._run_through_transient_errors(job, scan_id))
         except Exception as exc:
             log.error("job %s %s failed:\n%s", job["kind"], scan_id, traceback.format_exc())
-            if job["kind"] not in (DISPLAY, SIMULATE, TEXTURE, REARRANGE):
+            if job["kind"] not in (DISPLAY, SIMULATE, TEXTURE, REARRANGE, FURNITURE):
                 with self.database.transaction() as connection:
                     repo.set_state(connection, scan_id, "failed")
             return _JobOutcome(error=_job_error(job["kind"], exc))
@@ -548,8 +551,9 @@ class Worker:
             SIMULATE: self._simulate,
             TEXTURE: self._texture,
             REARRANGE: self._rearrange,
+            FURNITURE: self._furniture,
         }[job["kind"]]
-        if job["kind"] == TEXTURE:
+        if job["kind"] in (TEXTURE, FURNITURE):
             return handler(scan_id=scan_id, build_id=revision, job=job)
         return handler(scan_id=scan_id, revision=revision, job=job)
 
@@ -564,6 +568,11 @@ class Worker:
             )
         else:
             run_texture(self.database, self.store, self.stages, scan_id, build_id)
+        queue_furniture(self.database, self, scan_id, build_id)
+        return False
+
+    def _furniture(self, scan_id, build_id, job=None) -> bool:
+        run_furniture(self.database, self.store, scan_id, build_id)
         return False
 
     def _simulate(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
@@ -811,7 +820,7 @@ def _job_error(kind: str, error: Exception) -> str:
 
 def _claim_filter(lane: bool | str) -> tuple[bool | None, str | None]:
     """The `run_once` arguments that claim only this lane's jobs."""
-    return (None, lane) if lane == REARRANGE else (lane, None)
+    return (None, lane) if lane in (REARRANGE, FURNITURE) else (lane, None)
 
 
 def is_transient(error: BaseException) -> bool:

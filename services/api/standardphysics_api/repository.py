@@ -489,7 +489,7 @@ def oldest_queued_job_seconds(connection: sqlite3.Connection) -> float | None:
     return round((datetime.now(UTC) - datetime.fromisoformat(row["since"])).total_seconds(), 1)
 
 
-LANED_KINDS = ("texture", "rearrange")
+LANED_KINDS = ("texture", "rearrange", "furniture")
 """Job kinds that run on a worker thread of their own, never the main one."""
 
 

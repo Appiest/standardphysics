@@ -272,6 +272,8 @@ def test_apply_secondary_semantic_corrections_end_to_end():
     from dataclasses import replace
     cam1 = camera_at(position=[-1.0, 0.0, 0.4], looking_at=[-1.0, 1.5, 0.4])
     cam1 = replace(cam1, frame_id="frame-table")
+    cam3 = camera_at(position=[-2.0, 0.0, 0.4], looking_at=[-1.0, 1.5, 0.4])
+    cam3 = replace(cam3, frame_id="frame-table-second-view")
 
     cam2 = camera_at(position=[0.0, 1.0, 1.5], looking_at=[0.0, 3.0, 1.5])
     cam2 = replace(cam2, frame_id="frame-wall")
@@ -281,6 +283,9 @@ def test_apply_secondary_semantic_corrections_end_to_end():
             Detection(frame_id="frame-table", name="sofa", box=(200.0, 150.0, 440.0, 330.0), movable=True, confidence=0.85),
             Detection(frame_id="frame-table", name="sofa", box=(200.0, 150.0, 440.0, 330.0), movable=True, confidence=0.90),
         ],
+        "frame-table-second-view": [
+            Detection(frame_id="frame-table-second-view", name="sofa", box=(200.0, 150.0, 440.0, 330.0), movable=True, confidence=0.88),
+        ],
         "frame-wall": [
             Detection(frame_id="frame-wall", name="whiteboard", box=(220.0, 160.0, 420.0, 320.0), movable=False, confidence=0.82),
         ],
@@ -289,7 +294,7 @@ def test_apply_secondary_semantic_corrections_end_to_end():
     updated_graph = apply_secondary_semantic_corrections(
         graph,
         detections_by_frame=detections_by_frame,
-        cameras=[cam1, cam2],
+        cameras=[cam1, cam2, cam3],
     )
 
     # 1. Table was corrected to Sofa

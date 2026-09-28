@@ -59,6 +59,10 @@ HOLDOUT_FRAMES = ("frame-0086", "frame-0087", "frame-0091", "frame-0092", "frame
 RENDER_SIZE = (960, 720)
 
 
+class InsufficientHeldoutViews(RuntimeError):
+    """The capture cannot support the required independent photo comparison."""
+
+
 @dataclass(frozen=True)
 class RoomEvidence:
     graph: SceneGraph
@@ -69,22 +73,41 @@ class RoomEvidence:
     people: dict
 
 
-def room_evidence() -> RoomEvidence:
+def room_evidence(scan_id: uuid.UUID = SCAN_ID) -> RoomEvidence:
     settings = Settings.from_environment()
     database = Database(settings.database_path)
     store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes)
-    graph, inputs = bake_inputs(database, store, SCAN_ID)
+    graph, inputs = bake_inputs(database, store, scan_id)
     if inputs is None or not inputs.get("lidar"):
         raise RuntimeError("room 6 needs photos and a LiDAR mesh")
-    frame_paths = {frame: store.artifact_path(SCAN_ID, artifact) for frame, artifact in inputs["frames"].items()}
-    poses = store.artifact_path(SCAN_ID, inputs["poses"])
-    people = known_detections(frame_paths, poses, room_detections_dir(store, SCAN_ID))
+    frame_paths = {frame: store.artifact_path(scan_id, artifact) for frame, artifact in inputs["frames"].items()}
+    poses = store.artifact_path(scan_id, inputs["poses"])
+    people = known_detections(frame_paths, poses, room_detections_dir(store, scan_id))
     scan, cameras = coloured_scan(
-        store.artifact_path(SCAN_ID, inputs["lidar"]), poses, frame_paths,
+        store.artifact_path(scan_id, inputs["lidar"]), poses, frame_paths,
         graph.capture_to_room, patch_holes_from=graph, people=people,
     )
     owners = room_owners(scan.vertices, vertex_normals(scan.vertices, scan.triangles), graph, patches=scan.sheet_patches)
     return RoomEvidence(graph, scan, owners, cameras, frame_paths, people)
+
+
+def source_room_evidence(name: str) -> RoomEvidence:
+    from bake_library_textures import ROOMS, room_capture
+
+    capture_id, photos = ROOMS[name]
+    source = room_capture(name, capture_id, photos, np.eye(4))
+    if source.graph is None or source.detections_dir is None:
+        raise RuntimeError(f"{name} has no measured room graph or detections")
+    people = known_detections(source.frame_paths, source.poses_path, source.detections_dir)
+    scan, cameras = coloured_scan(
+        source.mesh_path, source.poses_path, source.frame_paths, source.capture_to_room,
+        patch_holes_from=source.graph, people=people, max_photos=source.max_photos,
+    )
+    owners = room_owners(
+        scan.vertices, vertex_normals(scan.vertices, scan.triangles), source.graph,
+        patches=scan.sheet_patches,
+    )
+    return RoomEvidence(source.graph, scan, owners, cameras, source.frame_paths, people)
 
 
 def selected_node(room: RoomEvidence, label: str) -> int:
@@ -115,8 +138,7 @@ def save_lidar_object(room: RoomEvidence, node_index: int, output: pathlib.Path)
     return write_scan_glb(unused_vertices_removed(object_scan), output)
 
 
-def prepare_object(room: RoomEvidence, node_index: int, name: str, reviewed_frame: str | None = None) -> tuple[FurnitureEvidence, dict]:
-    directory = RUN / name
+def prepare_object(room: RoomEvidence, node_index: int, directory: pathlib.Path, reviewed_frame: str | None = None) -> tuple[FurnitureEvidence, dict]:
     directory.mkdir(parents=True, exist_ok=True)
     evidence = furniture_evidence(
         room.scan, room.owners, room.graph, node_index, room.cameras,
@@ -142,6 +164,10 @@ def prepare_object(room: RoomEvidence, node_index: int, name: str, reviewed_fram
 
 
 def infer(directory: pathlib.Path) -> dict:
+    directory = directory.resolve()
+    metrics = directory / "inference.json"
+    if (directory / "raw.glb").is_file() and metrics.is_file():
+        return json.loads(metrics.read_text())
     if not SPAR_PYTHON.is_file() or not (SOURCE / "spar3d/system.py").is_file():
         raise RuntimeError("SPAR3D source or its isolated virtualenv is missing")
     environment = {
@@ -157,7 +183,7 @@ def infer(directory: pathlib.Path) -> dict:
     (directory / "inference.log").write_text(result.stdout + "\n" + result.stderr)
     if result.returncode:
         raise RuntimeError(f"SPAR3D inference failed; see {directory / 'inference.log'}")
-    return json.loads((directory / "inference.json").read_text())
+    return json.loads(metrics.read_text())
 
 
 def weights_available() -> bool:
@@ -170,11 +196,22 @@ def weights_available() -> bool:
     return result.returncode == 0
 
 
-def heldout_cameras(room: RoomEvidence, input_frame: str) -> list:
+def heldout_cameras(room: RoomEvidence, input_frame: str, evidence: FurnitureEvidence) -> list:
     by_frame = {camera.frame_id: camera for camera in room.cameras}
-    frames = [frame for frame in HOLDOUT_FRAMES if frame != input_frame and frame in by_frame]
+    frames = [frame for frame in HOLDOUT_FRAMES if frame != input_frame and frame in by_frame] if room.graph.scan_id == SCAN_ID else []
+    if not frames:
+        visible = []
+        for camera in room.cameras:
+            if camera.frame_id == input_frame:
+                continue
+            u, v, depth = camera.project(evidence.box.centre[None, :])
+            if depth[0] > 0 and 0 <= u[0] < camera.width and 0 <= v[0] < camera.height:
+                visible.append(camera.frame_id)
+        if len(visible) >= 5:
+            picks = np.linspace(0, len(visible) - 1, 5).round().astype(int)
+            frames = [visible[index] for index in picks]
     if len(frames) < 5:
-        raise RuntimeError("at least five distinct held-out calibrated photos are required")
+        raise InsufficientHeldoutViews("at least five distinct held-out calibrated photos are required")
     return [by_frame[frame] for frame in frames]
 
 
@@ -212,7 +249,7 @@ def fitted_mesh(room: RoomEvidence, evidence: FurnitureEvidence, node_index: int
     z_up = np.column_stack((raw.vertices[:, 0], -raw.vertices[:, 2], raw.vertices[:, 1]))
     fitted, yaw, distance = choose_yaw(z_up, raw.faces, evidence.box.dimensions, evidence.points_local)
     world = evidence.box.to_room(fitted)
-    heldout = heldout_cameras(room, evidence.crop_frame_id)
+    heldout = heldout_cameras(room, evidence.crop_frame_id, evidence)
     excluded = {evidence.crop_frame_id, *(camera.frame_id for camera in heldout)}
     cameras, images, masks = training_photos(room, excluded)
     other_points = room.scan.vertices[(room.owners != node_index) & room.scan.scanned]
@@ -315,21 +352,108 @@ def evaluate_views(room: RoomEvidence, evidence: FurnitureEvidence, directory: p
     if evidence.crop_frame_id is None:
         raise ValueError("the fitted object has no input photo")
     views = []
-    for camera in heldout_cameras(room, evidence.crop_frame_id):
+    for camera in heldout_cameras(room, evidence.crop_frame_id, evidence):
         lidar_path, fitted_path = render_pair(directory, camera, evidence.box.centre)
         views.append(compare_view(room, camera, lidar_path, fitted_path))
     return {"views": views, "photo_ssim_mean": float(np.mean([view["spar3d_ssim"] for view in views]))}
 
 
+def accepted_for_display(record: dict) -> bool:
+    """Only replace a scanned object when geometry, colour and unseen views agree."""
+    views = record.get("views") or []
+    if len(views) < 5:
+        return False
+    baseline = float(np.mean([view["lidar_ssim"] for view in views]))
+    return bool(
+        record.get("box_iou", 0) >= 0.85
+        and record.get("lidar_to_surface_cm", float("inf")) <= 5.0
+        and record.get("texture_painted_fraction", 0) >= 0.5
+        and record.get("photo_ssim_mean", 0) >= baseline + 0.03
+    )
+
+
+def run_evidence(room: RoomEvidence, node_id: uuid.UUID, directory: pathlib.Path) -> dict:
+    directory = directory.resolve()
+    node_index = next((index for index, node in enumerate(room.graph.nodes) if node.id == node_id), None)
+    if node_index is None:
+        raise ValueError(f"node {node_id} does not belong to this capture")
+    evidence, record = prepare_object(room, node_index, directory)
+    if evidence.crop is None:
+        return record
+    try:
+        heldout_cameras(room, evidence.crop_frame_id, evidence)
+    except InsufficientHeldoutViews as error:
+        record.update(status="skipped", reason=str(error))
+        return record
+    try:
+        if not weights_available():
+            record.update(status="blocked", reason="SPAR3D weights are unavailable")
+            return record
+        record.update(infer(directory))
+        record.update(fitted_mesh(room, evidence, node_index, directory))
+        record.update(evaluate_views(room, evidence, directory))
+        record["accepted_for_display"] = accepted_for_display(record)
+        record["status"] = "accepted" if record["accepted_for_display"] else "rejected"
+    except Exception as error:
+        record.update(status="failed", error=str(error))
+    return record
+
+
+def run_one(scan_id: uuid.UUID, node_id: uuid.UUID, directory: pathlib.Path) -> dict:
+    return run_evidence(room_evidence(scan_id), node_id, directory)
+
+
+def run_batch(scan_id: uuid.UUID, node_ids: list[uuid.UUID], directory: pathlib.Path) -> list[dict]:
+    room = room_evidence(scan_id)
+    reports = []
+    for node_id in node_ids:
+        output = directory / str(node_id)
+        output.mkdir(parents=True, exist_ok=True)
+        result_path = output / "metrics.json"
+        cached = json.loads(result_path.read_text()) if result_path.is_file() else None
+        if cached is not None and cached.get("status") not in {"failed", "blocked"}:
+            report = cached
+        else:
+            try:
+                report = run_evidence(room, node_id, output)
+            except Exception as error:
+                report = {"node_id": str(node_id), "status": "failed", "error": str(error)}
+            result_path.write_text(json.dumps(report, indent=2) + "\n")
+        reports.append(report)
+        print(json.dumps({"node_id": str(node_id), "status": report["status"]}), flush=True)
+    return reports
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--prepare-only", action="store_true", help="write scan evidence without loading gated weights")
+    parser.add_argument("--scan-id", type=uuid.UUID)
+    parser.add_argument("--source-room", choices=("center", "top", "bottom_left", "left"))
+    parser.add_argument("--node-id", type=uuid.UUID)
+    parser.add_argument("--batch-node", type=uuid.UUID, action="append")
+    parser.add_argument("--output-dir", type=pathlib.Path)
     args = parser.parse_args()
+    if args.batch_node:
+        if args.scan_id is None or args.source_room is not None or args.node_id is not None or args.output_dir is None:
+            parser.error("batch mode needs --scan-id, --batch-node and --output-dir")
+        run_batch(args.scan_id, args.batch_node, args.output_dir)
+        return
+    if args.scan_id is not None or args.source_room is not None or args.node_id is not None or args.output_dir is not None:
+        if args.node_id is None or args.output_dir is None or (args.scan_id is None) == (args.source_room is None):
+            parser.error("supply --node-id, --output-dir and exactly one of --scan-id or --source-room")
+        result = (
+            run_one(args.scan_id, args.node_id, args.output_dir)
+            if args.scan_id is not None else run_evidence(source_room_evidence(args.source_room), args.node_id, args.output_dir)
+        )
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        (args.output_dir / "metrics.json").write_text(json.dumps(result, indent=2) + "\n")
+        print(json.dumps(result))
+        return
     RUN.mkdir(parents=True, exist_ok=True)
     room = room_evidence()
     chair_index, sofa_index = selected_node(room, "chair"), selected_node(room, "sofa")
-    chair, chair_record = prepare_object(room, chair_index, "chair", reviewed_frame=CHAIR_FRAME)
-    sofa, sofa_record = prepare_object(room, sofa_index, "sofa")
+    chair, chair_record = prepare_object(room, chair_index, RUN / "chair", reviewed_frame=CHAIR_FRAME)
+    sofa, sofa_record = prepare_object(room, sofa_index, RUN / "sofa")
     results = {"scan_id": str(SCAN_ID), "chair": chair_record, "sofa": sofa_record}
     if args.prepare_only:
         (RUN / "metrics.json").write_text(json.dumps(results, indent=2) + "\n")

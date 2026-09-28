@@ -46,7 +46,7 @@ log = logging.getLogger(__name__)
 
 TEXTURE = "texture"
 BUILD_KEY = re.compile(r"^[0-9a-f]{64}$")
-ASSET_NAME = re.compile(r"^(scene\.glb|scan\.glb|coverage-[0-3]\.png)$")
+ASSET_NAME = re.compile(r"^(scene\.glb|scan\.glb|scan-furniture\.glb|coverage-[0-3]\.png)$")
 MAX_METADATA_BYTES = 4_000_000
 
 
@@ -216,9 +216,16 @@ def _status(connection, store, scan_id, revision):
     ).fetchone()
     build = TextureBuild.model_validate_json(ready["result_json"]) if ready else None
     stale = stale_node_ids(shown, build.bake_graph) if build else []
+    published_floor_exact = bool(
+        ready and build and not stale
+        and json.loads(ready["inputs_json"]).get("pipeline") == "patched-library-v1"
+    )
+    if published_floor_exact:
+        state, error = "complete", None
     result = TextureStatus(
         scan_id=scan_id, revision=shown.revision, state=state, build=build,
-        exact=bool(ready and ready["build_key"] == key), stale_node_ids=stale, error=error,
+        exact=bool(ready and ready["build_key"] == key) or published_floor_exact,
+        stale_node_ids=stale, error=error,
         can_retry=bool(inputs and state == "failed"),
         progress=_progress(store, scan_id, key) if state == "running" else None,
     )
@@ -384,7 +391,9 @@ def record_build(database, scan_id, build_key: str, graph: SceneGraph, inputs: d
         connection.execute(
             "INSERT INTO texture_builds (scan_id, build_key, graph_json, inputs_json, result_json, created_at)"
             " VALUES (?, ?, ?, ?, ?, ?)"
-            " ON CONFLICT(scan_id, build_key) DO UPDATE SET result_json=excluded.result_json",
+            " ON CONFLICT(scan_id, build_key) DO UPDATE SET"
+            " graph_json=excluded.graph_json, inputs_json=excluded.inputs_json,"
+            " result_json=excluded.result_json",
             (
                 str(scan_id), build_key, graph.model_dump_json(),
                 json.dumps(inputs), result.model_dump_json(), repo.now(),
@@ -422,6 +431,71 @@ def run_texture(database, store, stages, scan_id, build_id):
             reported.unlink(missing_ok=True)
     with database.transaction() as connection:
         connection.execute("UPDATE texture_builds SET result_json=? WHERE id=?", (result.model_dump_json(), build_id))
+
+
+def queue_missing_enhancements(database, store, worker, scan_id, revision) -> TextureStatus:
+    from .furniture import queue_furniture
+
+    status = queue_texture(database, store, worker, scan_id, revision)
+    if not status.exact or status.build is None or status.state != "complete":
+        return status
+    with database.connect() as connection:
+        row = connection.execute(
+            "SELECT id FROM texture_builds WHERE scan_id=? AND build_key=?",
+            (str(scan_id), status.build.build_id),
+        ).fetchone()
+    if row is not None:
+        queue_furniture(database, worker, scan_id, row["id"])
+    return status
+
+
+def read_furniture_status(database, store, scan_id, revision):
+    status = texture_status(database, store, scan_id, revision)
+    if status.build is None:
+        return {"state": "waiting_for_textures", "build_id": None, "report": None}
+    with database.connect() as connection:
+        row = connection.execute(
+            "SELECT b.inputs_json, j.state, j.error FROM texture_builds b"
+            " LEFT JOIN jobs j ON b.id=j.revision AND b.scan_id=j.scan_id AND j.kind='furniture'"
+            " WHERE b.scan_id=? AND b.build_key=?",
+            (str(scan_id), status.build.build_id),
+        ).fetchone()
+    if row is None:
+        return {"state": "not_started", "build_id": status.build.build_id, "report": None}
+    inputs = json.loads(row["inputs_json"])
+    report_path = build_dir(store, scan_id) / status.build.build_id / "furniture.json"
+    report = json.loads(report_path.read_text()) if report_path.is_file() else None
+    if inputs.get("pipeline") == "patched-library-v1" and report is not None:
+        return {"state": "done", "build_id": status.build.build_id, "error": None, "report": report}
+    if not inputs.get("lidar") or not inputs.get("frames") or not status.build.scan_glb_url:
+        return {"state": "not_applicable", "build_id": status.build.build_id, "report": None}
+    return {
+        "state": row["state"] or "not_started",
+        "build_id": status.build.build_id,
+        "error": row["error"],
+        "report": report,
+    }
+
+
+def retry_furniture(database, store, worker, scan_id, revision):
+    from .furniture import FURNITURE
+
+    status = texture_status(database, store, scan_id, revision)
+    if not status.exact or status.build is None:
+        raise ApiProblem(409, "a current painted scan is needed before furniture refinement")
+    with database.transaction() as connection:
+        row = connection.execute(
+            "SELECT id, inputs_json FROM texture_builds WHERE scan_id=? AND build_key=?",
+            (str(scan_id), status.build.build_id),
+        ).fetchone()
+        if row is None:
+            raise ApiProblem(409, "painted scan build was not found")
+        inputs = json.loads(row["inputs_json"])
+        if not inputs.get("lidar") or not inputs.get("frames") or not status.build.scan_glb_url:
+            raise ApiProblem(409, "this scan has no linked LiDAR and photo evidence")
+        repo.queue_job_again(connection, scan_id, FURNITURE, row["id"])
+    worker.wake()
+    return read_furniture_status(database, store, scan_id, revision)
 
 
 def _new_build(database, store, stages, scan_id, row, destination: pathlib.Path) -> TextureBuild:
@@ -492,7 +566,15 @@ def _baked_boxes(store, stages, scan_id, graph: SceneGraph, inputs: dict, tempor
 def install_texture_routes(app: FastAPI, database, store, worker):
     @app.get("/api/scans/{scan_id}/textures", response_model=TextureStatus)
     def get_status(scan_id: uuid.UUID, revision: int | None = None):
-        return texture_status(database, store, scan_id, revision)
+        return queue_missing_enhancements(database, store, worker, scan_id, revision)
+
+    @app.get("/api/scans/{scan_id}/furniture")
+    def furniture_status(scan_id: uuid.UUID, revision: int | None = None):
+        return read_furniture_status(database, store, scan_id, revision)
+
+    @app.post("/api/scans/{scan_id}/furniture")
+    def start_furniture(scan_id: uuid.UUID, revision: int | None = None):
+        return retry_furniture(database, store, worker, scan_id, revision)
 
     @app.post("/api/scans/{scan_id}/textures", response_model=TextureStatus, status_code=202)
     def start(scan_id: uuid.UUID, body: TextureRequest):
@@ -516,5 +598,8 @@ def install_texture_routes(app: FastAPI, database, store, worker):
         return FileResponse(
             path,
             media_type="model/gltf-binary" if filename.endswith(".glb") else "image/png",
-            headers={"Cache-Control": "private, max-age=31536000, immutable"},
+            headers={"Cache-Control": (
+                "private, no-cache" if filename == "scan-furniture.glb"
+                else "private, max-age=31536000, immutable"
+            )},
         )

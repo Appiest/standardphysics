@@ -2,7 +2,7 @@ import hashlib
 import json
 import shutil
 
-from standardphysics_contracts import Mat4, NodeTextureCoverage, TextureBuild, TextureCoverage
+from standardphysics_contracts import Mat4, NodeTextureCoverage, SceneGraph, TextureBuild, TextureCoverage
 from standardphysics_fixtures import build_graph
 from standardphysics_pipeline.textures import BakeResult
 
@@ -114,7 +114,7 @@ def test_moved_furniture_reuses_texture_build_and_new_shape_is_stale(make_client
         resized=moved.model_copy(update={'revision':2,'nodes':[n.model_copy(update={'dimensions':n.dimensions.model_copy(update={'x':n.dimensions.x+1})}) if n.id==node.id else n for n in moved.nodes]})
         with client.app.state.database.transaction() as c: repo.save_revision(c,resized,source='owner')
         status=client.get(f'/api/scans/{scan}/textures?revision=2').json()
-        assert status['state']=='not_started' and str(node.id) in status['stale_node_ids']
+        assert status['state']=='queued' and str(node.id) in status['stale_node_ids']
 
 
 def test_separate_workers_claim_only_their_job_kind(client):
@@ -122,8 +122,11 @@ def test_separate_workers_claim_only_their_job_kind(client):
     with client.app.state.database.transaction() as c:
         repo.enqueue_job(c,graph.scan_id,'display',0)
         repo.enqueue_job(c,graph.scan_id,'texture',99)
+        repo.enqueue_job(c,graph.scan_id,'furniture',98)
         assert repo.claim_job(c,True)['kind']=='texture'
         assert repo.claim_job(c,True) is None
+        assert repo.claim_job(c,kind='furniture')['kind']=='furniture'
+        assert repo.claim_job(c,kind='furniture') is None
         assert repo.claim_job(c,False)['kind']=='display'
 
 
@@ -176,6 +179,129 @@ def test_a_build_made_outside_the_queue_is_served_like_any_other(client):
     status = client.get(f'/api/scans/{scan_id}/textures').json()
     assert status['build']['scan_glb_url'] == f'/api/scans/{scan_id}/textures/{key}/scan.glb'
     assert status['build']['coverage']['textured_fraction'] == 0.43
+
+    renamed = graph.model_copy(update={
+        'revision': graph.revision + 1,
+        'nodes': [graph.nodes[0].model_copy(update={'label': 'Renamed'}), *graph.nodes[1:]],
+    })
+    record_build(client.app.state.database, scan_id, key, renamed, {'rooms': 4, 'labels': 'updated'},
+                 result.model_copy(update={'bake_graph': renamed}))
+    with client.app.state.database.connect() as connection:
+        row = connection.execute('SELECT graph_json, inputs_json FROM texture_builds WHERE scan_id=? AND build_key=?',
+                                 (str(scan_id), key)).fetchone()
+    assert SceneGraph.model_validate_json(row['graph_json']).nodes[0].label == 'Renamed'
+    assert json.loads(row['inputs_json']) == {'rooms': 4, 'labels': 'updated'}
+
+
+def test_completed_library_floor_and_furniture_report_are_visible_without_uploaded_bundle(client):
+    from standardphysics_api.textures import build_dir, finish_build, record_build, staged_build_dir
+
+    scan_id, graph = _room(client)
+    key = hashlib.sha256(b'published library floor').hexdigest()
+    staged = staged_build_dir(client.app.state.store, scan_id)
+    shutil.copyfile(FIXTURE_DATA / 'shop.glb', staged / 'scan.glb')
+    shutil.copyfile(FIXTURE_DATA / 'shop.glb', staged / 'scene.glb')
+    result = _scan_build(scan_id, graph, key)
+    destination = build_dir(client.app.state.store, scan_id) / key
+    finish_build(staged, destination, result)
+    (destination / 'furniture.json').write_text(json.dumps({'accepted': 0, 'objects': [{'status': 'rejected'}]}))
+    record_build(client.app.state.database, scan_id, key, graph, {'pipeline': 'patched-library-v1'}, result)
+
+    status = client.get(f'/api/scans/{scan_id}/textures').json()
+    assert status['state'] == 'complete'
+    assert status['exact'] is True
+    furniture = client.get(f'/api/scans/{scan_id}/furniture').json()
+    assert furniture['state'] == 'done'
+    assert furniture['report']['accepted'] == 0
+
+
+def test_furniture_runs_after_a_photo_build_and_publishes_only_accepted_mesh(client, monkeypatch):
+    from standardphysics_api import furniture
+    from standardphysics_api.textures import build_dir, finish_build, record_build, staged_build_dir
+
+    scan_id, graph = _room(client)
+    key = hashlib.sha256(b'captured furniture').hexdigest()
+    staged = staged_build_dir(client.app.state.store, scan_id)
+    shutil.copyfile(FIXTURE_DATA / 'shop.glb', staged / 'scan.glb')
+    shutil.copyfile(FIXTURE_DATA / 'shop.glb', staged / 'scene.glb')
+    result = _scan_build(scan_id, graph, key)
+    finish_build(staged, build_dir(client.app.state.store, scan_id) / key, result)
+    record_build(client.app.state.database, scan_id, key, graph, {'lidar': 'mesh', 'frames': {'frame': 'photo'}}, result)
+
+    chosen = str(furniture.candidate_nodes(graph)[0])
+    calls = []
+
+    def fake_candidates(scan_id, node_ids, directory):
+        calls.extend(str(node_id) for node_id in node_ids)
+        reports = [{'node_id': str(node_id), 'status': 'skipped'} for node_id in node_ids]
+        reports[0] = (
+            {'node_id': chosen, 'status': 'failed', 'error': 'temporary inference error'}
+            if calls.count(chosen) == 1
+            else {'node_id': chosen, 'status': 'accepted', 'accepted_for_display': True}
+        )
+        return reports
+
+    def fake_merge(base, graph, accepted, output):
+        assert len(accepted) == 1 and str(graph.nodes[accepted[0][0]].id) == chosen
+        shutil.copyfile(base, output)
+
+    monkeypatch.setattr(furniture, '_run_candidates', fake_candidates)
+    monkeypatch.setattr(furniture, '_accepted_mesh', fake_merge)
+    with client.app.state.database.connect() as connection:
+        build_id = connection.execute('SELECT id FROM texture_builds WHERE scan_id=?', (scan_id,)).fetchone()[0]
+    furniture.queue_furniture(client.app.state.database, client.app.state.worker, graph.scan_id, build_id)
+    drain(client)
+    failed = client.get(f'/api/scans/{scan_id}/furniture').json()
+    assert failed['state'] == 'failed' and failed['report']['accepted'] == 0
+    with client.app.state.database.transaction() as connection:
+        repo.queue_job_again(connection, graph.scan_id, furniture.FURNITURE, build_id)
+    drain(client)
+    updated = client.get(f'/api/scans/{scan_id}/textures').json()
+    assert '/scan-furniture.glb?v=' in updated['build']['scan_glb_url']
+    assert client.get(updated['build']['scan_glb_url']).status_code == 200
+    assert client.get(f'/api/scans/{scan_id}/furniture').json()['report']['accepted'] == 1
+    assert len(calls) == 2 * len(furniture.candidate_nodes(graph))
+    drain(client)
+    assert len(calls) == 2 * len(furniture.candidate_nodes(graph))
+
+
+def test_finished_upload_automatically_queues_furniture_after_scan_paint(make_client, monkeypatch):
+    from standardphysics_api import furniture, textures
+
+    monkeypatch.setattr(
+        textures, '_paint_the_scan',
+        lambda store, scan_id, graph, inputs, out_dir: bool(shutil.copyfile(FIXTURE_DATA / 'shop.glb', out_dir / 'scan.glb')),
+    )
+    calls = []
+
+    def candidates(scan_id, node_ids, directory):
+        calls.extend(str(node_id) for node_id in node_ids)
+        return [
+            {'node_id': str(node_id), 'status': 'failed' if len(calls) == len(node_ids) and index == 0 else 'skipped'}
+            for index, node_id in enumerate(node_ids)
+        ]
+
+    monkeypatch.setattr(furniture, '_run_candidates', candidates)
+    with make_client(stages=no_blender_stages(bake_textures=_bake)) as client:
+        scan_id, _ = _room(client)
+        lidar = json.dumps({'parts': [{
+            'id': '00000000-0000-0000-0000-000000000001',
+            'transform': Mat4.identity().m,
+            'vertices': [0, 0, 0, 1, 0, 0, 0, 1, 0],
+            'triangles': [0, 1, 2],
+        }]}).encode()
+        assert put_artifact(client, scan_id, 'lidar-mesh', lidar, 'lidar_mesh').status_code == 201
+        _photos(client, scan_id)
+        drain(client)
+        assert client.get(f'/api/scans/{scan_id}/furniture').json()['state'] == 'failed'
+        assert client.post(f'/api/scans/{scan_id}/furniture').status_code == 200
+        drain(client)
+        furniture_status = client.get(f'/api/scans/{scan_id}/furniture').json()
+        assert furniture_status['state'] == 'done'
+        assert furniture_status['report']['accepted'] == 0
+        assert len(calls) > 1
+        with client.app.state.database.connect() as connection:
+            assert connection.execute("SELECT COUNT(*) FROM jobs WHERE kind='furniture'").fetchone()[0] == 1
 
 
 def test_a_staged_build_carrying_a_stray_file_is_refused(client):

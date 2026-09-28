@@ -67,8 +67,11 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
+      # Next bakes the /api rewrite into the build, so the web container has to
+      # be built knowing where the API container is.
       args:
         GIT_SHA: ${GIT_SHA:-unknown}
+        SP_API_ORIGIN: http://api:8787
       tags:
         - standardphysics:latest
     image: standardphysics:${GIT_SHA:-latest}

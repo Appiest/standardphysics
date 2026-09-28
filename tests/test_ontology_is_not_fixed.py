@@ -24,7 +24,7 @@ ONTOLOGY_LITERAL = re.compile(
     r'^(?:NodeKind|Relation|QueryKind|Dimension|LabelSource)\s*(?::\s*\w+\s*)?=\s*Literal\[', re.M
 )
 
-BRANCHES_BASELINE = 44
+BRANCHES_BASELINE = 45
 """Places that ask what kind of thing something is. Target: nothing above the
 interpretation layer asks, because a name is for showing a person.
 
@@ -91,6 +91,10 @@ without an audit; these eight are the ones it adds here:
 The solver and usefulness five ask whether a node is a piece of furniture rather than structure, the
 same question as the structural backlog above, and one `is_furniture`
 predicate would retire them together.
+
+Audit 2026-09-28, merging fix/sign-in-api-port into unified: 44 rose to 45.
+api/furniture.py 1 picks the scanned objects furniture refinement may
+replace with a model, the same furniture-not-structure question as above.
 """
 
 LITERALS_BASELINE = 0

@@ -1,0 +1,14 @@
+{
+  "objective": "Automatically run object recognition, LiDAR display repair, and quality-gated SPAR3D for completed scans; replay the preserved four-room evidence for A-102 Moffett.",
+  "status": "complete",
+  "checkpoints": [
+    {
+      "task": "trace existing pipeline and A-102 inputs",
+      "status": "complete",
+      "finding": "New scans already queue recognition and texture builds. SPAR3D is an isolated room-6 script. A-102 is a stitched overlay with no uploaded evidence artifacts or recognition job; its last texture build predates LiDAR repair."
+    },
+    {"task": "persist and run automatic SPAR3D stage", "status": "verified", "finding": "Texture jobs queue a separate furniture job, openings of the texture endpoint recover missing work, and only quality-gated meshes replace display geometry. API tests: 249 passed; web tests: 192 passed; typecheck and changed-file lint passed."},
+    {"task": "replay A-102 recognition and patched rendering", "status": "complete", "finding": "All 1,600 selected frames were recognized from cache with no new model requests. Revision 8 added 475 nodes. Cross-view voting and a category guard corrected false sofa/table relabels in revision 10 while preserving all 759 node identities, measured geometry, and the owner label. Replay is idempotent; 97 referenced crops resolve, and assessment and display export completed. The label-only revision reused patched texture build 19, which used 360 photos and has 29.0% directly observed color coverage."},
+    {"task": "run A-102 SPAR3D and verify viewer", "status": "complete", "finding": "A representative per-class pass across all four captures evaluated 12 furniture candidates: 11 rejected by the display quality gate and one skipped for insufficient held-out photos. Zero meshes were accepted. The viewer URL remains the repaired LiDAR scan.glb; its 834,293-face GLB loads successfully. Authenticated browser inspection was unavailable, so the published database and artifact were checked directly."}
+  ]
+}

@@ -480,6 +480,7 @@ def coloured_scan(
     capture_to_room,
     patch_holes_from: SceneGraph | None = None,
     people: dict | None = None,
+    max_photos: int = MAX_PHOTOS,
 ) -> tuple[ColouredScan, list[PhotoCamera]]:
     """The captured surface in the room frame, each vertex coloured by its best photo.
 
@@ -499,7 +500,7 @@ def coloured_scan(
         camera for camera in load_cameras(poses_path, frame_paths, capture_to_room)
         if frame_paths.get(camera.frame_id, pathlib.Path()).is_file()
     ]
-    cameras = evenly_spread(all_cameras, MAX_PHOTOS)
+    cameras = evenly_spread(all_cameras, max_photos)
     if not cameras:
         raise ValueError("no stored photo has a usable camera pose")
     vertices, triangles = scan_geometry(mesh_path, capture_to_room)

@@ -26,7 +26,7 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 from scipy.spatial import KDTree
-from standardphysics_contracts import Mat4
+from standardphysics_contracts import Mat4, SceneGraph
 
 from .camera import PhotoCamera, load_cameras
 from .project import evenly_spread
@@ -35,8 +35,10 @@ from .scan_colour import (
     ColouredScan,
     _photo,
     colour_the_scan,
+    coloured_scan,
     scan_geometry,
     unused_vertices_removed,
+    with_mirrored_colours,
     write_scan_glb,
 )
 
@@ -62,6 +64,8 @@ class RoomCapture:
     to_floor: np.ndarray
     """4x4, row-major, moving this room's own frame into the shared floor frame."""
     max_photos: int = MAX_PHOTOS
+    graph: SceneGraph | None = None
+    detections_dir: pathlib.Path | None = None
 
 
 @dataclass(frozen=True)
@@ -127,6 +131,19 @@ def _cameras_for(room: RoomCapture) -> list[PhotoCamera]:
 
 def painted_room(room: RoomCapture) -> tuple[ColouredScan, int]:
     """One room coloured from its own photos, filled in, and placed on the floor."""
+    if room.graph is not None:
+        from ..discovery.discover import known_detections
+
+        people = (
+            known_detections(room.frame_paths, room.poses_path, room.detections_dir)
+            if room.detections_dir is not None else None
+        )
+        scan, cameras = coloured_scan(
+            room.mesh_path, room.poses_path, room.frame_paths, room.capture_to_room,
+            patch_holes_from=room.graph, people=people, max_photos=room.max_photos,
+        )
+        filled = with_mirrored_colours(unobserved_filled_from_nearest(scan))
+        return moved_to_floor(filled, room.to_floor), len(cameras)
     vertices, triangles = scan_geometry(room.mesh_path, room.capture_to_room)
     cameras = _cameras_for(room)
     images = [_photo(room.frame_paths[camera.frame_id]) for camera in cameras]

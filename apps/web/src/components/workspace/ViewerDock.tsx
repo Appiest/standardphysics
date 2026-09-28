@@ -29,6 +29,15 @@ export type Textures = {
   onRequest: () => void;
   reconstruction: { count: number; pending: boolean };
   capturedSplats?: boolean;
+  furniture: FurnitureRefinement | null;
+  onRetryFurniture: () => void;
+};
+
+export type FurnitureRefinement = {
+  state: "waiting_for_textures" | "not_applicable" | "not_started" | "queued" | "running" | "done" | "failed";
+  build_id: string | null;
+  error?: string | null;
+  report?: { accepted: number } | null;
 };
 
 /** Two or three choices of which exactly one is on, drawn as one pill so they read as a set. */
@@ -68,6 +77,20 @@ function LookChoice({ textures }: { textures: Textures }) {
       <Choice pressed={textures.mode === "plain"} onClick={() => textures.onMode("plain")} label="Plain" icon={<Square size={16} aria-hidden />} />
     </Segmented>
   );
+}
+
+function FurnitureProgress({ textures }: { textures: Textures }) {
+  const furniture = textures.furniture;
+  if (!furniture || ["not_applicable", "waiting_for_textures"].includes(furniture.state)) return null;
+  if (["queued", "running", "not_started"].includes(furniture.state)) {
+    return <span role="status" className="flex items-center gap-1.5 px-2 text-sm text-ink-muted"><CircleNotch size={16} className="motion-safe:animate-spin" aria-hidden />Refining furniture</span>;
+  }
+  if (furniture.state === "failed") {
+    return <Button onClick={textures.onRetryFurniture}>Try furniture again</Button>;
+  }
+  const accepted = furniture.report?.accepted ?? 0;
+  if (accepted === 0) return null;
+  return <span role="status" className="px-2 text-sm text-ink-muted">Furniture refined: {accepted}</span>;
 }
 
 /** Before any photo build exists: one plain button that starts one, or what it is waiting for. */
@@ -192,6 +215,7 @@ function DockControls({ activeMode, onView, visibility, textures, downloadUrl, w
         <Choice pressed={Boolean(wheelchairMode)} onClick={onToggleWheelchair} label="Wheelchair view" icon={<Wheelchair size={16} aria-hidden />} />
       )}
       <LookChoice textures={textures} />
+      <FurnitureProgress textures={textures} />
       <DockMenu visibility={visibility} textures={textures} downloadUrl={downloadUrl} />
     </>
   );

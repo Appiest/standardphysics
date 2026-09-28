@@ -37,6 +37,7 @@ import { CombinePanel } from "./CombinePanel";
 import type { RoomGroup } from "@/lib/room-groups";
 import { SimulationPanel } from "./SimulationPanel";
 import { type MaterialMode, type ViewMode, ViewerDock } from "./ViewerDock";
+import { useFurnitureRefinement } from "./useFurnitureRefinement";
 import { isTextureRefreshing, textureStatusMatches } from "@/lib/texture-status";
 import { showsSplats, viewerSourcePlan } from "@/lib/viewer-source";
 
@@ -506,7 +507,9 @@ function usePhotoTextures(scanId: string, revision: number, initial: TextureStat
       if (currentKey.current === key) setRequestingKey(null);
     }
   }, [key, revision, save, scanId]);
-  return { status, requesting, request, error };
+
+  const { furniture, retryFurniture } = useFurnitureRefinement(scanId, revision, status, refresh);
+  return { status, requesting, request, error, furniture, retryFurniture };
 }
 
 type WorkspaceBodyProps = WorkspaceProps & {
@@ -664,7 +667,7 @@ function WorkspaceBody({ scan, scene, exported, assessment, glbUrl, lidarUrl, te
           wheelchairMode={wheelchairMode}
           onToggleWheelchair={toggleWheelchairMode}
           visibility={{ cutWalls, onToggleWalls: () => setCutWalls((current) => !current), evidenceAvailable, evidenceShown: showScanEvidence, onToggleEvidence: () => setShowScanEvidence((current) => !current) }}
-          textures={{ status: textures.status, requesting: textures.requesting, error: textures.error, mode: materialMode === "splat" ? "plain" : materialMode, onMode: setChosenMaterialMode, onRequest: () => { void textures.request(); }, reconstruction: { count: reconstructionCount, pending: reconstructionPending }, capturedSplats: hasSplats }}
+          textures={{ status: textures.status, requesting: textures.requesting, error: textures.error, mode: materialMode === "splat" ? "plain" : materialMode, onMode: setChosenMaterialMode, onRequest: () => { void textures.request(); }, reconstruction: { count: reconstructionCount, pending: reconstructionPending }, capturedSplats: hasSplats, furniture: textures.furniture, onRetryFurniture: () => { void textures.retryFurniture(); } }}
           downloadUrl={sourceGlbUrl && !visuals.arrangement.hasMoves && task !== "compare" ? sourceGlbUrl : null}
         />
       </section>
