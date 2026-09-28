@@ -212,14 +212,80 @@ def test_context_tells_astra_when_photo_evidence_is_available(tmp_path):
     assert json.loads(without_photos)["images_provided"] is False
 
 
-def test_label_request_bounds_reasoning_and_completion():
+def test_label_request_defaults_to_fireworks_with_reasoning_off_and_no_openrouter_fields():
     graph = parse_room_json({"objects": [element("chair")]})
 
     body = _chat_body(graph)
 
-    assert body["reasoning"] == {"effort": "low"}
+    assert astra._chat_url() == "https://api.fireworks.ai/inference/v1/chat/completions"
+    assert astra._api_key_env() == "FIREWORKS_API_KEY"
+    assert body["model"] == astra.DEFAULT_MODEL
+    assert body["reasoning_effort"] == "none"
+    assert "reasoning" not in body
+    assert "provider" not in body
+    assert "usage" not in body
     assert body["max_tokens"] == MAX_OUTPUT_TOKENS
     assert MAX_OUTPUT_TOKENS == 8_192
+
+
+def test_an_explicit_openrouter_base_url_keeps_openrouters_own_fields(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+
+    graph = parse_room_json({"objects": [element("chair")]})
+    body = _chat_body(graph, model="anthropic/claude-opus-5.5")
+
+    assert astra._api_key_env() == "OPENROUTER_API_KEY"
+    assert body["reasoning"] == {"effort": "low"}
+    assert body["provider"] == astra.provider_routing("anthropic/claude-opus-5.5")
+    assert body["usage"] == {"include": True}
+    assert "reasoning_effort" not in body
+
+
+def test_an_unusable_first_answer_retries_once_on_the_fallback_model():
+    graph = parse_room_json({"objects": [element("chair")]})
+    chair = graph.nodes[0]
+    attempted_models = []
+
+    def transport(_url, body, _headers):
+        attempted_models.append(body["model"])
+        if body["model"] == astra.DEFAULT_MODEL:
+            return {"choices": [{"message": {"content": "not valid json"}}]}
+        return model_response(patch_for(chair, "Chair"))
+
+    result = reconstruct_result(graph, transport=transport)
+
+    assert attempted_models == [astra.DEFAULT_MODEL, astra.FALLBACK_MODEL]
+    assert result.source == "astra"
+    assert result.graph.nodes[0].label == "Chair"
+
+
+def test_labelling_gives_up_to_local_labels_only_after_both_default_models_fail():
+    graph = parse_room_json(shop_payload())
+    attempted_models = []
+
+    def transport(_url, body, _headers):
+        attempted_models.append(body["model"])
+        return {"choices": [{"message": {"content": "not valid json"}}]}
+
+    result = reconstruct_result(graph, transport=transport)
+
+    assert attempted_models == [astra.DEFAULT_MODEL, astra.FALLBACK_MODEL]
+    assert result.source == "roomplan"
+
+
+def test_an_explicit_label_model_is_tried_once_without_a_fallback_retry(monkeypatch):
+    monkeypatch.setenv("LABEL_MODEL", "some/other-model")
+    graph = parse_room_json({"objects": [element("chair")]})
+    attempted_models = []
+
+    def transport(_url, body, _headers):
+        attempted_models.append(body["model"])
+        return {"choices": [{"message": {"content": "not valid json"}}]}
+
+    result = reconstruct_result(graph, transport=transport)
+
+    assert attempted_models == ["some/other-model"]
+    assert result.source == "roomplan"
 
 
 def test_response_reader_stops_after_a_slow_heartbeat(monkeypatch):
