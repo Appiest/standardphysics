@@ -9,13 +9,18 @@ import type { ProposalReviewState } from "./useProposalReview";
 
 type Relook = (result: ProposalResult) => void;
 
+/** Each line once: two pieces can yield the same sentence ("Chair stays at the Ordering counter"). */
+const distinct = (lines: string[]) => [...new Set(lines)];
+
 export function Explanation({ explanation }: { explanation: ProposalExplanation }) {
+  const kept = distinct(explanation.kept);
+  const bent = explanation.bent.filter((item, index, all) => all.findIndex((other) => other.text === item.text) === index);
   return (
     <div className="flex flex-col gap-2 text-sm">
-      {explanation.fixed.map((line) => <p key={line}>{line}</p>)}
-      {explanation.kept.length > 0 && (
+      {distinct(explanation.fixed).map((line) => <p key={line}>{line}</p>)}
+      {kept.length > 0 && (
         <ul className="flex flex-col gap-1">
-          {explanation.kept.map((line) => (
+          {kept.map((line) => (
             <li key={line} className="flex items-start gap-2">
               <CheckCircle size={16} weight="fill" className="mt-0.5 shrink-0 text-pass" aria-hidden />
               <span><span className="sr-only">Kept: </span>{line}</span>
@@ -23,9 +28,9 @@ export function Explanation({ explanation }: { explanation: ProposalExplanation 
           ))}
         </ul>
       )}
-      {explanation.bent.length > 0 && (
+      {bent.length > 0 && (
         <ul className="flex flex-col gap-1">
-          {explanation.bent.map((item) => (
+          {bent.map((item) => (
             <li key={item.text} className="flex items-start gap-2">
               <WarningCircle size={16} weight="fill" className="mt-0.5 shrink-0 text-attention" aria-hidden />
               <span><span className="font-medium">Changes:</span> {item.text}</span>

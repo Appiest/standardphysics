@@ -9,7 +9,7 @@ import { useSeenOnce } from "@/lib/seen-once";
 type IconType = ComponentType<{ size?: number; weight?: "regular" | "bold" | "fill"; "aria-hidden"?: boolean }>;
 
 /** The shop tools, unlocked once the results first appear. Each opens straight into one task. */
-export function ToolsPanel({ scanId, inApp, onPlan, onWheelchair, lead }: { scanId: string; inApp: boolean; onPlan: () => void; onWheelchair: () => void; lead?: ReactNode }) {
+export function ToolsPanel({ scanId, inApp, onPlan, onWheelchair }: { scanId: string; inApp: boolean; onPlan: () => void; onWheelchair: () => void }) {
   const [seen, markSeen] = useSeenOnce("sp_tools_unlocked");
   const addRoom = () => tellApp({ type: "addRoom", scanId });
   return (
@@ -21,7 +21,6 @@ export function ToolsPanel({ scanId, inApp, onPlan, onWheelchair, lead }: { scan
         </aside>
       )}
       <h2 id="tools-heading" className="text-lg font-semibold">Shop tools</h2>
-      {lead}
       <Tool Icon={ArrowsOutCardinal} title="Try a layout" detail="Drag furniture around a plan of your shop and watch which problems clear as you move it.">
         <Button variant="choice" onClick={onPlan}>Try moving furniture</Button>
       </Tool>

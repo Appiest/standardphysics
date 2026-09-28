@@ -20,7 +20,7 @@ from .constraints import (
     room_heading,
     violations,
 )
-from .moves import apply_moves, move_node, unlocked, without
+from .moves import apply_moves, carried_along, move_node, unlocked, without
 from .occupancy import (
     BARIATRIC_WHEELCHAIR,
     MANUAL_WHEELCHAIR,
@@ -49,7 +49,7 @@ from .strategies import Candidate, candidates
 
 __all__ = [
     "CANDIDATE_LIMIT", "Candidate", "CandidateRejection", "FixOutcome", "NO_FLOOR_MAP", "Pinch", "Relaxation",
-    "Violation", "apply_moves", "candidates", "collision_shape", "combine_rejections",
+    "Violation", "apply_moves", "carried_along", "candidates", "collision_shape", "combine_rejections",
     "describe", "door_keep_clear", "floor_map_missing", "interior_polygon", "is_allowed", "move_node", "on_a_surface",
     "pinch_from", "proposal_id", "propose_fix", "relocation_violations", "room_heading", "Snapped", "snap_moves",
     "unlocked", "violations",

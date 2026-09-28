@@ -1013,6 +1013,8 @@ export interface ManualMarkRequest {
  * via the `definition` "ModelLoopEvent".
  */
 export interface ModelLoopEvent {
+  built_ins: string[];
+  construction: string[];
   explanation: ProposalExplanation | null;
   fixable_left: number | null;
   kind: "started" | "turn" | "finished" | "failed";
@@ -1020,7 +1022,9 @@ export interface ModelLoopEvent {
   moves: NodeMove[];
   picked: string[];
   turn: number | null;
+  turns_at_most: number | null;
   why: string;
+  working_on: string[];
 }
 /**
  * A proposal in the owner's words, built only from what was measured.

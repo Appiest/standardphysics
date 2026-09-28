@@ -14,7 +14,7 @@ import { MODEL, outcomeColor, SCAN_CUT_HEIGHT, WALL_CUT_HEIGHT } from "./palette
 import { type ArrangeHandlers, BoxShopModel, GlbShopModel } from "./ShopModel";
 import { LidarShopModel } from "./LidarShopModel";
 import { CombinedRooms } from "./CombinedRooms";
-import { PaintedScan } from "./PaintedScan";
+import { PaintedScan, type ScanPieces } from "./PaintedScan";
 import { GaussianSplatScan } from "./GaussianSplatScan";
 import type { CapturedSplatAsset } from "@/lib/captured-splats";
 import type { RoomGroup, RoomPlacement } from "@/lib/room-groups";
@@ -123,14 +123,26 @@ function boxMaterialMode(mode: ViewerProps["materialMode"]) {
 }
 
 /** The captured room for the modes that show one, or null for the modes that show the boxes. */
-function capturedRoom(props: ShopSurfacesProps, boxes: ReactNode, picking: ReactNode): ReactNode | null {
+function capturedRoom(props: ShopSurfacesProps, boxes: ReactNode, picking: ReactNode, pieces: ScanPieces | null): ReactNode | null {
   const { materialMode, scanGlbUrl, splatAssets } = props;
   const splatsOnScreen = showsSplats({ materialMode, hasSplats: Boolean(splatAssets?.length), hasScanGlb: scanGlbUrl !== null });
   if (splatsOnScreen && splatAssets) {
     return <SplatRoom key={JSON.stringify(splatAssets)} assets={splatAssets} fallback={boxes} picking={picking} onError={props.onSplatError} />;
   }
-  if (materialMode === "scan" && scanGlbUrl) return <ScannedRoom url={scanGlbUrl} whileLoading={boxes} picking={picking} cutAbove={props.cutWalls ? SCAN_CUT_HEIGHT : null} />;
+  if (materialMode === "scan" && scanGlbUrl) {
+    return <ScannedRoom url={scanGlbUrl} whileLoading={boxes} picking={picking} cutAbove={props.cutWalls ? SCAN_CUT_HEIGHT : null} pieces={pieces} />;
+  }
   return null;
+}
+
+/**
+ * While furniture can be dragged, the movable pieces as they were scanned, to
+ * cut out of the scan, and the layout they now stand in. The cut list only
+ * changes with the scan, so dragging moves pieces without cutting again.
+ */
+function useScanPieces(exported: SceneGraph, placed: SceneGraph, arranging: boolean): ScanPieces | null {
+  const carve = useMemo(() => (arranging ? exported.nodes.filter((node) => node.kind === "object") : null), [exported, arranging]);
+  return useMemo(() => (carve ? { carve, placed } : null), [carve, placed]);
 }
 
 function ShopSurfaces(props: ShopSurfacesProps) {
@@ -162,6 +174,7 @@ function ShopSurfaces(props: ShopSurfacesProps) {
     picking: choosing,
   }), [scene, focus, selected, highlightNodeIds, onSelectNode, arrange, dragAllNodes, lightweight, cutWalls, materialMode, staleSet, coverageMap, choosing]);
 
+  const pieces = useScanPieces(exported, scene, arrange !== null);
   const boxes = <BoxShopModel {...modelProps} />;
   const picking = <BoxShopModel {...modelProps} pickOnly />;
   if (props.combinedRooms?.rooms.some((room) => room.scan_glb_url)) {
@@ -172,7 +185,7 @@ function ShopSurfaces(props: ShopSurfacesProps) {
       </>
     );
   }
-  const captured = capturedRoom(props, boxes, picking);
+  const captured = capturedRoom(props, boxes, picking, pieces);
   if (captured) return captured;
   const reconstructed = !glbUrl ? boxes : (
     <GlbFallback key={glbUrl} fallback={boxes}>
@@ -207,11 +220,11 @@ function SplatRoom({ assets, fallback, picking, onError }: { assets: CapturedSpl
  * there they stay as invisible targets, so tapping the scanned counter still
  * picks the counter, and a picked piece is outlined over the scan.
  */
-function ScannedRoom({ url, whileLoading, picking, cutAbove }: { url: string; whileLoading: ReactNode; picking: ReactNode; cutAbove: number | null }) {
+function ScannedRoom({ url, whileLoading, picking, cutAbove, pieces }: { url: string; whileLoading: ReactNode; picking: ReactNode; cutAbove: number | null; pieces: ScanPieces | null }) {
   return (
     <group>
       <GlbFallback key={url} fallback={whileLoading}>
-        <Suspense fallback={whileLoading}><PaintedScan url={url} cutAbove={cutAbove} />{picking}</Suspense>
+        <Suspense fallback={whileLoading}><PaintedScan url={url} cutAbove={cutAbove} pieces={pieces} />{picking}</Suspense>
       </GlbFallback>
     </group>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowClockwise, ArrowCounterClockwise, ArrowUUpLeft, ArrowsLeftRight, CheckCircle, Lock, WarningCircle } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowCounterClockwise, ArrowUUpLeft, ArrowsLeftRight, CheckCircle, Lock, WarningCircle, Wrench } from "@phosphor-icons/react";
 import { type ComponentType, type ReactNode, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import type { Arrangement } from "@/components/workspace/useArrangement";
@@ -41,16 +41,20 @@ function pieceWords(pieceName: string | null, activeId: string | null): { piece:
 }
 
 /** Try a layout: drag pieces on the plan, watch each check change as they move, and keep the plan without changing the scan. */
-export function PlanPanel({ arrangement, scanned, pieceName, fixedNote, review, onDone }: {
+export function PlanPanel({ arrangement, scanned, pieceName, fixedNote, builtIn = false, review, onReset, onDone }: {
   arrangement: Arrangement;
   /** The findings the shop was assessed with, until the scanned layout's own check comes back. */
   scanned: Finding[];
   /** The piece in hand, or the one worth trying first. */
   pieceName: string | null;
+  /** Whether the piece in hand is built in, like a counter, so moving it means construction. */
+  builtIn?: boolean;
   /** What a proposed layout changes and a way to say what must stay, when the plan started from one. */
   review?: ReactNode;
   /** Said when the owner reaches for a piece that is built in. */
   fixedNote: string | null;
+  /** Puts every piece back where it was scanned, and drops the suggestion that moved them. */
+  onReset: () => void;
   onDone: () => void;
 }) {
   const [saved, setSaved] = useState(false);
@@ -64,9 +68,9 @@ export function PlanPanel({ arrangement, scanned, pieceName, fixedNote, review, 
       <Refusals arrangement={arrangement} fixedNote={fixedNote} />
       <Changes changes={changes} moved={arrangement.hasMoves} />
       <StillToFix findings={still} />
-      {turnable && <TurnControls piece={piece ?? ""} onTurn={(degrees) => arrangement.nudge(0, 0, degrees)} />}
+      {turnable && <PieceInHand piece={piece ?? ""} builtIn={builtIn} onTurn={(degrees) => arrangement.nudge(0, 0, degrees)} />}
       {saved && <SavedNote />}
-      <PlanActions arrangement={arrangement} saved={saved} onSave={async () => setSaved(await arrangement.save())} onDone={onDone} />
+      <PlanActions arrangement={arrangement} saved={saved} onSave={async () => setSaved(await arrangement.save())} onReset={onReset} onDone={onDone} />
     </div>
   );
 }
@@ -172,6 +176,25 @@ function StillToFix({ findings }: { findings: Finding[] }) {
   );
 }
 
+/** What can be done with the piece being moved, and what moving it involves when it is built in. */
+function PieceInHand({ piece, builtIn, onTurn }: { piece: string; builtIn: boolean; onTurn: (degrees: number) => void }) {
+  return (
+    <>
+      {builtIn && <BuiltInNote piece={piece} />}
+      <TurnControls piece={piece} onTurn={onTurn} />
+    </>
+  );
+}
+
+function BuiltInNote({ piece }: { piece: string }) {
+  return (
+    <p className="flex items-start gap-2 text-pretty text-ink-muted">
+      <Wrench size={20} weight="bold" className="mt-0.5 shrink-0" aria-hidden />
+      The {piece} is built in, so moving it means construction work. Plumbing and power may need to move with it.
+    </p>
+  );
+}
+
 function SavedNote() {
   return (
     <p role="status" className="flex items-center gap-2 font-medium text-pass">
@@ -181,7 +204,7 @@ function SavedNote() {
   );
 }
 
-function PlanActions({ arrangement, saved, onSave, onDone }: { arrangement: Arrangement; saved: boolean; onSave: () => void; onDone: () => void }) {
+function PlanActions({ arrangement, saved, onSave, onReset, onDone }: { arrangement: Arrangement; saved: boolean; onSave: () => void; onReset: () => void; onDone: () => void }) {
   return (
     <ActionBar>
       <Button variant="primary" className="justify-center" disabled={!arrangement.canSave} onClick={onSave}>
@@ -192,7 +215,7 @@ function PlanActions({ arrangement, saved, onSave, onDone }: { arrangement: Arra
           <ArrowUUpLeft size={18} weight="bold" aria-hidden />
           Undo
         </Button>
-        <Button className="justify-center" disabled={!arrangement.hasMoves} onClick={arrangement.putBack}>
+        <Button className="justify-center" disabled={!arrangement.hasMoves} onClick={onReset}>
           <ArrowCounterClockwise size={18} weight="bold" aria-hidden />
           Put back
         </Button>

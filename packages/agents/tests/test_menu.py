@@ -208,5 +208,8 @@ def test_owner_words_drop_piece_ids_and_name_problems_by_title():
                                              TrainingEdits(), {})],
                 problem_view=[{"label": "P1", "title": "The path to the counter is too narrow"}])
     assert menu.picked_in_owner_words(1) == "slide Table 3 in further from the Counter"
+    built_in = Menu(problems={}, options=[Option(2, "slide Service counter [ab12] 12 in toward the wall (construction), for P2",
+                                                 TrainingEdits(), {})], problem_view=[])
+    assert built_in.picked_in_owner_words(2) == "slide Service counter 12 in toward the wall"
     assert menu.in_owner_words("It clears P1 and P7 by moving Chair [3f2a].") == (
         'It clears "The path to the counter is too narrow" and P7 by moving Chair.')

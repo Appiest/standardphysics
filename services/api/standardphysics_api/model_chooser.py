@@ -56,6 +56,11 @@ class ModelChooser:
         return reply["choices"][0]["message"]["content"] or ""
 
 
+def without_wall_shifts(menu: Menu) -> Menu:
+    """The menu with furniture and built-in moves only: the owner's plan can show a moved counter, not a moved wall."""
+    return replace(menu, options=[option for option in menu.options if not option.edits.wall_shifts])
+
+
 def furniture_only(menu: Menu) -> Menu:
     """The menu without construction options, since a proposal or a plan here carries furniture moves only."""
     return replace(menu, options=[option for option in menu.options

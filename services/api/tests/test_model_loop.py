@@ -3,9 +3,14 @@
 import json
 import re
 import urllib.error
+import uuid
+
+from standardphysics_agents.training.construction import FixtureMove
+from standardphysics_agents.training.edits import TrainingEdits
 
 from conftest import drain
 from standardphysics_api.model_chooser import ModelChooser
+from standardphysics_api.model_loop import _all_moves
 
 
 def _sample(make_client):
@@ -52,7 +57,9 @@ def test_the_model_takes_turns_until_it_stops_and_the_moves_add_up(make_client, 
     finished = events[-1]
     assert finished["moves"] and finished["explanation"]["fixed"] and finished["message"]
     assert finished["fixable_left"] <= turns[0]["fixable_left"] <= events[0]["fixable_left"]
-    assert events[0]["fixable_left"] > 0
+    assert events[0]["fixable_left"] > 0 and events[0]["turns_at_most"] == 5
+    assert 0 < len(events[0]["working_on"]) <= events[0]["fixable_left"]
+    assert all(len(turn["working_on"]) <= turn["fixable_left"] for turn in turns)
 
 
 def test_an_unreachable_model_ends_the_stream_with_a_way_to_recover(make_client, monkeypatch):
@@ -68,9 +75,16 @@ def test_an_unreachable_model_ends_the_stream_with_a_way_to_recover(make_client,
 def test_a_turn_whose_menu_runs_out_of_time_ends_the_loop_without_asking_the_model(make_client, monkeypatch):
     asked = []
     _configure(monkeypatch, lambda self, messages: asked.append(messages) or _first_option(self, messages))
-    monkeypatch.setattr("standardphysics_api.model_loop.MENU_SECONDS", 0.0)
+    monkeypatch.setattr("standardphysics_api.model_loop.LOOP_MENU_SECONDS", 0.0)
     client, scan_id = _sample(make_client)
     events = _events(client, scan_id)
     assert not asked
     assert [event["kind"] for event in events] == ["started", "finished"]
     assert events[-1]["moves"] == [] and events[-1]["fixable_left"] == events[0]["fixable_left"]
+
+
+def test_a_built_in_slide_becomes_a_move_of_that_piece_the_plan_can_show():
+    counter = uuid.uuid4()
+    [move] = _all_moves(TrainingEdits(fixture_moves=[FixtureMove(node_id=counter, dx_inches=12, dy_inches=-6)]))
+    assert move.node_id == counter and move.delta_rotation_z_degrees == 0
+    assert round(move.delta_translation.x, 4) == 0.3048 and round(move.delta_translation.y, 4) == -0.1524

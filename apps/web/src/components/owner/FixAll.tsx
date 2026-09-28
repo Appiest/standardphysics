@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle, CircleNotch, MagicWand, MinusCircle, Stop } from "@phosphor-icons/react";
+import { CheckCircle, CircleNotch, Hammer, MagicWand, MinusCircle, Stop } from "@phosphor-icons/react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import { type RefObject, useEffect, useReducer, useRef, useState } from "react";
 import { Explanation } from "@/components/proposal/ProposalReview";
@@ -11,11 +11,14 @@ import {
   fixAllAnnouncement,
   idleDetail,
   isAllCleared,
+  namedProblems,
   problemsLeft,
   problemsLeftLabel,
   stoppedSentence,
-  turnMoves,
-  workingDetail,
+  turnClock,
+  turnInProgress,
+  turnLines,
+  turnWork,
 } from "@/lib/fix-all-copy";
 import { ApiRefusal, modelLoopInfo, streamModelLoop } from "@/lib/layout-client";
 import { advanceModelLoop, type ModelLoopProgress, NOT_STARTED } from "@/lib/model-loop-progress";
@@ -23,6 +26,7 @@ import { easeDrawn, easeSweep } from "@/lib/motion";
 import type { ModelLoopEvent, NodeMove } from "@/types/contracts";
 
 type Props = { scanId: string; revision: number; onOpen: (moves: NodeMove[]) => void };
+type CardProps = Props & { label: string; onOneAtATime?: () => void };
 
 const UNABLE_TO_START = "Unable to start. Check your connection, then try again.";
 const SNAP = { type: "spring", duration: 0.3, bounce: 0 } as const;
@@ -33,7 +37,7 @@ const ICON_IN = { opacity: 0, scale: 0.25, filter: "blur(4px)" };
 const ICON_SHOWN = { opacity: 1, scale: 1, filter: "blur(0px)" };
 
 /** The model's label when one is set up to run the loop; null while asking or when none is. */
-function useModelLabel(): string | null {
+export function useModelLabel(): string | null {
   const [label, setLabel] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
@@ -83,13 +87,16 @@ function useModelLoop(scanId: string, revision: number) {
   return { progress, start, stop };
 }
 
-function Idle({ label, onStart }: { label: string; onStart: () => void }) {
+function Idle({ label, onStart, onOneAtATime }: { label: string; onStart: () => void; onOneAtATime?: () => void }) {
   return (
     <motion.div className="flex flex-col items-start gap-3" exit={{ opacity: 0, transition: { duration: 0.15 } }}>
-      <motion.button type="button" className={buttonClassName("primary")} onClick={onStart} whileTap={{ scale: 0.96 }}>
-        <MagicWand size={18} weight="bold" aria-hidden />
-        Fix all layout problems
-      </motion.button>
+      <div className="flex flex-wrap items-center gap-3">
+        <motion.button type="button" className={buttonClassName("primary")} onClick={onStart} whileTap={{ scale: 0.96 }}>
+          <MagicWand size={18} weight="bold" aria-hidden />
+          Fix room
+        </motion.button>
+        {onOneAtATime && <Button variant="quiet" onClick={onOneAtATime}>Fix one at a time</Button>}
+      </div>
       <p className="text-pretty text-sm text-ink-muted">{idleDetail(label)}</p>
     </motion.div>
   );
@@ -184,8 +191,18 @@ function TurnRow({ turn }: { turn: ModelLoopEvent }) {
     <motion.li className="flex gap-3" initial={BLURRED_IN} animate={SHARP} transition={GROW}>
       <TurnMark moved={turn.picked.length > 0} />
       <div className="min-w-0">
-        <ul className="flex flex-col gap-1 font-semibold">
-          {turnMoves(turn).map((line) => <li key={line}>{line}</li>)}
+        <ul className="flex flex-col gap-1">
+          {turnLines(turn).map((line) => (
+            <li key={line.text}>
+              <span className="font-semibold">{line.text}</span>
+              {line.construction && (
+                <span className="mt-0.5 flex items-center gap-1.5 text-sm text-attention">
+                  <Hammer size={14} weight="bold" aria-hidden />
+                  Needs a contractor
+                </span>
+              )}
+            </li>
+          ))}
         </ul>
         {turn.why && <p className="mt-0.5 text-pretty text-sm text-ink-muted">{turn.why}</p>}
       </div>
@@ -193,14 +210,42 @@ function TurnRow({ turn }: { turn: ModelLoopEvent }) {
   );
 }
 
-function WorkingRow({ label }: { label: string }) {
+/** Whole seconds since the component mounted, ticking once a second. */
+function useSecondsRunning(): number {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const began = Date.now();
+    const timer = setInterval(() => setSeconds(Math.floor((Date.now() - began) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return seconds;
+}
+
+/** The turn under way: its number and clock, the problems it is working on, and what it is doing meanwhile. */
+function WorkingRow({ label, progress }: { label: string; progress: ModelLoopProgress }) {
+  const seconds = useSecondsRunning();
+  const { named, more } = namedProblems(progress.workingOn);
   return (
     <motion.li className="flex gap-3" initial={BLURRED_IN} animate={SHARP}
       exit={{ opacity: 0, y: -4, transition: { duration: 0.15 } }} transition={GROW}>
       <CircleNotch size={20} className="mt-0.5 shrink-0 text-accent motion-safe:animate-spin" aria-hidden />
-      <div className="min-w-0">
-        <p className="font-semibold">Choosing the next move</p>
-        <p className="mt-0.5 text-pretty text-sm text-ink-muted">{workingDetail(label)}</p>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="font-semibold">{turnInProgress(progress.turns.length + 1, progress.turnsAtMost)}</p>
+          <span className="text-sm tabular-nums text-ink-muted" aria-hidden>{turnClock(seconds)}</span>
+        </div>
+        {named.length > 0 && (
+          <ul className="mt-1.5 flex flex-col gap-1 text-sm" aria-label="Problems this turn is working on">
+            {named.map((title) => (
+              <li key={title} className="flex items-start gap-2">
+                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent motion-safe:animate-pulse" aria-hidden />
+                <span className="text-pretty">{title}</span>
+              </li>
+            ))}
+            {more > 0 && <li className="pl-3.5 text-ink-muted">and {more} more</li>}
+          </ul>
+        )}
+        <p className="mt-1.5 text-pretty text-sm text-ink-muted">{turnWork(label)}</p>
       </div>
     </motion.li>
   );
@@ -212,7 +257,7 @@ function Turns({ progress, label }: { progress: ModelLoopProgress; label: string
     <ol className="mt-5 flex flex-col gap-4" aria-label="Moves the model made">
       <AnimatePresence initial={false}>
         {progress.turns.map((turn) => <TurnRow key={turn.turn ?? turn.picked.join()} turn={turn} />)}
-        {progress.phase === "running" && <WorkingRow key="working" label={label} />}
+        {progress.phase === "running" && <WorkingRow key={`working-${progress.turns.length}`} label={label} progress={progress} />}
       </AnimatePresence>
     </ol>
   );
@@ -273,7 +318,8 @@ function Run({ progress, label, onOpen, onStart, onStop }: EndingProps & { label
   );
 }
 
-function FixAllCard({ scanId, revision, onOpen, label }: Props & { label: string }) {
+/** One press asks the layout model to work through every open problem, turn by turn, and shows each move land. */
+export function FixAll({ scanId, revision, onOpen, label, onOneAtATime }: CardProps) {
   const { progress, start, stop } = useModelLoop(scanId, revision);
   const [content, height] = useContentHeight();
   const [growing, setGrowing] = useState(false);
@@ -282,21 +328,15 @@ function FixAllCard({ scanId, revision, onOpen, label }: Props & { label: string
       <p className="sr-only" role="status">{fixAllAnnouncement(progress)}</p>
       <motion.article initial={false} animate={{ height: height ?? "auto" }} transition={GROW}
         onAnimationStart={() => setGrowing(true)} onAnimationComplete={() => setGrowing(false)}
-        aria-label="Fix all layout problems" className={`rounded-2xl bg-sheet shadow-float ${growing ? "[clip-path:inset(-4rem_-4rem_0_-4rem_round_0_0_1rem_1rem)]" : ""}`}>
+        aria-label="Fix room" className={`rounded-2xl bg-sheet shadow-float ${growing ? "[clip-path:inset(-4rem_-4rem_0_-4rem_round_0_0_1rem_1rem)]" : ""}`}>
         <div ref={content} className="p-4">
           <AnimatePresence mode="wait" initial={false}>
             {progress.phase === "idle"
-              ? <Idle key="idle" label={label} onStart={start} />
+              ? <Idle key="idle" label={label} onStart={start} onOneAtATime={onOneAtATime} />
               : <Run key="run" progress={progress} label={label} onOpen={onOpen} onStart={start} onStop={stop} />}
           </AnimatePresence>
         </div>
       </motion.article>
     </MotionConfig>
   );
-}
-
-/** One press asks the layout model to work through every open problem, turn by turn, and shows each move land. */
-export function FixAll(props: Props) {
-  const label = useModelLabel();
-  return label ? <FixAllCard {...props} label={label} /> : null;
 }

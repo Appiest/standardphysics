@@ -131,6 +131,7 @@ class Option:
 _ID_TAG = re.compile(r" \[[0-9a-f]{4}\]")
 _PROBLEM_LABEL = re.compile(r"\bP\d+\b")
 _FOR_PROBLEM = re.compile(r",? for P\d+$")
+_CONSTRUCTION_TAG = re.compile(r" \(construction\)$")
 
 
 def _quoted_title(titles: dict[str, str], label: str) -> str:
@@ -159,8 +160,8 @@ class Menu:
         return _PROBLEM_LABEL.sub(lambda match: _quoted_title(titles, match.group(0)), untagged)
 
     def picked_in_owner_words(self, number: int) -> str:
-        """An option's wording for the owner, without the problem it was offered for."""
-        return self.in_owner_words(_FOR_PROBLEM.sub("", self.option(number).wording))
+        """An option's wording for the owner, without the problem it was offered for or its construction tag."""
+        return self.in_owner_words(_CONSTRUCTION_TAG.sub("", _FOR_PROBLEM.sub("", self.option(number).wording)))
 
 
 @dataclass(frozen=True)

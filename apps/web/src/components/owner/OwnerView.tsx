@@ -3,7 +3,7 @@
 import { ArrowLeft } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ComponentProps, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useProposalReview } from "@/components/proposal/useProposalReview";
 import { useArrangement } from "@/components/workspace/useArrangement";
 import { canBeCounter } from "@/lib/counter";
@@ -18,12 +18,12 @@ import { PathStep } from "./PathStep";
 import { PlanPanel } from "./PlanPanel";
 import { PlanReview } from "./PlanReview";
 import { RequestList } from "./RequestList";
-import { ResultsPanel, type Row } from "./ResultsPanel";
+import { ResultsPanel, type ResultsSection, type Row } from "./ResultsPanel";
 import { SavePrompt } from "./SavePrompt";
 import { SharePanel } from "./SharePanel";
 import { StepHeading } from "./StepHeading";
 import { StillToCheck } from "./StillToCheck";
-import { FixAll } from "./FixAll";
+import { FixAll, useModelLabel } from "./FixAll";
 import { ToolsPanel } from "./ToolsPanel";
 import { FoundLegend, FoundSection } from "./FoundList";
 import { LayoutStage } from "./LayoutStage";
@@ -169,8 +169,18 @@ function useSaveAsk(guest: boolean) {
 
 type Tool = "plan" | "wheelchair";
 
+function isBuiltIn(scene: SceneGraph, nodeId: string | null): boolean {
+  const node = scene.nodes.find((candidate) => candidate.id === nodeId);
+  return node !== undefined && node.kind === "object" && !node.movable;
+}
+
 function pieceLabel(scene: SceneGraph, nodeId: string | null): string | null {
   return scene.nodes.find((node) => node.id === nodeId)?.label ?? null;
+}
+
+/** The whole-room fix when a layout model is set up; null sends the owner to the one-at-a-time checklist instead. */
+function fixRoomCard(label: string | null, card: Omit<ComponentProps<typeof FixAll>, "label">): ReactNode {
+  return label ? <FixAll key={card.revision} {...card} label={label} /> : null;
 }
 
 function currentPanel(journey: Journey, counterSkipped: boolean, tool: Tool | null, readOnly: boolean): Panel | Tool {
@@ -221,7 +231,9 @@ function OwnerShop(props: ShopProps) {
   const [counterSkipped, setCounterSkipped] = useState(false);
   const [fixingHere, setFixingHere] = useState(false);
   const [planFinding, setPlanFinding] = useState<Finding | null>(null);
+  const [resultsSection, setResultsSection] = useState<ResultsSection>(null);
   const review = useProposalReview(scan.id, scene.revision, scan.owner_wishes);
+  const modelLabel = useModelLabel();
   const save = useSaveAsk(guest);
   const statuses = useStatuses(scan.id, guest, save.ask);
   const path = usePathEditor(scan.id, props.suggestedPath, props.defaultPlaces);
@@ -262,10 +274,19 @@ function OwnerShop(props: ShopProps) {
     arrangement.start();
     arrangement.load(moves);
   };
-  const leavePlan = () => {
+  const putItAllBack = () => {
     arrangement.reset();
     trial.clearFixedNote();
     review.clear();
+  };
+  /** "Put back" in the plan: every piece where it was scanned, as a step undo can take back, and no suggestion left under review. */
+  const putEverythingBack = () => {
+    arrangement.putBack();
+    trial.clearFixedNote();
+    review.clear();
+  };
+  const leavePlan = () => {
+    putItAllBack();
     setPlanFinding(null);
     tools.setTool(null);
   };
@@ -273,6 +294,8 @@ function OwnerShop(props: ShopProps) {
     found.clear();
     setSelected(finding.id === selected?.id ? null : finding);
   };
+
+  const fixRoom = fixRoomCard(modelLabel, { scanId: scan.id, revision: scene.revision, onOpen: openFixedLayout, onOneAtATime: () => setFixingHere(true) });
 
   const content: Record<Panel | Tool, () => ReactNode> = {
     waiting: () => <WaitingPanel journey={journey} />,
@@ -284,14 +307,15 @@ function OwnerShop(props: ShopProps) {
     plan: () => (
       <PlanPanel arrangement={arrangement} scanned={scanned} fixedNote={trial.fixedNote}
         pieceName={pieceLabel(scene, arrangement.activeId) ?? tryPiece?.label ?? null}
+        builtIn={isBuiltIn(scene, arrangement.activeId)}
         review={<PlanReview review={review} scene={scene} finding={planFinding} onRelook={showProposal} onPreview={arrangement.setActiveId} />}
-        onDone={leavePlan} />
+        onReset={putEverythingBack} onDone={leavePlan} />
     ),
     wheelchair: () => <WheelchairPanel onDone={() => tools.setTool(null)} />,
     results: () => (
       <ResultsStep shop={props} groups={groups} statuses={statuses} selectedId={selected?.id ?? null} onShow={show} onPlan={planFor}
         fixingHere={fixingHere} onStartFixing={() => setFixingHere(true)} onShared={save.ask} onStartPlanning={tools.startPlanning} onStartWheelchair={tools.startWheelchair}
-        toolsLead={<FixAll key={scene.revision} scanId={scan.id} revision={scene.revision} onOpen={openFixedLayout} />} />
+        fixRoom={fixRoom} section={resultsSection} onSection={setResultsSection} />
     ),
   };
 
@@ -336,7 +360,7 @@ function foundList(found: FoundObjects, trial: TryLayout, trying: boolean) {
 }
 
 /** The results and checklist, with sharing and the tools under them once the owner can use them. */
-function ResultsStep({ shop, groups, statuses, selectedId, fixingHere, onStartFixing, onShow, onPlan, onShared, onStartPlanning, onStartWheelchair, toolsLead }: {
+function ResultsStep({ shop, groups, statuses, selectedId, fixingHere, onStartFixing, onShow, onPlan, onShared, onStartPlanning, onStartWheelchair, fixRoom, section, onSection }: {
   shop: ShopProps;
   groups: ReturnType<typeof groupFindings>;
   statuses: ReturnType<typeof useStatuses>;
@@ -348,8 +372,10 @@ function ResultsStep({ shop, groups, statuses, selectedId, fixingHere, onStartFi
   onShared: () => void;
   onStartPlanning: () => void;
   onStartWheelchair: () => void;
-  /** Shown above the tools, such as the card that fixes every layout problem at once. */
-  toolsLead?: ReactNode;
+  /** The whole-room fix, shown first in the results. */
+  fixRoom: ReactNode;
+  section: ResultsSection;
+  onSection: (section: ResultsSection) => void;
 }) {
   const { scan, scene, journey, checklist, readOnly = false } = shop;
   const rows: Row[] = useMemo(
@@ -368,10 +394,13 @@ function ResultsStep({ shop, groups, statuses, selectedId, fixingHere, onStartFi
       footer={shop.footer}
       stillToCheck={<StillToCheck scanId={scan.id} questions={readOnly ? [] : groups.questions} requests={shop.requests} />}
       pending={groups.questions.length}
+      fixRoom={fixRoom}
+      section={section}
+      onSection={onSection}
       actions={{ onShow, onStatus: statuses.set, onPlan }}
     >
       {!readOnly && <SharePanel scanId={scan.id} shopName={scan.name} onShared={onShared} />}
-      {!readOnly && journey.tools_unlocked && <ToolsPanel scanId={scan.id} inApp={inApp()} onPlan={onStartPlanning} onWheelchair={onStartWheelchair} lead={toolsLead} />}
+      {!readOnly && journey.tools_unlocked && <ToolsPanel scanId={scan.id} inApp={inApp()} onPlan={onStartPlanning} onWheelchair={onStartWheelchair} />}
     </ResultsPanel>
   );
 }

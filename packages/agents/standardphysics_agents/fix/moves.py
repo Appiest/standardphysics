@@ -36,6 +36,9 @@ HAND_CARRIED_HEIGHT = 1.3
 HAND_CARRIED_SPAN = 0.9
 """Metres. Taller or longer than this and a piece is walked, not carried."""
 
+RIDING_GAP = 0.05
+"""A piece whose underside is within this of another's top is sitting on it."""
+
 
 def _turned(node: SceneNode, degrees: float, position: Vec3) -> Mat4:
     """A transform holding the node's rotation about Z plus `degrees`.
@@ -163,6 +166,52 @@ def apply_moves(graph: SceneGraph, moves: list[NodeMove]) -> SceneGraph:
     return graph.model_copy(
         update={"nodes": nodes, "revision": graph.revision + 1, "base_hash": None}
     )
+
+
+def riders_of(graph: SceneGraph, carrier: SceneNode) -> list[SceneNode]:
+    """What sits on the carrier's top: a register on a counter, a laptop on a desk."""
+    top, shape = top_of(carrier), footprint(carrier)
+    return [
+        node
+        for node in graph.nodes
+        if node.id != carrier.id
+        and not bounds_the_room(node)
+        and abs(underside(node) - top) <= RIDING_GAP
+        and contains_point(shape, (node.transform.position.x, node.transform.position.y))
+    ]
+
+
+def _riding(carrier: SceneNode, rider: SceneNode, move: NodeMove) -> NodeMove:
+    """The rider's share of the carrier's move: it turns about the carrier's centre, not its own."""
+    centre, at = carrier.transform.position, rider.transform.position
+    radians = math.radians(move.delta_rotation_z_degrees)
+    offset_x, offset_y = at.x - centre.x, at.y - centre.y
+    turned_x = offset_x * math.cos(radians) - offset_y * math.sin(radians)
+    turned_y = offset_x * math.sin(radians) + offset_y * math.cos(radians)
+    return NodeMove(
+        node_id=rider.id,
+        delta_translation=Vec3(
+            x=move.delta_translation.x + turned_x - offset_x,
+            y=move.delta_translation.y + turned_y - offset_y,
+            z=0.0,
+        ),
+        delta_rotation_z_degrees=move.delta_rotation_z_degrees,
+    )
+
+
+def carried_along(graph: SceneGraph, moves: list[NodeMove]) -> list[NodeMove]:
+    """The moves plus one for everything sitting on a moved piece, so the things
+    on a counter go where the counter goes. A rider the owner moved on its own
+    keeps that move."""
+    moved = {move.node_id for move in moves}
+    riding: list[NodeMove] = []
+    for move in moves:
+        carrier = graph.by_id(move.node_id)
+        for rider in riders_of(graph, carrier):
+            if rider.id not in moved:
+                moved.add(rider.id)
+                riding.append(_riding(carrier, rider, move))
+    return [*moves, *riding]
 
 
 def without(graph: SceneGraph, node_ids) -> SceneGraph:

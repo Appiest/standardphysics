@@ -92,9 +92,18 @@ def test_a_planned_layout_is_checked_and_leaves_the_scan_alone(make_client):
     assert client.get(f"/api/scans/{scan_id}/plans").json()["plans"] == []
 
 
-def test_a_plan_that_moves_something_fixed_is_refused(make_client):
+def test_a_plan_may_move_the_counter_as_construction(make_client):
     client, scan_id = _sample(make_client)
-    refused = client.post(f"/api/scans/{scan_id}/plans", json={"base_revision": 0, "moves": [_move(COUNTER, 0.5)]})
+    saved = client.post(f"/api/scans/{scan_id}/plans", json={"base_revision": 0, "moves": [_move(COUNTER, 0.5)]})
+    assert saved.status_code == 201
+
+
+def test_a_plan_that_sets_the_counter_on_a_display_case_is_refused(make_client):
+    client, scan_id = _sample(make_client)
+    nodes = {node["id"]: node["transform"]["m"] for node in client.get(f"/api/scans/{scan_id}/scene").json()["nodes"]}
+    onto = {"node_id": COUNTER, "delta_rotation_z_degrees": 0.0, "delta_translation": {
+        "x": nodes[CASE_EAST][3] - nodes[COUNTER][3], "y": nodes[CASE_EAST][7] - nodes[COUNTER][7], "z": 0.0}}
+    refused = client.post(f"/api/scans/{scan_id}/plans", json={"base_revision": 0, "moves": [onto]})
     assert refused.status_code == 409
 
 
