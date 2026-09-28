@@ -455,6 +455,25 @@ def test_budget_limit_stops_before_a_billable_request(make_client):
     assert "cost limit" in result["message"]
 
 
+@pytest.mark.parametrize("cap", ["nan", "inf", "-inf", "0", "-0.5", "fifty cents"])
+def test_a_cost_cap_no_request_could_exceed_is_refused_at_startup(monkeypatch, cap):
+    monkeypatch.setenv("SP_REARRANGE_COST_CAP_DOLLARS", cap)
+    with pytest.raises(ValueError, match="SP_REARRANGE_COST_CAP_DOLLARS must be a positive number of dollars"):
+        Settings.from_environment()
+
+
+def test_a_cost_cap_in_dollars_is_read(monkeypatch):
+    monkeypatch.setenv("SP_REARRANGE_COST_CAP_DOLLARS", "1.25")
+    assert Settings.from_environment().rearrange_cost_cap_dollars == 1.25
+
+
+@pytest.mark.parametrize("cap", [math.nan, math.inf, 0.0])
+def test_the_openrouter_model_refuses_a_cap_the_budget_check_cannot_hold(cap):
+    with pytest.raises(ValueError, match="cost cap"):
+        OpenRouterRearrange(api_key="test", model="anthropic/claude-opus-5.5", reasoning_effort="low",
+                            token_cap=4000, cost_cap_dollars=cap, price=lambda name: (0.01, 0.02))
+
+
 def test_openrouter_estimates_usage_when_the_provider_omits_it():
     model = OpenRouterRearrange(api_key="test", model="anthropic/claude-opus-5.5",
                                 reasoning_effort="low", token_cap=4000, cost_cap_dollars=0.50,

@@ -48,6 +48,8 @@ class OpenRouterRearrange:
     _prices: tuple[float, float] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
+        if not math.isfinite(self.cost_cap_dollars) or self.cost_cap_dollars <= 0:
+            raise ValueError(f"the rearrangement cost cap must be positive dollars, not {self.cost_cap_dollars}")
         if self.router is None:
             self.router = OpenRouter(api_key=self.api_key, model=self.model, timeout=120.0)
 

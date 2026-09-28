@@ -7,6 +7,7 @@ never appear in a response, a log line or the web build.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import pathlib
 import secrets
@@ -55,6 +56,19 @@ def _bounded_integer(name: str, default: int, low: int, high: int) -> int:
     value = default if raw is None else int(raw)
     if not low <= value <= high:
         raise ValueError(f"{name} must be between {low} and {high}")
+    return value
+
+
+def _positive_dollars(name: str, default: float) -> float:
+    """A spending limit in dollars. NaN, infinity, zero or less would each let the budget check
+    pass every request or none, so they stop the server at startup instead."""
+    raw = os.environ.get(name)
+    try:
+        value = default if raw is None else float(raw)
+    except ValueError:
+        value = math.nan
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be a positive number of dollars, like 0.50, not {raw!r}")
     return value
 
 
@@ -320,7 +334,7 @@ class Settings:
             rearrange_openrouter_model=os.environ.get("SP_REARRANGE_OPENROUTER_MODEL", "anthropic/claude-opus-5.5"),
             rearrange_reasoning_effort=os.environ.get("SP_REARRANGE_REASONING_EFFORT", "low"),
             rearrange_token_cap=_bounded_integer("SP_REARRANGE_TOKEN_CAP", 4000, 1024, 16000),
-            rearrange_cost_cap_dollars=float(os.environ.get("SP_REARRANGE_COST_CAP_DOLLARS", "0.50")),
+            rearrange_cost_cap_dollars=_positive_dollars("SP_REARRANGE_COST_CAP_DOLLARS", 0.50),
             rearrange_deployment=os.environ.get("SP_REARRANGE_DEPLOYMENT") or None,
             rearrange_keep_warm_seconds=_bounded_integer("SP_REARRANGE_KEEP_WARM_SECONDS", 300, 0, 3600),
             rearrange_fake_model=_flag("SP_REARRANGE_FAKE_MODEL"),
