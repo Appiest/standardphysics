@@ -90,6 +90,7 @@ from .rearrangement_data import record_outcome
 from .replays import install_replay_routes
 from .report import build_report
 from .route import confirm, legs, suggestion
+from .route import saved as saved_scenario
 from .seed import seed_sample_shop
 from .settings import Settings
 from .sharing import install_share_routes
@@ -581,12 +582,7 @@ def _install_workspace_routes(app: FastAPI, database: Database, store: ArtifactS
 
     @app.get("/api/scans/{scan_id}/scenario", response_model=Scenario)
     def scenario(scan_id: uuid.UUID) -> Scenario:
-        with database.connect() as connection:
-            _scan_or_404(connection, scan_id)
-            found = repo.get_scenario(connection, scan_id)
-        if found is None:
-            raise ApiProblem(404, "not ready")
-        return found
+        return saved_scenario(database, scan_id)
 
     @app.get("/api/scans/{scan_id}/assessment", response_model=Assessment)
     def assessment(scan_id: uuid.UUID, revision: int | None = None) -> Assessment:
@@ -732,7 +728,7 @@ def _install_route_routes(app: FastAPI, database: Database, stages: Stages, work
         with database.transaction() as connection:
             _scan_or_404(connection, scan_id)
             repo.set_space_typology(connection, scan_id, body.space_typology)
-            return repo.get_scan(connection, scan_id)
+            return _scan_or_404(connection, scan_id)
 
     @app.put("/api/scans/{scan_id}/scenario", response_model=Scenario)
     def confirm_scenario(scan_id: uuid.UUID, body: Scenario) -> Scenario:

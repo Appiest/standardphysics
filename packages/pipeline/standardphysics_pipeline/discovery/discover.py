@@ -567,7 +567,7 @@ def _node_for(object_: DiscoveredObject, graph: SceneGraph, viewpoints: int) -> 
         raw_category=object_.name.replace(" ", "_"),
         dimensions=object_.box.as_vec3(),
         transform=object_.box.as_transform(),
-        quality="measured" if viewpoints >= CONFIDENT_VIEWS else "needs_another_look",
+        quality="measured" if viewpoints >= CONFIDENT_VIEWS and object_.name_settled else "needs_another_look",
         movable=object_.movable and not taxonomy.is_fixture_name(object_.name),
         labeled_by="discovery",
         parent_id=resting,

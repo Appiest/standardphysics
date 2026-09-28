@@ -79,7 +79,7 @@ def _measure_scan_surfaces(graph: SceneGraph, lidar_mesh_path: pathlib.Path | No
     return graph.model_copy(update={"nodes": surfaces.nodes})
 
 
-ROUTE_SUBJECTS = frozenset({"route", "route_leg", "route_turn", "route_dead_end"})
+ROUTE_SUBJECTS = frozenset({"route", "route_leg", "route_turn", "turning_room"})
 
 UNPLACED = Stop(name="Unplaced", position=Vec3(x=0.0, y=0.0, z=0.0))
 NO_ROUTE_YET = Scenario(name="No route yet", stops=[UNPLACED, UNPLACED])

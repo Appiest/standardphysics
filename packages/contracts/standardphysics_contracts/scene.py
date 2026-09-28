@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -563,8 +564,39 @@ class Stop(BaseModel):
     """
 
 
+class StaffArea(BaseModel):
+    """Floor only staff use, such as the kitchen behind the counter.
+
+    ADA 2010 203.9 asks only that a work area for employees can be approached,
+    entered and exited, so the customer checks leave whatever lies inside it
+    alone. A rectangle on the floor, turned about its centre.
+    """
+
+    name: str = "Kitchen"
+    centre: Vec3
+    width: float = Field(gt=0)
+    """Metres along the area's own x axis."""
+    depth: float = Field(gt=0)
+    """Metres along the area's own y axis."""
+    rotation_z_degrees: float = 0.0
+
+    def holds(self, x: float, y: float) -> bool:
+        turn = math.radians(self.rotation_z_degrees)
+        dx, dy = x - self.centre.x, y - self.centre.y
+        along = dx * math.cos(turn) + dy * math.sin(turn)
+        across = -dx * math.sin(turn) + dy * math.cos(turn)
+        return abs(along) <= self.width / 2 and abs(across) <= self.depth / 2
+
+
 class Scenario(BaseModel):
     """The routine we screen. Legs run between consecutive stops."""
 
     name: str = "Order a drink"
     stops: list[Stop] = Field(min_length=2)
+    staff_only: list[StaffArea] | None = Field(default=None, exclude_if=lambda value: value is None)
+    """Areas customers don't go. None means nobody has said yet, so the checks
+    and the owner both start from a guess; an empty list means the owner said
+    there are none."""
+
+    def in_staff_area(self, x: float, y: float) -> bool:
+        return any(area.holds(x, y) for area in self.staff_only or [])

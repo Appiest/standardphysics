@@ -16,7 +16,7 @@ from standardphysics_pipeline import footprint, gap_between
 from .checks import REGISTRY, CheckContext, Observation, roles
 from .checks.dining import required_count, surface_height_inches, within_range
 from .checks.result import as_result
-from .checks.route_geometry import reversal_stops
+from .checks.route_geometry import stops_needing_turning_space
 from .precedents import PrecedentCompiler, check_precedent_constraints
 from .precedents.verification import PrecedentLedger, load_precedent_ledger, load_precedents
 from .rules import AgentRulePack, RuleSpec, VerificationLedger, load_ledger, load_pack
@@ -84,7 +84,7 @@ def _applicable_rule(rule: RuleSpec, graph: SceneGraph, scenario: Scenario, typo
         "route": True,
         "route_leg": len(scenario.stops) > 1,
         "route_turn": len(scenario.stops) > 2,
-        "route_dead_end": bool(reversal_stops(scenario.stops)),
+        "turning_room": bool(stops_needing_turning_space(scenario.stops)),
         "door": bool(roles.doors(graph)),
         "entrance": roles.entrance(graph) is not None,
         "service_counter": bool(roles.service_counters(graph)),

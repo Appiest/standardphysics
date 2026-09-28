@@ -17,8 +17,11 @@ from standardphysics_pipeline import PipelineMeasurements, footprint, gap_betwee
 
 @pytest.fixture
 def room():
+    """The captured room, with its dead-end stop taken as a restroom so 304.3 applies there."""
     data = json.loads((Path(__file__).parent / "fixtures/placement-room.json").read_text())
-    return SceneGraph.model_validate(data["graph"]), Scenario.model_validate(data["scenario"])
+    scenario = Scenario.model_validate(data["scenario"])
+    stops = [stop.model_copy(update={"name": "Restroom"}) if stop.name == "Seat" else stop for stop in scenario.stops]
+    return SceneGraph.model_validate(data["graph"]), scenario.model_copy(update={"stops": stops})
 
 
 def test_the_captured_room_gets_two_actual_moves_and_no_measured_failures(room, pack, ledger):

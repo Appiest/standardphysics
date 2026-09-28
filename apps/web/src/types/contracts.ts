@@ -1597,10 +1597,28 @@ export interface SurfaceCoverage {
  */
 export interface Scenario {
   name: string;
+  staff_only?: StaffArea[] | null;
   /**
    * @minItems 2
    */
   stops: [Stop, Stop, ...Stop[]];
+}
+/**
+ * Floor only staff use, such as the kitchen behind the counter.
+ *
+ * ADA 2010 203.9 asks only that a work area for employees can be approached,
+ * entered and exited, so the customer checks leave whatever lies inside it
+ * alone. A rectangle on the floor, turned about its centre.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "StaffArea".
+ */
+export interface StaffArea {
+  centre: Vec3;
+  depth: number;
+  name: string;
+  rotation_z_degrees: number;
+  width: number;
 }
 /**
  * A destination on a customer's route.

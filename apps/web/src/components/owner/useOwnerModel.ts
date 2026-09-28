@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import type { FoundHandles } from "@/components/workspace/FoundOutlines";
 import type { ArrangeHandlers } from "@/components/workspace/ShopModel";
+import type { StaffHandles } from "@/components/workspace/StaffAreas";
 import type { RouteHandles } from "@/components/workspace/StopMarkers";
 import type { Arrangement } from "@/components/workspace/useArrangement";
 import { overviewPose, poseAtPoint, poseFromLocus, topDownPose, type ViewerPose } from "@/lib/camera";
@@ -25,6 +26,20 @@ function useRouteHandles(path: PathEditor | null, setDragging: (on: boolean) => 
     markers: path.markers, editable: true, legs: path.legs,
     onGrab: () => setDragging(true), onDrag: path.drag, onDrop: () => { setDragging(false); path.settle(); },
   }), [path, setDragging]);
+}
+
+/** The staff-only floor: draggable while the owner shapes the path, shown on the confirmed one otherwise. */
+function useStaffHandles(path: PathEditor | null, scenario: Scenario | null, setDragging: (on: boolean) => void): StaffHandles | null {
+  return useMemo(() => {
+    if (path) {
+      return {
+        areas: path.scenario?.staff_only ?? [], editable: true,
+        onGrab: () => setDragging(true), onMove: path.moveStaff, onResize: path.resizeStaff, onDrop: () => setDragging(false),
+      };
+    }
+    const areas = scenario?.staff_only ?? [];
+    return areas.length === 0 ? null : { areas, editable: false, onGrab: STAY_PUT, onMove: STAY_PUT, onResize: STAY_PUT, onDrop: STAY_PUT };
+  }, [path, scenario, setDragging]);
 }
 
 function useArrangeHandlers(arrangement: Arrangement | null, setDragging: (on: boolean) => void): ArrangeHandlers | null {
@@ -75,6 +90,7 @@ export function useOwnerModel(mode: Mode, onPickNode: (nodeId: string) => void, 
   const editing = useRouteHandles(mode.path, setDragging);
   const confirmed = useConfirmedRoute(mode.scenario, mode.walkedLegs, mode.wheelchair);
   const route = editing ?? confirmed;
+  const staff = useStaffHandles(mode.path, mode.scenario, setDragging);
   const arrange = useArrangeHandlers(mode.arrangement, setDragging);
   const fromAbove = mode.panel === "counter" || mode.panel === "path";
   const overview = useMemo(() => (fromAbove ? topDownPose(mode.scene) : overviewPose(mode.scene)), [fromAbove, mode.scene]);
@@ -90,6 +106,7 @@ export function useOwnerModel(mode: Mode, onPickNode: (nodeId: string) => void, 
     wheelchair: mode.wheelchair,
     wheelchairStart,
     route,
+    staff,
     found: mode.found,
     frameShift: mode.frameShift,
     arrange,
