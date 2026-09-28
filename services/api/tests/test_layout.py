@@ -92,6 +92,12 @@ def test_a_blocked_layout_cannot_be_saved(make_client):
     assert client.get(f"/api/scans/{scan_id}/scene").json()["revision"] == 0
 
 
+def test_saving_refuses_a_counter_move_because_the_construction_has_not_happened(make_client):
+    client, scan_id = _sample(make_client)
+    response = client.post(f"/api/scans/{scan_id}/revisions", json={"base_revision": 0, "moves": [_move(COUNTER, dy=-0.2)]})
+    assert response.status_code == 409
+
+
 def test_each_revision_keeps_its_own_assessment(make_client):
     client, scan_id = _sample(make_client)
     fix = _move(CASE_EAST, dx=to_meters(FIX_SHIFT_INCHES))

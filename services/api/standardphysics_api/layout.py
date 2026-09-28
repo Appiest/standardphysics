@@ -2,10 +2,11 @@
 
 Moves go through Lane C's `apply_moves` and `violations`, the same hard
 constraints the fix agent works under, so a drag can never save something the
-agent would reject. The owner may also drag a built-in fixture such as a
-counter. That is construction, not rearranging, so it is held to the rules for a
-relocated fixture instead of being refused, and whatever sits on a moved piece
-goes with it.
+agent would reject. Whatever sits on a moved piece goes with it. While
+planning, the owner may also drag a built-in fixture such as a counter: that is
+construction, held to the rules for a relocated fixture instead of refused. A
+saved layout says what the room is now, and construction has not happened yet,
+so saving still refuses a moved fixture.
 """
 
 from __future__ import annotations
@@ -46,13 +47,13 @@ def _base(database: Database, scan_id: uuid.UUID, base_revision: int):
     return repo.graph_of(row), latest["revision"], scenario
 
 
-def _candidate(base: SceneGraph, moves: list[NodeMove]) -> tuple[SceneGraph, list[Blocked]]:
+def _candidate(base: SceneGraph, moves: list[NodeMove], construction: bool = False) -> tuple[SceneGraph, list[Blocked]]:
     known = {node.id for node in base.nodes}
     unknown = sorted(str(move.node_id) for move in moves if move.node_id not in known)
     if unknown:
         raise ApiProblem(400, "unknown node", need=unknown)
     moves = carried_along(base, moves)
-    relocated = {move.node_id for move in moves if _is_fixture(base.by_id(move.node_id))}
+    relocated = {move.node_id for move in moves if construction and _is_fixture(base.by_id(move.node_id))}
     built = apply_moves(base, [move for move in moves if move.node_id in relocated])
     candidate = apply_moves(built, [move for move in moves if move.node_id not in relocated])
     broken = [*violations(built, candidate), *relocation_violations(base, candidate, relocated)]
@@ -67,7 +68,7 @@ def _is_fixture(node: SceneNode) -> bool:
 
 def check_layout(database: Database, stages: Stages, scan_id: uuid.UUID, body: LayoutCheckRequest) -> LayoutCheckResult:
     base, _, scenario = _base(database, scan_id, body.base_revision)
-    candidate, blocked = _candidate(base, body.moves)
+    candidate, blocked = _candidate(base, body.moves, construction=True)
     findings = stages.assess(candidate, scenario, candidate.revision + 1).findings
     return LayoutCheckResult(
         sequence=body.sequence, graph_hash=graph_hash(candidate), findings=findings, blocked=blocked
