@@ -25,6 +25,29 @@ known-first-party = ["standardphysics_api", "conftest"]
 [tool.ruff.lint.mccabe]
 max-complexity = 10
 
+[tool.coverage.run]
+# CI measures the API suite (see the test job in .github/workflows/ci.yml).
+# Packages are named by import name rather than listed as `source` folders:
+# coverage.xml writes each file relative to the `source` folder it sits in, so
+# every package's __init__.py became "__init__.py" and overwrote the others.
+# With source_pkgs and relative_files, the paths are the checkout's own, which
+# scripts/coverage_floors.py names modules by. The scripts folder is left out:
+# most of it is one-off research tooling.
+branch = true
+relative_files = true
+source_pkgs = [
+    "standardphysics_contracts",
+    "standardphysics_fixtures",
+    "standardphysics_pipeline",
+    "standardphysics_agents",
+    "standardphysics_api",
+    "loopforge",
+]
+
+[tool.coverage.report]
+skip_empty = true
+precision = 1
+
 [tool.mypy]
 files = [
     "packages/contracts/standardphysics_contracts",

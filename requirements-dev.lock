@@ -64,6 +64,10 @@ click==8.5.0
     #   weave
 colorama==0.4.6 ; sys_platform == 'win32'
     # via pytest
+coverage==7.16.2
+    # via
+    #   -r requirements-dev.in
+    #   pytest-cov
 cryptography==50.0.1
     # via
     #   -c requirements.lock
@@ -308,7 +312,9 @@ platformdirs==4.12.0
     #   -c requirements.lock
     #   wandb
 pluggy==1.6.0
-    # via pytest
+    # via
+    #   pytest
+    #   pytest-cov
 polyfile-weave==0.5.9
     # via
     #   -c requirements.lock
@@ -357,7 +363,10 @@ pyreadline3==3.5.6 ; sys_platform == 'win32'
 pytest==9.1.1
     # via
     #   -r requirements-dev.in
+    #   pytest-cov
     #   standardphysics-api
+pytest-cov==7.1.0
+    # via -r requirements-dev.in
 python-multipart==0.0.32
     # via marimo
 pyyaml==6.0.3
@@ -415,6 +424,8 @@ tenacity==9.1.4
     #   -c requirements.lock
     #   gql
     #   weave
+tomli==2.4.1 ; python_full_version <= '3.11'
+    # via coverage
 tomlkit==0.15.1
     # via marimo
 trimesh==5.1.0

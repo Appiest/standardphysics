@@ -42,8 +42,49 @@ jobs:
         run: |
           python -m pip install mypy==2.3.1
           python -m mypy
-      - run: python -m pytest
-      - run: python -m pytest services/api/tests -q
+      # Both suites write a JUnit report for the skip summary. Coverage is
+      # measured on the API suite, which exercises every module with a floor;
+      # the root suite is mostly numeric pipeline code, where tracing costs the
+      # most and no floor applies.
+      - run: python -m pytest --junitxml=test-reports/junit-root.xml
+      - run: python -m pytest services/api/tests -q --cov --cov-report= --junitxml=test-reports/junit-api.xml
+        env:
+          COVERAGE_FILE: test-reports/.coverage
+      - name: Summarise skipped tests
+        if: ${{ !cancelled() }}
+        run: |
+          for suite in root api; do
+            report="test-reports/junit-$suite.xml"
+            if [ -f "$report" ]; then
+              python scripts/skipped_tests.py "Skipped in the $suite suite" "$report" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+      - name: Summarise coverage
+        env:
+          COVERAGE_FILE: test-reports/.coverage
+        run: |
+          python -m coverage xml -o test-reports/coverage.xml
+          {
+            echo "### Python coverage"
+            echo
+            echo "<details><summary>Lines and branches per module</summary>"
+            echo
+            python -m coverage report --format=markdown
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+      # An explicit shell turns on pipefail, so tee cannot hide the script's exit status.
+      - name: Hold the service's core modules to their coverage floors
+        shell: bash
+        run: python scripts/coverage_floors.py test-reports/coverage.xml | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        with:
+          name: python-coverage
+          path: |
+            test-reports/coverage.xml
+            test-reports/junit-*.xml
+          retention-days: 14
 
   contracts:
     name: Generated types match the contracts
