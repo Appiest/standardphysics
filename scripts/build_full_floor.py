@@ -12,6 +12,13 @@ same motion the owner gave its boxes, so the photographs keep pointing at the
 surfaces they photographed. Its painted surface is moved the same way and
 joined with the others, so the floor looks the way each walk already looked.
 
+The boxes come from each walk as its own processing left them, not as its
+phone measured them: processing removes and renames boxes as well as adding
+them. Where two walks overlap and both boxed one thing, it is kept once.
+`--regraph <floor>` redoes only that on a floor built before, as a new revision
+of it that keeps every name the owner gave by hand, without touching its mesh,
+photographs or painted surface.
+
 The motion is recovered rather than trusted: every box's placed position is a
 correspondence against where the phone measured it, and those go through the
 registration fit, which refuses when they do not agree on one rigid motion.
@@ -55,10 +62,10 @@ from standardphysics_pipeline.textures.library_scan import painted_scans_joined 
 from standardphysics_api import repository  # noqa: E402
 from standardphysics_api.combine import (  # noqa: E402
     captured_graph,
-    carried_onto_floor,
-    found_since_capture,
     placement_matrix,
     placement_since_capture,
+    walk_on_floor,
+    without_repeats_across_walks,
 )
 from standardphysics_api.db import Database  # noqa: E402
 from standardphysics_api.store import ArtifactStore  # noqa: E402
@@ -129,17 +136,33 @@ def _moved(columns: list[float], motion: np.ndarray) -> list[float]:
     return (motion @ matrix).reshape(16, order="F").tolist()
 
 
-def _findings(connection, store: ArtifactStore, walk: Walk, room: dict) -> list[SceneNode]:
-    """What discovery found in the walk's own photos, moved to where the walk was placed."""
+def _walk_nodes(connection, store: ArtifactStore, walk: Walk, room: dict, placed: SceneGraph) -> list[SceneNode]:
+    """The walk as its own processing left it, moved to where the walk was placed."""
     capture = captured_graph(store, walk.scan_id)
     placed_ids = {node.id: uuid.UUID(node_id) for node, node_id in zip(capture.nodes, room["node_ids"])}
-    found = found_since_capture(_latest_graph(connection, walk.scan_id), capture)
-    return carried_onto_floor(found, walk.to_floor, placed_ids, walk.frame_id)
+    latest = _latest_graph(connection, walk.scan_id)
+    return walk_on_floor(latest, capture, placed, walk.to_floor, placed_ids, walk.frame_id)
 
 
-def _with_findings(placed: SceneGraph, findings: list[SceneNode]) -> SceneGraph:
-    present = {node.id for node in placed.nodes}
-    return placed.model_copy(update={"nodes": [*placed.nodes, *(node for node in findings if node.id not in present)]})
+def _joined(placed: SceneGraph, walk_nodes: list[list[SceneNode]], rooms: list[dict]) -> SceneGraph:
+    """The placed scan with every walk's boxes replaced by the walk as processed, each thing once."""
+    phone_boxes = {uuid.UUID(node_id) for room in rooms for node_id in room["node_ids"]}
+    added_on_the_floor = [node for node in placed.nodes if node.id not in phone_boxes]
+    return placed.model_copy(update={"nodes": [*added_on_the_floor, *without_repeats_across_walks(walk_nodes)]})
+
+
+def _regraph(database: Database, floor_id: uuid.UUID, joined: SceneGraph, dry_run: bool) -> None:
+    """A new revision of a floor built before, with the walks joined again and the owner's names kept."""
+    with database.transaction() as connection:
+        latest = _latest_graph(connection, floor_id)
+        by_hand = {node.id: node for node in latest.nodes if node.labeled_by == "owner"}
+        nodes = [by_hand.pop(node.id, node) for node in joined.nodes]
+        graph = latest.model_copy(update={"revision": latest.revision + 1, "nodes": [*nodes, *by_hand.values()]})
+        print(f"{floor_id}: {len(latest.nodes)} nodes at revision {latest.revision}, {len(graph.nodes)} in the next")
+        if dry_run:
+            return
+        repository.save_revision(connection, graph, source="rebuild", base_revision=latest.revision)
+        repository.enqueue_job(connection, floor_id, ASSESS, graph.revision)
 
 
 def _mesh_parts(store: ArtifactStore, walk: Walk) -> list[dict]:
@@ -234,11 +257,16 @@ def _insert_scan(database: Database, args: argparse.Namespace, scan_id: uuid.UUI
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--placed-scan", required=True, help="the merged scan whose walks were placed")
-    parser.add_argument("--name", required=True)
-    parser.add_argument("--owner", required=True)
+    parser.add_argument("--name", help="what to call a new floor")
+    parser.add_argument("--owner", help="who owns a new floor")
+    parser.add_argument("--regraph", help="a floor built before, to give the walks' current boxes as a new revision")
+    parser.add_argument("--dry-run", action="store_true", help="with --regraph, say what would change and save nothing")
     parser.add_argument("--db", type=pathlib.Path, default=pathlib.Path("services/api/var/standardphysics.sqlite3"))
     parser.add_argument("--scans", type=pathlib.Path, default=pathlib.Path("services/api/var/scans"))
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.regraph and not (args.name and args.owner):
+        parser.error("a new floor needs --name and --owner")
+    return args
 
 
 def main() -> int:
@@ -252,11 +280,15 @@ def main() -> int:
         if placed.revision == 0:
             raise SystemExit("that scan's walks have not been placed yet: align them and save first")
         walks = [_walk(store, room, placed, index) for index, room in enumerate(manifest["rooms"])]
-        painted = [_painted_scan(connection, store, walk) for walk in walks]
-        findings = [
-            node for walk, room in zip(walks, manifest["rooms"]) for node in _findings(connection, store, walk, room)
+        walk_nodes = [
+            _walk_nodes(connection, store, walk, room, placed) for walk, room in zip(walks, manifest["rooms"])
         ]
-        placed = _with_findings(placed, findings)
+        placed = _joined(placed, walk_nodes, manifest["rooms"])
+    if args.regraph:
+        _regraph(database, uuid.UUID(args.regraph), placed, args.dry_run)
+        return 0
+    with database.connect() as connection:
+        painted = [_painted_scan(connection, store, walk) for walk in walks]
 
     scan_id = uuid.uuid4()
     store.artifact_path(scan_id, "poses").parent.mkdir(parents=True, exist_ok=True)
@@ -275,7 +307,7 @@ def main() -> int:
     ]
     _insert_scan(database, args, scan_id, placed, artifacts)
     print(f"\n{args.name}: {scan_id}")
-    print(f"  {len(parts)} mesh parts, {len(poses)} cameras, {len(frames)} photographs, {len(findings)} discovered objects")
+    print(f"  {len(parts)} mesh parts, {len(poses)} cameras, {len(frames)} photographs, {len(placed.nodes)} boxes")
     print(f"  painted floor at {_publish_floor(database, store, scan_id, walks, painted)}")
     return 0
 
