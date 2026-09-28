@@ -84,7 +84,28 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm run test
+      # V8 coverage slows the outlet-reach route searches in
+      # wheelchair-motion.test.ts past vitest's 5 second default, so this run
+      # allows 20. vitest.config.mts holds src/lib to its coverage floors.
+      - run: npm run test:coverage
+      - name: Summarise web coverage
+        if: ${{ !cancelled() && hashFiles('apps/web/coverage/files.txt') != '' }}
+        run: |
+          {
+            echo "### Web coverage"
+            echo
+            echo '```'
+            cat coverage/summary.txt
+            echo '```'
+            echo
+            echo "<details><summary>Lines and branches per file</summary>"
+            echo
+            echo '```'
+            cat coverage/files.txt
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
       - run: npm run build
 
   e2e:
