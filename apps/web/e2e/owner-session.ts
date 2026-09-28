@@ -44,16 +44,17 @@ export async function createShopThroughApi(page: Page, name: string): Promise<st
 const JOURNEY_WAIT_MS = 60_000;
 
 /**
- * Walks the sample shop's owner steps to its results: no to each question,
- * skip each photo and measurement. Any step already taken is passed over, so
- * this works however far the shop has got.
+ * Walks the sample shop's owner steps to its results and opens the share
+ * folder: no to each question, skip each photo and measurement. Any step
+ * already taken is passed over, so this works however far the shop has got.
  */
 export async function reachSampleResults(page: Page) {
   const shareHeading = page.getByRole("heading", { name: "Share your report" });
-  const nextAnswer = page.getByRole("button", { name: "No", exact: true }).or(page.getByRole("button", { name: "Skip for now" })).first();
+  const shareFolder = page.getByRole("button", { name: /^Share and tools/ });
+  const nextStep = page.getByRole("button", { name: "No", exact: true }).or(page.getByRole("button", { name: "Skip for now" })).or(shareFolder).first();
   await expect(async () => {
     if (await shareHeading.isVisible()) return;
-    if (await nextAnswer.isVisible()) await nextAnswer.click();
+    if (await nextStep.isVisible()) await nextStep.click();
     await expect(shareHeading).toBeVisible({ timeout: 1_500 });
   }).toPass({ timeout: JOURNEY_WAIT_MS });
 }
