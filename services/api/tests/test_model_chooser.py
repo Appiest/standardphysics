@@ -55,3 +55,16 @@ def test_a_model_that_picks_nothing_falls_back_to_the_search(make_client, monkey
     client, scan_id, finding_id = _sample(make_client)
     result = _propose(client, scan_id, finding_id)
     assert result["proposal"] is not None and not result["message"].startswith("The model picked")
+
+
+def test_a_spent_budget_answers_without_asking_the_model_or_searching(make_client, monkeypatch):
+    asked = []
+    monkeypatch.setenv("SP_MENU_MODEL_URL", "http://model.test/v1")
+    monkeypatch.setenv("SP_MENU_MODEL", "test-model")
+    monkeypatch.setattr(ModelChooser, "ask", lambda self, messages: asked.append(messages) or _first_option(messages))
+    monkeypatch.setattr("standardphysics_api.proposals.MENU_SECONDS", 0.0)
+    monkeypatch.setattr("standardphysics_api.proposals.SEARCH_AFTER_MENU_SECONDS", 0.0)
+    client, scan_id, finding_id = _sample(make_client)
+    result = _propose(client, scan_id, finding_id)
+    assert not asked
+    assert result["proposal"] is None and result["question"] is None

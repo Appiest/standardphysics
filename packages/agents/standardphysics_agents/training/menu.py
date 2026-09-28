@@ -55,6 +55,7 @@ from standardphysics_pipeline.footprints import rotation_about_z
 
 from ..evaluation.gate import accepts
 from ..fix import CandidateRejection, candidates, combine_rejections, pinch_from, room_heading, snap_moves
+from ..fix.budget import out_of_time
 from ..fix.built_ins import built_in_set_moves
 from ..fix.clearing import circle_clearing_moves
 from ..fix.groups import group_moves
@@ -454,6 +455,23 @@ def _problem_view(graph: SceneGraph, problems: list[Finding], labels: dict[UUID,
             for finding in problems]
 
 
+@dataclass(frozen=True)
+class MenuLimits:
+    """How much of the room a menu is built for.
+
+    `focus` names the findings to generate options for, or None for every
+    fixable problem; options are still labelled with everything they clear.
+    `deadline` is a `time.monotonic()` time after which no further guess is
+    generated or measured, and the menu is built from what was measured by then.
+    """
+
+    focus: frozenset[UUID] | None = None
+    deadline: float | None = None
+
+    def wants(self, finding: Finding) -> bool:
+        return self.focus is None or finding.id in self.focus
+
+
 @dataclass
 class _Measurer:
     """Legal guesses measured against one room, each worded differently from every option already kept."""
@@ -465,6 +483,7 @@ class _Measurer:
     veto: CandidateRejection | None = None
     wishes: list[tuple[str, Wish]] = field(default_factory=list)
     worded: set = field(default_factory=set)
+    deadline: float | None = None
 
     def breaks(self, candidate: SceneGraph) -> list[str]:
         return [label for label, wish in self.wishes if not kept(wish, self.room, candidate, self.checker.measure)]
@@ -487,7 +506,8 @@ class _Measurer:
         """
         found: list[tuple[_Guess, dict]] = []
         for guess in guesses:
-            if tries == 0 or (len(found) >= OPTIONS_PER_PROBLEM and _clears(found, label)):
+            if tries == 0 or out_of_time(self.deadline) or (len(found) >= OPTIONS_PER_PROBLEM
+                                                            and _clears(found, label)):
                 break
             candidate = None if guess.wording in self.worded else _legal(self.room, guess.edits, self.veto)
             if candidate is None:
@@ -503,6 +523,8 @@ class _Measurer:
         label = self.labels[finding.id]
         found: list[tuple[_Guess, dict]] = []
         for guesses, tries in TIERS:
+            if out_of_time(self.deadline):
+                break
             found.extend(self.options(guesses(self.room, finding, self.checker, label), tries, label))
             if _clears(found, label):
                 break
@@ -510,19 +532,20 @@ class _Measurer:
 
 
 def build_menu(room: SceneGraph, checker: TrainingChecker, stated: WishBook | None = None,
-               view: MenuView = MenuView()) -> Menu:
+               view: MenuView = MenuView(), limits: MenuLimits = MenuLimits()) -> Menu:
     """Legal, gate-accepted options for each of the room's fixable problems, numbered from 1.
 
     Nothing offered breaks a hard constraint, a directive for the room's space
-    type, or a wish the owner stated.
+    type, or a wish the owner stated. `limits` can narrow the problems options
+    are generated for and bound the time spent measuring them.
     """
     before = checker.assess(room)
     problems = checker.fixable_problems(before)
     labels = {finding.id: f"P{index}" for index, finding in enumerate(problems, start=1)}
     veto = combine_rejections(checker.directive_veto(room), stated.rejection(checker.measure) if stated else None)
     labelled, told = _wishes_shown(room, checker, stated, view)
-    measurer = _Measurer(room, checker, before, labels, veto, labelled)
-    measured = [pair for finding in problems for pair in measurer.for_problem(finding)]
+    measurer = _Measurer(room, checker, before, labels, veto, labelled, deadline=limits.deadline)
+    measured = [pair for finding in problems if limits.wants(finding) for pair in measurer.for_problem(finding)]
     measured = _drop_covered_diagonals(measured)
     kept_best = sorted(measured, key=lambda pair: _rank(pair[1]))[:MENU_SIZE]
     options = [Option(number, guess.wording, guess.edits, effect)
