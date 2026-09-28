@@ -12,7 +12,7 @@ export function defaultPlaces(requests: OwnerRequest[]): Destination[] {
 }
 
 /** Which part of the owner view the journey's next step needs on screen. */
-export type Panel = "waiting" | "answers" | "counter" | "path" | "follow_ups" | "results" | "failed";
+export type Panel = "waiting" | "answers" | "counter" | "path" | "results" | "failed";
 
 const PANEL_FOR_STEP: Record<Journey["next_step"]["kind"], Panel> = {
   upload: "waiting",
@@ -21,7 +21,7 @@ const PANEL_FOR_STEP: Record<Journey["next_step"]["kind"], Panel> = {
   photos: "answers",
   counter: "counter",
   path: "path",
-  follow_ups: "follow_ups",
+  follow_ups: "results",
   results: "results",
   checklist: "results",
   done: "results",

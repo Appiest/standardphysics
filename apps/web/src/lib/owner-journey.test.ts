@@ -20,6 +20,10 @@ describe("the owner view", () => {
     expect(panelFor(journey("measuring"))).toBe("waiting");
   });
 
+  it("never holds the results back for follow-up measurements, which wait in Still to check", () => {
+    expect(panelFor(journey("follow_ups"))).toBe("results");
+  });
+
   it("polls only while the server is still working", () => {
     expect(isWaiting(journey("measuring"))).toBe(true);
     expect(isWaiting(journey("counter"))).toBe(false);

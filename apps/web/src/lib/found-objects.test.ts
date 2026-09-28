@@ -128,7 +128,7 @@ describe("where the found pieces show", () => {
   const found = { handles: { marks: [] }, focus: { x: 1, y: 2, z: 0 }, frameShift: 168 } as unknown as FoundObjects;
 
   it("shows them on the steps that read the shop, not the ones that pick, drag or drive", () => {
-    expect(["answers", "follow_ups", "results"].every(showsFound)).toBe(true);
+    expect(["answers", "results"].every(showsFound)).toBe(true);
     expect(["counter", "path", "plan", "wheelchair"].some(showsFound)).toBe(false);
   });
 

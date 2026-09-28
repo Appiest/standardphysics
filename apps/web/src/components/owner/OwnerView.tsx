@@ -10,7 +10,7 @@ import { canBeCounter } from "@/lib/counter";
 import { groupFindings } from "@/lib/findings";
 import { inApp, listenToApp, tellApp } from "@/lib/native-bridge";
 import { markStatus, savePlan, walkingRoute } from "@/lib/owner-client";
-import { type ChecklistStatus, checklistRows, type Destination, followUps, isFixing, type Panel, panelFor, pieceToTry, requestsForStep } from "@/lib/owner-journey";
+import { type ChecklistStatus, checklistRows, type Destination, isFixing, type Panel, panelFor, pieceToTry, requestsForStep } from "@/lib/owner-journey";
 import type { Assessment, Checklist, Finding, Journey, NodeMove, OwnerRequest, ProposalResult, Scan, Scenario, SceneGraph, SceneNode, Vec3 } from "@/types/contracts";
 import { CounterStep } from "./CounterStep";
 import { OwnerModel } from "./OwnerModel";
@@ -23,7 +23,7 @@ import { SavePrompt } from "./SavePrompt";
 import { SharePanel } from "./SharePanel";
 import { StepHeading } from "./StepHeading";
 import { StillToCheck } from "./StillToCheck";
-import { onePerTitle, stillToCheckCount, stillToCheckItems } from "@/lib/still-to-check";
+import { stillToCheckCount, stillToCheckItems } from "@/lib/still-to-check";
 import { FixAll, useModelLabel } from "./FixAll";
 import { ToolsPanel } from "./ToolsPanel";
 import { FoundLegend, FoundSection } from "./FoundList";
@@ -313,7 +313,6 @@ function OwnerShop(props: ShopProps) {
     answers: () => <EarlyPanel {...props} />,
     counter: () => <CounterStep scanId={scan.id} scene={scene} picked={counter} onSkip={() => setCounterSkipped(true)} />,
     path: () => <PathStep path={path} />,
-    follow_ups: () => <FollowUpPanel scanId={scan.id} journey={journey} requests={props.requests} />,
     plan: () => (
       <PlanPanel arrangement={arrangement} scanned={scanned} fixedNote={trial.fixedNote}
         pieceName={pieceLabel(scene, arrangement.activeId) ?? tryPiece?.label ?? null}
@@ -414,24 +413,5 @@ function ResultsStep({ shop, groups, statuses, selectedId, fixingHere, onStartFi
       {!readOnly && <SharePanel scanId={scan.id} shopName={scan.name} onShared={onShared} />}
       {!readOnly && journey.tools_unlocked && <ToolsPanel scanId={scan.id} inApp={inApp()} onPlan={onStartPlanning} onWheelchair={onStartWheelchair} />}
     </ResultsPanel>
-  );
-}
-
-function FollowUpPanel({ scanId, journey, requests }: { scanId: string; journey: Journey; requests: OwnerRequest[] }) {
-  const all = followUps(requests);
-  const answerable = all.filter((request) => request.kind !== "another_look");
-  const lookAgain = onePerTitle(all.filter((request) => request.kind === "another_look"));
-  return (
-    <div className="flex flex-col gap-6">
-      <StepHeading title={journey.next_step.title}>Your shop is measured. One more thing and we can finish checking it.</StepHeading>
-      <RequestList scanId={scanId} requests={answerable} />
-      {lookAgain.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-lg font-semibold">Needs another look</h2>
-          <p className="text-pretty text-ink-muted">The next time you walk the shop, go slowly past these.</p>
-          <ul className="list-disc pl-5">{lookAgain.map((request) => <li key={request.id}>{request.title}</li>)}</ul>
-        </section>
-      )}
-    </div>
   );
 }

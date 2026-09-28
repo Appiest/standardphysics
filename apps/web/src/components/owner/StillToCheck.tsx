@@ -1,5 +1,5 @@
 import type { StillToCheckItems } from "@/lib/still-to-check";
-import { RequestList } from "./RequestList";
+import { RequestMenu } from "./RequestList";
 
 /**
  * What the checks couldn't settle yet: photos and numbers the owner can still
@@ -10,7 +10,7 @@ export function StillToCheck({ scanId, items }: { scanId: string; items: StillTo
   if (sendable.length === 0 && lookAgain.length === 0) return null;
   return (
     <div className="flex flex-col gap-3">
-      {sendable.length > 0 && <RequestList scanId={scanId} requests={sendable} />}
+      {sendable.length > 0 && <RequestMenu scanId={scanId} requests={sendable} />}
       {lookAgain.length > 0 && (
         <ul className="flex flex-col gap-2">
           {lookAgain.map((finding) => (
