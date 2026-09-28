@@ -131,6 +131,40 @@ def _signed_area(polygon: Polygon) -> float:
     return sum(start[0] * end[1] - end[0] * start[1] for start, end in _edges(polygon)) / 2
 
 
+def _clip(polygon: Polygon, start: Point, end: Point) -> Polygon:
+    """The part of `polygon` left of the directed edge start->end (one Sutherland-Hodgman step)."""
+    def side(point: Point) -> float:
+        return (end[0] - start[0]) * (point[1] - start[1]) - (end[1] - start[1]) * (point[0] - start[0])
+
+    kept: Polygon = []
+    for current, following in zip(polygon, polygon[1:] + polygon[:1]):
+        current_side, following_side = side(current), side(following)
+        if current_side >= 0:
+            kept.append(current)
+        if current_side * following_side < 0:
+            t = current_side / (current_side - following_side)
+            kept.append((current[0] + t * (following[0] - current[0]), current[1] + t * (following[1] - current[1])))
+    return kept
+
+
+def _counter_clockwise(polygon: Polygon) -> Polygon:
+    return polygon if _signed_area(polygon) >= 0 else polygon[::-1]
+
+
+def covered_fraction(a: Polygon, b: Polygon) -> float:
+    """How much of convex footprint `a`'s area lies inside convex footprint `b`, from 0 to 1."""
+    area = abs(_signed_area(a))
+    if area < DEGENERATE_AREA or surely_apart(a, b):
+        return 0.0
+    inside = _counter_clockwise(a)
+    clipper = _counter_clockwise(b)
+    for start, end in zip(clipper, clipper[1:] + clipper[:1]):
+        inside = _clip(inside, start, end)
+        if len(inside) < 3:
+            return 0.0
+    return min(1.0, abs(_signed_area(inside)) / area)
+
+
 def _point_to_segment(point: Point, a: Point, b: Point) -> float:
     px, py = point
     ax, ay = a

@@ -33,7 +33,7 @@ from standardphysics_contracts import (
     stands_upright,
 )
 
-from .footprints import footprint, gap_between
+from .footprints import covered_fraction, footprint, gap_between
 from .ingest import FIXED_CATEGORIES
 from .mesh_evidence import object_mesh_profiles
 from .occupancy import reads_as_wall
@@ -81,14 +81,15 @@ COUNTER_LABELS = frozenset({"ordering counter", "service counter", "counter", "c
 COUNTER_HEIGHT = (0.80, 1.40)
 COUNTER_LENGTH = 2.2
 WALL_GAP_METERS = 0.45
-OVERLAP_METERS = 0.02
+SHARED_FOOTPRINT = 0.5
+"""A box with at least this much of its floor inside another box is likely one thing counted twice, or two things
+RoomPlan merged. Touching or tucked-in neighbours, like chairs pulled up to a counter, are measured as they are."""
 THIN_METERS = 0.04
 
 INSTRUCTION = (
     "Label every supplied object in this shop scan with an ordinary name such as "
     "Ordering counter, Display case, Table, or Chair. Counters and plumbed-in "
-    "fixtures are not movable. Do not change sizes. Mark thin or overlapping "
-    "detections as needs_another_look. You may add a display-only appearance "
+    "fixtures are not movable. Do not change sizes. You may add a display-only appearance "
     "with a six-digit base color and broad material when the frame evidence is "
     "clear; when images_provided is false, appearance must be null. For each "
     "object, return reconstruction only when its calibrated photo crop evidence "
@@ -256,7 +257,7 @@ def _apply_one(node: SceneNode, patch: LabelPatch | None, source: Reconstruction
     update: dict[str, Any] = {
         "label": patch.label or node.label,
         "movable": _locked_movable(node, patch.movable),
-        "quality": node.quality if node.quality == "needs_another_look" else patch.quality,
+        "quality": node.quality if source == "astra" or node.quality == "needs_another_look" else patch.quality,
     }
     if source == "astra":
         update["labeled_by"] = "astra"
@@ -313,12 +314,17 @@ def _looks_like_counter(node: SceneNode, walls: list[SceneNode]) -> bool:
     )
 
 
+def _shares_footprint(own: list[tuple[float, float]], other: list[tuple[float, float]]) -> bool:
+    return max(covered_fraction(own, other), covered_fraction(other, own)) >= SHARED_FOOTPRINT
+
+
 def _local_quality(node: SceneNode, objects: list[SceneNode]) -> QualityName:
     if node.quality == "confirmed" or bounds_the_room(node):
         return node.quality
     if min(node.dimensions.x, node.dimensions.y, node.dimensions.z) < THIN_METERS:
         return "needs_another_look"
-    if any(gap_between(footprint(node), footprint(other)) < OVERLAP_METERS for other in objects if other.id != node.id):
+    own = footprint(node)
+    if any(_shares_footprint(own, footprint(other)) for other in objects if other.id != node.id):
         return "needs_another_look"
     return node.quality
 
