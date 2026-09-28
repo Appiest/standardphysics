@@ -235,6 +235,13 @@ def test_asking_for_a_build_never_pulls_and_says_the_image_is_untested(box):
     assert (box / "deploys.log").read_text().split()[1:] == [COMMIT, "untested-local-build"]
 
 
+def test_a_build_on_the_box_never_starts_beside_running_jobs(box):
+    """A build and a bake together ran a 4 GB box out of memory and killed the job."""
+    result = deploy(box, in_flight=1, SP_DEPLOY_BUILD="1")
+    assert result.returncode == 75
+    assert not any(line.startswith("docker compose build") for line in calls(box))
+
+
 def test_the_deploy_is_written_down_only_once_the_new_commit_is_serving(stack, box):
     result = deploy(box)
     assert result.returncode == 0, result.stderr
