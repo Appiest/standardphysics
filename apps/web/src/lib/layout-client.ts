@@ -1,5 +1,5 @@
 import { readLines } from "@/lib/ndjson";
-import type { AskAnswer, LayoutCheckResult, LoopEvent, NodeMove, OwnerWish, ProposalResult, Scan, Scenario, SceneGraph } from "@/types/contracts";
+import type { AskAnswer, LayoutCheckResult, LoopEvent, ModelLoopEvent, ModelLoopInfo, NodeMove, OwnerWish, ProposalResult, Scan, Scenario, SceneGraph } from "@/types/contracts";
 
 export class ApiRefusal extends Error {
   constructor(readonly status: number, readonly error: string) {
@@ -67,6 +67,25 @@ export async function streamLoop(scanId: string, baseRevision: number, onEvent: 
   });
   if (!response.ok || !response.body) throw await refusal(response);
   for await (const line of readLines(response.body)) onEvent(JSON.parse(line) as LoopEvent);
+}
+
+/** Whether a model is set up to fix a whole layout, and what the owner's copy calls it. */
+export async function modelLoopInfo(): Promise<ModelLoopInfo> {
+  const response = await fetch("/api/model-loop");
+  if (!response.ok) throw await refusal(response);
+  return (await response.json()) as ModelLoopInfo;
+}
+
+/** The model's turns on every open problem, handed over as the server sends them; resolves when the stream closes. */
+export async function streamModelLoop(scanId: string, baseRevision: number, onEvent: (event: ModelLoopEvent) => void, signal: AbortSignal) {
+  const response = await fetch(`/api/scans/${scanId}/model-loop/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ base_revision: baseRevision }),
+    signal,
+  });
+  if (!response.ok || !response.body) throw await refusal(response);
+  for await (const line of readLines(response.body)) onEvent(JSON.parse(line) as ModelLoopEvent);
 }
 
 export function setCounter(scanId: string, baseRevision: number, nodeId: string, isCounter: boolean) {
