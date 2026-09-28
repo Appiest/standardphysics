@@ -27,6 +27,10 @@ from standardphysics_contracts import Finding, SceneGraph
 
 REPLY_SECONDS = 600
 MAX_REPLY_TOKENS = 256
+MENU_SECONDS = 15.0
+"""How long the menu may spend measuring options before the model is asked to choose from what it has."""
+SEARCH_AFTER_MENU_SECONDS = 10.0
+"""How long the search may run when the model's menu had nothing to offer."""
 
 
 @dataclass(frozen=True)

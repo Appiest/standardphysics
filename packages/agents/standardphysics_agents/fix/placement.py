@@ -16,6 +16,7 @@ from standardphysics_pipeline.footprints import Polygon, polygon_bounds, rotatio
 
 from ..checks.rectangles import rectangle
 from ..rules import AgentRulePack
+from .budget import out_of_time
 from .constraints import violations
 from .moves import apply_moves, move_node
 from .pinch import Pinch
@@ -92,10 +93,13 @@ def _groups(pieces: list) -> list[tuple]:
     return groups
 
 
-def _expand(graph: SceneGraph, node, moves_for_node, beam: list[list[NodeMove]]) -> list[list[NodeMove]]:
-    """Every legal way to add one more move for this node to each route in the beam."""
+def _expand(graph: SceneGraph, node, moves_for_node, beam: list[list[NodeMove]],
+            deadline: float | None = None) -> list[list[NodeMove]]:
+    """Every legal way to add one more move for this node to each route in the beam, until the deadline."""
     expanded = []
     for moves in beam:
+        if out_of_time(deadline):
+            return []
         accepted = 0
         occupied = set()
         for move in moves_for_node:
@@ -116,10 +120,11 @@ def _expand(graph: SceneGraph, node, moves_for_node, beam: list[list[NodeMove]])
     return expanded
 
 
-def _beam_for(graph: SceneGraph, group: tuple, options: dict) -> list[list[NodeMove]]:
+def _beam_for(graph: SceneGraph, group: tuple, options: dict,
+              deadline: float | None = None) -> list[list[NodeMove]]:
     beam: list[list[NodeMove]] = [[]]
     for node in group:
-        expanded = _expand(graph, node, options[node.id], beam)
+        expanded = _expand(graph, node, options[node.id], beam, deadline)
         beam = sorted(expanded, key=lambda moves: _candidate(moves).disruption)[:BEAM_WIDTH]
         if not beam:
             break
@@ -127,7 +132,8 @@ def _beam_for(graph: SceneGraph, group: tuple, options: dict) -> list[list[NodeM
 
 
 def placements(graph: SceneGraph, pinch: Pinch, finding: Finding,
-               rules: AgentRulePack, limit: int) -> list[Candidate]:
+               rules: AgentRulePack, limit: int, deadline: float | None = None) -> list[Candidate]:
+    """Up to `limit` legal placements, or fewer when a `deadline` (see `fix/budget.py`) passes first."""
     if limit <= 0 or not pinch.fixable:
         return []
     space = _space(finding, graph, rules)
@@ -135,7 +141,7 @@ def placements(graph: SceneGraph, pinch: Pinch, finding: Finding,
     options = {node.id: _options(node, space) for node in pieces}
     found = []
     for group in _groups(pieces):
-        found.extend(_candidate(moves) for moves in _beam_for(graph, group, options))
-        if len(found) >= limit:
+        found.extend(_candidate(moves) for moves in _beam_for(graph, group, options, deadline))
+        if len(found) >= limit or out_of_time(deadline):
             break
     return found[:limit]

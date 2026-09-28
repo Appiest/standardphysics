@@ -40,7 +40,7 @@ from standardphysics_agents.rules.verification import PREVIEW_REVIEWER as PREVIE
 from standardphysics_agents.rules.verification import preview_ledger as preview_ledger
 from standardphysics_agents.training.checker import TrainingChecker
 from standardphysics_agents.training.explain import explain_change, owner_text
-from standardphysics_agents.training.menu import build_menu, menu_messages
+from standardphysics_agents.training.menu import MenuLimits, build_menu, menu_messages
 from standardphysics_agents.training.owner import keep_request, stated_book
 from standardphysics_agents.training.wishes import broken, infer_wishes
 from standardphysics_contracts import (
@@ -329,18 +329,19 @@ class Stages:
 
     def propose(
         self, graph: SceneGraph, scenario: Scenario, targets: list[Finding], typology: SpaceTypology | None = None,
-        wishes: Sequence[OwnerWish] = (),
+        wishes: Sequence[OwnerWish] = (), deadline: float | None = None,
     ) -> FixOutcome:
         """Lane C's fix agent: one arrangement that clears the targets, or one thing to ask.
 
         The space type's verified ADA directives, and every wish the owner saved,
-        veto any arrangement that breaks them.
+        veto any arrangement that breaks them. A `deadline` (`fix/budget.py`)
+        stops the search when it passes.
         """
         with self._search_lock:
             ledger = self.ledger_factory()
             return propose_fix(
                 graph, scenario, self.search_measure, targets, rules=load_pack(), ledger=ledger,
-                candidate_rejection=self._rejection(graph, typology, wishes),
+                candidate_rejection=self._rejection(graph, typology, wishes), deadline=deadline,
             )
 
     def _rejection(self, graph: SceneGraph, typology: SpaceTypology | None, wishes: Sequence[OwnerWish]):
@@ -349,12 +350,18 @@ class Stages:
 
     def model_proposal(
         self, graph: SceneGraph, scenario: Scenario, targets: list[Finding], chooser: ModelChooser,
-        typology: SpaceTypology | None = None, wishes: Sequence[OwnerWish] = (),
+        typology: SpaceTypology | None = None, wishes: Sequence[OwnerWish] = (), deadline: float | None = None,
     ) -> FixOutcome | None:
-        """The model's pick from the menu of legal moves for these findings, or None when it has nothing to offer."""
+        """The model's pick from the menu of legal moves for these findings, or None when it has nothing to offer.
+
+        Options are only generated for the findings asked about, and none are
+        measured after `deadline` (`fix/budget.py`).
+        """
         with self._search_lock:
             checker = self.menu_checker(graph, scenario, typology)
-            menu = menu_for_findings(build_menu(graph, checker, stated=stated_book(graph, list(wishes))), targets)
+            limits = MenuLimits(focus=frozenset(finding.id for finding in targets), deadline=deadline)
+            full = build_menu(graph, checker, stated=stated_book(graph, list(wishes)), limits=limits)
+            menu = menu_for_findings(full, targets)
             if menu is None:
                 return None
             messages = menu_messages(graph, checker, menu, None)

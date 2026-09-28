@@ -4,7 +4,7 @@ Set SP_LOOP_MODEL_URL and SP_LOOP_MODEL (an OpenAI-compatible server, such as
 the Fireworks fine-tune behind scripts/finetune/fireworks_chat_server.py) and
 SP_LOOP_MODEL_LABEL (what the owner's button calls it). Each turn builds the
 menu for every problem still left, asks the model, applies its pick and
-re-checks, for at most MODEL_LOOP_TURNS turns. Only furniture options are
+re-checks, for at most MODEL_LOOP_TURNS turns, each menu built within MENU_SECONDS. Only furniture options are
 offered, because the owner's plan can only show furniture moves. Nothing is
 saved: the stream ends with every move the loop made, for the owner to open
 in the plan and keep or not.
@@ -20,14 +20,15 @@ import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
+from standardphysics_agents.fix.budget import deadline_in
 from standardphysics_agents.training.checker import TrainingChecker
 from standardphysics_agents.training.edits import apply_edits, node_moves, parse_edits
-from standardphysics_agents.training.menu import build_menu, menu_messages, resolve
+from standardphysics_agents.training.menu import MenuLimits, build_menu, menu_messages, resolve
 from standardphysics_agents.training.owner import WishBook, stated_book
 from standardphysics_contracts import ModelLoopEvent, ModelLoopInfo, ModelLoopRequest, NodeMove, SceneGraph, Vec3
 
 from .db import Database
-from .model_chooser import ModelChooser, furniture_only
+from .model_chooser import MENU_SECONDS, ModelChooser, furniture_only
 from .proposals import fix_inputs, owner_wishes_of, space_typology_of
 from .stages import Stages
 
@@ -84,7 +85,8 @@ class ModelLoop:
         if self.fixable_left() == 0:
             self.stop = "Every problem furniture can fix is fixed."
             return None
-        self.menu = furniture_only(build_menu(self.current, self.checker, stated=self.stated))
+        limits = MenuLimits(deadline=deadline_in(MENU_SECONDS))
+        self.menu = furniture_only(build_menu(self.current, self.checker, stated=self.stated, limits=limits))
         if not self.menu.options:
             self.stop = "The menu has no move left for what remains."
             return None

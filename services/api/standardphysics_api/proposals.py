@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import uuid
 
+from standardphysics_agents.fix.budget import deadline_in
 from standardphysics_contracts import OwnerWish, ProposalRequest, ProposalResult, SpaceTypology
 
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
-from .model_chooser import ModelChooser
+from .model_chooser import MENU_SECONDS, SEARCH_AFTER_MENU_SECONDS, ModelChooser
 from .stages import Stages
 
 
@@ -35,6 +36,18 @@ def owner_wishes_of(database: Database, scan_id: uuid.UUID) -> list[OwnerWish]:
         return repo.owner_wishes(connection, scan_id)
 
 
+def _model_outcome(stages: Stages, graph, scenario, targets, chooser: ModelChooser, typology, wishes):
+    """The model's pick from a menu built within `MENU_SECONDS`, else the search within `SEARCH_AFTER_MENU_SECONDS`.
+
+    The menu has already measured the search's own slides and placements for
+    these findings, so the search after it only gets a short budget of its own.
+    """
+    picked = stages.model_proposal(graph, scenario, targets, chooser, typology, wishes,
+                                   deadline=deadline_in(MENU_SECONDS))
+    return picked or stages.propose(graph, scenario, targets, typology, wishes,
+                                    deadline=deadline_in(SEARCH_AFTER_MENU_SECONDS))
+
+
 def propose(database: Database, stages: Stages, scan_id: uuid.UUID, body: ProposalRequest) -> ProposalResult:
     graph, scenario, assessment = fix_inputs(database, scan_id, body.base_revision)
     wanted = set(body.finding_ids)
@@ -43,8 +56,8 @@ def propose(database: Database, stages: Stages, scan_id: uuid.UUID, body: Propos
         raise ApiProblem(400, "unknown finding", need=sorted(str(i) for i in wanted - {f.id for f in targets}))
     wishes, typology = owner_wishes_of(database, scan_id), space_typology_of(database, scan_id)
     chooser = ModelChooser.from_environment()
-    picked = stages.model_proposal(graph, scenario, targets, chooser, typology, wishes) if chooser else None
-    outcome = picked or stages.propose(graph, scenario, targets, typology, wishes)
+    outcome = _model_outcome(stages, graph, scenario, targets, chooser, typology, wishes) if chooser else None
+    outcome = outcome or stages.propose(graph, scenario, targets, typology, wishes)
     explanation = stages.explain(graph, outcome.graph, scenario, wishes) if outcome.graph is not None else None
     return ProposalResult(
         base_revision=body.base_revision,

@@ -29,9 +29,14 @@ def rotation_about_z(node: SceneNode) -> tuple[float, float]:
 
 def footprint(node: SceneNode) -> Polygon:
     """The node's floor rectangle, rotated about Z, in world coordinates."""
+    return sized_footprint(node, node.dimensions.x, node.dimensions.y)
+
+
+def sized_footprint(node: SceneNode, size_x: float, size_y: float) -> Polygon:
+    """The node's floor rectangle at another size, about the same centre and turned the same way."""
     cos_t, sin_t = rotation_about_z(node)
     centre = node.transform.position
-    half_x, half_y = node.dimensions.x / 2, node.dimensions.y / 2
+    half_x, half_y = size_x / 2, size_y / 2
     corners = [(-half_x, -half_y), (half_x, -half_y), (half_x, half_y), (-half_x, half_y)]
     return [
         (
@@ -155,6 +160,33 @@ def gap_between(a: Polygon, b: Polygon) -> float:
     for point in b:
         distances += [_point_to_segment(point, s, e) for s, e in _edges(a)]
     return min(distances)
+
+
+BOUNDS_SLACK = 1e-6
+"""A micrometre, far above rounding at room scale, so a box-only answer never disagrees with `gap_between`."""
+
+
+def surely_apart(a: Polygon, b: Polygon, by: float = 0.0) -> bool:
+    """Whether the bounding boxes alone show `gap_between(a, b) > by`, without measuring the shapes.
+
+    Two shapes are at least as far apart as their bounding boxes, so boxes
+    further apart than `by` settle it. Most pairs in a room are nowhere near
+    each other, and this spares them the exact distance.
+    """
+    a_x, a_y = [x for x, _ in a], [y for _, y in a]
+    b_x, b_y = [x for x, _ in b], [y for _, y in b]
+    box_gap = max(min(b_x) - max(a_x), min(a_x) - max(b_x), min(b_y) - max(a_y), min(a_y) - max(b_y))
+    return box_gap > by + BOUNDS_SLACK
+
+
+def touching(a: Polygon, b: Polygon) -> bool:
+    """`gap_between(a, b) == 0.0`, answered from the bounding boxes when they are clearly apart."""
+    return not surely_apart(a, b) and gap_between(a, b) == 0.0
+
+
+def closer_than(a: Polygon, b: Polygon, distance: float) -> bool:
+    """`gap_between(a, b) < distance`, answered from the bounding boxes when they are clearly further apart."""
+    return not surely_apart(a, b, distance) and gap_between(a, b) < distance
 
 
 def gap_between_nodes(a: SceneNode, b: SceneNode) -> float:

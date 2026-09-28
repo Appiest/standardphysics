@@ -21,8 +21,8 @@ from functools import lru_cache
 from uuid import UUID
 
 from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, to_meters
-from standardphysics_pipeline import footprint, gap_between
-from standardphysics_pipeline.footprints import Polygon, distance_outside, floor_polygon, rotation_about_z
+from standardphysics_pipeline import footprint
+from standardphysics_pipeline.footprints import Polygon, distance_outside, floor_polygon, rotation_about_z, touching
 from standardphysics_pipeline.occupancy import blocks_floor
 
 from ..checks import roles
@@ -83,7 +83,7 @@ class Room:
 
     def clear(self, patch: Polygon, ignoring: UUID) -> bool:
         return self._on_the_floor(patch) and not any(
-            gap_between(shape, patch) == 0.0 for node_id, shape in self.obstacles if node_id != ignoring
+            touching(shape, patch) for node_id, shape in self.obstacles if node_id != ignoring
         )
 
     def _on_the_floor(self, patch: Polygon) -> bool:
