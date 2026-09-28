@@ -34,6 +34,7 @@ class StandInServer(ThreadingHTTPServer):
         super().__init__(("127.0.0.1", 0), StandInHandler)
         self.ready_status = 200
         self.oldest_queued_job_seconds: int | None = None
+        self.tracing: dict = {"active": False, "off_because": "WANDB_PROJECT is not set", "delivery_errors": 0}
         self.hook_status = 200
         self.alerts: list[tuple[dict[str, str], bytes]] = []
 
@@ -45,7 +46,9 @@ class StandInHandler(BaseHTTPRequestHandler):
         if self.path == "/health/ready":
             self.answer(self.server.ready_status, {"status": "ready" if self.server.ready_status == 200 else "degraded"})
         elif self.path == "/health/details":
-            self.answer(200, {"oldest_queued_job_seconds": self.server.oldest_queued_job_seconds})
+            self.answer(
+                200, {"oldest_queued_job_seconds": self.server.oldest_queued_job_seconds, "tracing": self.server.tracing}
+            )
         else:
             self.answer(404, {})
 
@@ -98,6 +101,8 @@ class Monitor:
             "SP_MONITOR_PYTHON": sys.executable,
             "SCANS_PATH": str(tmp_path / "scans"),
             "SP_BACKUP_DEST": "",
+            "SP_BACKUPS_NOT_WANTED": "1",
+            "WANDB_API_KEY": "",
             "FAKE_DF_SIZE": str(VOLUME_KIB),
             "FAKE_DF_AVAILABLE": str(VOLUME_KIB // 2),
         }
@@ -117,6 +122,7 @@ class Monitor:
         taken = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours_ago)
         (self.backups / taken.strftime("%Y-%m-%dT%H%M%SZ")).mkdir(parents=True)
         self.environment["SP_BACKUP_DEST"] = str(self.backups)
+        self.environment["SP_BACKUPS_NOT_WANTED"] = ""
 
 
 @pytest.fixture
@@ -172,6 +178,35 @@ def test_a_backup_older_than_the_limit_is_reported_and_a_fresh_one_is_not(monito
     monitor.run_ok()
     (alert,) = monitor.alert_texts()
     assert "Failing: backup:" in alert and "over the 26-hour limit" in alert
+
+
+def test_a_box_with_no_backup_destination_fails_unless_it_says_it_wants_none(monitor):
+    monitor.environment["SP_BACKUPS_NOT_WANTED"] = ""
+    monitor.run_ok()
+    (alert,) = monitor.alert_texts()
+    assert "Failing: backup: SP_BACKUP_DEST is not set" in alert
+
+    monitor.environment["SP_BACKUPS_NOT_WANTED"] = "1"
+    monitor.run_ok()
+    assert "Recovered: backup" in monitor.alert_texts()[1]
+
+
+def test_tracing_that_is_off_is_reported_only_when_a_wandb_key_is_set(monitor):
+    monitor.run_ok()
+    assert monitor.alert_texts() == []
+
+    monitor.environment["WANDB_API_KEY"] = "a-key"
+    monitor.run_ok()
+    (alert,) = monitor.alert_texts()
+    assert "Failing: tracing: WANDB_API_KEY is set but tracing is off: WANDB_PROJECT is not set" in alert
+
+
+def test_traces_weave_failed_to_deliver_are_reported(monitor, server):
+    monitor.environment["WANDB_API_KEY"] = "a-key"
+    server.tracing = {"active": True, "off_because": None, "delivery_errors": 3, "last_delivery_error": "batch dropped"}
+    monitor.run_ok()
+    (alert,) = monitor.alert_texts()
+    assert "Failing: tracing: Weave failed to deliver traces 3 time(s); the last: batch dropped" in alert
 
 
 def test_an_ntfy_topic_gets_plain_text_with_a_title(monitor, server):

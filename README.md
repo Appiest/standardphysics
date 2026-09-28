@@ -72,7 +72,7 @@ Each row names what goes wrong, what the system does about it, and the test that
 | Someone pre-registers a victim's email | When Apple proves the email, the squatter's password and sessions are revoked | [`test_guests.py`](services/api/tests/test_guests.py) |
 | A deploy goes wrong | The deploy refuses over running jobs, waits until the new commit is serving, and prints the rollback command if it never is | [`test_deploy.py`](scripts/tests/test_deploy.py) |
 | Data is lost | Nightly snapshots of the database and artifacts; a restore checks every uploaded artifact against the sha256 recorded at upload | [`test_backup_restore.py`](scripts/tests/test_backup_restore.py) |
-| Production goes down at night | A monitor checks readiness, queue age, disk and backup age every five minutes and alerts once per outage and once on recovery | [`test_monitor.py`](scripts/tests/test_monitor.py) |
+| Production goes down at night | A monitor checks readiness, queue age, disk, backup age (a box with no backup destination fails too) and tracing every five minutes and alerts once per outage and once on recovery | [`test_monitor.py`](scripts/tests/test_monitor.py) |
 
 ## How it's built
 
