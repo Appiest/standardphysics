@@ -211,6 +211,17 @@ build on the box starts from the same bytes as CI's. Debian packages and the
 Blender download are installed at build time; Blender is checked against its
 published sha256, and the apt packages follow bookworm's security updates.
 
+Two more CI jobs watch what goes into the image. `supply-chain` runs gitleaks
+over every commit, pip-audit over `requirements.lock`, and `npm audit` over the
+workspace's production dependencies at high severity and up.
+`image-vulnerabilities` builds the image and fails when grype finds a critical
+vulnerability that has a fixed version. Neither is in the publish job's
+`needs`, so a new advisory against an unchanged dependency shows as a red
+check on the commit without blocking a hotfix. The fix is a dependency bump:
+`scripts/lock_python.sh` for Python, `npm update <package>` in `apps/web` for
+the workspace, or a newer `NODE_IMAGE` digest for the base image. Every action
+in the workflows is pinned to a commit SHA, with its version in a comment.
+
 A window remains. An upload that finalises between the queue read and the
 moment the old container stops, about a second, queues a job the check did
 not see. That job is not lost: `requeue_interrupted_jobs` puts every job left
