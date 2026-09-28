@@ -5,6 +5,11 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+
+# serverless_train drives a paid Tinker training run, and its SDK is not in the locked
+# dependencies CI installs. Without it these tests are skipped rather than failing collection.
+pytest.importorskip("tinker", reason="the Tinker SDK is installed only where training runs")
+
 from multiroom_results import build, composition, metrics, search_records
 from multiroom_train_data import MultiroomData
 from progress import Progress, Spend
