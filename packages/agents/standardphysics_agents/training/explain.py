@@ -33,8 +33,11 @@ from .wishes import kept as wish_kept
 class Assessor(Protocol):
     """What an explanation reads the room through: the training checker, or production's own assessment."""
 
-    rules: AgentRulePack
-    measure: MeasurementProvider
+    @property
+    def rules(self) -> AgentRulePack: ...
+
+    @property
+    def measure(self) -> MeasurementProvider: ...
 
     def assess(self, graph: SceneGraph) -> Pass: ...
 

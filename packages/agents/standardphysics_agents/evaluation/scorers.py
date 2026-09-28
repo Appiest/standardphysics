@@ -10,6 +10,7 @@ reads it that way.
 
 from __future__ import annotations
 
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import Callable
 from uuid import UUID
@@ -23,11 +24,15 @@ from ..router.decision import Rejected
 from .dataset import Case
 from .gate import GateResult
 
+
+def _entrance_ids(graph) -> set[UUID]:
+    door = roles.entrance(graph)
+    return {door.id} if door else set()
+
+
 ROLE_FINDERS = {
     "service_counter": lambda graph: {n.id for n in roles.service_counters(graph)},
-    "entrance": lambda graph: (
-        {roles.entrance(graph).id} if roles.entrance(graph) else set()
-    ),
+    "entrance": _entrance_ids,
 }
 
 
@@ -53,7 +58,7 @@ class CaseOutcome:
 Scorer = Callable[[CaseOutcome], float | None]
 
 
-def _share(part: set, whole: set) -> float:
+def _share(part: AbstractSet, whole: AbstractSet) -> float:
     return len(part) / len(whole)
 
 

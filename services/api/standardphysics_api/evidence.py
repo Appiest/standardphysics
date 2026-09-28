@@ -21,6 +21,7 @@ from standardphysics_contracts import (
 )
 
 from . import repository as repo
+from .budgets import admit_new_job
 from .db import Database
 from .store import ArtifactStore
 
@@ -71,6 +72,7 @@ def maybe_queue_semantic(
     *,
     settle_seconds: float = 30.0,
     explicit: bool = False,
+    max_queued_jobs: int | None = None,
 ) -> str | None:
     """Queue one semantic job for an unprocessed complete bundle.
 
@@ -79,7 +81,8 @@ def maybe_queue_semantic(
     evidence. A job is only due when the bundle is complete, no result has been
     published for it, nothing is already queued, and either the caller asks
     explicitly (a re-posted /complete) or the evidence has been quiet for
-    `settle_seconds`. Returns "queued", "pending", or None.
+    `settle_seconds`. Returns "queued", "pending", or None. With `max_queued_jobs` set, as for an
+    owner's re-posted /complete, a full queue refuses the job (see `budgets.admit_new_job`).
     """
     bundle = repo.latest_bundle(connection, scan.id)
     if bundle is None or not bundle.complete:
@@ -92,6 +95,7 @@ def maybe_queue_semantic(
         return None
     if not explicit and _attempted_this_input(connection, scan.id, bundle.manifest_hash):
         return None
+    admit_new_job(connection, max_queued_jobs)
     repo.queue_job_again(connection, scan.id, kind, 0)
     return "queued"
 

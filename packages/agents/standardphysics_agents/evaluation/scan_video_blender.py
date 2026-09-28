@@ -87,16 +87,17 @@ def capture_geometry(mesh, graph, glb):
     for obj in list(bpy.context.scene.objects):
         obj.hide_render = True
         obj.hide_viewport = True
-    vertices, faces = [], []
+    vertex_parts: list[np.ndarray] = []
+    face_parts: list[np.ndarray] = []
     offset = 0
     for part in mesh["parts"]:
         matrix = np.asarray(part["transform"]).reshape((4,4), order="F")
         points = np.asarray(part["vertices"]).reshape(-1,3) @ matrix[:3,:3].T + matrix[:3,3]
         points = np.column_stack((points[:,0], -points[:,2], points[:,1]-mesh["floorY"]))
-        vertices.append(points)
-        faces.append(np.asarray(part["triangles"]).reshape(-1,3)+offset)
+        vertex_parts.append(points)
+        face_parts.append(np.asarray(part["triangles"]).reshape(-1,3)+offset)
         offset += len(points)
-    vertices, faces = np.concatenate(vertices), np.concatenate(faces)
+    vertices, faces = np.concatenate(vertex_parts), np.concatenate(face_parts)
     mat = material("Captured LiDAR surface", (0.48, 0.55, 0.57))
     full = mesh_object("Actual captured LiDAR", vertices, faces, mat)
     cut_faces = faces[vertices[faces][:,:,2].max(axis=1) <= 1.45]

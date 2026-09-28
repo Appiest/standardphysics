@@ -432,3 +432,82 @@ def test_an_ordinary_failure_is_not_tried_again(make_client, monkeypatch):
         client.app.state.worker.run_once()
         assert _job_row(client, scan_id, "assess")["state"] == "failed"
     assert calls["count"] == 1
+
+
+def _always_raises(error: BaseException):
+    calls = {"count": 0}
+
+    def replacement(*args, **kwargs):
+        calls["count"] += 1
+        raise error
+
+    return replacement, calls
+
+
+def _run_once_off_thread(worker, seconds: float = 5.0) -> tuple[bool, BaseException | None]:
+    """Run one job on a daemon thread: whether it came back within `seconds`, and what it raised.
+
+    A worker that never comes back is stopped, which makes its settlement give up.
+    """
+    raised: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            worker.run_once()
+        except BaseException as error:
+            raised.append(error)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    thread.join(seconds)
+    returned = not thread.is_alive()
+    if not returned:
+        worker.stop()
+        thread.join(5)
+    return returned, raised[0] if raised else None
+
+
+def _break_settlement(monkeypatch, error: BaseException) -> tuple[dict, dict]:
+    finish, finish_calls = _always_raises(error)
+    fail, fail_calls = _always_raises(error)
+    monkeypatch.setattr(worker_module.repo, "finish_job", finish)
+    monkeypatch.setattr(worker_module.repo, "fail_running_job", fail)
+    return finish_calls, fail_calls
+
+
+def _assert_left_for_restart_and_degraded(client, scan_id: str) -> None:
+    assert _job_row(client, scan_id)["state"] == "running"
+    ready = client.get("/health/ready")
+    assert ready.status_code == 503
+    [problem] = ready.json()["problems"]
+    assert "could not be recorded" in problem
+    assert "restart" in problem
+    details = client.get("/health/details").json()
+    assert details["status"] == "degraded"
+    assert details["problems"] == [problem]
+
+
+def test_a_permanent_database_error_while_settling_is_not_retried(make_client, monkeypatch):
+    _fast_retries(monkeypatch)
+    monkeypatch.setattr(Worker, "_simulate", _succeeds)
+    with _one_queued_job(make_client) as (client, scan_id):
+        finish_calls, fail_calls = _break_settlement(monkeypatch, sqlite3.OperationalError("no such table: jobs"))
+        returned, raised = _run_once_off_thread(client.app.state.worker)
+        assert returned, "settlement kept retrying a permanent error"
+        assert isinstance(raised, sqlite3.OperationalError)
+        assert (finish_calls["count"], fail_calls["count"]) == (1, 1)
+        _assert_left_for_restart_and_degraded(client, scan_id)
+
+
+def test_a_database_that_stays_locked_while_settling_is_given_up_on(make_client, monkeypatch):
+    _fast_retries(monkeypatch)
+    monkeypatch.setattr(worker_module, "SETTLE_PATIENCE_SECONDS", 0.3, raising=False)
+    monkeypatch.setattr(Worker, "_simulate", _succeeds)
+    with _one_queued_job(make_client) as (client, scan_id):
+        finish_calls, fail_calls = _break_settlement(monkeypatch, sqlite3.OperationalError("database is locked"))
+        returned, raised = _run_once_off_thread(client.app.state.worker)
+        assert returned, "settlement waited on the lock for ever"
+        assert isinstance(raised, sqlite3.OperationalError)
+        assert finish_calls["count"] > 1
+        assert fail_calls["count"] > 1
+        _assert_left_for_restart_and_degraded(client, scan_id)

@@ -33,6 +33,7 @@ PUSH_MARGINS_INCHES = (1.5, 6.0)
 
 
 def _centres(finding: Finding) -> list[tuple[float, float]]:
+    assert finding.locus is not None
     point = finding.locus.point
     centres = []
     for inches in RING_OFFSETS_INCHES:
@@ -71,8 +72,9 @@ def _blockers(graph: SceneGraph, centre: tuple[float, float], radius: float) -> 
 
 
 def _clearing(blockers: list[SceneNode], centre, radius: float, margin: float) -> Candidate | None:
-    moves = [_push(node, centre, radius, margin) for node in blockers]
-    if not moves or None in moves:
+    pushes = [_push(node, centre, radius, margin) for node in blockers]
+    moves = [move for move in pushes if move is not None]
+    if not pushes or len(moves) < len(pushes):
         return None
     return Candidate("clear_the_circle", moves,
                      sum(math.hypot(move.delta_translation.x, move.delta_translation.y) for move in moves))

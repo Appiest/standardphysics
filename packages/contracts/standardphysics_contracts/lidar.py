@@ -18,6 +18,7 @@ MAX_PART_VERTICES = 1_000_000
 MAX_PART_TRIANGLES = 2_000_000
 MAX_TOTAL_VERTICES = 8_000_000
 MAX_TOTAL_TRIANGLES = 16_000_000
+MAX_PARTS = 4096
 
 
 def _lidar_mesh_schema(schema: dict) -> None:
@@ -71,7 +72,7 @@ class LidarMeshPart(BaseModel):
 class LidarMesh(BaseModel):
     model_config = ConfigDict(extra="forbid", json_schema_extra=_lidar_mesh_schema)
 
-    parts: list[LidarMeshPart] = Field(min_length=1, max_length=4096)
+    parts: list[LidarMeshPart] = Field(min_length=1, max_length=MAX_PARTS)
     peopleFilteringEnabled: StrictBool | None = None
     floorY: float | None = None
 

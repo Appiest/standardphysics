@@ -48,6 +48,7 @@ from standardphysics_contracts import (
 )
 
 from . import repository as repo
+from .budgets import admit_new_job
 from .dev_model import nudges_from_prompt
 from .errors import ApiProblem
 from .fireworks import FakeFireworks, FireworksModel, ModelFailed, ModelWarming, RearrangeModel, Sampling
@@ -175,6 +176,7 @@ def queue_suggestion(database, worker, rearranger: Rearranger, scan_id: uuid.UUI
     with database.transaction() as connection:
         _require_latest(connection, scan_id, body.base_revision)
         if not _active(connection, scan_id, body.base_revision):
+            admit_new_job(connection, worker.settings.max_queued_jobs)
             connection.execute(
                 "INSERT INTO rearrangements (scan_id, revision) VALUES (?, ?) ON CONFLICT(scan_id, revision)"
                 " DO UPDATE SET phase='waiting', phase_reason=NULL, result_json=NULL",

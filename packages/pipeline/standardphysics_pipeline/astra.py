@@ -19,7 +19,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Literal, Sequence
+from typing import Any, Callable, Iterable, Literal, Sequence, cast
 from uuid import UUID
 
 import numpy as np
@@ -622,8 +622,8 @@ def _rank_for_object(
             continue
         score, visible = _project_score(node, pose, capture_to_room)
         ranked.append(_FrameCandidate(path, score, visible, order))
-    visible = [candidate for candidate in ranked if candidate.in_view]
-    pool = visible or ranked
+    in_view = [candidate for candidate in ranked if candidate.in_view]
+    pool = in_view or ranked
     return sorted(pool, key=lambda item: (-item.score, item.order))
 
 
@@ -698,22 +698,28 @@ def _pose_record(item: dict[str, Any]) -> PoseRecord | None:
         return None
 
 
+def _calibrated_score(node: SceneNode, record: PoseRecord, capture_to_room: Any) -> tuple[float, bool] | None:
+    try:
+        camera = camera_from_pose(record, capture_to_room)
+        point = node.transform.position
+        pixel_x, pixel_y, depth = camera.project(np.array([[point.x, point.y, point.z]]))
+        if depth[0] <= 0.05:
+            return -float(abs(depth[0])), False
+        margin_x, margin_y = camera.width * 0.25, camera.height * 0.25
+        in_view = -margin_x <= pixel_x[0] <= camera.width + margin_x and -margin_y <= pixel_y[0] <= camera.height + margin_y
+        offset = abs(pixel_x[0] - camera.cx) / max(camera.width / 2, 1) + abs(pixel_y[0] - camera.cy) / max(camera.height / 2, 1)
+        return (10.0 if in_view else -4.0) - offset - float(depth[0]) * 0.02, in_view
+    except (CameraMetadataError, ValueError, np.linalg.LinAlgError):
+        return None
+
+
 def _project_score(
     node: SceneNode, pose: _PoseEvidence, capture_to_room: Any = None
 ) -> tuple[float, bool]:
     if pose.record is not None and pose.record.projectable and capture_to_room is not None:
-        try:
-            camera = camera_from_pose(pose.record, capture_to_room)
-            point = node.transform.position
-            pixel_x, pixel_y, depth = camera.project(np.array([[point.x, point.y, point.z]]))
-            if depth[0] <= 0.05:
-                return -float(abs(depth[0])), False
-            margin_x, margin_y = camera.width * 0.25, camera.height * 0.25
-            in_view = -margin_x <= pixel_x[0] <= camera.width + margin_x and -margin_y <= pixel_y[0] <= camera.height + margin_y
-            offset = abs(pixel_x[0] - camera.cx) / max(camera.width / 2, 1) + abs(pixel_y[0] - camera.cy) / max(camera.height / 2, 1)
-            return (10.0 if in_view else -4.0) - offset - float(depth[0]) * 0.02, in_view
-        except (CameraMetadataError, ValueError, np.linalg.LinAlgError):
-            pass
+        calibrated = _calibrated_score(node, pose.record, capture_to_room)
+        if calibrated is not None:
+            return calibrated
     matrix = pose.transform
     if len(matrix) != 16 or not all(math.isfinite(value) for value in matrix):
         return -100.0, False
@@ -723,8 +729,8 @@ def _project_score(
     # conjugating the matrix would rotate the camera's local axes a second
     # time.  ARKit cameras look down local -Z.
     world = _room_to_capture(position.x, position.y, position.z, capture_to_room)
-    camera = (matrix[12], matrix[13], matrix[14])
-    delta = (world[0] - camera[0], world[1] - camera[1], world[2] - camera[2])
+    origin = (matrix[12], matrix[13], matrix[14])
+    delta = (world[0] - origin[0], world[1] - origin[1], world[2] - origin[2])
     right = (matrix[0], matrix[1], matrix[2])
     up = (matrix[4], matrix[5], matrix[6])
     backward = (matrix[8], matrix[9], matrix[10])
@@ -764,7 +770,7 @@ def _room_to_capture(x: float, y: float, z: float, capture_to_room: Any) -> tupl
         result = inverse @ np.asarray([x, y, z, 1.0], dtype=np.float64)
         if not np.all(np.isfinite(result)) or abs(result[3]) < 1e-9:
             return x, z, -y
-        return tuple((result[:3] / result[3]).tolist())  # type: ignore[return-value]
+        return tuple((result[:3] / result[3]).tolist())
     except (TypeError, ValueError, np.linalg.LinAlgError):
         return x, z, -y
 
@@ -902,7 +908,8 @@ def _camera_local(node: SceneNode, position: Sequence[float]) -> tuple[float, fl
         local = inverse @ np.asarray([*position, 1.0], dtype=np.float64)
         normalized = local[:3] / np.asarray(node.dimensions.as_tuple(), dtype=np.float64)
         bounded = np.clip(normalized, -20.0, 20.0)
-        return tuple(float(round(value, 3)) for value in bounded)
+        x, y, z = (float(round(value, 3)) for value in bounded)
+        return x, y, z
     except (TypeError, ValueError, np.linalg.LinAlgError):
         return (0.0, 0.0, 0.0)
 
@@ -1054,7 +1061,7 @@ def _context(
     *,
     images_provided: bool = False,
     photo_evidence: list[dict[str, Any]] | None = None,
-    mesh_profiles: dict[UUID, Any] | None = None,
+    mesh_profiles: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "walls": [_surface_brief(node) for node in graph.nodes if stands_upright(node)],
@@ -1189,14 +1196,14 @@ def _node_id_of(item: dict, expected: set[UUID]) -> UUID | None:
     return node_id if node_id in expected else None
 
 
-def _labelling_of(item: dict) -> tuple[str, str, bool] | None:
+def _labelling_of(item: dict) -> tuple[str, QualityName, bool] | None:
     """The three fields every patch must carry, or None if any is unusable."""
     label, quality, movable = item.get("label"), item.get("quality"), item.get("movable")
     if not isinstance(label, str) or not label.strip():
         return None
     if quality not in QUALITIES or not isinstance(movable, bool):
         return None
-    return label, quality, movable
+    return label, cast(QualityName, quality), movable
 
 
 def _reconstruction_of(raw: object, allowed: set[str]) -> DisplayReconstruction | None:

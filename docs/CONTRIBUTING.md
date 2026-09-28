@@ -4,6 +4,8 @@ How to run, change, test and deploy each part of the system. The [README](../REA
 
 ## Start here
 
+The team built the first version in four lanes, each with its own document under `docs/lanes/`, and several AI coding agents still follow that split. The lane documents and `docs/handoffs/` record how the work was divided and what each lane promised the others. For what the system does today, the code, the [README](../README.md) and [`DEPLOY.md`](DEPLOY.md) are the current sources.
+
 | You are | Read |
 |---|---|
 | Any agent, before your first commit | [`docs/AGENT_PROTOCOL.md`](AGENT_PROTOCOL.md) |
@@ -110,7 +112,9 @@ scripts/deploy.sh
 ```
 
 From this repository on your own machine. It pulls master on the Droplet,
-rebuilds and reports; [`docs/DEPLOY.md`](DEPLOY.md) has the rest.
+pulls the image CI tested for that commit, restarts, and checks the result;
+it builds on the Droplet only with `SP_DEPLOY_BUILD=1`.
+[`docs/DEPLOY.md`](DEPLOY.md) has the rest.
 
 ### Pointing the app at your own machine
 

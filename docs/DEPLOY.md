@@ -45,7 +45,8 @@ VOLUME_NAME=standardphysics-scans ./setup.sh
 ```
 
 That installs Docker, mounts the volume, adds swap, closes every port but SSH
-and the two Caddy needs, and turns on unattended security updates. It never
+and the two Caddy needs, turns on unattended security updates, and installs
+the logrotate rule for the deploy log. It never
 formats a disk that already holds a filesystem, so running it again on a box
 with scans on it is safe.
 
@@ -57,11 +58,8 @@ $EDITOR .env
 ```
 
 Fill in the two domains, `SCANS_PATH` as the script printed it, and the keys.
-Generate the session secret on the box:
-
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-```
+There is no session secret to generate: a session is a random token the API
+stores only as a hash, so nothing signs it.
 
 Set a spend limit on the OpenRouter account and turn on zero data retention
 before the first shop scans anything. Every scan sends photographs of
@@ -92,6 +90,13 @@ The compose file caps the API at 3.2 GB and 1.75 cores and the workspace at
 Docker and SSH still have room. The comment at the top of
 `docker-compose.yml` has the arithmetic. On a bigger Droplet, raise them
 there.
+
+Logs are capped too, so a chatty week cannot fill the Droplet disk. Docker
+keeps each container's output in at most five 20 MB files, which is as far
+back as `docker compose logs` can reach. `setup.sh` installs
+`deploy/digitalocean/logrotate.conf` as `/etc/logrotate.d/standardphysics`,
+which rotates the deploy log once it passes 1 MB and keeps ten old files. A
+box set up before that rule existed gets it by running `setup.sh` again.
 
 ## Blender
 
@@ -129,8 +134,8 @@ From your own machine, which is the usual way:
 scripts/deploy.sh
 ```
 
-It pulls master on the Droplet, rebuilds, and runs `doctor.sh`, streaming the
-lot back. Only one deploy runs at a time: a second is refused rather than
+It pulls master on the Droplet, fetches the image CI tested for that commit,
+and runs `doctor.sh`, streaming the lot back. Only one deploy runs at a time: a second is refused rather than
 queued, because two of them racing to recreate a container leave the name
 taken, the stack half torn down and the site answering 502. It stops if you have commits master does not, because the Droplet
 pulls from GitHub and a deploy that quietly ships the previous commit is worse
@@ -148,13 +153,74 @@ anyway in either case:
 SP_DEPLOY_FORCE=1 scripts/deploy.sh
 ```
 
-The order on the box is pull, build, read the queue, restart. The build takes
-minutes and the old API keeps serving through it, so the queue is read after
-the build and immediately before `docker compose up -d` swaps the containers.
-A refused deploy leaves the new image built, and running the script again
-once the queue drains reuses it from the cache. The build also moves the
-`standardphysics:latest` tag to the new image, so a bare `docker compose up -d`
-typed on the box without `GIT_SHA` would start it.
+The order on the box is pull, fetch the image, read the queue, restart. A
+pull (or a build, below) takes minutes and the old API keeps serving through it, so
+the queue is read after the image is ready and immediately before
+`docker compose up -d` swaps the containers. A refused deploy leaves the new
+image on the box, and running the script again once the queue drains reuses
+it. Fetching or building also moves the `standardphysics:latest` tag to the
+new image, so a bare `docker compose up -d` typed on the box without `GIT_SHA`
+would start it.
+
+### The image CI tested
+
+The `image` job in `.github/workflows/ci.yml` builds the image, runs
+`scripts/smoke_image.sh` and the Blender regressions in it, and on a push to
+master pushes that same image to GitHub's registry as
+`ghcr.io/imhaohao/standardphysics:candidate-<sha>`. The `publish` job waits
+for every other job in the workflow (the Python suites, the contract drift
+check, the web lint, typecheck, tests and build, the browser flow, and the
+image job) and only then copies the candidate's manifest to
+`ghcr.io/imhaohao/standardphysics:<sha>`, unchanged, so the digest stays the
+one that was tested. A commit with any failing check never gets the `<sha>`
+tag. The publish job's summary on the Actions run records the digest.
+Never deploy a `candidate-` tag by hand: it exists before the web checks
+have finished. `scripts/deploy.sh` pulls that tag and
+retags it `standardphysics:<sha>` on the box, so what serves traffic is the
+exact image that passed CI, and the Droplet spends no time or memory building.
+
+When the `<sha>` tag cannot be pulled, because CI has not finished with the
+commit, a check failed, or the Droplet cannot read the package, the script
+stops with exit code 66 and says which of those to look at. It does not fall
+back to building, since a build on the box has passed none of CI's checks.
+When you need to ship anyway, such as GitHub being down during an incident,
+`SP_DEPLOY_BUILD=1 scripts/deploy.sh` builds from the checked-out commit on
+the box, warns that the image is untested, and records the deploy as
+`untested-local-build`. `SP_DEPLOY_IMAGE` points the script at another
+registry repository.
+
+**A person has to do this once, by hand.** GHCR packages start out private,
+and until the Droplet can read this one every deploy is refused. Pick one:
+
+- Make the package public: on GitHub, open the repository's Packages,
+  choose `standardphysics`, then Package settings, and set its visibility to
+  public. It holds nothing secret (the image is built from this public
+  repository and carries no credentials), and nothing else is needed.
+- Keep it private and log the Droplet in with a token that can only read
+  packages: create a fine-grained or classic token with just `read:packages`,
+  then on the box run
+  `echo <token> | docker login ghcr.io -u <github-user> --password-stdin`.
+  The login is saved in `/root/.docker/config.json` and outlives reboots;
+  a token that expires makes deploys refuse again until it is replaced.
+
+Either way, check it from the Droplet with
+`docker pull ghcr.io/imhaohao/standardphysics:<a master sha>`.
+
+The base image is pinned by digest in the `Dockerfile` (`NODE_IMAGE`), so a
+build on the box starts from the same bytes as CI's. Debian packages and the
+Blender download are installed at build time; Blender is checked against its
+published sha256, and the apt packages follow bookworm's security updates.
+
+Two more CI jobs watch what goes into the image. `supply-chain` runs gitleaks
+over every commit, pip-audit over `requirements.lock`, and `npm audit` over the
+workspace's production dependencies at high severity and up.
+`image-vulnerabilities` builds the image and fails when grype finds a critical
+vulnerability that has a fixed version. Neither is in the publish job's
+`needs`, so a new advisory against an unchanged dependency shows as a red
+check on the commit without blocking a hotfix. The fix is a dependency bump:
+`scripts/lock_python.sh` for Python, `npm update <package>` in `apps/web` for
+the workspace, or a newer `NODE_IMAGE` digest for the base image. Every action
+in the workflows is pinned to a commit SHA, with its version in a comment.
 
 A window remains. An upload that finalises between the queue read and the
 moment the old container stops, about a second, queues a job the check did
@@ -166,9 +232,30 @@ job that started in that second. Closing it completely needs the worker to
 stop claiming jobs while a maintenance flag is set, which lives in
 `worker.py` and has not been built.
 
-Each deploy appends the time and the commit to
-`/var/log/standardphysics-deploys.log` on the Droplet. That file is the list of
-commits you can roll back to.
+After the restart the script waits for the new stack to prove it is the one
+it deployed. Every five seconds it runs `deploy/digitalocean/check_serving.py`
+inside the API container, which passes once `/health/ready` answers 200,
+`/health/details` reports the commit just deployed, and the workspace serves
+its sign-in page. The check runs in the container because the API publishes
+no port. It gives up after `SP_DEPLOY_READY_SECONDS`, 180 by default. `doctor.sh`
+runs the same check against the commit checked out on the box.
+
+Only a deploy that passes is written down. It appends the time, the commit and
+where its image came from to `/var/log/standardphysics-deploys.log` on the
+Droplet. The last field is the registry digest that was pulled, or
+`untested-local-build`. That file is the list of commits you can roll back to.
+Lines written before this check existed were written before `doctor.sh` ran,
+so an old line is not proof that deploy came up.
+
+A deploy that never passes is left running so you can look at it. The script
+prints what the check last saw, then the rollback command for the last commit
+in the deploy log, runs `doctor.sh`, and exits with code 70:
+
+```text
+After 180 seconds the new stack is still not serving 0123abc…: http://127.0.0.1:8787/health/ready answered 503: {"status":"degraded",…}
+To go back to 89ab…, the last deploy that came up:
+  cd '/root/standardphysics' && git checkout 89ab… && cd deploy/digitalocean && GIT_SHA=89ab… docker compose up -d
+```
 
 On the Droplet itself it is the commands the script runs:
 
@@ -176,9 +263,12 @@ On the Droplet itself it is the commands the script runs:
 git checkout master
 git pull
 export GIT_SHA=$(git rev-parse HEAD)
-docker compose build
+docker pull ghcr.io/imhaohao/standardphysics:$GIT_SHA   # stop here if it fails
+docker tag ghcr.io/imhaohao/standardphysics:$GIT_SHA standardphysics:$GIT_SHA
 # count the unfinished jobs, as above, and stop here if there are any
 docker compose up -d
+# repeat until it prints "serving", then append the line to the deploy log
+docker compose exec -T api /opt/venv/bin/python - "$GIT_SHA" < check_serving.py
 ```
 
 ## Rolling back
@@ -199,8 +289,13 @@ curl -s https://api.standardphysics.app/health/details   # "commit" is now <sha>
 
 Leave `--build` off. With it, compose rebuilds from the checked-out source,
 which gives the same result far more slowly. Without it, compose finds
-`standardphysics:<sha>` and starts it. If that image has been pruned, the
-command builds it from the checked-out commit instead.
+`standardphysics:<sha>` and starts it. If that image has been pruned, pull
+it back first with
+`docker pull ghcr.io/imhaohao/standardphysics:<sha>` and
+`docker tag ghcr.io/imhaohao/standardphysics:<sha> standardphysics:<sha>`;
+otherwise the command builds it from the checked-out commit instead. When the
+deploy log recorded a digest, pulling `ghcr.io/imhaohao/standardphysics@<digest>`
+gets exactly that image even if the tag were ever moved.
 
 The checkout also rolls back `docker-compose.yml` and `Caddyfile` to that
 commit, which is what you want: the image and the configuration it was
@@ -272,7 +367,8 @@ How it works, and why:
   in the snapshot, with its files already gone. So after the copy, every
   listed artifact without a file is looked up in the live database. If its
   row has gone there too, it was deleted during the backup, and its name goes
-  into `artifacts-deleted-during-backup.txt` in the snapshot. If its row is
+  into `artifacts-deleted-during-backup.txt` in the snapshot, which
+  `restore.sh` applies to the copy it restores. If its row is
   still there, the file is really missing: the backup keeps the snapshot,
   deletes no older one, since an older one may hold the only copy, names the
   files and exits 2, which fails the systemd unit.
@@ -303,11 +399,18 @@ cd /root/standardphysics/deploy/digitalocean
 ```
 
 It prints SQLite's integrity check, the number of scans, and the number of
-artifacts the database lists against the number of files. It exits 1 if the
-database is damaged, and 2 if some listed artifact has no file, naming each
-one. Artifacts the backup recorded as deleted while it ran are printed on
-their own lines and do not count as missing. A scan uploaded while the backup
-ran can show up as a file the database does not list yet, which is harmless.
+artifacts the database lists against the number of files. Then it hashes
+every listed artifact's file and compares it with the sha256 the database
+recorded at upload. It exits 1 if the database is damaged, and 2 if some
+listed artifact has no file (`missing file:`) or a file whose hash differs
+(`corrupt file:`), naming each one.
+
+A scan its owner deleted while the backup ran is finished off in the copy:
+its rows go from every table with a `scan_id` column, the same set the API's
+delete clears, and whatever of its files were copied go too. The restored
+database then lists exactly the files it holds, with no exceptions to
+explain away. A scan uploaded while the backup ran can show up as a file the
+database does not list yet, which is harmless.
 
 To put a checked copy back under the API:
 
@@ -325,11 +428,74 @@ files, including removing the old `-wal` and `-shm` files, which belong to the
 database being replaced. The volume stays mounted throughout, because it is a
 mount point and moving it would move the mount.
 
-## What to alert on
+## Alerts
 
-Nothing here pages anyone yet. These are the conditions worth an alert, what
-to poll for each, and whether `/health/details` already answers it. Its body
-looks like this:
+`deploy/digitalocean/monitor.sh` runs every five minutes from a systemd
+timer that `setup.sh` installs. It checks four things and posts a message to
+`SP_ALERT_WEBHOOK` when one starts failing and again when it recovers:
+
+| Check | Fails when | Threshold in `.env` |
+| --- | --- | --- |
+| readiness | `/health/ready` answers anything but 200, or cannot be reached | none |
+| queue | `oldest_queued_job_seconds` in `/health/details` is over the limit | `SP_MONITOR_QUEUE_SECONDS=1800` |
+| disk | the scans volume has less free space than the limit, measured with `df` | `SP_MONITOR_MIN_FREE_PERCENT=15` |
+| backup | the newest snapshot in `SP_BACKUP_DEST` is older than the limit, or there is none. Skipped when `SP_BACKUP_DEST` is empty. | `SP_MONITOR_BACKUP_HOURS=26` |
+
+It asks the API at `https://$API_DOMAIN` by default, through Caddy, so an
+expired certificate or a stopped Caddy fails readiness too.
+`SP_MONITOR_URL` points it somewhere else.
+
+A message goes out only when the set of failing checks changes, so an outage
+that lasts an hour sends one message when it starts and one when it ends,
+not twelve. The failing set lives in
+`/var/lib/standardphysics-monitor/failing`, and it is updated only after the
+webhook accepts the message. If the webhook is down, the next run sends the
+same news again.
+
+`SP_ALERT_WEBHOOK` can be one of two kinds:
+
+- **An ntfy topic.** Install the ntfy app on your phone, subscribe to a
+  long, unguessable topic name, and set
+  `SP_ALERT_WEBHOOK=https://ntfy.sh/<that topic>`. The message arrives as
+  plain text with the title "Standard Physics monitor", at high priority
+  when something started failing. Anyone who knows the topic name can read
+  it, so pick a name nobody would guess. For a self-hosted ntfy server, set
+  `SP_ALERT_FORMAT=ntfy` as well.
+- **A generic JSON webhook.** Any other URL gets a POST of
+  `{"text": "..."}` with `Content-Type: application/json`, which is what a
+  Slack incoming webhook takes.
+
+A message reads like this:
+
+```
+Standard Physics at https://api.standardphysics.app
+Failing: readiness: https://api.standardphysics.app/health/ready answered 503
+Failing: queue: the oldest queued job has waited 2400s, over the 1800s limit
+```
+
+Turn it on once the webhook is in `.env`, and run it once by hand:
+
+```bash
+systemctl enable --now standardphysics-monitor.timer
+systemctl start standardphysics-monitor.service
+journalctl -u standardphysics-monitor.service     # prints the failing checks, or "every check passes"
+```
+
+To see a real alert arrive, point `SP_MONITOR_URL` in `.env` at a URL that
+answers 404, start the service, then put it back and start it again: that
+sends one failure message and one recovery.
+
+The monitor runs on the Droplet it watches, so it cannot report the Droplet
+itself being off or unreachable. Add an outside check for that: a
+DigitalOcean uptime check on `https://api.standardphysics.app/health`, with
+its own email or Slack alert, takes a few minutes in the control panel.
+`doctor.sh` reports whether alerts are on.
+
+### What else is worth watching
+
+These are the conditions worth a person's attention, including the ones the
+monitor does not cover, what to poll for each, and whether `/health/details`
+already answers it. Its body looks like this:
 
 ```json
 {
@@ -348,12 +514,13 @@ looks like this:
 | Worker stall | `/health` answers 503 because a loop has died, or a loop's `state` is `stalled`, or a `busy` loop's `job.running_seconds` passes the longest bake you expect | `/health`, `/health/details` | Yes |
 | Disk free | Under 15% or 5 GB free on the scans volume, or on the backup destination. Uploads and bakes write there, and SQLite fails every write once it is full. | `df -h /mnt/standardphysics-scans`, or the `space:` line of `doctor.sh` | No |
 | Failed backup | The unit failed, or the newest snapshot is more than 26 hours old. `backup.sh` exits 2 when a file the live database lists is missing, and 75 when another backup was already running. | `systemctl is-failed standardphysics-backup.service`, `./restore.sh` with no arguments lists the snapshots | No |
-| Failed deploy | `scripts/deploy.sh` exits non-zero: 75 means jobs were in flight, 69 means the queue could not be read, anything else means the pull, build or restart failed. After a deploy, the `commit` in `/health/details` should match the last line of `/var/log/standardphysics-deploys.log`, which only records deploys that got as far as the restart. | the script's exit code, `/health/details` | The commit only |
-| Tracing off | Only when `WANDB_PROJECT` is set on purpose and traces stop arriving. `tracing_status()` in `standardphysics_agents.tracing` reports whether traces are sent and why not. | the API log's `weave tracing is off` warning | Not yet wired in |
+| Failed deploy | `scripts/deploy.sh` exits non-zero: 75 means jobs were in flight, 69 means the queue could not be read, 66 means no tested image exists for the commit, anything else means the pull, build or restart failed. After a deploy, the `commit` in `/health/details` should match the last line of `/var/log/standardphysics-deploys.log`, which only records deploys that got as far as the restart. | the script's exit code, `/health/details` | The commit only |
+| Tracing off | Only when `WANDB_PROJECT` is set on purpose and traces stop arriving. `tracing` in `/health/details` says whether tracing started and, when it did not, why. It reports that the client started, not that each trace arrived. | `/health/details`, the API log's `weave tracing is off` warning | Yes |
 
-A cron job on the Droplet that curls `/health/details` and runs `df` every
-few minutes, posting to a webhook when a row trips, covers the first four.
-DigitalOcean's uptime checks can watch `/health` from outside.
+`monitor.sh` covers the queue age, a worker that has died, stalled or overrun
+its deadline (through `/health/ready`), the scans volume's free space and
+the backup's age. It does not watch the backup destination's disk, a failed
+deploy, or tracing.
 
 ## Pointing the app at it
 
@@ -366,9 +533,10 @@ CAPTURE_WORKSPACE_BASE_URL: https://standardphysics.app
 ```
 
 The connection screen stays in the app for development, and an owner never has
-to open it. `AppEnvironment` prefers anything already saved in `UserDefaults`,
-so a phone that was pointed at a laptop keeps pointing there until someone
-clears it.
+to open it. `AppEnvironment` uses the compiled address whenever the build
+carries one, and falls back to an address saved in `UserDefaults` only when
+it does not, so a shipped build always talks to production however the phone
+was pointed before.
 
 ## Cost
 

@@ -26,7 +26,7 @@ import json
 from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 from uuid import UUID
 
 import standardphysics_fixtures
@@ -331,6 +331,11 @@ SHIFT_AXES = {"shift_x": "east and west", "shift_y": "north and south"}
 """Which way a nudge runs. The graph is z-up, so the floor is x and y."""
 
 
+def _shifted(aim: Aim, axis: str, value: float) -> Aim:
+    changes: dict[str, Any] = {axis: value}
+    return replace(aim, **changes)
+
+
 def sweep_shift(
     aim: Aim,
     axis: str,
@@ -342,7 +347,7 @@ def sweep_shift(
         raise KeyError(f"{axis} is not a direction a piece can be nudged")
     if aim.moved is None:
         raise ValueError("nothing is selected to move")
-    moved = [replace(aim, **{axis: float(value)}) for value in metres]
+    moved = [_shifted(aim, axis, float(value)) for value in metres]
     return [(each, review(each, configuration)) for each in moved]
 
 

@@ -3,22 +3,39 @@
 #
 #   scripts/deploy.sh
 #
-# One command instead of a session: it pulls on the box, rebuilds, and runs
-# doctor.sh, streaming everything back. Set SP_DEPLOY_HOST in your shell if the
-# box moves.
+# One command instead of a session: it pulls on the box, fetches the image,
+# and runs doctor.sh, streaming everything back. Set SP_DEPLOY_HOST in your
+# shell if the box moves.
 #
-# The image is tagged with the commit it was built from, and each deploy adds
-# a line to /var/log/standardphysics-deploys.log on the box, so the commit to
-# roll back to is written down. docs/DEPLOY.md has the rollback. A box left on
-# an older commit by a rollback goes back to master here before it pulls.
+# The image it starts is the one CI tested. The publish job in ci.yml tags a
+# master commit's image as ghcr.io/imhaohao/standardphysics:<sha> only after
+# every check in that workflow passed for the commit, and this pulls that tag.
+# When the tag cannot be pulled (CI still running or failed, or the package
+# not readable by the box), it refuses with exit code 66 rather than ship
+# something nothing tested. SP_DEPLOY_BUILD=1 builds the image on the box
+# instead, says so, and records the deploy as untested-local-build.
+# SP_DEPLOY_IMAGE points at another registry repository.
+#
+# Either way the image is tagged standardphysics:<sha>. After the restart it
+# runs deploy/digitalocean/check_serving.py in the API container every five
+# seconds, for up to SP_DEPLOY_READY_SECONDS (180 by default), until
+# /health/ready answers 200, /health/details reports the commit just deployed
+# and the workspace serves its sign-in page. Only then does it add a line to
+# /var/log/standardphysics-deploys.log on the box with the commit and the
+# registry digest it started, or untested-local-build, so that file lists only
+# deploys that came up and is the list of what to roll back to. A deploy that
+# never passes the check is left running for you to look at, is not written
+# down, prints the rollback to the last deploy in that file, runs doctor.sh
+# and exits 70. docs/DEPLOY.md has the rollback. A box left on an older
+# commit by a rollback goes back to master here before it pulls.
 #
 # It refuses to deploy while the API has jobs queued or running. The restart
 # throws away whatever a bake has done so far, so it waits for the queue to
 # empty unless SP_DEPLOY_FORCE=1 says to go anyway. A queue it cannot read is a
 # refusal too, not an empty queue: a stopped or wedged API is exactly when
-# nobody knows what it was doing. The image is built before the queue is read,
-# so the build's minutes are not part of the window in which a new upload can
-# start a job that the restart then kills. docs/DEPLOY.md says what is left.
+# nobody knows what it was doing. The image is pulled or built before the
+# queue is read, so those minutes are not part of the window in which a new
+# upload can start a job that the restart then kills. docs/DEPLOY.md says what is left.
 #
 # It refuses to deploy behind your own work. The Droplet pulls master from
 # GitHub, so a commit still sitting on this laptop is not going anywhere, and
@@ -31,6 +48,9 @@ DIR="${SP_DEPLOY_DIR:-/root/standardphysics}"
 LOCK="${SP_DEPLOY_LOCK:-/var/lock/standardphysics-deploy}"
 HISTORY="${SP_DEPLOY_HISTORY:-/var/log/standardphysics-deploys.log}"
 FORCE="${SP_DEPLOY_FORCE:-}"
+BUILD="${SP_DEPLOY_BUILD:-}"
+IMAGE="${SP_DEPLOY_IMAGE:-ghcr.io/imhaohao/standardphysics}"
+READY_SECONDS="${SP_DEPLOY_READY_SECONDS:-180}"
 
 # Read the way the Droplet's own tools read the queue: the API container's
 # Python opening the database it holds, read-only, so this cannot take a lock
@@ -100,7 +120,22 @@ git checkout --quiet master
 git pull --ff-only
 export GIT_SHA=\$(git rev-parse HEAD)
 cd deploy/digitalocean
-docker compose build
+published='$IMAGE':\$GIT_SHA
+if [ '$BUILD' = 1 ]; then
+  echo \"SP_DEPLOY_BUILD=1: building \$GIT_SHA here. This image is untested; CI has not run its checks against it.\" >&2
+  docker compose build
+  origin=untested-local-build
+elif docker pull --quiet \"\$published\"; then
+  docker tag \"\$published\" standardphysics:\$GIT_SHA
+  docker tag \"\$published\" standardphysics:latest
+  origin=\$(docker image inspect --format '{{index .RepoDigests 0}}' \"\$published\")
+else
+  echo \"There is no tested image for this commit: \$published could not be pulled.\" >&2
+  echo 'CI publishes it once every check has passed on master. Wait for that run to go green,' >&2
+  echo 'or check that this box can read the package (docs/DEPLOY.md, The image CI tested).' >&2
+  echo 'SP_DEPLOY_BUILD=1 builds it on the box instead, untested.' >&2
+  exit 66
+fi
 in_flight=\$(docker compose exec -T api /opt/venv/bin/python -c $(printf %q "$IN_FLIGHT_QUERY") 2>/dev/null) || in_flight=unknown
 if [ '$FORCE' != 1 ] && ! [[ \"\$in_flight\" =~ ^[0-9]+\$ ]]; then
   echo 'I could not read the job queue from the API container, so I cannot tell what a restart would interrupt.' >&2
@@ -109,12 +144,30 @@ if [ '$FORCE' != 1 ] && ! [[ \"\$in_flight\" =~ ^[0-9]+\$ ]]; then
 fi
 if [ '$FORCE' != 1 ] && [ \"\$in_flight\" -gt 0 ]; then
   echo \"The API has \$in_flight job(s) queued or running, and a deploy restarts it.\" >&2
-  echo 'Wait for them to finish and run this again, which reuses the image just built,' >&2
+  echo 'Wait for them to finish and run this again, which reuses the image it just fetched,' >&2
   echo 'or run with SP_DEPLOY_FORCE=1 to interrupt them.' >&2
   exit 75
 fi
 docker compose up -d
-echo \"\$(date -u +%Y-%m-%dT%H:%M:%SZ) \$GIT_SHA\" >> '$HISTORY'
+waited=0
+until verdict=\$(docker compose exec -T api /opt/venv/bin/python - \"\$GIT_SHA\" < check_serving.py 2>&1); do
+  if [ \"\$waited\" -ge '$READY_SECONDS' ]; then
+    echo \"After \$waited seconds the new stack is still not serving \$GIT_SHA: \$verdict\" >&2
+    previous=\$(cat '$HISTORY.1' '$HISTORY' 2>/dev/null | tail -n 1 | cut -d ' ' -f 2) || true
+    if [ -n \"\$previous\" ]; then
+      echo \"To go back to \$previous, the last deploy that came up:\" >&2
+      echo \"  cd '$DIR' && git checkout \$previous && cd deploy/digitalocean && GIT_SHA=\$previous docker compose up -d\" >&2
+    else
+      echo 'No earlier deploy is written down in $HISTORY, so there is no commit to name for a rollback.' >&2
+    fi
+    ./doctor.sh || true
+    exit 70
+  fi
+  sleep 5
+  waited=\$((waited + 5))
+done
+echo \"\$verdict\"
+echo \"\$(date -u +%Y-%m-%dT%H:%M:%SZ) \$GIT_SHA \$origin\" >> '$HISTORY'
 ./doctor.sh"
 }
 

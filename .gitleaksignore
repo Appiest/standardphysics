@@ -1,0 +1,9 @@
+# False positives from gitleaks' generic-api-key rule, one fingerprint each
+# (commit:file:rule:line), so a new finding on any other line still fails CI.
+#
+# `build_prefix(scan_id, key)` followed by `glb_url=prefix`: the word "key"
+# next to an identifier, in a script and in a test.
+b3a6a208689a9c588e4bf309d0e24ce108342cb1:scripts/build_full_floor.py:generic-api-key:187
+1e823610f74829e4bfa668ec69cdd78c4ffee508:services/api/tests/test_textures.py:generic-api-key:157
+# A sha256 of services/api/tests/test_auth.py in a frozen file manifest.
+1133ba147e834d69a6e6e7245120c949bd1a7084:scripts/shop_pilot/assets/freeze-opencode-20260921-170615.json:generic-api-key:85

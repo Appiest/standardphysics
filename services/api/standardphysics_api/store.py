@@ -2,7 +2,8 @@
 
 A path is always built from a scan UUID and an artifact ID that passed
 `ARTIFACT_ID`, never from anything else a client sends, and the resolved path
-must stay under the root.
+must stay under the root. A body is staged under `ReceiveDeadlines`, so a client
+that stalls mid-upload loses its staged file rather than keeping it open.
 """
 
 from __future__ import annotations
@@ -13,11 +14,16 @@ import pathlib
 import re
 import shutil
 import tempfile
+import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
+from .receive_deadlines import ReceiveDeadlines
+
 ARTIFACT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+STAGING_PREFIX = ".upload-"
+"""Staged uploads start with a dot, which `ARTIFACT_ID` refuses, so none can be mistaken for an artifact."""
 
 
 class InvalidArtifactId(ValueError):
@@ -59,10 +65,17 @@ class StagedUpload:
 
 
 class ArtifactStore:
-    def __init__(self, root: pathlib.Path, max_bytes: int, quota: ScanQuota = ScanQuota()):
+    def __init__(
+        self,
+        root: pathlib.Path,
+        max_bytes: int,
+        quota: ScanQuota = ScanQuota(),
+        receive_deadlines: ReceiveDeadlines = ReceiveDeadlines(),
+    ):
         self.root = root.resolve()
         self.max_bytes = max_bytes
         self.quota = quota
+        self.receive_deadlines = receive_deadlines
 
     def artifact_path(self, scan_id: uuid.UUID, artifact_id: str) -> pathlib.Path:
         if not ARTIFACT_ID.fullmatch(artifact_id):
@@ -91,17 +104,35 @@ class ArtifactStore:
             raise InvalidArtifactId(str(scan_id))
         shutil.rmtree(target, ignore_errors=True)
 
-    async def stage(self, scan_id: uuid.UUID, chunks: AsyncIterator[bytes]) -> StagedUpload:
-        """Stream a body to a temp file beside its destination while hashing it."""
+    def remove_abandoned_staging(self, older_than_seconds: float) -> int:
+        """Delete staged uploads nothing has written to for `older_than_seconds`, and say how many.
+
+        A request that dies mid-body, in a crash or a restart, leaves its staged
+        file behind, and nothing else would ever delete it. A live upload writes
+        to its file every few milliseconds, so its modification time stays fresh.
+        """
+        cutoff = time.time() - older_than_seconds
+        staged = (self.root / "scans").glob(f"*/artifacts/{STAGING_PREFIX}*")
+        abandoned = [path for path in staged if _written_before(path, cutoff)]
+        for path in abandoned:
+            path.unlink(missing_ok=True)
+        return len(abandoned)
+
+    async def stage(self, scan_id: uuid.UUID, chunks: AsyncIterator[bytes], limit: int | None = None) -> StagedUpload:
+        """Stream a body to a temp file beside its destination while hashing it, refusing it past `limit` bytes.
+
+        A body that breaks a receive deadline raises `BodyTooSlow`; like any other failure, it deletes the file.
+        """
+        ceiling = self.max_bytes if limit is None else min(limit, self.max_bytes)
         directory = self.scan_dir(scan_id) / "artifacts"
         directory.mkdir(parents=True, exist_ok=True)
         digest, size = hashlib.sha256(), 0
-        handle = tempfile.NamedTemporaryFile(dir=directory, prefix=".upload-", delete=False)
+        handle = tempfile.NamedTemporaryFile(dir=directory, prefix=STAGING_PREFIX, delete=False)
         try:
             with handle:
-                async for chunk in chunks:
+                async for chunk in self.receive_deadlines.start().paced(chunks):
                     size += len(chunk)
-                    if size > self.max_bytes:
+                    if size > ceiling:
                         raise ArtifactTooLarge(size)
                     digest.update(chunk)
                     handle.write(chunk)
@@ -117,3 +148,10 @@ class ArtifactStore:
     @staticmethod
     def discard(staged: StagedUpload) -> None:
         staged.temp_path.unlink(missing_ok=True)
+
+
+def _written_before(path: pathlib.Path, cutoff: float) -> bool:
+    try:
+        return path.stat().st_mtime < cutoff
+    except FileNotFoundError:
+        return False

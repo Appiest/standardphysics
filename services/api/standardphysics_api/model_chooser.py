@@ -76,7 +76,7 @@ def picked_outcome(graph: SceneGraph, checker, menu: Menu, reply: str, targets: 
     resolution = resolve(reply, graph, menu, checker.pinned)
     edits = parse_edits(resolution.completion)
     moves = node_moves(edits) if edits else []
-    if not moves:
+    if edits is None or not moves:
         return None
     after = apply_edits(graph, edits)
     proposal = _build_proposal(graph, after, Candidate("model_choice", moves, 0.0), tuple(f.id for f in targets))

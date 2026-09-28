@@ -140,7 +140,7 @@ def _pass(
     asked = _ask_for_questions(scenes, per_scene, seed, model, workers, said, label)
     said(f"{label}: scoring {len(asked)} answers")
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        verdicts = list(pool.map(lambda pair: _score(*pair, model), asked))
+        verdicts = list(pool.map(lambda pair: _score(pair[0], pair[1], model), asked))
     said(f"{label}: done, {sum(verdict.passed for verdict in verdicts)} of {len(verdicts)} right")
     return Run(scrambled=scrambled, verdicts=verdicts)
 

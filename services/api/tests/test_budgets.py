@@ -6,6 +6,13 @@ limits that come after it. The team is exempt from the per-owner ones, because
 its account holds every Moffitt-scale test walk.
 """
 
+import asyncio
+import hashlib
+import os
+import time
+import uuid
+
+import httpx
 import pytest
 
 from conftest import create_scan, put_artifact, usdz_fixture
@@ -116,8 +123,115 @@ def test_the_defaults_fit_the_walks_on_file():
         ("SP_MAX_OWNER_BYTES", "max_owner_bytes", 123_456_789),
         ("SP_MAX_QUEUED_JOBS", "max_queued_jobs", 11),
         ("SP_MIN_FREE_DISK_BYTES", "min_free_disk_bytes", 2_000_000_000),
+        ("SP_MAX_OWNER_UPLOADS", "max_owner_uploads", 2),
+        ("SP_MAX_CONCURRENT_UPLOADS", "max_concurrent_uploads", 9),
+        ("SP_STAGING_MAX_AGE_SECONDS", "staging_max_age_seconds", 600),
+        ("SP_UPLOAD_IDLE_SECONDS", "upload_idle_seconds", 30),
+        ("SP_UPLOAD_TOTAL_SECONDS", "upload_total_seconds", 900),
     ],
 )
 def test_each_budget_is_configurable(monkeypatch, variable, field, value):
     monkeypatch.setenv(variable, str(value))
     assert getattr(Settings.from_environment(), field) == value
+
+
+def _upload_headers(body: bytes) -> dict[str, str]:
+    return {
+        "X-Checksum-SHA256": hashlib.sha256(body).hexdigest(),
+        "X-Artifact-Kind": "frames",
+        "Content-Length": str(len(body)),
+    }
+
+
+async def _held_body(body: bytes, release: asyncio.Event):
+    await release.wait()
+    yield body
+
+
+async def _second_upload_while_the_first_streams(client, scan_id: str, size: int) -> tuple[int, int]:
+    """Start one upload whose body waits, send a second while it waits, then let the first finish."""
+    body, release = b"x" * size, asyncio.Event()
+    staging = client.app.state.store.scan_dir(uuid.UUID(scan_id)) / "artifacts"
+    transport = httpx.ASGITransport(app=client.app)
+    session = {"Cookie": "; ".join(f"{name}={value}" for name, value in client.cookies.items())}
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver", headers=session) as racing:
+        first = asyncio.create_task(racing.put(
+            f"/api/scans/{scan_id}/artifacts/frame-0001", content=_held_body(body, release), headers=_upload_headers(body)
+        ))
+        while not list(staging.glob(".upload-*")) and not first.done():
+            await asyncio.sleep(0.01)
+        assert not first.done(), (await first).text
+        second = await racing.put(
+            f"/api/scans/{scan_id}/artifacts/frame-0002", content=body, headers=_upload_headers(body)
+        )
+        release.set()
+        return (await first).status_code, second.status_code
+
+
+def test_two_uploads_that_together_cross_the_disk_floor_are_not_both_taken(make_client, monkeypatch):
+    with make_client(min_free_disk_bytes=1_000_000) as client:
+        scan_id = create_scan(client)
+        free_space(monkeypatch, 1_000_150)
+        statuses = asyncio.run(_second_upload_while_the_first_streams(client, scan_id, 100))
+    assert statuses == (201, 507)
+
+
+def test_two_uploads_that_together_cross_the_owner_budget_are_not_both_taken(make_client):
+    with make_client(max_owner_bytes=150) as client:
+        scan_id = create_scan(client)
+        statuses = asyncio.run(_second_upload_while_the_first_streams(client, scan_id, 100))
+    assert statuses == (201, 413)
+
+
+@pytest.mark.parametrize(
+    ("limit", "refusal"), [({"max_owner_uploads": 1}, 429), ({"max_concurrent_uploads": 1}, 503)]
+)
+def test_uploads_past_the_concurrency_cap_are_refused_with_a_retry(make_client, limit, refusal):
+    with make_client(**limit) as client:
+        scan_id = create_scan(client)
+        statuses = asyncio.run(_second_upload_while_the_first_streams(client, scan_id, 10))
+        after = fill(client, scan_id, "frame-0003", 10)
+    assert statuses == (201, refusal)
+    assert after.status_code == 201
+
+
+def test_a_refused_upload_gives_back_its_reservation(make_client):
+    with make_client(max_owner_uploads=1) as client:
+        scan_id = create_scan(client)
+        assert put_artifact(client, scan_id, "frame-0001", b"x", "frames", checksum="0" * 64).status_code == 400
+        assert fill(client, scan_id, "frame-0002", 10).status_code == 201
+
+
+def _staging_file(data_dir, age_seconds: float):
+    directory = data_dir / "scans" / str(uuid.uuid4()) / "artifacts"
+    directory.mkdir(parents=True)
+    path = directory / ".upload-left-behind"
+    path.write_bytes(b"x" * 10)
+    then = time.time() - age_seconds
+    os.utime(path, (then, then))
+    return path
+
+
+def test_staging_files_abandoned_before_a_restart_are_swept_at_startup(make_client, tmp_path):
+    abandoned = _staging_file(tmp_path / "var", 7200)
+    streaming = _staging_file(tmp_path / "var", 5)
+    with make_client(staging_max_age_seconds=3600):
+        pass
+    assert not abandoned.exists()
+    assert streaming.exists()
+
+
+def test_the_worker_sweeps_abandoned_staging_files_hourly(make_client, tmp_path):
+    with make_client(staging_max_age_seconds=3600) as client:
+        abandoned = _staging_file(tmp_path / "var", 7200)
+        client.app.state.worker._sweep_hourly()
+    assert not abandoned.exists()
+
+
+def test_the_first_sweep_runs_even_on_a_machine_that_booted_minutes_ago(make_client, tmp_path, monkeypatch):
+    """time.monotonic counts from boot, so a first-sweep gate measured from zero skipped a fresh CI runner's sweep."""
+    with make_client(staging_max_age_seconds=3600) as client:
+        abandoned = _staging_file(tmp_path / "var", 7200)
+        monkeypatch.setattr("standardphysics_api.worker.time.monotonic", lambda: 600.0)
+        client.app.state.worker._sweep_hourly()
+    assert not abandoned.exists()

@@ -129,11 +129,16 @@ class _Rooms:
         return next((node for node in graph.nodes if node.id == node_id), None)
 
 
+def _pair(rooms: _Rooms, graph: SceneGraph, seat_id: UUID, table_id: UUID) -> tuple[SceneNode, SceneNode] | None:
+    seat, table = rooms.node(graph, seat_id), rooms.node(graph, table_id)
+    return None if seat is None or table is None else (seat, table)
+
+
 def _with_table(wish: Wish, rooms: _Rooms) -> bool:
     seat_id, table_id = wish.subjects
-    was = rooms.node(rooms.reference, seat_id), rooms.node(rooms.reference, table_id)
-    now = rooms.node(rooms.after, seat_id), rooms.node(rooms.after, table_id)
-    if None in (*was, *now):
+    was = _pair(rooms, rooms.reference, seat_id, table_id)
+    now = _pair(rooms, rooms.after, seat_id, table_id)
+    if was is None or now is None:
         return True
     stretch = math.dist(_xy(now[0]), _xy(now[1])) - math.dist(_xy(was[0]), _xy(was[1]))
     turn = _angle_between(_facing_off(*was), _facing_off(*now), 360.0)

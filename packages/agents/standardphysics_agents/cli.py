@@ -12,6 +12,7 @@ import argparse
 import json
 import math
 import os
+import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -503,11 +504,20 @@ def _weave_eval(args) -> int:
         return 1
     setups = previewing(DEFAULT_SETUPS) if args.preview_unverified else DEFAULT_SETUPS
     cases = labelled_cases()[: args.cases] if args.cases else None
-    for label, result in evaluate_in_weave(setups, cases=cases).items():
+    for label, result in evaluate_in_weave(setups, cases=cases, provenance={"commit": _commit()}).items():
         print(f"\n{label}")
         _print_weave_scores(result)
     print(f"\nevals: {project_url()}")
     return 0
+
+
+def _commit() -> str:
+    """The commit a Weave run scored: the image's baked-in SP_GIT_SHA, else the checkout's HEAD."""
+    baked = os.environ.get("SP_GIT_SHA")
+    if baked:
+        return baked
+    found = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=False)
+    return found.stdout.strip() or "unknown"
 
 
 def _print_weave_scores(result: dict) -> None:
@@ -582,7 +592,9 @@ def _print_runs(experiments) -> None:
     if reason is not None:
         print(f"{GRID_STAYED_LOCAL}{reason}", file=sys.stderr)
         return
-    project, team = target()
+    where = target()
+    assert where is not None
+    project, team = where
     print(f"\n{len(experiments)} runs in {team or 'your default entity'}/{project}")
     for url in log_experiments(experiments):
         print(f"  {url}")

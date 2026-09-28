@@ -37,6 +37,7 @@ def directions_of(node: SceneNode) -> list[tuple[float, float]]:
 def not_toward(directions: list[tuple[float, float]], node: SceneNode,
                finding: Finding) -> list[tuple[float, float]]:
     """The directions that do not carry the piece toward the problem's spot; all of them when it sits on the spot."""
+    assert finding.locus is not None
     spot = finding.locus.point
     away = (node.transform.position.x - spot.x, node.transform.position.y - spot.y)
     length = math.hypot(*away)

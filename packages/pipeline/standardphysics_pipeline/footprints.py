@@ -233,6 +233,7 @@ def closest_points(a: Polygon, b: Polygon) -> tuple[Point, Point]:
     for point in b:
         candidate = _closest_on_segment(point, *_nearest_edge(point, a))
         best = _better(best, candidate, point)
+    assert best is not None
     return best[1], best[2]
 
 

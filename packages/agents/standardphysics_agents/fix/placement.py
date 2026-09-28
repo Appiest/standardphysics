@@ -48,6 +48,7 @@ FREE_SPOT_SPACING = 0.5
 def _space(finding: Finding, graph: SceneGraph, rules: AgentRulePack, inset: float = 0.0) -> Polygon:
     """The required region, rather than the undersized region that was measured, pulled in by `inset`."""
     rule = rules.by_id(finding.check_id)
+    assert finding.locus is not None and finding.required_inches is not None
     width = depth = to_meters(finding.required_inches)
     rotation = (1.0, 0.0)
     if finding.check_id == RECTANGLE_RULE:

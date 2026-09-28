@@ -16,6 +16,7 @@ import json
 import math
 import pathlib
 import sys
+from typing import Any
 
 import bpy
 import numpy as np
@@ -129,7 +130,7 @@ def shelf_pack(sides: list[int]) -> list[tuple[int, int, int]] | None:
         placements[index] = (atlas, cursor_x + CHART_GUTTER, shelf_y + CHART_GUTTER)
         cursor_x += cell
         shelf_height = max(shelf_height, cell)
-    return placements
+    return [placement for placement in placements if placement is not None]
 
 
 def allocate(charts: list[dict]) -> tuple[list[int], list[tuple[int, int, int]]]:
@@ -204,7 +205,8 @@ def layout(args: argparse.Namespace) -> None:
     sides, placements = allocate(charts)
     for obj, side, placement in zip(objects, sides, placements):
         place_uvs(obj, side, placement)
-    np.savez(args.triangles, **triangle_arrays(objects))
+    arrays: dict[str, Any] = triangle_arrays(objects)
+    np.savez(args.triangles, **arrays)
     meta = {
         "atlas_size": ATLAS_SIZE,
         "atlas_count": 1 + max((placement[0] for placement in placements), default=0),

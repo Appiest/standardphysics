@@ -77,19 +77,24 @@ def evaluate_in_weave(
     *,
     cases: list[Case] | None = None,
     name: str = DEFAULT_NAME,
+    provenance: dict[str, str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Score every configuration against every case, in Weave.
 
     Returns Weave's own summary per configuration. `weave.init()` has to have
-    run first, which `init_tracing()` does.
+    run first, which `init_tracing()` does. Each run carries `provenance`, such
+    as the commit it scored, and the number of cases as Weave attributes, so a
+    result in the Evals tab says which code and which cases produced it.
     """
     module = _weave()
     picked = list(cases if cases is not None else dataset())
     evaluation = _evaluation(module, picked, name)
     model_class = _model_class(module)
+    labels = {**(provenance or {}), "cases": str(len(picked))}
     scored: dict[str, dict[str, Any]] = {}
     for setup in setups if setups is not None else DEFAULT_SETUPS:
-        scored[setup.label] = _scored(evaluation, model_class(**setup.fields()))
+        with module.attributes(labels):
+            scored[setup.label] = _scored(evaluation, model_class(**setup.fields()))
         _flush(module)
     return scored
 

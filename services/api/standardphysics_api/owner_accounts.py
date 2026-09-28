@@ -9,6 +9,7 @@ into it.
 
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 
@@ -18,14 +19,30 @@ from standardphysics_contracts import DeviceRegistration, Session
 
 from . import accounts, notifications
 from .accounts import Owner
-from .apple_identity import AppleIdentity, NotFromApple, verify
-from .auth import AttemptLimiter, client_address, resolve_owner, save_guest, session_of, set_session_cookie, signed_in
+from .apple_identity import AppleIdentity, AppleUnavailable, NotFromApple, verify
+from .auth import (
+    SIGN_IN_THROTTLED,
+    SIGN_IN_WINDOW_SECONDS,
+    AttemptLimiter,
+    client_address,
+    resolve_owner,
+    save_guest,
+    session_of,
+    set_session_cookie,
+    signed_in,
+)
 from .db import Database
 from .errors import ApiProblem
+
+log = logging.getLogger(__name__)
 
 DEVICE_TOKEN = re.compile(r"^[0-9a-fA-F]{32,200}$")
 GUESTS_PER_ADDRESS = 20
 GUEST_WINDOW_SECONDS = 3600
+APPLE_SIGN_INS_PER_ADDRESS = 30
+"""Apple sign-in attempts one network may make in SIGN_IN_WINDOW_SECONDS, the same as email sign-ins.
+Each one can cost a signature check, and an unknown key id can cost a request to Apple."""
+APPLE_RETRY_SECONDS = 60
 
 
 class SaveRequest(BaseModel):
@@ -40,13 +57,29 @@ class AppleSignIn(BaseModel):
 
 
 def _linked_by_email(connection: sqlite3.Connection, identity: AppleIdentity) -> Owner | None:
-    """An account that already has this person's Apple email, which Apple has confirmed is theirs."""
+    """An account that already has this person's Apple email, which Apple has confirmed is theirs.
+
+    Nothing confirmed the email when the account was made, so the Apple ID
+    takes it over and the password and sessions it had are revoked.
+    """
     if not identity.email or not identity.email_verified:
         return None
     owner = accounts.owner_by_email(connection, identity.email)
     if owner is None or owner.guest:
         return None
-    return accounts.attach_apple(connection, owner, identity.subject, None)
+    revoked = accounts.claim_for_apple(connection, owner, identity.subject)
+    log.warning(
+        "account %s was claimed by the Apple ID with its verified email: its password, %d session(s) and "
+        "%d push token(s) were revoked", owner.id, revoked.sessions, revoked.devices,
+    )
+    return owner
+
+
+def revoke_passwords_left_on_apple_accounts(database: Database) -> None:
+    with database.transaction() as connection:
+        revoked = accounts.revoke_passwords_on_apple_accounts(connection)
+    if revoked:
+        log.warning("revoked the password on %d account(s) that Apple signs in to", revoked)
 
 
 def _apple_owner(connection: sqlite3.Connection, identity: AppleIdentity, current: Owner | None) -> Owner:
@@ -61,9 +94,21 @@ def _apple_owner(connection: sqlite3.Connection, identity: AppleIdentity, curren
     return owner
 
 
+def _apple_identity(token: str, audiences: frozenset[str]) -> AppleIdentity:
+    try:
+        return verify(token, audiences)
+    except NotFromApple:
+        raise ApiProblem(401, "Sign in with Apple didn't go through. Try again.") from None
+    except AppleUnavailable:
+        raise ApiProblem(503, "Sign in with Apple isn't reachable right now. Try again in a minute.",
+                         headers={"Retry-After": str(APPLE_RETRY_SECONDS)}) from None
+
+
 def install_account_routes(app: FastAPI, database: Database, apple_audiences: frozenset[str]) -> None:
     guests = AttemptLimiter(limit=GUESTS_PER_ADDRESS, window=GUEST_WINDOW_SECONDS,
                             message="Too many new accounts from this network. Try again in an hour.")
+    apple_attempts = AttemptLimiter(limit=APPLE_SIGN_INS_PER_ADDRESS, window=SIGN_IN_WINDOW_SECONDS,
+                                    message=SIGN_IN_THROTTLED)
 
     @app.post("/api/auth/guest", status_code=201, response_model=Session)
     def guest(request: Request, response: Response) -> Session:
@@ -87,10 +132,8 @@ def install_account_routes(app: FastAPI, database: Database, apple_audiences: fr
 
     @app.post("/api/auth/apple", response_model=Session)
     def apple(body: AppleSignIn, request: Request, response: Response) -> Session:
-        try:
-            identity = verify(body.identity_token, apple_audiences)
-        except NotFromApple:
-            raise ApiProblem(400, "Sign in with Apple didn't go through. Try again.") from None
+        apple_attempts.admit(client_address(request))
+        identity = _apple_identity(body.identity_token, apple_audiences)
         current = resolve_owner(database, request)
         with database.transaction() as connection:
             owner = _apple_owner(connection, identity, current)

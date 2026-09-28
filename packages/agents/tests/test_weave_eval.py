@@ -8,6 +8,8 @@ evaluation's own scorers computed rather than a second opinion.
 
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 from standardphysics_agents.evaluation import dataset
 from standardphysics_agents.evaluation.configuration import (
@@ -49,6 +51,7 @@ class FakeEvaluation:
 
     def evaluate(self, model):
         self.models.append(model)
+        self.attributes_seen = getattr(self, "weave", None) and self.weave.active_attributes
         return {name: {"mean": 1.0} for name in SCORERS}
 
 
@@ -64,6 +67,7 @@ class FakeWeave:
 
     def __init__(self):
         self.evaluations: list[FakeEvaluation] = []
+        self.active_attributes = None
 
     def op(self, fn):
         return fn
@@ -73,8 +77,17 @@ class FakeWeave:
 
     def Evaluation(self, **config):  # noqa: N802 - matches weave.Evaluation
         evaluation = FakeEvaluation(**config)
+        evaluation.weave = self
         self.evaluations.append(evaluation)
         return evaluation
+
+    @contextlib.contextmanager
+    def attributes(self, values):
+        self.active_attributes = dict(values)
+        try:
+            yield
+        finally:
+            self.active_attributes = None
 
 
 @pytest.fixture
@@ -143,6 +156,11 @@ class TestTheConfigurations:
     def test_the_model_carries_the_cell_size(self, weave):
         evaluate_in_weave([Setup("fine cells", cell_size=0.02)], cases=dataset()[:1])
         assert weave.evaluations[0].models[0].cell_size == 0.02
+
+    def test_each_run_records_the_commit_and_the_cases_it_scored(self, weave):
+        cases = dataset()[:2]
+        evaluate_in_weave([Setup("traced")], cases=cases, provenance={"commit": "abc1234"})
+        assert weave.evaluations[0].attributes_seen == {"commit": "abc1234", "cases": "2"}
 
     def test_the_result_comes_back_under_its_label(self, weave):
         result = evaluate_in_weave([Setup("just this one")], cases=dataset()[:1])

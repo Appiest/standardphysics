@@ -40,6 +40,9 @@ _TOKEN_BYTES = 32
 MIN_PASSWORD_LENGTH = 10
 """Long enough that the scrypt cost is not the only thing standing in the way."""
 
+NO_PASSWORD = ""
+"""What `password_hash` holds for an account that can't be signed in to with a password at all."""
+
 
 class EmailAlreadyRegistered(Exception):
     pass
@@ -183,6 +186,44 @@ def attach_apple(connection: sqlite3.Connection, owner: Owner, subject: str, ema
     return Owner(id=owner.id, email=address or owner.email, shop_name=owner.shop_name, team=owner.team)
 
 
+@dataclass(frozen=True)
+class Revoked:
+    sessions: int
+    devices: int
+
+
+def claim_for_apple(connection: sqlite3.Connection, owner: Owner, subject: str) -> Revoked:
+    """Hand a password account to the Apple ID whose verified email it carries, and shut out everyone else.
+
+    Signing up never confirms an email, so the password may belong to someone
+    who typed a stranger's address first. Apple has confirmed the address is
+    this Apple ID's. The shops stay, the Apple ID signs in from now on, and the
+    password, every open session and every push token go: none of them was
+    ever shown to belong to the email's owner. The caller opens the one
+    session that survives after this returns.
+    """
+    connection.execute(
+        "UPDATE owners SET apple_sub = ?, password_hash = ? WHERE id = ?", (subject, NO_PASSWORD, str(owner.id))
+    )
+    sessions = connection.execute("DELETE FROM sessions WHERE owner_id = ?", (str(owner.id),)).rowcount
+    devices = connection.execute("DELETE FROM devices WHERE owner_id = ?", (str(owner.id),)).rowcount
+    return Revoked(sessions=sessions, devices=devices)
+
+
+def revoke_passwords_on_apple_accounts(connection: sqlite3.Connection) -> int:
+    """Take the password off every account an Apple ID signs in to, and say how many still had one.
+
+    Before `claim_for_apple`, linking kept the password, so an account linked
+    then may still open to whoever registered the email first. An account Apple
+    made has a random password nobody knows, so clearing it changes nothing
+    for its owner.
+    """
+    return connection.execute(
+        "UPDATE owners SET password_hash = ? WHERE apple_sub IS NOT NULL AND password_hash != ?",
+        (NO_PASSWORD, NO_PASSWORD),
+    ).rowcount
+
+
 def create_apple_owner(connection: sqlite3.Connection, subject: str, email: str | None, shop_name: str) -> Owner:
     guest = create_guest(connection, shop_name)
     return attach_apple(connection, guest, subject, email)
@@ -237,10 +278,22 @@ def authenticate(connection: sqlite3.Connection, email: str, password: str) -> O
     password" would tell an attacker which emails are worth guessing at.
     """
     row = connection.execute("SELECT * FROM owners WHERE email = ?", (normalize_email(email),)).fetchone()
-    if row is None:
+    stored = _password_on_file(row)
+    if stored is None:
         verify_password(password, _stand_in_hash())
         return None
-    return _owner(row) if verify_password(password, row["password_hash"]) else None
+    return _owner(row) if verify_password(password, stored) else None
+
+
+def _password_on_file(row: sqlite3.Row | None) -> str | None:
+    """The digest to check a password against, or None when there's no account or it takes no password.
+
+    Both cases pay for the stand-in check, so an account Apple signs in to
+    answers exactly as slowly as a wrong password does.
+    """
+    if row is None or row["password_hash"] == NO_PASSWORD:
+        return None
+    return row["password_hash"]
 
 
 def token_digest(token: str) -> str:

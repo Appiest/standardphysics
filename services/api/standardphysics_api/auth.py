@@ -16,6 +16,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+import anyio
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
@@ -34,8 +35,10 @@ from .store import ArtifactStore
 COOKIE_NAME = "sp_session"
 GUARDED_PREFIX = "/api/scans"
 BEARER = re.compile(r"^Bearer\s+(?P<token>[A-Za-z0-9_\-]+)$")
-SCAN_IN_PATH = re.compile(r"^/api/scans/(?P<scan_id>[0-9a-fA-F-]{36})(?:/|$)")
-TEAM_ONLY = re.compile(r"^/api/scans/[0-9a-fA-F-]{36}/(ask|loop|loop/stream|simulations|rebuild|combine)$")
+SCAN_IN_PATH = re.compile(r"^/api/scans/(?P<segment>[^/]+)(?:/|$)")
+"""Whatever sits where a scan id goes. The routes parse it as a UUID, which accepts hyphenless, braced
+and urn: spellings, so the guard reads the same segment rather than only the spelling it expects."""
+TEAM_ONLY = re.compile(r"^/api/scans/[^/]+/(ask|loop|loop/stream|simulations|rebuild|combine)$")
 """The builders' tools: the ask box, the improvement loop, simulations, rebuilds and combining rooms.
 Owners don't see them (docs/UX.md, owner tools and team tools), and nobody does until someone
 is granted the team role (see `team`)."""
@@ -93,13 +96,35 @@ def owner_of(request: Request) -> Owner:
     return owner
 
 
+class NonCanonicalScanId(ValueError):
+    """A path names a scan by a spelling of its id other than the canonical hyphenated one."""
+
+
 def _scan_id_in(path: str) -> uuid.UUID | None:
+    """The scan a path names, or None when it names none.
+
+    Every client sends the canonical hyphenated form, so any other spelling of
+    a valid id is refused outright: accepting it would mean two paths to one
+    scan, and a guard that must recognise both.
+    """
     match = SCAN_IN_PATH.match(path)
-    return uuid.UUID(match.group("scan_id")) if match else None
+    if match is None:
+        return None
+    segment = match.group("segment")
+    try:
+        scan_id = uuid.UUID(segment)
+    except ValueError:
+        return None
+    if str(scan_id) != segment.lower():
+        raise NonCanonicalScanId(segment)
+    return scan_id
 
 
 def resolve_owner(database: Database, request: Request) -> Owner | None:
-    token = token_from(request)
+    return _owner_for(database, token_from(request))
+
+
+def _owner_for(database: Database, token: str | None) -> Owner | None:
     if token is None:
         return None
     with database.connect() as connection:
@@ -129,31 +154,51 @@ def client_address(request: Request) -> str:
 
 
 def install_auth(app: FastAPI, database: Database, store: ArtifactStore) -> None:
+    guard_threads = anyio.CapacityLimiter(GUARD_THREADS)
 
     class RequireOwner(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
             if not request.url.path.startswith(GUARDED_PREFIX):
                 return await call_next(request)
-            owner = resolve_owner(database, request)
-            if owner is None:
-                return _problem(401, "Sign in to continue.")
-            scan_id = _scan_id_in(request.url.path)
-            if scan_id is not None and not _owns_scan(database, scan_id, owner):
-                return _problem(404, "no scan")
-            if _team_only(request, owner):
-                return _problem(403, "This is for the Standard Physics team.")
-            if scan_id is not None and request.method == "GET":
-                _mark_opened(database, scan_id)
-            request.state.owner = owner
+            outcome = await anyio.to_thread.run_sync(
+                _guard, database, request.url.path, request.method, token_from(request), limiter=guard_threads
+            )
+            if isinstance(outcome, JSONResponse):
+                return outcome
+            request.state.owner = outcome
             return await call_next(request)
 
     app.add_middleware(RequireOwner)
     _install_auth_routes(app, database, store)
 
 
-def _team_only(request: Request, owner: Owner) -> bool:
+GUARD_THREADS = 16
+"""How many requests the ownership guard checks against the database at once. Its lookups, and the
+write that remembers a shop was opened, wait out a locked database for up to its busy timeout, so they
+run on threads of their own: on the event loop one wait would hold up every request, /health included."""
+
+
+def _guard(database: Database, path: str, method: str, token: str | None) -> Owner | JSONResponse:
+    """The owner allowed to make this request, or the refusal to send instead."""
+    owner = _owner_for(database, token)
+    if owner is None:
+        return _problem(401, "Sign in to continue.")
+    try:
+        scan_id = _scan_id_in(path)
+    except NonCanonicalScanId:
+        return _problem(404, "no scan")
+    if scan_id is not None and not _owns_scan(database, scan_id, owner):
+        return _problem(404, "no scan")
+    if _team_only(path, owner):
+        return _problem(403, "This is for the Standard Physics team.")
+    if scan_id is not None and method == "GET":
+        _mark_opened(database, scan_id)
+    return owner
+
+
+def _team_only(path: str, owner: Owner) -> bool:
     """A team tool asked for by someone off the team. With nobody granted the role, that is everyone."""
-    return bool(TEAM_ONLY.match(request.url.path)) and role_of(owner) != "team"
+    return bool(TEAM_ONLY.match(path)) and role_of(owner) != "team"
 
 
 OPENED_RESOLUTION = timedelta(hours=1)
