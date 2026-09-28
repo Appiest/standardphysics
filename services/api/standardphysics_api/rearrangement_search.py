@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Any, Callable
 
 from standardphysics_agents.evaluation.gate import UNMEASURED_SHORTFALL_INCHES
 from standardphysics_agents.redesign import FurnitureMove, RoomEdits
@@ -133,7 +133,7 @@ def _ask_part(part: Part, ask: Ask, result: Search, provider: str,
               progress: Callable[[str, str | None], None], index: int) -> Answer | None:
     prompt = openrouter_prompt_messages if provider == "openrouter" else prompt_messages
     messages = prompt(part.graph, part.checker)
-    chain = {"window": index, "window_graph_hash": graph_hash(part.graph),
+    chain: dict[str, Any] = {"window": index, "window_graph_hash": graph_hash(part.graph),
              "prompt_messages": messages, "rounds": []}
     result.chains.append(chain)
     for round_index in range(1, MAX_ROUNDS + 1):
@@ -149,7 +149,8 @@ def _ask_part(part: Part, ask: Ask, result: Search, provider: str,
         progress("checking", None)
         attempt = diagnose(text, part.graph, part.checker)
         result.verdicts.append(attempt.verdict)
-        answer = _accepted(attempt.verdict, part.graph, attempt.layout) if attempt.accepted else None
+        answer = (_accepted(attempt.verdict, part.graph, attempt.layout)
+                  if attempt.accepted and attempt.layout is not None else None)
         if answer is not None and answer.snapped:
             result.snap_rescues += 1
         feedback = None if answer is not None or round_index == MAX_ROUNDS else feedback_message(attempt)

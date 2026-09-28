@@ -115,7 +115,7 @@ def _door(node: SceneNode) -> dict:
     return {**_placed(node), "keep_clear": _corners(door_keep_clear(node))}
 
 
-def _fixed(node: SceneNode, fixtures: set, on_counters: set) -> dict:
+def _fixed(node: SceneNode, fixtures: set, on_counters: frozenset) -> dict:
     entry = {"id": str(node.id), **_placed(node)} if node.id in fixtures else _placed(node)
     return {**entry, "on_a_counter": True} if node.id in on_counters else entry
 
@@ -147,7 +147,7 @@ def _top_inches(node: SceneNode) -> float:
 
 def _replacements_for(graph: SceneGraph, node: SceneNode) -> list[str]:
     use = use_of(graph, node)
-    serves = {"counter": True, "surface": False}.get(use)
+    serves = None if use is None else {"counter": True, "surface": False}.get(use)
     return [] if serves is None else [item.name for item in CATALOG.values()
                                       if (item.knee_clearance_inches is None) == serves]
 

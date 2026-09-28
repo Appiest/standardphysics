@@ -46,6 +46,7 @@ from datetime import UTC, datetime
 
 from standardphysics_agents.tracing import tracing_for_this_process
 from standardphysics_contracts import SimulationRequest
+from standardphysics_pipeline.discovery.live import LiveReader, LiveReport
 from standardphysics_pipeline.floor_coverage import with_floor_coverage
 
 from . import evidence, guest_sweep
@@ -207,6 +208,12 @@ class _UnusableEvidence(Exception):
     a new upload that repairs the pairing queues the next attempt."""
 
 
+def _count_what_the_walk_read(outcome: DiscoveryOutcome, walk: LiveReport) -> None:
+    """Put the photos read during the walk on the job record: they were real, billed requests."""
+    outcome.read_during_walk = walk.read
+    outcome.model_requests = [*walk.requests, *outcome.model_requests]
+
+
 class Worker:
     def __init__(
         self,
@@ -233,6 +240,7 @@ class Worker:
         self.stages_in_child: Callable[[Settings], Stages] = configured_stages
         """Builds the stages a job run in its own process uses. The child finds it by module and
         name, so it must be a module-level function."""
+        self.live_reader = LiveReader(read_photo=stages.read_photo)
 
     def start(self) -> None:
         if not self.lock.acquire():
@@ -282,6 +290,7 @@ class Worker:
 
 
     def stop(self) -> None:
+        self.live_reader.stop()
         self._stop.set()
         self._wake.set()
         threads = [pulse.thread for pulse in self.pulses.values() if pulse.thread is not None]
@@ -342,7 +351,8 @@ class Worker:
             job = repo.claim_job(connection, texture_only, kind=kind)
         if job is None:
             return False
-        pulse = self.pulses.get(kind if kind is not None else texture_only) or LoopPulse()
+        lane = kind if kind is not None else texture_only
+        pulse = (self.pulses.get(lane) if lane is not None else None) or LoopPulse()
         running = RunningJob(job["kind"], job["id"], time.monotonic(), self.settings.job_deadline_seconds(job["kind"]))
         pulse.begin(running)
         self._on_this_thread.job = running
@@ -693,6 +703,7 @@ class Worker:
         if room_json is None:
             raise _UnusableEvidence("the scan has no room_json to measure")
         frame_paths, poses_path, lidar_mesh_path = self.label_inputs(scan_id)
+        read_during_walk = self.live_reader.finish(scan_id)
         # With a declared manifest every state except not_started means the
         # pairing is unfilled or broken; such a run never counts as semantic.
         run_discovery = not declared or association_state == "not_started"
@@ -706,6 +717,8 @@ class Worker:
         )
         if not run_discovery:
             outcome = DiscoveryOutcome(deferred_reason=association_failure or association_state)
+        else:
+            _count_what_the_walk_read(outcome, read_during_walk)
         self._checkpoint()
         graph = self._with_floor_coverage(scan_id, graph)
         with self.database.transaction() as connection:
@@ -985,7 +998,9 @@ def _job_error(kind: str, error: Exception) -> str:
 
 def _claim_filter(lane: bool | str) -> tuple[bool | None, str | None]:
     """The `run_once` arguments that claim only this lane's jobs."""
-    return (None, lane) if lane in (REARRANGE, FURNITURE) else (lane, None)
+    if isinstance(lane, str):
+        return None, lane
+    return lane, None
 
 
 def is_transient(error: BaseException) -> bool:

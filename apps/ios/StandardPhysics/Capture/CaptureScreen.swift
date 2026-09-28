@@ -9,7 +9,7 @@ struct CaptureScreen: View {
 
     init(model: AppModel, preview: CaptureSessionStore? = nil) {
         self.model = model
-        _capture = StateObject(wrappedValue: preview ?? CaptureSessionStore())
+        _capture = StateObject(wrappedValue: preview ?? CaptureSessionStore(uploadPlan: model.walkUploadPlan()))
         isPreview = preview != nil
     }
 

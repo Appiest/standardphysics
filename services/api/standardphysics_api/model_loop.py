@@ -12,13 +12,20 @@ in the plan and keep or not.
 
 A preview, like the single proposal: the menu uses the training checker, which
 treats scan geometry marked "needs another look" as measured.
+
+A loop holds one of the owner's `ModelSlots` from the moment it is admitted
+until its stream ends, and may spend at most MODEL_LOOP_TURNS calls' worth of
+the chooser's `reply_seconds` in all; past that it stops and offers what it
+found. A reply the loop can't read ends the stream with a failed line.
 """
 
 from __future__ import annotations
 
+import itertools
 import json
+import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
 from standardphysics_agents.fix.budget import deadline_in
@@ -38,7 +45,7 @@ from standardphysics_contracts import (
 )
 
 from .db import Database
-from .model_chooser import ModelChooser, without_wall_shifts
+from .model_chooser import ModelChooser, ModelReplyError, ModelSlots, without_wall_shifts
 from .proposals import fix_inputs, owner_wishes_of, space_typology_of
 from .stages import Stages
 
@@ -47,6 +54,7 @@ LOOP_MENU_SECONDS = 40.0
 """Longer than a single proposal's menu: built-in slides are guessed last, and on Share Tea the whole menu,
 built-ins included, took 31 s. The card shows a turn clock, so the owner sees the wait."""
 LOOP_ENVIRONMENT = "SP_LOOP_"
+clock: Callable[[], float] = time.monotonic
 
 
 def loop_chooser() -> ModelChooser | None:
@@ -150,20 +158,30 @@ class ModelLoop:
                               fixable_left=len(open_problems), working_on=_titles(open_problems))
 
 
+def _in_words(seconds: float) -> str:
+    return f"{seconds / 60:g} minutes" if seconds >= 120 and seconds % 60 == 0 else f"{seconds:g} seconds"
+
+
 def _events(stages: Stages, graph: SceneGraph, scenario, chooser: ModelChooser, typology,
             wishes) -> Iterator[ModelLoopEvent]:
-    """Turns until the room is clear, the menu runs dry, the model picks nothing, or the turns run out."""
+    """Turns until the room is clear, the menu runs dry, the model picks nothing, or the turns or time run out."""
     with stages.locked():
         loop = ModelLoop(graph, stages.menu_checker(graph, scenario, typology), stated_book(graph, list(wishes)))
         open_problems = loop.open_problems()
     yield ModelLoopEvent(kind="started", fixable_left=len(open_problems), working_on=_titles(open_problems),
                          turns_at_most=MODEL_LOOP_TURNS, message=f"{chooser.label} is looking at your shop.")
+    budget = MODEL_LOOP_TURNS * chooser.reply_seconds
+    deadline = clock() + budget
     for turn in range(1, MODEL_LOOP_TURNS + 1):
         with stages.locked():
             messages = loop.next_messages()
         if messages is None:
             break
-        reply = chooser.ask(messages)
+        remaining = deadline - clock()
+        if remaining <= 0:
+            loop.stop = f"Stopped because the loop had used its {_in_words(budget)}. Open what it found so far."
+            break
+        reply = chooser.ask(messages, remaining)
         with stages.locked():
             event = loop.take(turn, reply)
         yield event
@@ -181,15 +199,39 @@ def _line(event: ModelLoopEvent) -> str:
     return json.dumps(event.model_dump(mode="json")) + "\n"
 
 
-def stream_model_loop(database: Database, stages: Stages, scan_id: uuid.UUID, body: ModelLoopRequest) -> Iterator[str]:
-    """NDJSON lines: started with the fixable count, one line per turn, then finished with every move, or failed."""
+def _failure(chooser: ModelChooser, error: Exception) -> str:
+    if isinstance(error, TimeoutError):
+        return f"{chooser.label} took longer than {_in_words(chooser.reply_seconds)} to answer. Try again."
+    if isinstance(error, ModelReplyError):
+        return f"{chooser.label} {error}, so the loop stopped. Try again."
+    return f"Unable to reach {chooser.label}: {error}. Try again."
+
+
+def _streamed(events: Iterator[ModelLoopEvent], chooser: ModelChooser, release: Callable[[], None]) -> Iterator[str]:
+    try:
+        yield from (_line(event) for event in events)
+    except (OSError, ModelReplyError) as error:
+        yield _line(ModelLoopEvent(kind="failed", message=_failure(chooser, error)))
+    finally:
+        release()
+
+
+def stream_model_loop(
+    database: Database, stages: Stages, slots: ModelSlots, owner_id: uuid.UUID, scan_id: uuid.UUID,
+    body: ModelLoopRequest,
+) -> Iterator[str]:
+    """NDJSON lines: started with the fixable count, one line per turn, then finished with every move, or failed.
+
+    A missing scan, or an owner or server already at its cap of model calls, is
+    refused before the stream starts. The first line is produced here, so the
+    stream has started, and its slot comes back when it ends or is dropped.
+    """
     chooser = loop_chooser()
     if chooser is None:
-        yield _line(ModelLoopEvent(kind="failed", message="No model is set up to run the loop."))
-        return
+        return iter([_line(ModelLoopEvent(kind="failed", message="No model is set up to run the loop."))])
     graph, scenario, _ = fix_inputs(database, scan_id, body.base_revision)
     wishes, typology = owner_wishes_of(database, scan_id), space_typology_of(database, scan_id)
-    try:
-        yield from (_line(event) for event in _events(stages, graph, scenario, chooser, typology, wishes))
-    except OSError as error:
-        yield _line(ModelLoopEvent(kind="failed", message=f"Unable to reach {chooser.label}: {error}. Try again."))
+    slots.take(owner_id)
+    events = _events(stages, graph, scenario, chooser, typology, wishes)
+    lines = _streamed(events, chooser, lambda: slots.give_back(owner_id))
+    return itertools.chain([next(lines)], lines)

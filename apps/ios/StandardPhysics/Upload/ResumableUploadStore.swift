@@ -104,6 +104,12 @@ struct ResumableUploadStore {
         }
     }
 
+    /// Drops every trace of the remote scan, for a walk that was cancelled
+    /// after its scan was already made on the server and then deleted there.
+    mutating func forgetRemoteScan() throws {
+        try update { $0 = State() }
+    }
+
     mutating func recordUploaded(artifactID: String) throws {
         guard state.scanID != nil else { throw UploadStoreError.scanNotStarted }
         try update { $0.completedArtifactIDs.insert(artifactID) }

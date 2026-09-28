@@ -6,6 +6,7 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
     private weak var store: CaptureSessionStore?
     private var captureView: RoomCaptureView?
     private var recorder: FrameRecorder?
+    private var streamer: WalkFrameStreamer?
     private var detailRecorder: LidarMeshRecorder?
     private var coverageEngine = CoverageEngine()
     private var liveRoom: CapturedRoom?
@@ -30,7 +31,7 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
 
     required init?(coder: NSCoder) { nil }
 
-    func start(in directory: URL) throws {
+    func start(in directory: URL, uploadPlan: WalkUploadPlan? = nil) throws {
         self.directory = directory
         // RoomPlan preserves the settings of an already-running AR session on iOS 17+.
         let session = ARSession()
@@ -49,6 +50,7 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
             self?.store?.didReachTimeWarning(secondsLeft: FrameRecorder.timeWarningLead)
         }
         recorder.onObservation = { [weak self] frame in self?.observe(frame) }
+        streamFrames(to: uploadPlan, from: recorder, directory: directory)
         self.recorder = recorder
         detailRecorder = LidarMeshRecorder(
             directory: directory,
@@ -60,6 +62,15 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
         recorder.start()
     }
 
+    /// Each keyframe also goes to the server during the walk, on Wi-Fi.
+    private func streamFrames(to plan: WalkUploadPlan?, from recorder: FrameRecorder, directory: URL) {
+        guard let plan else { return }
+        let streamer = WalkFrameStreamer(captureDirectory: directory, plan: plan, gate: UnmeteredForegroundGate())
+        recorder.onKeyframeSaved = { frame in streamer.offer(frame) }
+        self.streamer = streamer
+        Task { await streamer.start() }
+    }
+
     /// The session RoomPlan is running, for anything that draws over its view.
     var arSession: ARSession? { captureView?.captureSession.arSession }
 
@@ -67,6 +78,7 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
         guard !isFinishing else { return }
         isFinishing = true
         finalMeshFrame = captureView?.captureSession.arSession.currentFrame
+        streamer?.finishOffering()
         saveRecoveryRoom(liveRoom)
         captureView?.captureSession.stop(pauseARSession: true)
         recorder?.stop { [weak self] result in
@@ -103,6 +115,10 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
 
         let recorder = self.recorder
         self.recorder = nil
+        if let streamer {
+            self.streamer = nil
+            Task { await streamer.discard() }
+        }
         recorder?.cancel { [weak self] error in
             guard let self else { return }
             if error != nil {
@@ -211,6 +227,7 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
         let coverage = coverageEngine.reconcile(finalSurfaces: RoomCoverage.snapshots(from: room))
         let detailRecorder = detailRecorder
         let finalMeshFrame = finalMeshFrame
+        let streamer = streamer
         Task { [weak self] in
             var recording = recording
             do { try await detailRecorder?.finish(frame: finalMeshFrame) }
@@ -219,6 +236,8 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
             let result = await Task.detached(priority: .userInitiated) {
                 Result { try ScanExporter.export(room: room, recording: savedRecording, coverage: coverage, directory: directory) }
             }.value
+            // The upload after the walk takes over the receipt from here.
+            await streamer?.stop()
             guard let self else { return }
             isExporting = false
             switch result {

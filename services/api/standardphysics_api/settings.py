@@ -87,6 +87,12 @@ class Settings:
     artifact at a time, and at most two while optional files follow the core ones; more is refused with a 429."""
     max_concurrent_uploads: int = 32
     """How many uploads the whole server streams at once, from SP_MAX_CONCURRENT_UPLOADS; more is refused with a 503."""
+    max_owner_model_runs: int = 2
+    """How many model previews and loops one account may run at once, from SP_MAX_OWNER_MODEL_RUNS; more is
+    refused with a 429. The web app runs one at a time, and a second tab makes two."""
+    max_concurrent_model_runs: int = 4
+    """How many model previews and loops the whole server runs at once, from SP_MAX_CONCURRENT_MODEL_RUNS; more
+    is refused with a 503. Each holds a request thread while it waits on the model server."""
     max_request_body_bytes: int = 1024 * 1024
     """The largest body any route but the streamed uploads accepts, from SP_MAX_REQUEST_BODY_BYTES. A larger
     one is refused with a 413 before it is read (see `request_size`). JSON bodies carry moves, answers and
@@ -299,6 +305,10 @@ class Settings:
             openrouter_api_key=os.environ.get("OPENROUTER_API_KEY") or None,
             max_owner_uploads=_bounded_integer("SP_MAX_OWNER_UPLOADS", cls.max_owner_uploads, 1, 1_000),
             max_concurrent_uploads=_bounded_integer("SP_MAX_CONCURRENT_UPLOADS", cls.max_concurrent_uploads, 1, 10_000),
+            max_owner_model_runs=_bounded_integer("SP_MAX_OWNER_MODEL_RUNS", cls.max_owner_model_runs, 1, 100),
+            max_concurrent_model_runs=_bounded_integer(
+                "SP_MAX_CONCURRENT_MODEL_RUNS", cls.max_concurrent_model_runs, 1, 1_000
+            ),
             max_request_body_bytes=_bounded_integer(
                 "SP_MAX_REQUEST_BODY_BYTES", cls.max_request_body_bytes, 1024, 64 * 1024 * 1024
             ),

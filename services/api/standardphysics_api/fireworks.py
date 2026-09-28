@@ -54,7 +54,8 @@ class Sampling:
 
 
 class RearrangeModel(Protocol):
-    controls_deployment: bool
+    @property
+    def controls_deployment(self) -> bool: ...
 
     def complete(self, messages: list[dict], sampling: Sampling) -> list[str]: ...
 

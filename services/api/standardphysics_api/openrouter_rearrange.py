@@ -73,7 +73,11 @@ class OpenRouterRearrange:
     def complete(self, messages: list[dict], sampling: Sampling) -> list[str]:
         self._reserve(messages)
         try:
-            response = self.router.client().chat.completions.create(
+            assert self.router is not None, "__post_init__ always makes the router"
+            client = self.router.client()
+            if client is None:
+                raise ModelFailed("OpenRouter is not configured")
+            response = client.chat.completions.create(
                 model=self.model, messages=messages, temperature=sampling.temperature,
                 max_tokens=self.token_cap,
                 extra_body={"provider": provider_routing(self.model), "usage": {"include": True},
@@ -101,7 +105,7 @@ class OpenRouterRearrange:
         self.completion_tokens += completion
         estimated = prompt * prompt_price + completion * completion_price
         try:
-            reported = float(quoted)
+            reported = float(quoted) if quoted is not None else float("nan")
         except (TypeError, ValueError):
             reported = float("nan")
         self.cost_dollars += reported if math.isfinite(reported) and reported >= 0 else estimated
