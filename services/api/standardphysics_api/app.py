@@ -275,7 +275,7 @@ def _install_health_routes(app: FastAPI, database: Database, worker: Worker, com
     @app.get("/health/details")
     def health_details() -> dict:
         """What each worker loop is doing, how long since it last beat, how long the queue has waited,
-        which commit this server was built from, and whether its traces are reaching Weave."""
+        which commit this server was built from, whether tracing came up, and the send failures Weave logged."""
         with database.connect() as connection:
             oldest = repo.oldest_queued_job_seconds(connection)
         problems = worker.problems()

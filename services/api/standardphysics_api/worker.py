@@ -44,7 +44,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
-from standardphysics_agents.tracing import tracing_for_this_process
+from standardphysics_agents.tracing import flush_was_abandoned, tracing_for_this_process
 from standardphysics_contracts import SimulationRequest
 
 from . import evidence, guest_sweep
@@ -873,6 +873,21 @@ def _report_to_parent(sender, function: Callable[..., object], *args: object) ->
         )
     sender.send(report)
     sender.close()
+    _exit_past_a_stalled_flush()
+
+
+def _exit_past_a_stalled_flush() -> None:
+    """End the child now if Weave could not flush in time.
+
+    The SDK's own exit handlers wait, without a limit, for the queue that just
+    failed to drain, so an ordinary exit would sit there until the worker kills
+    the child at its job's deadline and fails a job that finished. The report is
+    already with the parent, and every database write was committed in its own
+    transaction, so skipping those handlers loses only the traces that were lost anyway.
+    """
+    if flush_was_abandoned():
+        logging.shutdown()
+        os._exit(0)
 
 
 def _kill_with_everything_it_started(child) -> None:
