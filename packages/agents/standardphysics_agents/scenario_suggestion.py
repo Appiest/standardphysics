@@ -26,13 +26,14 @@ INSET = 0.8
 """How far a stop sits inside the room from a wall or door."""
 
 
-def _outline_points(graph: SceneGraph) -> list[tuple[float, float]]:
+def outline_points(graph: SceneGraph) -> list[tuple[float, float]]:
+    """The room's walls on the floor, or everything when no wall is thin enough to read as one."""
     walls = [point for node in graph.nodes if stands_upright(node) for point in footprint(node)]
     return walls or [point for node in graph.nodes for point in footprint(node)]
 
 
 def _room_bounds(graph: SceneGraph) -> tuple[float, float, float, float]:
-    points = _outline_points(graph)
+    points = outline_points(graph)
     xs, ys = [p[0] for p in points], [p[1] for p in points]
     return min(xs), min(ys), max(xs), max(ys)
 
@@ -121,7 +122,7 @@ class _OpenFloor:
         rows, cols = cell_indices[0], cell_indices[1]
         xs = self.grid.origin_x + (cols + 0.5) * self.grid.cell_size
         ys = self.grid.origin_y + (rows + 0.5) * self.grid.cell_size
-        inside = _inside_hull(_convex_hull(_outline_points(graph)), xs, ys)
+        inside = _inside_hull(_convex_hull(outline_points(graph)), xs, ys)
         self.xs, self.ys = xs, ys
         self.roomy = inside & (clearance >= STANDING_ROOM)
         self.open = inside & (clearance > 0)

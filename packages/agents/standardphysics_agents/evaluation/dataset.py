@@ -358,9 +358,9 @@ def _route_shape_cases() -> list[Case]:
     return [
         _case(
             "dead_end_tight",
-            "An out and back errand into a nook 1.5 m deep, short of a 60 in circle, "
-            "so there is no room to turn round. "
-            "This is where 304.3 applies, and 403.5.2 catches the two shelves "
+            "An out and back errand to a restroom in a nook 1.5 m deep, short of a 60 in "
+            "circle, so there is no room to turn round. "
+            "603.2.1 calls for 304.3 here, and 403.5.2 catches the two shelves "
             "the route has to come back around.",
             nook,
             errand,
@@ -378,8 +378,8 @@ def _route_shape_cases() -> list[Case]:
         ),
         _case(
             "no_dead_end",
-            "The shop's own route never doubles back, so 304.3 does not apply "
-            "and nothing about turning round is reported.",
+            "The shop's own route visits no restroom or fitting room, so 304.3 "
+            "does not apply and nothing about turning round is reported.",
             _clean(),
             forbidden_problems=frozenset({"turning_space", "turn_clear_width", ROUTE}),
             expected_action="ASK_OWNER",

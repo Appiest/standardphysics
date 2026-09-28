@@ -6,7 +6,8 @@ import { confirmRoute } from "@/lib/layout-client";
 import { suggestPath, walkingRoute } from "@/lib/owner-client";
 import type { Destination } from "@/lib/owner-journey";
 import { moveMarker, type StopMarker, stopMarkers } from "@/lib/route";
-import type { Scenario, Vec3 } from "@/types/contracts";
+import { type Corner, moveArea, newArea, resizeArea } from "@/lib/staff-areas";
+import type { Scenario, StaffArea, Vec3 } from "@/types/contracts";
 
 /**
  * The customer path while the owner shapes it: the places they picked, the
@@ -57,7 +58,7 @@ export function usePathEditor(scanId: string, starting: Scenario | null, picked:
     suggestPath(scanId, next)
       .then((suggested) => {
         if (asked !== latest.current) return;
-        setScenario(suggested);
+        setScenario((current) => ({ ...suggested, staff_only: current?.staff_only ?? suggested.staff_only }));
         route(suggested);
       })
       .catch(() => { if (asked === latest.current) setProblem("We couldn't draw that path. Try again."); });
@@ -68,6 +69,8 @@ export function usePathEditor(scanId: string, starting: Scenario | null, picked:
     setLegs([]);
     setScenario((current) => (current ? moveMarker(current, marker, dx, dy) : current));
   }, []);
+
+  const staff = useStaffEditing(setScenario);
 
   const settle = useCallback(() => route(scenario), [route, scenario]);
 
@@ -84,7 +87,25 @@ export function usePathEditor(scanId: string, starting: Scenario | null, picked:
     }
   }, [scanId, scenario, router]);
 
-  return { scenario, markers, legs, destinations, saving, problem, toggle, drag, settle, confirm };
+  return { scenario, markers, legs, destinations, saving, problem, toggle, drag, settle, confirm, ...staff };
+}
+
+type SetScenario = (update: (current: Scenario | null) => Scenario | null) => void;
+
+/** The staff-only floor the owner moves, resizes, removes or marks, kept on the scenario the checks read. */
+function useStaffEditing(setScenario: SetScenario) {
+  const changeAreas = useCallback((change: (areas: StaffArea[]) => StaffArea[]) => {
+    setScenario((current) => (current ? { ...current, staff_only: change(current.staff_only ?? []) } : current));
+  }, [setScenario]);
+  const moveStaff = useCallback((index: number, dx: number, dy: number) => {
+    changeAreas((areas) => areas.map((area, at) => (at === index ? moveArea(area, dx, dy) : area)));
+  }, [changeAreas]);
+  const resizeStaff = useCallback((index: number, corner: Corner, to: { x: number; y: number }) => {
+    changeAreas((areas) => areas.map((area, at) => (at === index ? resizeArea(area, corner, to) : area)));
+  }, [changeAreas]);
+  const removeStaff = useCallback(() => changeAreas(() => []), [changeAreas]);
+  const markStaff = useCallback((centre: { x: number; y: number }) => changeAreas(() => [newArea(centre)]), [changeAreas]);
+  return { moveStaff, resizeStaff, removeStaff, markStaff };
 }
 
 export type PathEditor = ReturnType<typeof usePathEditor>;

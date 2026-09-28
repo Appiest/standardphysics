@@ -20,6 +20,7 @@ import type { CapturedSplatAsset } from "@/lib/captured-splats";
 import type { RoomGroup, RoomPlacement } from "@/lib/room-groups";
 import { showsSplats } from "@/lib/viewer-source";
 import type { MotionPoint, WheelchairProfile } from "@/lib/wheelchair-motion";
+import { StaffAreas, type StaffHandles } from "./StaffAreas";
 import { type RouteHandles, StopMarkers } from "./StopMarkers";
 import { WheelchairController, type WheelchairState } from "./WheelchairController";
 
@@ -35,6 +36,8 @@ type ViewerProps = {
   dragAllNodes?: boolean;
   lightweight?: boolean;
   route: RouteHandles | null;
+  /** Floor only staff use, hatched, and draggable while the owner shapes the path. */
+  staff?: StaffHandles | null;
   /** The pieces the scan found, outlined and linked to the owner's list of them. */
   found?: FoundHandles | null;
   /** Pixels to slide the picture right, clear of a panel laid over the canvas's left edge. */
@@ -256,6 +259,16 @@ function visibleWallTop({ cutWalls, materialMode }: Pick<ViewerProps, "cutWalls"
   return materialMode === "scan" ? SCAN_CUT_HEIGHT : WALL_CUT_HEIGHT;
 }
 
+/** What is drawn on the floor: staff-only areas under the customer path and its stops. */
+function FloorPlanMarks({ route, staff }: { route: RouteHandles | null; staff: StaffHandles | null }) {
+  return (
+    <>
+      {staff && <StaffAreas handles={staff} />}
+      {route && <StopMarkers route={route} />}
+    </>
+  );
+}
+
 export default function Viewer(viewerProps: ViewerProps) {
   const {
     scene,
@@ -314,7 +327,7 @@ export default function Viewer(viewerProps: ViewerProps) {
       </mesh>
       <ShopSurfaces {...viewerProps} />
       {selected && <FindingAnnotation finding={selected} />}
-      {route && <StopMarkers route={route} />}
+      <FloorPlanMarks route={route} staff={viewerProps.staff ?? null} />
       <FoundOutlines scene={scene} handles={viewerProps.found} />
     </Canvas>
   );

@@ -1,4 +1,4 @@
-"""Where the turning circle may sit at a stop the customer reverses out of."""
+"""Where the turning circle may sit, and which stops need one at all."""
 
 from types import SimpleNamespace
 
@@ -19,11 +19,11 @@ def _box(name: str, centre: tuple[float, float], size: tuple[float, float]) -> S
                      transform=Mat4.translation(centre[0], centre[1], 0.5), movable=False)
 
 
-def _ctx(extra: list[SceneNode]):
+def _ctx(extra: list[SceneNode], destination: str = "Restroom"):
     counter = _box("Counter", (0.0, COUNTER_GAP + 0.3), (3.0, 0.6))
     graph = SceneGraph(scan_id=SCAN, nodes=[counter, *extra])
     stops = [Stop(name="Entrance", position=Vec3(x=-2.5, y=0.0, z=0.0)),
-             Stop(name="Pickup", position=Vec3(x=0.0, y=0.0, z=0.0)),
+             Stop(name=destination, position=Vec3(x=0.0, y=0.0, z=0.0)),
              Stop(name="Exit", position=Vec3(x=-2.5, y=0.0, z=0.0))]
     pack = load_pack()
     return SimpleNamespace(graph=graph, scenario=SimpleNamespace(stops=stops), measure=FixtureMeasurements(),
@@ -45,3 +45,16 @@ def test_no_room_anywhere_near_the_stop_still_fails_at_the_setback_spot():
     assert not observation.satisfied
     assert observation.measured_inches == pytest.approx(to_inches(0.55 * 2), abs=0.5)
     assert (observation.locus.point.x, observation.locus.point.y) == pytest.approx((-to_meters(30.0), 0.0))
+
+
+@pytest.mark.parametrize("destination", ["Pickup", "Seats", "Counter", "Shelves"])
+def test_a_dead_end_on_the_shop_floor_asks_for_no_turning_space(destination):
+    """304.3 applies where a room's own section calls for it; a pickup counter or a seat is not one."""
+    bench = _box("Bench", (0.0, -0.75), (4.0, 0.4))
+    assert turning_space(_ctx([bench], destination)) == []
+
+
+@pytest.mark.parametrize("destination", ["Restroom", "Fitting room", "Dressing room"])
+def test_a_restroom_or_fitting_room_is_checked_for_turning_space(destination):
+    [observation] = turning_space(_ctx([], destination))
+    assert observation.facts["stop"] == destination

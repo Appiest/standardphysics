@@ -46,7 +46,7 @@ from .scope_manifest import build_scope_manifest
 
 log = logging.getLogger(__name__)
 
-ROUTE_SUBJECTS = frozenset({"route", "route_leg", "route_turn", "route_dead_end"})
+ROUTE_SUBJECTS = frozenset({"route", "route_leg", "route_turn", "turning_room"})
 
 UNPLACED = Stop(name="Unplaced", position=Vec3(x=0.0, y=0.0, z=0.0))
 NO_ROUTE_YET = Scenario(name="No route yet", stops=[UNPLACED, UNPLACED])

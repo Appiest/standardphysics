@@ -1,6 +1,6 @@
 "use client";
 
-import { Armchair, Books, Check, CoatHanger, ShoppingBag, Toilet } from "@phosphor-icons/react";
+import { Armchair, Books, Check, CoatHanger, CookingPot, ShoppingBag, Toilet, X } from "@phosphor-icons/react";
 import type { ComponentType } from "react";
 import { Button } from "@/components/ui/Button";
 import { ActionBar, StepHeading } from "./StepHeading";
@@ -27,6 +27,7 @@ export function PathStep({ path }: { path: PathEditor }) {
           <PlaceChip key={place} name={name} Icon={Icon} on={path.destinations.includes(place)} onToggle={() => path.toggle(place)} />
         ))}
       </div>
+      <StaffOnly path={path} />
       {path.problem && <p role="alert" className="text-problem">{path.problem}</p>}
       <ActionBar>
         <Button variant="primary" className="justify-center" disabled={!path.scenario || path.saving} onClick={path.confirm}>
@@ -35,6 +36,34 @@ export function PathStep({ path }: { path: PathEditor }) {
       </ActionBar>
     </div>
   );
+}
+
+/** The kitchen and other staff floor, which the ADA customer checks leave alone. */
+function StaffOnly({ path }: { path: PathEditor }) {
+  const marked = (path.scenario?.staff_only ?? []).length > 0;
+  if (marked) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-pretty text-ink-muted">We skip the shaded staff-only floor, since customers don&rsquo;t go there. Drag it or its corners to cover your kitchen.</p>
+        <Button className="self-start" onClick={path.removeStaff}>
+          <X size={18} aria-hidden />
+          Remove the staff-only area
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <Button className="self-start" disabled={!path.scenario} onClick={() => path.scenario && path.markStaff(middleOf(path.scenario.stops))}>
+      <CookingPot size={18} aria-hidden />
+      Mark a staff-only area
+    </Button>
+  );
+}
+
+function middleOf(stops: { position: { x: number; y: number } }[]) {
+  const x = stops.reduce((sum, stop) => sum + stop.position.x, 0) / stops.length;
+  const y = stops.reduce((sum, stop) => sum + stop.position.y, 0) / stops.length;
+  return { x, y };
 }
 
 function PlaceChip({ name, Icon, on, onToggle }: { name: string; Icon: IconType; on: boolean; onToggle: () => void }) {

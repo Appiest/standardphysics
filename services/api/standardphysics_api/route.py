@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 from standardphysics_agents.scenario_suggestion import suggest_path, suggest_scenario
+from standardphysics_agents.staff_areas import with_staff_areas
 from standardphysics_contracts import RouteLeg, RouteLegs, Scenario
 
 from . import repository as repo
@@ -22,7 +23,20 @@ def suggestion(database: Database, scan_id: uuid.UUID, destinations: list[str] |
     if row is None:
         raise ApiProblem(404, "not ready")
     graph = repo.graph_of(row)
-    return suggest_scenario(graph) if destinations is None else suggest_path(graph, destinations)
+    suggested = suggest_scenario(graph) if destinations is None else suggest_path(graph, destinations)
+    return with_staff_areas(suggested, graph)
+
+
+def saved(database: Database, scan_id: uuid.UUID) -> Scenario:
+    """The owner's path, with the staff-only areas the checks will use filled in when they haven't said."""
+    with database.connect() as connection:
+        if not repo.scan_exists(connection, scan_id):
+            raise ApiProblem(404, "no scan")
+        found = repo.get_scenario(connection, scan_id)
+        row = repo.get_revision(connection, scan_id)
+    if found is None:
+        raise ApiProblem(404, "not ready")
+    return found if row is None else with_staff_areas(found, repo.graph_of(row))
 
 
 def confirm(database: Database, worker: Worker, scan_id: uuid.UUID, scenario: Scenario) -> Scenario:

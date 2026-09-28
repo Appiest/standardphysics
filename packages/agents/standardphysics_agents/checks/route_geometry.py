@@ -1,8 +1,9 @@
 """Reading the shape of a route out of the stops it visits.
 
 Two rules only apply in particular places: 403.5.2 at a 180 degree turn, and
-304.3 where somebody has to turn around. Both need to know where the route
-doubles back, which is a question about the route and not about any rule.
+304.3 in the rooms that call for a turning space. The first needs to know where
+the route doubles back, which is a question about the route and not about any
+rule; the second needs to know which stops are those rooms.
 
 It is answered from the stops rather than from the measured path on purpose. A
 path on a 25 mm grid detours around whatever is in the way, so the first half
@@ -17,6 +18,8 @@ from __future__ import annotations
 import math
 
 from standardphysics_contracts import Stop, Vec3, WidthResult
+
+from ..scenario_suggestion import DESTINATIONS
 
 REVERSAL_TOLERANCE_DEGREES = 45.0
 """How far from a straight about-face still counts as doubling back."""
@@ -61,6 +64,23 @@ def reversal_stops(stops: list[Stop]) -> list[int]:
         index
         for index in range(1, len(stops) - 1)
         if is_reversal(travel_heading(stops, index - 1), travel_heading(stops, index))
+    ]
+
+
+ROOMS_NEEDING_TURNING_SPACE = (*DESTINATIONS["restroom"][1], *DESTINATIONS["fitting_room"][1], "dressing")
+"""Words naming a room whose own section requires a turning space: 603.2.1 for
+toilet rooms, 803.2 for dressing and fitting rooms. 304 is scoped by the
+sections that call for it, and nothing calls for it at a counter, a seat or the
+end of an aisle in a sales area; the Access Board's guide to chapter 3 says so
+in as many words."""
+
+
+def stops_needing_turning_space(stops: list[Stop]) -> list[int]:
+    """Stop indices at a room the Standards require a turning space in."""
+    return [
+        index
+        for index, stop in enumerate(stops)
+        if any(word in stop.name.casefold() for word in ROOMS_NEEDING_TURNING_SPACE)
     ]
 
 

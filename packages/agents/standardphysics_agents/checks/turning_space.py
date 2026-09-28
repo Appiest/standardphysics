@@ -1,9 +1,10 @@
-"""ADA 2010 304.3. Room to turn around where the route doubles back.
+"""ADA 2010 304.3. Room to turn around in a restroom or a fitting room.
 
 304 is scoped by the sections that call for it rather than applying everywhere,
-so this runs at dead ends: a stop the customer has to reverse out of. Turning
-around in the middle of an open floor is not a requirement and reporting it as
-one would put a card in front of the owner that no section backs.
+so this runs only at stops in a room whose own section asks for a turning
+space. A dead end at a pickup counter or a row of seats is not one: a customer
+there backs out, and reporting it would put a card in front of the owner that
+no section backs.
 
 304.3.1 fixes the circle's size, not where its centre sits. The circle is
 first tried at the stop backed off by a clear-floor depth, the spot a
@@ -28,7 +29,7 @@ from .clear_floor import fits_turning_circle, square_side
 from .context import CheckContext
 from .observation import Observation
 from .rectangles import intruders, rectangle
-from .route_geometry import reversal_stops, setback_point
+from .route_geometry import setback_point, stops_needing_turning_space
 
 RULE_ID = "turning_space"
 
@@ -43,7 +44,7 @@ SEARCH_STEP_INCHES = 6.0
 def turning_space(ctx: CheckContext) -> list[Observation]:
     rule = ctx.rule(RULE_ID)
     stops = ctx.scenario.stops
-    return [_at_stop(ctx, rule, index) for index in reversal_stops(stops)]
+    return [_at_stop(ctx, rule, index) for index in stops_needing_turning_space(stops)]
 
 
 def _centres_near(stop: Vec3, radius: float) -> list[Vec3]:

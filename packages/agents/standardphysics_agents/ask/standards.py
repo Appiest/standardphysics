@@ -119,8 +119,8 @@ def _sentence(finding: Finding) -> str:
 SCOPED_TO_A_PLACE = frozenset({"turning_space", "turn_clear_width"})
 """Checks the standard only asks for somewhere in particular.
 
-ADA 2010 304.3 wants a turning space where one is required, which is at a dead
-end. A route that runs one way through a shop has none, so the check reports
+ADA 2010 304.3 wants a turning space where a room's own section requires one,
+such as a restroom. A shop floor has none of those, so the check reports
 nothing — and somebody standing at the counter wondering whether they could
 turn round there has asked a real question anyway. So it gets measured, with
 what turning needs said plainly, and no claim that anything failed.

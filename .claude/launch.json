@@ -15,6 +15,19 @@
       "port": 2718
     },
     {
+      "name": "finetune-story",
+      "runtimeExecutable": ".venv/bin/marimo",
+      "runtimeArgs": [
+        "run",
+        "/Users/yanzihao/Documents/standardphysics-finetune-story/notebooks/finetune_story.py",
+        "--port",
+        "2721",
+        "--headless",
+        "--no-token"
+      ],
+      "port": 2721
+    },
+    {
       "name": "api",
       "runtimeExecutable": ".venv/bin/python",
       "runtimeArgs": [
@@ -51,6 +64,115 @@
       "port": 8791,
       "env": {
         "PYTHONPATH": "/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/packages/agents:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/packages/contracts:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/packages/pipeline:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/packages/fixtures"
+      }
+    },
+    {
+      "name": "api-ai",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/yanzihao/Documents/standardphysics/.claude/worktrees/ai-rearrange && PYTHONPATH=/Users/yanzihao/Documents/standardphysics/.claude/worktrees/ai-rearrange/packages/agents:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/ai-rearrange/packages/contracts:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/ai-rearrange/packages/pipeline:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/ai-rearrange/packages/fixtures:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/ai-rearrange/services/api:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/ai-rearrange/. SP_DATA_DIR=/tmp/sp-ai-data SP_API_PORT=8789 SP_API_HOST=127.0.0.1 SP_REARRANGE_FAKE_MODEL=1 /Users/yanzihao/Documents/standardphysics/.venv/bin/python -m standardphysics_api"
+      ],
+      "port": 8789
+    },
+    {
+      "name": "web-ai",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/yanzihao/Documents/standardphysics/.claude/worktrees/ai-rearrange/apps/web && SP_API_PORT=8789 SP_API_ORIGIN=http://127.0.0.1:8789 npm run dev -- -p 3001"
+      ],
+      "port": 3001
+    },
+    {
+      "name": "room-3d",
+      "runtimeExecutable": "/Users/yanzihao/Documents/standardphysics/.venv/bin/python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8795",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        "/Users/yanzihao/Documents/sp-data/examples/room3d/viewer"
+      ],
+      "port": 8795
+    },
+    {
+      "name": "demo-api",
+      "runtimeExecutable": "/Users/yanzihao/Documents/standardphysics-seeing/.venv/bin/python",
+      "runtimeArgs": [
+        "-m",
+        "standardphysics_api"
+      ],
+      "port": 8789,
+      "env": {
+        "SP_API_PORT": "8789",
+        "SP_API_HOST": "127.0.0.1",
+        "SP_DATA_DIR": "/private/tmp/claude-501/-Users-yanzihao-Documents-standardphysics/a4001378-16cd-441f-b009-32a6e1d32684/scratchpad/demo-data",
+        "SP_SEED_SAMPLE_SHOP": "1",
+        "SP_SEED_OWNER_PASSWORD": "local-test-xjeoYFTaugxD",
+        "SP_MENU_MODEL_URL": "http://127.0.0.1:8095/v1",
+        "SP_MENU_MODEL": "amelia-team/run-7a1ffb36d6e44ad7b4582e2b2294d405/sft-state",
+        "SP_LOOP_MODEL_URL": "http://127.0.0.1:8095/v1",
+        "SP_LOOP_MODEL": "amelia-team/run-7a1ffb36d6e44ad7b4582e2b2294d405/sft-state",
+        "SP_LOOP_MODEL_LABEL": "Your fine-tuned model"
+      }
+    },
+    {
+      "name": "demo-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "/Users/yanzihao/Documents/standardphysics-seeing/apps/web",
+        "--",
+        "--port",
+        "3001"
+      ],
+      "port": 3001,
+      "env": {
+        "SP_API_PORT": "8789",
+        "SP_API_ORIGIN": "http://127.0.0.1:8789"
+      }
+    },
+    {
+      "name": "fixall-api",
+      "runtimeExecutable": "/Users/yanzihao/Documents/standardphysics/.venv/bin/python",
+      "runtimeArgs": [
+        "-m",
+        "standardphysics_api"
+      ],
+      "port": 8811,
+      "env": {
+        "SP_API_PORT": "8811",
+        "SP_API_HOST": "127.0.0.1",
+        "SP_DATA_DIR": "/private/tmp/claude-501/-Users-yanzihao-Documents-standardphysics/7db7c577-be98-49d6-918c-5223de3b4446/scratchpad/fixall-data",
+        "SP_SEED_SAMPLE_SHOP": "1",
+        "PYTHONPATH": "/Users/yanzihao/Documents/sp-fix-all/packages/contracts:/Users/yanzihao/Documents/sp-fix-all/packages/fixtures:/Users/yanzihao/Documents/sp-fix-all/packages/pipeline:/Users/yanzihao/Documents/sp-fix-all/packages/agents:/Users/yanzihao/Documents/sp-fix-all/services/api:/Users/yanzihao/Documents/sp-fix-all/src",
+        "SP_LOOP_MODEL_URL": "http://127.0.0.1:8095/v1",
+        "SP_LOOP_MODEL": "amelia-team/run-7a1ffb36d6e44ad7b4582e2b2294d405/sft-state",
+        "SP_LOOP_MODEL_LABEL": "Your fine-tuned model",
+        "SP_SEED_OWNER_PASSWORD": "rIggdJTKcTJkPW4V"
+      }
+    },
+    {
+      "name": "fixall-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "/Users/yanzihao/Documents/sp-fix-all/apps/web",
+        "--",
+        "--port",
+        "3029"
+      ],
+      "port": 3029,
+      "env": {
+        "SP_API_PORT": "8811",
+        "SP_API_ORIGIN": "http://127.0.0.1:8811"
       }
     }
   ]

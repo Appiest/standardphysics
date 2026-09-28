@@ -11,6 +11,7 @@ from typing import Callable, Iterable
 
 from standardphysics_contracts.rules import Tier
 
+from ..staff_areas import in_staff_area, staff_areas
 from ..tracing import traced
 from .context import CheckContext
 from .dedupe import dedupe
@@ -101,11 +102,14 @@ def run_checks(ctx: CheckContext, max_tier: Tier = 1) -> CheckResult:
         *_waiting_on_a_check(ctx, max_tier),
     ]
 
+    staff_only = staff_areas(ctx.scenario, ctx.graph)
     for rule_ids, check in REGISTRY:
         if not rule_ids & enabled:
             continue
         result = as_result(check(ctx))
-        observations.extend(o for o in result.observations if o.rule_id in enabled)
+        observations.extend(
+            o for o in result.observations if o.rule_id in enabled and not in_staff_area(o, staff_only)
+        )
         unevaluated.extend(result.unevaluated)
 
     return CheckResult(dedupe(observations, ctx.rules), unevaluated)

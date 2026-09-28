@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import type { FoundHandles } from "@/components/workspace/FoundOutlines";
 import type { ArrangeHandlers } from "@/components/workspace/ShopModel";
+import type { StaffHandles } from "@/components/workspace/StaffAreas";
 import type { RouteHandles } from "@/components/workspace/StopMarkers";
 import type { WheelchairStart } from "@/components/workspace/Viewer";
 import type { ViewerPose } from "@/lib/camera";
@@ -30,6 +31,7 @@ export type ModelSetup = {
   wheelchair: boolean;
   wheelchairStart: WheelchairStart | null;
   route: RouteHandles | null;
+  staff: StaffHandles | null;
   /** The pieces the scan found, outlined while the step shows them. */
   found: FoundHandles | null;
   /** Pixels to slide the picture right, clear of the found-pieces legend. */
@@ -55,6 +57,7 @@ export function OwnerModel({ scene, glbUrl, scanGlbUrl, setup, lightweight }: { 
       picking={setup.picking}
       arrange={setup.arrange}
       route={setup.route}
+      staff={setup.staff}
       found={setup.found}
       frameShift={setup.frameShift}
       dragging={setup.dragging}

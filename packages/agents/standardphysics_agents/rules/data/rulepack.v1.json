@@ -99,7 +99,7 @@
         "t_arm_width_inches": 36.0
       },
       "applies_to": [
-        "route_dead_end"
+        "turning_room"
       ],
       "evidence": "measured",
       "source_text": "304.3 Size. Turning space shall comply with 304.3.1 or 304.3.2. 304.3.1 Circular Space. The turning space shall be a space of 60 inches (1525 mm) diameter minimum. The space shall be permitted to include knee and toe clearance complying with 306.",
