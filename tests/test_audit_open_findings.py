@@ -236,11 +236,11 @@ def test_a35_a_save_that_loses_the_race_is_refused(tmp_path, monkeypatch):
         scan_id = _sample_shop_id(client)
         checked = layout.plan_candidate
 
-        def another_save_lands_first(base, moves):
+        def another_save_lands_first(base, moves, construction=False):
             monkeypatch.setattr(layout, "plan_candidate", checked)
             other = SaveLayoutRequest.model_validate({"base_revision": 0, "moves": [_slide("case_west", -0.05)]})
             layout.save_layout(client.app.state.database, client.app.state.worker, uuid.UUID(scan_id), other)
-            return checked(base, moves)
+            return checked(base, moves, construction)
 
         monkeypatch.setattr(layout, "plan_candidate", another_save_lands_first)
         mine = {"base_revision": 0, "moves": [_slide("case_east", 0.127)]}

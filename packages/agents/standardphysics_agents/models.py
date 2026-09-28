@@ -5,9 +5,10 @@ are set once rather than at each call site. A scan is the inside of somebody's
 shop, so retention is denied on every request as well as on the account, and
 the provider OpenRouter reports comes back on the answer and gets stored.
 
-Weave picks these calls up through its OpenRouter integration. OpenRouter's own
-Broadcast to Weave setting has to stay off or every call is traced twice and
-the evaluation numbers drift.
+Weave records each call as the `model.openrouter` op. Its automatic OpenRouter
+integration is switched off in `tracing.init`, because the loop opens its model
+spans by hand and a patched client would record the same call again. For the
+same reason OpenRouter's own Broadcast to Weave setting has to stay off.
 
 Nothing here is required to run. With no key configured the call reports that
 and the caller falls back to something local and labelled, the same way the
@@ -102,9 +103,20 @@ class OpenRouter:
 
     @traced("model.openrouter")
     def structured(
-        self, instruction: str, payload: dict, schema: dict, schema_name: str
+        self,
+        instruction: str,
+        payload: dict,
+        schema: dict,
+        schema_name: str,
+        *,
+        max_tokens: int | None = None,
     ) -> ModelAnswer | Rejected:
-        """One call, one JSON object shaped by `schema`."""
+        """One call, one JSON object shaped by `schema`.
+
+        `max_tokens` caps the answer. Without it OpenRouter reserves the model's
+        whole output budget up front, and a nearly empty account refuses a call
+        that only needed a sentence.
+        """
         if not self.configured:
             return Rejected("openrouter_not_configured")
         try:
@@ -112,7 +124,7 @@ class OpenRouter:
             if client is None:
                 return Rejected("openrouter_not_configured")
             response = client.chat.completions.create(**self._request(
-                instruction, payload, schema, schema_name
+                instruction, payload, schema, schema_name, max_tokens=max_tokens
             ))
         except Exception as error:  # a third party being down decides nothing
             status = getattr(error, "status_code", None)
@@ -129,9 +141,15 @@ class OpenRouter:
         return "openrouter.ai" in self.base_url
 
     def _request(
-        self, instruction: str, payload: dict, schema: dict, schema_name: str
+        self,
+        instruction: str,
+        payload: dict,
+        schema: dict,
+        schema_name: str,
+        *,
+        max_tokens: int | None = None,
     ) -> dict:
-        request = {
+        request: dict[str, Any] = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": instruction},
@@ -146,6 +164,8 @@ class OpenRouter:
                 },
             },
         }
+        if max_tokens is not None:
+            request["max_tokens"] = max_tokens
         if self.routes_through_openrouter:
             request["extra_body"] = {"provider": provider_routing(self.model)}
         return request

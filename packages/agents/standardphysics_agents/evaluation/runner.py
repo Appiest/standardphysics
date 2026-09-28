@@ -1,9 +1,10 @@
 """Running the dataset, and keeping the per-case results.
 
 The local JSON is the authoritative record, because it exists whether or not
-anybody has a W&B account and CI has none. When Weave is configured the same
-rows go there too, so the per-case results are retrievable in the place the
-rest of the trace tree lives.
+anybody has a W&B account and CI has none. When Weave is configured the run is
+also logged to Weave's Evals tab, one prediction per case with every score,
+labelled with the router that answered. Two routers scored on the same cases
+then sit side by side there, next to the traces.
 
 A case that raises does not take the run down. It is recorded as a failure and
 the run is marked incomplete, which is what the gate reads: an evaluation that
@@ -43,6 +44,9 @@ every fix is found in the first four, which is why a grid that only looked at
 25 mm and either side of it read the ladder as doing nothing.
 """
 
+EVALUATION_NAME = "standardphysics-loop"
+DATASET_NAME = "standardphysics-cases"
+
 
 @dataclass(frozen=True)
 class EvaluationResult:
@@ -53,9 +57,9 @@ class EvaluationResult:
     scores: dict[str, float] = field(default_factory=dict)
     per_case: dict[str, dict[str, float | None]] = field(default_factory=dict)
     weave_url: str | None = None
-    dataset_url: str | None = None
-    """Where the rows went, once they have gone. `None` until then, and after a
-    publish a third party refused."""
+    evaluation_url: str | None = None
+    """Where this run sits in Weave's Evals tab. `None` when it was not logged,
+    including when a third party refused it."""
 
     @property
     def failures(self) -> list[str]:
@@ -190,13 +194,21 @@ def evaluate(
     run_fixes: bool = True,
     fix_candidates: int = FIX_CANDIDATE_LIMIT,
     publish: bool = True,
+    version: str | None = None,
 ) -> EvaluationResult:
+    """Score every case. `version` labels the run in Weave's Evals tab and
+    defaults to the name of the router that actually answered."""
     pack = rules or load_pack()
     verified = ledger if ledger is not None else load_ledger()
     provider = measure or _default_measurements()
     picked = cases if cases is not None else dataset()
 
     decider = router or LocalPolicyRouter()
+    logger = (
+        _evaluation_logger(str(version or getattr(decider, "provider", "unknown")))
+        if publish and is_live()
+        else None
+    )
     outcomes = [
         run_case(
             case, provider, pack, verified, decider, run_fixes,
@@ -214,9 +226,9 @@ def evaluate(
         per_case=per_case,
         weave_url=project_url(),
     )
-    if publish and is_live():
-        return replace(result, dataset_url=publish_to_weave(result))
-    return result
+    if logger is None:
+        return result
+    return replace(result, evaluation_url=publish_evaluation(logger, result))
 
 
 def _default_measurements() -> MeasurementProvider:
@@ -238,7 +250,7 @@ def save(result: EvaluationResult, path: Path) -> Path:
                 "scores": result.scores,
                 "lower_is_better": sorted(LOWER_IS_BETTER),
                 "weave_url": result.weave_url,
-                "dataset_url": result.dataset_url,
+                "evaluation_url": result.evaluation_url,
                 "cases": result.rows(),
             },
             indent=2,
@@ -250,25 +262,39 @@ def save(result: EvaluationResult, path: Path) -> Path:
     return path
 
 
-def publish_to_weave(result: EvaluationResult) -> str | None:
-    """The same rows, in the place the traces are.
+def _evaluation_logger(model: str) -> Any:
+    """Opened before the first case, so the calls a case makes land under it.
 
-    Returns where they landed, so a run can say it. Every failure mode here is
-    a third party's: no account, no network, an SDK that moved the accessor
-    this reads. None of them may stop an evaluation that has already run, so
-    this reports that it did not publish and the local record stands.
+    Every failure mode here is a third party's: no account, no network, an SDK
+    that moved. None of them may stop an evaluation from running, so a refusal
+    leaves the run unlogged and the local record stands.
     """
     try:
         import weave
-        from weave.trace import urls
 
-        published = weave.publish(
-            weave.Dataset(
-                name=f"standardphysics-{result.rulepack_version}", rows=result.rows()
+        return weave.EvaluationLogger(
+            name=EVALUATION_NAME, model=model, dataset=DATASET_NAME
+        )
+    except Exception:
+        return None
+
+
+def publish_evaluation(logger: Any, result: EvaluationResult) -> str | None:
+    """One prediction per case with every score it has, then the means.
+
+    Returns where the evaluation sits in Weave, or `None` when Weave refused
+    any part of it.
+    """
+    try:
+        for outcome in result.outcomes:
+            prediction = logger.log_prediction(
+                inputs={"case": outcome.case.id}, output=action_name(outcome)
             )
-        )
-        return urls.object_version_path(
-            published.entity, published.project, published.name, published.digest
-        )
+            for name, value in result.per_case[outcome.case.id].items():
+                if value is not None:
+                    prediction.log_score(scorer=name, score=value)
+            prediction.finish()
+        logger.log_summary(result.scores)
+        return logger.ui_url
     except Exception:
         return None

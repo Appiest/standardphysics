@@ -471,7 +471,7 @@ def queue_job_again(connection: sqlite3.Connection, scan_id: uuid.UUID, kind: st
     connection.execute(
         "INSERT INTO jobs (scan_id, kind, revision, state, created_at, queued_at) VALUES (?, ?, ?, 'queued', ?, ?)"
         " ON CONFLICT (scan_id, kind, revision) DO UPDATE SET state = 'queued', error = NULL,"
-        " queued_at = excluded.queued_at WHERE jobs.state != 'running'",
+        " interruptions = 0, queued_at = excluded.queued_at WHERE jobs.state != 'running'",
         (str(scan_id), kind, revision, queued_at, queued_at),
     )
 
@@ -554,7 +554,8 @@ def retry_failed_jobs(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Non
     state = "measuring" if "process" in kinds else "checking"
     connection.execute("UPDATE scans SET state = ? WHERE id = ?", (state, str(scan_id)))
     connection.execute(
-        "UPDATE jobs SET state = 'queued', error = NULL, queued_at = ? WHERE scan_id = ? AND state = 'failed'"
+        "UPDATE jobs SET state = 'queued', error = NULL, interruptions = 0, queued_at = ?"
+        " WHERE scan_id = ? AND state = 'failed'"
         " AND kind NOT IN ('display', 'simulate', 'texture', 'rearrange')",
         (now(), str(scan_id)),
     )
@@ -577,8 +578,42 @@ def fail_interrupted_simulations(connection: sqlite3.Connection) -> None:
     )
 
 
-def requeue_interrupted_jobs(connection: sqlite3.Connection) -> None:
+MAX_INTERRUPTIONS = 3
+"""How many runs of one job a restart may cut short before the job is failed rather than queued again."""
+DERIVED_KINDS = ("display", "simulate", "texture")
+"""Job kinds whose failure leaves the scan's own state alone. Each is asked for again on its own."""
+
+
+def requeue_interrupted_jobs(
+    connection: sqlite3.Connection, max_interruptions: int = MAX_INTERRUPTIONS
+) -> list[sqlite3.Row]:
+    """Queue again every job a stopped process left running, and return the ones stopped instead.
+
+    Each job left running counts one more interrupted run on its row. A job
+    whose input kills the whole container would otherwise run, take the server
+    down, and be queued again by the next start for ever, so at
+    `max_interruptions` it is failed with the count in its error. The retry
+    route queues it again with the count cleared, once the cause is fixed.
+    """
+    connection.execute("UPDATE jobs SET interruptions = interruptions + 1 WHERE state = 'running'")
+    stopped = _fail_jobs_interrupted_too_often(connection, max_interruptions)
     connection.execute("UPDATE jobs SET state = 'queued', queued_at = ? WHERE state = 'running'", (now(),))
+    return stopped
+
+
+def _fail_jobs_interrupted_too_often(connection: sqlite3.Connection, max_interruptions: int) -> list[sqlite3.Row]:
+    stopped = connection.execute(
+        "UPDATE jobs SET state = 'failed', error = 'Stopped after ' || interruptions || ' interrupted runs:"
+        " the server stopped during each one. Retry once the cause is fixed.'"
+        " WHERE state = 'running' AND interruptions >= ? RETURNING id, scan_id, kind, attempts, interruptions",
+        (max_interruptions,),
+    ).fetchall()
+    for job in stopped:
+        scan_id = uuid.UUID(job["scan_id"])
+        record_job_attempt(connection, job["id"], job["attempts"], scan_id)
+        if job["kind"] not in DERIVED_KINDS:
+            set_state(connection, scan_id, "failed")
+    return stopped
 
 
 _REVISION_WRITE = {"owner": "INSERT INTO", "ingest": "INSERT INTO", "other": "INSERT OR IGNORE INTO"}

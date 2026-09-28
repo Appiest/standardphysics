@@ -13,12 +13,16 @@ from standardphysics_agents import (
     assess,
     build_entrance_object_workflows,
     load_pack,
-    run_adaptive_redesign,
 )
 from standardphysics_agents.adaptive_redesign import route_trial_evidence
 from standardphysics_agents.evaluation.scan_campaign import run_campaign
 from standardphysics_agents.evaluation.scan_tasks import choose_task, propose_tasks
 from standardphysics_agents.fix import NO_FLOOR_MAP, floor_map_missing
+from standardphysics_agents.layout_repair import (
+    prefer_layout,
+    run_layout_repair,
+    seating_broken,
+)
 from standardphysics_agents.mesh_collision import MeshCollisionIndex
 from standardphysics_agents.precedents import directives_for_space
 from standardphysics_agents.router import LocalPolicyRouter, TypeSafeRouter
@@ -187,6 +191,25 @@ def _ada_rule_violation_count(
     )
 
 
+def _next_layout(
+    measured_graph: SceneGraph, current: SceneGraph, final_candidate: SceneGraph, redesign
+) -> tuple[SceneGraph | None, str | None]:
+    """The layout to carry into the next cycle, or None and the reason the loop stops."""
+    candidate = redesign.graph
+    if candidate is None and graph_hash(final_candidate) != graph_hash(current):
+        # TypeSafe may have produced the best candidate during the batch.
+        # Repair has still reviewed its evidence; verify that candidate as a
+        # fixed layout before making any convergence claim.
+        candidate = final_candidate
+    if candidate is not None and seating_broken(measured_graph, candidate):
+        candidate = None
+    if candidate is None or graph_hash(candidate) == graph_hash(current):
+        reasons = redesign.rounds[-1].reasons if redesign.rounds else ()
+        detail = ", ".join(reasons) or "no new candidate"
+        return None, f"Repair could not produce a new layout: {detail}."
+    return candidate, None
+
+
 def _run_accessibility_loop(
     measured_graph: SceneGraph,
     scenario: Scenario,
@@ -242,10 +265,15 @@ def _run_accessibility_loop(
         ada_rule_violations = _ada_rule_violation_count(
             final_candidate, scenario, measure_factory(), rules, ledger
         )
-        if violating_trials == 0 and ada_rule_violations == 0:
+        chairs_stranded = seating_broken(measured_graph, final_candidate)
+        if (
+            violating_trials == 0
+            and ada_rule_violations == 0
+            and not chairs_stranded
+        ):
             return AccessibilityLoopOutcome(
                 batch=final_batch,
-                candidate=final_candidate,
+                candidate=prefer_layout(measured_graph, [final_candidate]),
                 cycles=cycle,
                 violating_trials=0,
                 ada_rule_violations=0,
@@ -254,11 +282,15 @@ def _run_accessibility_loop(
                 astra_calls=astra_calls,
             )
         if cycle > request.astra_rounds:
-            stop_reason = "The loop reached its bounded repair limit before all violations cleared."
+            stop_reason = (
+                "The loop reached its bounded repair limit before all violations cleared."
+                if not chairs_stranded
+                else "The loop cleared ADA checks but still stranded chairs from their tables."
+            )
             break
 
         trial_result = simulation_result(final_batch, rules, ledger, mesh)
-        redesign = run_adaptive_redesign(
+        redesign = run_layout_repair(
             measured_graph,
             starting_graph=final_candidate,
             workflows=workflows,
@@ -281,18 +313,11 @@ def _run_accessibility_loop(
                 item.model_copy(update={"round": len(adaptive_history) + 1})
             )
 
-        next_candidate = redesign.graph
-        if next_candidate is None and graph_hash(final_candidate) != graph_hash(current):
-            # TypeSafe may have produced the best candidate during the batch.
-            # Astra has still reviewed its evidence; verify that candidate as a
-            # fixed layout before making any convergence claim.
-            next_candidate = final_candidate
-        if next_candidate is None or graph_hash(next_candidate) == graph_hash(current):
-            reasons = redesign.rounds[-1].reasons if redesign.rounds else ()
-            detail = ", ".join(reasons) or "no new candidate"
-            stop_reason = f"Astra could not produce a new layout: {detail}."
+        next_candidate, refusal = _next_layout(measured_graph, current, final_candidate, redesign)
+        if next_candidate is None:
+            stop_reason = refusal
             break
-        current = next_candidate
+        current = prefer_layout(measured_graph, [next_candidate])
 
     assert final_batch is not None
     return AccessibilityLoopOutcome(

@@ -29,13 +29,18 @@
 # and exits 70. docs/DEPLOY.md has the rollback. A box left on an older
 # commit by a rollback goes back to master here before it pulls.
 #
-# It refuses to deploy while the API has jobs queued or running. The restart
-# throws away whatever a bake has done so far, so it waits for the queue to
-# empty unless SP_DEPLOY_FORCE=1 says to go anyway. A queue it cannot read is a
-# refusal too, not an empty queue: a stopped or wedged API is exactly when
-# nobody knows what it was doing. The image is pulled or built before the
-# queue is read, so those minutes are not part of the window in which a new
-# upload can start a job that the restart then kills. docs/DEPLOY.md says what is left.
+# It drains the API before the restart. Once the image is ready it turns on
+# the drain flag in the API container (python -m standardphysics_api.drain on),
+# so requests that would queue new work get 503 and a minute to retry, and the
+# worker starts no queued job. Then it waits, up to SP_DEPLOY_DRAIN_SECONDS
+# (1200 by default), for the job the worker is running to finish, because the
+# restart throws away whatever a bake has done so far. Queued jobs wait in the
+# database and the new worker takes them. A job still running at the end of
+# that wait refuses the deploy with exit code 75, and a queue it cannot read
+# refuses it with 69: a stopped or wedged API is exactly when nobody knows
+# what it was doing. SP_DEPLOY_FORCE=1 goes ahead in either case. The drain
+# is turned off once the new container is serving, and on every way out
+# before that, so a failed deploy never leaves the site refusing work.
 #
 # It refuses to deploy behind your own work. The Droplet pulls master from
 # GitHub, so a commit still sitting on this laptop is not going anywhere, and
@@ -51,13 +56,14 @@ FORCE="${SP_DEPLOY_FORCE:-}"
 BUILD="${SP_DEPLOY_BUILD:-}"
 IMAGE="${SP_DEPLOY_IMAGE:-ghcr.io/imhaohao/standardphysics}"
 READY_SECONDS="${SP_DEPLOY_READY_SECONDS:-180}"
+DRAIN_SECONDS="${SP_DEPLOY_DRAIN_SECONDS:-1200}"
 
 # Read the way the Droplet's own tools read the queue: the API container's
 # Python opening the database it holds, read-only, so this cannot take a lock
 # a job needs. The image has no sqlite3 command.
-IN_FLIGHT_QUERY="import sqlite3
+RUNNING_QUERY="import sqlite3
 database = sqlite3.connect('file:/data/standardphysics.sqlite3?mode=ro', uri=True)
-query = \"SELECT COUNT(*) FROM jobs WHERE state IN ('queued', 'running')\"
+query = \"SELECT COUNT(*) FROM jobs WHERE state = 'running'\"
 print(database.execute(query).fetchone()[0])"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -121,22 +127,60 @@ git pull --ff-only
 export GIT_SHA=\$(git rev-parse HEAD)
 cd deploy/digitalocean
 published='$IMAGE':\$GIT_SHA
-# A bake or a discovery run holds up to about a gigabyte; building the image
-# beside one on a 4 GB box has killed jobs, and a restart interrupts them, so
-# the queue is read before a local build as well as before the restart.
+api_python() {
+  docker compose exec -T api /opt/venv/bin/python \"\$@\"
+}
+running_jobs() {
+  api_python -c $(printf %q "$RUNNING_QUERY") 2>/dev/null || echo unknown
+}
+refuse_unreadable_queue() {
+  echo 'I could not read the job queue from the API container, so I cannot tell what a restart would interrupt.' >&2
+  echo 'Check it with docker compose ps and ./doctor.sh, or run with SP_DEPLOY_FORCE=1 to deploy anyway.' >&2
+  exit 69
+}
+# A bake or a discovery run holds up to about a gigabyte, and building the
+# image beside one on a 4 GB box has killed jobs, so a local build waits for
+# the worker to be idle.
 refuse_while_busy() {
-  in_flight=\$(docker compose exec -T api /opt/venv/bin/python -c $(printf %q "$IN_FLIGHT_QUERY") 2>/dev/null) || in_flight=unknown
-  if [ '$FORCE' != 1 ] && ! [[ \"\$in_flight\" =~ ^[0-9]+\$ ]]; then
-    echo 'I could not read the job queue from the API container, so I cannot tell what a restart would interrupt.' >&2
-    echo 'Check it with docker compose ps and ./doctor.sh, or run with SP_DEPLOY_FORCE=1 to deploy anyway.' >&2
-    exit 69
-  fi
-  if [ '$FORCE' != 1 ] && [ \"\$in_flight\" -gt 0 ]; then
-    echo \"The API has \$in_flight job(s) queued or running, and a deploy restarts it.\" >&2
-    echo 'Wait for them to finish and run this again, which reuses the image it just fetched,' >&2
-    echo 'or run with SP_DEPLOY_FORCE=1 to interrupt them.' >&2
+  running=\$(running_jobs)
+  [ '$FORCE' = 1 ] && return 0
+  [[ \"\$running\" =~ ^[0-9]+\$ ]] || refuse_unreadable_queue
+  if [ \"\$running\" -gt 0 ]; then
+    echo \"The API has \$running job(s) running, and building the image beside them can run the box out of memory.\" >&2
+    echo 'Wait for them to finish and run this again, or run with SP_DEPLOY_FORCE=1 to build anyway.' >&2
     exit 75
   fi
+}
+release_drain() {
+  api_python -m standardphysics_api.drain off >/dev/null 2>&1 && return 0
+  docker compose run --rm -T --no-deps --entrypoint /opt/venv/bin/python api -m standardphysics_api.drain off >/dev/null 2>&1 && return 0
+  echo 'I could not turn the drain off, so the API is refusing new work. On the box run:' >&2
+  echo \"  cd '$DIR/deploy/digitalocean' && docker compose exec api /opt/venv/bin/python -m standardphysics_api.drain off\" >&2
+}
+# The drain stops new work being queued or started, and the trap turns it off
+# on any way out. A worker that read the flag a moment before it was set may
+# still be claiming a job, so the first look at the queue waits a beat.
+drain_then_wait_for_running_jobs() {
+  trap release_drain EXIT
+  if ! api_python -m standardphysics_api.drain on && [ '$FORCE' != 1 ]; then
+    refuse_unreadable_queue
+  fi
+  sleep 2
+  waited=0
+  running=\$(running_jobs)
+  until [ '$FORCE' = 1 ] || [ \"\$running\" = 0 ]; do
+    [[ \"\$running\" =~ ^[0-9]+\$ ]] || refuse_unreadable_queue
+    if [ \"\$waited\" -ge '$DRAIN_SECONDS' ]; then
+      echo \"After \$waited seconds the API still has \$running job(s) running, and a deploy restarts it.\" >&2
+      echo 'Run this again once they finish, which reuses the image it just fetched,' >&2
+      echo 'or run with SP_DEPLOY_FORCE=1 to interrupt them.' >&2
+      exit 75
+    fi
+    echo \"Waiting for \$running running job(s) to finish. New work is refused until the deploy is done.\"
+    sleep 5
+    waited=\$((waited + 5))
+    running=\$(running_jobs)
+  done
 }
 if [ '$BUILD' = 1 ]; then
   refuse_while_busy
@@ -154,7 +198,7 @@ else
   echo 'SP_DEPLOY_BUILD=1 builds it on the box instead, untested.' >&2
   exit 66
 fi
-refuse_while_busy
+drain_then_wait_for_running_jobs
 docker compose up -d
 waited=0
 until verdict=\$(docker compose exec -T api /opt/venv/bin/python - \"\$GIT_SHA\" < check_serving.py 2>&1); do
@@ -174,6 +218,8 @@ until verdict=\$(docker compose exec -T api /opt/venv/bin/python - \"\$GIT_SHA\"
   waited=\$((waited + 5))
 done
 echo \"\$verdict\"
+release_drain
+trap - EXIT
 echo \"\$(date -u +%Y-%m-%dT%H:%M:%SZ) \$GIT_SHA \$origin\" >> '$HISTORY'
 ./doctor.sh"
 }

@@ -1,0 +1,260 @@
+"""How the release before numbered migrations opened its database, frozen.
+
+This is the schema step from `db.py` as of commit 8b06d46, kept so the
+migration tests can build a database exactly the way production's was built,
+and can check that a server rolled back to that release still opens a database
+the numbered migrations have upgraded. Do not edit it to track `db.py`; it
+records a release that has already shipped.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import sqlite3
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS scans (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    device_model TEXT NOT NULL,
+    duration_seconds REAL NOT NULL,
+    state TEXT NOT NULL,
+    content_hash TEXT,
+    coverage_json TEXT NOT NULL DEFAULT '[]',
+    owner_id TEXT REFERENCES owners(id),
+    space_typology TEXT,
+    owner_wishes_json TEXT NOT NULL DEFAULT '[]',
+    last_opened_at TEXT,
+    results_told_at TEXT,
+    replaces_scan_id TEXT,
+    deleting_at TEXT
+);
+CREATE TABLE IF NOT EXISTS artifacts (
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    bytes INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (scan_id, id)
+);
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    kind TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    state TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    input_hash TEXT,
+    note TEXT,
+    model_requests_json TEXT,
+    queued_at TEXT,
+    UNIQUE (scan_id, kind, revision)
+);
+CREATE TABLE IF NOT EXISTS revisions (
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    revision INTEGER NOT NULL,
+    graph_hash TEXT NOT NULL,
+    graph_json TEXT NOT NULL,
+    source TEXT NOT NULL,
+    base_revision INTEGER,
+    glb_path TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (scan_id, revision)
+);
+CREATE TABLE IF NOT EXISTS scenarios (
+    scan_id TEXT PRIMARY KEY REFERENCES scans(id),
+    scenario_json TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS simulations (
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    revision INTEGER NOT NULL,
+    request_json TEXT NOT NULL,
+    graph_json TEXT NOT NULL,
+    scenario_json TEXT NOT NULL,
+    mesh_artifact_id TEXT,
+    completed INTEGER NOT NULL DEFAULT 0,
+    cycle INTEGER NOT NULL DEFAULT 0,
+    candidate_graph_json TEXT,
+    result_json TEXT,
+    PRIMARY KEY (scan_id, revision)
+);
+CREATE TABLE IF NOT EXISTS texture_builds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    build_key TEXT NOT NULL,
+    graph_json TEXT NOT NULL,
+    inputs_json TEXT NOT NULL,
+    result_json TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE(scan_id, build_key)
+);
+CREATE TABLE IF NOT EXISTS owners (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    shop_name TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    guest INTEGER NOT NULL DEFAULT 0,
+    apple_sub TEXT,
+    reminded_at TEXT,
+    team INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS owners_by_apple ON owners(apple_sub) WHERE apple_sub IS NOT NULL;
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES owners(id),
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_by_owner ON sessions(owner_id);
+CREATE INDEX IF NOT EXISTS scans_by_owner ON scans(owner_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS assessments (
+    id TEXT PRIMARY KEY,
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    graph_revision INTEGER NOT NULL,
+    assessment_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    scenario_version INTEGER
+);
+CREATE TABLE IF NOT EXISTS evidence_bundles (
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    version INTEGER NOT NULL,
+    manifest_hash TEXT NOT NULL,
+    artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+    artifact_hashes_json TEXT NOT NULL DEFAULT '{}',
+    complete INTEGER NOT NULL DEFAULT 0,
+    missing_required_kinds_json TEXT NOT NULL DEFAULT '[]',
+    reasons_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    semantic_processed_hash TEXT,
+    PRIMARY KEY (scan_id, version)
+);
+CREATE TABLE IF NOT EXISTS job_attempts (
+    job_id INTEGER NOT NULL REFERENCES jobs(id),
+    attempt INTEGER NOT NULL,
+    scan_id TEXT NOT NULL,
+    input_hash TEXT,
+    state TEXT NOT NULL,
+    error TEXT,
+    note TEXT,
+    model_requests_json TEXT,
+    recorded_at TEXT NOT NULL,
+    PRIMARY KEY (job_id, attempt)
+);
+CREATE TABLE IF NOT EXISTS owner_requests (
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    request_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    answer_yes INTEGER,
+    answer_number REAL,
+    photo_name TEXT,
+    answered_at TEXT,
+    review TEXT,
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    PRIMARY KEY (scan_id, request_id)
+);
+CREATE INDEX IF NOT EXISTS owner_requests_waiting ON owner_requests(status, answered_at);
+CREATE TABLE IF NOT EXISTS devices (
+    token TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES owners(id),
+    environment TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS devices_by_owner ON devices(owner_id);
+CREATE TABLE IF NOT EXISTS share_links (
+    token_hash TEXT PRIMARY KEY,
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS layout_plans (
+    id TEXT PRIMARY KEY,
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    base_revision INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    moves_json TEXT NOT NULL,
+    findings_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS applied_steps (
+    name TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS checklist_items (
+    scan_id TEXT NOT NULL REFERENCES scans(id),
+    finding_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (scan_id, finding_id)
+);
+"""
+
+
+ADDED_COLUMNS = {
+    "simulations": (
+        ("cycle", "INTEGER NOT NULL DEFAULT 0"),
+        ("candidate_graph_json", "TEXT"),
+    ),
+    "scans": (
+        ("owner_id", "TEXT REFERENCES owners(id)"),
+        ("space_typology", "TEXT"),
+        ("owner_wishes_json", "TEXT NOT NULL DEFAULT '[]'"),
+        ("last_opened_at", "TEXT"),
+        ("results_told_at", "TEXT"),
+        ("replaces_scan_id", "TEXT"),
+        ("deleting_at", "TEXT"),
+    ),
+    "owners": (
+        ("guest", "INTEGER NOT NULL DEFAULT 0"),
+        ("apple_sub", "TEXT"),
+        ("reminded_at", "TEXT"),
+        ("team", "INTEGER NOT NULL DEFAULT 0"),
+    ),
+    "jobs": (
+        ("input_hash", "TEXT"),
+        ("note", "TEXT"),
+        ("model_requests_json", "TEXT"),
+        ("queued_at", "TEXT"),
+    ),
+    "scenarios": (("version", "INTEGER NOT NULL DEFAULT 0"),),
+    "assessments": (("scenario_version", "INTEGER"),),
+}
+"""Columns that arrived after a table shipped, by the table they belong to.
+
+`scans.owner_id` is nullable because a database written before owners existed
+has rows that predate the column. `repository.list_scans` filters on it, so an
+unclaimed scan is visible to nobody until someone adopts it.
+"""
+
+
+def _add_missing_columns(connection: sqlite3.Connection) -> None:
+    """Bring an existing database up to the current schema.
+
+    Runs before `executescript` so that a CREATE INDEX over a new column finds
+    the column already there.
+    """
+    for table, columns in ADDED_COLUMNS.items():
+        present = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+        if not present:
+            continue
+        for name, definition in columns:
+            if name not in present:
+                connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
+def open_as_previous_release(path: pathlib.Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path, isolation_level=None)
+    try:
+        connection.execute("PRAGMA journal_mode=WAL")
+        _add_missing_columns(connection)
+        connection.executescript(SCHEMA)
+    finally:
+        connection.close()

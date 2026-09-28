@@ -81,3 +81,37 @@ def test_a_route_needs_two_stops(client):
 def test_the_fixture_data_is_used_for_the_sample_only():
     assert (FIXTURE_DATA / "shop.scene_graph.json").exists()
     assert json.loads((PHONE / "ravida" / "scan.json").read_text())
+
+
+def _bedroom():
+    from pathlib import Path
+
+    import standardphysics_fixtures
+    from standardphysics_pipeline import parse_room_json, reconstruct
+
+    room = Path(standardphysics_fixtures.__file__).parent / "data/real/apple_bedroom3.room.json"
+    return reconstruct(parse_room_json(json.loads(room.read_text())))
+
+
+def test_a_dorm_room_is_suggested_the_bed_and_desk_not_a_counter():
+    from standardphysics_agents.scenario_suggestion import suggest_scenario
+
+    graph = _bedroom()
+    scenario = suggest_scenario(graph)
+    bed = next(node for node in graph.nodes if node.raw_category == "bed")
+    desk = next(node for node in graph.nodes if node.raw_category == "table")
+    assert scenario.name == "Get around the room"
+    assert [stop.name for stop in scenario.stops] == ["Entrance", "Bedside", "Desk", "Exit"]
+    assert (scenario.stops[1].anchor_node_id, scenario.stops[2].anchor_node_id) == (bed.id, desk.id)
+
+
+def test_a_room_with_no_counter_and_no_bed_gets_no_counter_either():
+    from standardphysics_agents.scenario_suggestion import suggest_scenario
+
+    graph = _bedroom()
+    general = graph.model_copy(
+        update={"nodes": [node for node in graph.nodes if node.raw_category != "bed"]}
+    )
+    scenario = suggest_scenario(general)
+    assert scenario.name == "Walk through the room"
+    assert [stop.name for stop in scenario.stops] == ["Entrance", "Seat", "Exit"]

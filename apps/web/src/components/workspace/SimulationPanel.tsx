@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ActivitySpinner } from "@/components/ui/ActivitySpinner";
 import { Button } from "@/components/ui/Button";
 import { accessibilityLoopRequest, LOOP_TRIALS, LOOP_WORKERS, loopResultSentence } from "@/lib/accessibility-loop";
 import { getSimulation, SimulationRequestError, startSimulation } from "@/lib/simulation-client";
@@ -99,11 +100,15 @@ function PhysicsResults({ result, labels }: { result: NonNullable<SimulationStat
   if (!physics) return null;
   const barriers = physics.observations.filter((item) => item.status !== "clear");
   const blockedRoutes = physics.routes.filter((route) => !route.reachable);
+  const evacuationRoutes = physics.routes.filter((route) => route.purpose === "evacuation").length;
+  const counterRoutes = physics.routes.length - evacuationRoutes;
+  const servicePoints = physics.cashiers_found > 0 ? `${physics.cashiers_found} service points, ` : "";
+  const counterRouteText = counterRoutes > 0 ? ` and ${counterRoutes} seat-to-counter` : "";
   return <details className="rounded-lg bg-rule/30 p-3" open>
     <summary className="cursor-pointer font-medium">Wheelchair physics and environment routes</summary>
     <div className="mt-3 space-y-2 text-sm">
-      <p className="text-ink-muted">One-inch analysis; {physics.mesh_triangles_checked.toLocaleString()} mesh triangles, {physics.surface_samples.toLocaleString()} low-surface samples, {physics.seats_found} seats, {physics.cashiers_found} service points, and {physics.exits_found} exits.</p>
-      <p className="text-ink-muted">{physics.routes.length} customer routes screened between every door, opening, and piece of furniture; {blockedRoutes.length} were unreachable.</p>
+      <p className="text-ink-muted">One-inch analysis; {physics.mesh_triangles_checked.toLocaleString()} mesh triangles, {physics.surface_samples.toLocaleString()} low-surface samples, {physics.seats_found} seats, {servicePoints}and {physics.exits_found} exits.</p>
+      <p className="text-ink-muted">{evacuationRoutes} evacuation{counterRouteText} routes screened; {blockedRoutes.length} were unreachable.</p>
       {barriers.length > 0 && <ul className="space-y-2">{barriers.map((item, index) => {
         const nodes = item.node_ids.map((id) => labels.get(id) ?? id);
         const value = item.measured_value === null ? "" : `: ${item.measured_value.toFixed(2)} ${item.unit ?? ""}`;
@@ -158,8 +163,7 @@ function SimulationMessages({ status, error }: { status: SimulationStatus | null
   const cycle = status?.cycle ?? 0;
   return <>
     {isActive(status) && cycle > 0 && <p className="text-sm text-ink-muted">Pass {cycle}: testing the layout shown in the room.</p>}
-    {status?.error && <p role="alert" className="text-sm text-problem">{status.error}</p>}
-    {error && <p role="alert" className="text-sm text-problem">{error}</p>}
+    {(status?.error || error) && <ActivitySpinner />}
   </>;
 }
 

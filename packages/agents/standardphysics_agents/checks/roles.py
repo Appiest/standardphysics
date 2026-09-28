@@ -10,6 +10,9 @@ from __future__ import annotations
 from typing import Literal
 
 from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room, lies_flat
+from standardphysics_pipeline import sleeping_places
+
+RoomKind = Literal["service", "home", "general"]
 
 SERVICE_COUNTER_LABELS = frozenset(
     {
@@ -30,6 +33,8 @@ WORK_SURFACE_LABELS = frozenset({"desk", "work table", "work surface", "workbenc
 
 SEATING_LABELS = frozenset({"chair", "stool", "bar stool", "bench", "seat"})
 """Seats get pulled out to use a table, so they are never what stops someone using it."""
+
+SEATING_LABELS = frozenset({"chair", "stool", "bar stool", "armchair", "seat"})
 
 LOWERED_SECTION_LABELS = frozenset(
     {
@@ -94,12 +99,40 @@ def _normalized(label: str) -> str:
     return label.strip().casefold()
 
 
+def _served_at(graph: SceneGraph, nodes: list[SceneNode]) -> list[SceneNode]:
+    """In a home, only what the owner marked counts as a place people are served.
+
+    A dorm's kitchen counter is labelled "Counter" and nobody orders from it,
+    so a label alone does not make one there.
+    """
+    if not sleeping_places(graph):
+        return nodes
+    return [node for node in nodes if node.labeled_by == "owner"]
+
+
 def service_counters(graph: SceneGraph) -> list[SceneNode]:
-    return [
-        node
-        for node in graph.nodes
-        if not bounds_the_room(node) and _normalized(node.label) in SERVICE_COUNTER_LABELS
-    ]
+    return _served_at(
+        graph,
+        [
+            node
+            for node in graph.nodes
+            if not bounds_the_room(node) and _normalized(node.label) in SERVICE_COUNTER_LABELS
+        ],
+    )
+
+
+def room_kind(graph: SceneGraph) -> RoomKind:
+    """What kind of room a scan is, from what is in it.
+
+    A counter or a register people are served at makes it a service business.
+    Otherwise a bed makes it a home. Anything else is a general room. Only a
+    service business gets routes to a counter.
+    """
+    if service_counters(graph) or point_of_sale(graph):
+        return "service"
+    if sleeping_places(graph):
+        return "home"
+    return "general"
 
 
 def doors(graph: SceneGraph) -> list[SceneNode]:
@@ -140,6 +173,15 @@ def dining_surfaces(graph: SceneGraph) -> list[SceneNode]:
         for node in graph.nodes
         if not bounds_the_room(node) and _normalized(node.label) in DINING_SURFACE_LABELS
     ]
+
+
+def is_seating(node: SceneNode) -> bool:
+    """A chair, stool or bench, by its label or the category the scan gave it."""
+    return _normalized(node.label) in SEATING_LABELS or _normalized(node.raw_category) in SEATING_LABELS
+
+
+def seating(graph: SceneGraph) -> list[SceneNode]:
+    return [node for node in graph.nodes if is_seating(node)]
 
 
 def lowered_sections(graph: SceneGraph) -> list[SceneNode]:
@@ -200,11 +242,14 @@ def handrails(graph: SceneGraph) -> list[SceneNode]:
 
 
 def point_of_sale(graph: SceneGraph) -> list[SceneNode]:
-    return [
-        node
-        for node in graph.nodes
-        if not bounds_the_room(node) and _normalized(node.label) in POINT_OF_SALE_LABELS
-    ]
+    return _served_at(
+        graph,
+        [
+            node
+            for node in graph.nodes
+            if not bounds_the_room(node) and _normalized(node.label) in POINT_OF_SALE_LABELS
+        ],
+    )
 
 
 UsedFromTheFloor = Literal["surface", "counter"]
@@ -227,10 +272,6 @@ def used_from_the_floor(node: SceneNode) -> UsedFromTheFloor | None:
     if label in SERVICE_COUNTER_LABELS:
         return "counter"
     return None
-
-
-def is_seating(node: SceneNode) -> bool:
-    return _normalized(node.label) in SEATING_LABELS or _normalized(node.raw_category) in SEATING_LABELS
 
 
 def floors(graph: SceneGraph) -> list[SceneNode]:

@@ -424,6 +424,9 @@ class TestAgainstTheRealSdk:
         monkeypatch.setenv("WANDB_API_KEY", "dummy-for-offline")
         monkeypatch.setenv("WANDB_ENTITY", "team")
         monkeypatch.setenv("WANDB_PROJECT", "shop-review")
+        # wandb.init starts Weave for the run's project whenever weave is importable,
+        # and Weave sends to trace.wandb.ai even when the run itself is offline.
+        monkeypatch.setenv("WANDB_DISABLE_WEAVE", "true")
         yield tmp_path
         module.teardown()
 

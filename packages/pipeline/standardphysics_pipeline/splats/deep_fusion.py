@@ -24,14 +24,14 @@ class InverseAug:
     @staticmethod
     @overload
     def room_to_camera_points(
-        points: torch.Tensor, camera: PhotoCamera
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]: ...
+        points: np.ndarray, camera: PhotoCamera
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]: ...
 
     @staticmethod
     @overload
     def room_to_camera_points(
-        points: np.ndarray, camera: PhotoCamera
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]: ...
+        points: torch.Tensor, camera: PhotoCamera
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]: ...
 
     @staticmethod
     def room_to_camera_points(

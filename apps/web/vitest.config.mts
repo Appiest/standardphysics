@@ -10,5 +10,18 @@ export default defineConfig({
   },
   test: {
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.{ts,tsx}", "src/types/contracts.ts"],
+      reporter: [
+        "text-summary",
+        ["text-summary", { file: "summary.txt" }],
+        ["text", { file: "files.txt" }],
+      ],
+      thresholds: {
+        "src/lib/**": { statements: 75, branches: 70, functions: 70, lines: 75 },
+      },
+    },
   },
 });

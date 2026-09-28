@@ -2,6 +2,7 @@
 
 import { ArrowRight, ChatCircleText, CircleNotch } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
+import { ActivitySpinner } from "@/components/ui/ActivitySpinner";
 import { Button } from "@/components/ui/Button";
 import { askAboutShop } from "@/lib/layout-client";
 import type { AskAnswer, Locus, NodeMove } from "@/types/contracts";
@@ -67,7 +68,7 @@ export function AskBox({ scanId, revision, onLook, onTry }: AskBoxProps) {
           {asking ? <CircleNotch size={18} className="animate-spin" aria-hidden /> : <ArrowRight size={18} weight="bold" aria-hidden />}
         </Button>
       </form>
-      {failed && <p className="mt-2 text-problem">We couldn&apos;t answer that just now. Try asking again.</p>}
+      {failed && <ActivitySpinner className="mt-2" />}
       {answer && <AnswerCard answer={answer} onTry={onTry} />}
     </section>
   );

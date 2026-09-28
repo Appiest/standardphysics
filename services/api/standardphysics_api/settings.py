@@ -17,6 +17,7 @@ from standardphysics_agents.env_file import load_dotenv
 from standardphysics_agents.tracing import ENTITY_ENV, PROJECT_ENV
 
 from .receive_deadlines import ReceiveDeadlines
+from .repository import MAX_INTERRUPTIONS
 from .store import ScanQuota
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -191,6 +192,9 @@ class Settings:
     """How long a simulation may run, from SP_SIMULATE_TIMEOUT_SECONDS. A deep one runs its trials, a
     thousand by default, once for each of up to nine redesign rounds. On the worker's own thread the
     job checks its deadline between rounds, so a run past it stops after the round in progress."""
+    max_job_interruptions: int = MAX_INTERRUPTIONS
+    """How many runs of one job restarts may cut short before startup fails it instead of queueing
+    it again, from SP_MAX_JOB_INTERRUPTIONS. Retrying the scan clears the count."""
     team_emails: frozenset[str] = frozenset()
     """The team's emails before the team was a role, from SP_TEAM_EMAILS (comma separated).
 
@@ -279,6 +283,7 @@ class Settings:
             assess_timeout_seconds=_bounded_integer("SP_ASSESS_TIMEOUT_SECONDS", 20 * 60, 60, 86_400),
             display_timeout_seconds=_bounded_integer("SP_DISPLAY_TIMEOUT_SECONDS", 30 * 60, 60, 86_400),
             simulate_timeout_seconds=_bounded_integer("SP_SIMULATE_TIMEOUT_SECONDS", 4 * 60 * 60, 60, 7 * 86_400),
+            max_job_interruptions=_bounded_integer("SP_MAX_JOB_INTERRUPTIONS", MAX_INTERRUPTIONS, 1, 100),
             team_emails=_email_set("SP_TEAM_EMAILS"),
             apns_key=_secret("SP_APNS_KEY", "SP_APNS_KEY_PATH"),
             apns_key_id=os.environ.get("SP_APNS_KEY_ID") or None,

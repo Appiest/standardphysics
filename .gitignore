@@ -34,3 +34,6 @@ datasets/phone/*.zip
 /*.obj
 # marimo writes its session cache next to each notebook it runs
 notebooks/__marimo__/
+
+# Coverage data, coverage.xml and JUnit reports from a local run of the CI steps
+test-reports/

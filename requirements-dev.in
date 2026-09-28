@@ -8,3 +8,5 @@
 -e ./packages/agents[observability,notebook]
 -e ./services/api[test]
 pytest
+pytest-cov
+coverage

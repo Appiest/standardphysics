@@ -43,7 +43,8 @@ RUN npm run build
 FROM python:3.12-slim AS notebook
 WORKDIR /notebook
 COPY requirements-dev.lock /tmp/requirements-dev.lock
-RUN pip install --no-cache-dir "$(grep '^marimo==' /tmp/requirements-dev.lock)"
+# marimo shells out to uv to bundle the notebook's local imports for the browser.
+RUN pip install --no-cache-dir "$(grep '^marimo==' /tmp/requirements-dev.lock)" uv==0.12.19
 COPY notebooks ./notebooks
 RUN cd notebooks && marimo export html-wasm finetune_story.py -o /notebook/export --mode run -f
 

@@ -2,6 +2,7 @@
 
 import { ArrowsClockwise, CheckCircle, CircleNotch, MinusCircle, Stop } from "@phosphor-icons/react";
 import { useEffect, useReducer, useRef } from "react";
+import { ActivitySpinner } from "@/components/ui/ActivitySpinner";
 import { Button } from "@/components/ui/Button";
 import { ApiRefusal, streamLoop } from "@/lib/layout-client";
 import { announcement, deciderSentence, passOutcome, passTitle, stoppedSentence, summary, workingSentence } from "@/lib/loop-copy";
@@ -109,7 +110,7 @@ function Outcome({ progress, onTry, onStart, onStop }: { progress: LoopProgress;
   const stopped = progress.phase === "stopped";
   return (
     <div className="mt-4 flex flex-col items-start gap-3">
-      <p className={stopped ? "text-ink-muted" : "text-problem"}>{stopped ? stoppedSentence(progress.passes.length) : progress.error}</p>
+      {stopped ? <p className="text-ink-muted">{stoppedSentence(progress.passes.length)}</p> : <ActivitySpinner />}
       <StartButton onStart={onStart} again />
     </div>
   );

@@ -8,8 +8,11 @@ import json
 import os
 import sys
 import textwrap
+import threading
+import time
 
 import child_stages
+import hanging_child
 import pytest
 from fastapi.testclient import TestClient
 from standardphysics_agents import tracing
@@ -18,6 +21,7 @@ from test_job_lifecycle import _complete_geometry, _complete_semantics
 from conftest import create_scan, drain, no_blender_stages, sign_up
 from standardphysics_api.app import create_app
 from standardphysics_api.settings import Settings
+from standardphysics_api.worker import in_own_process
 
 
 class FakeWeave:
@@ -27,7 +31,7 @@ class FakeWeave:
         self.failure = failure
         self.projects: list[str] = []
 
-    def init(self, project: str) -> None:
+    def init(self, project: str, settings: dict | None = None) -> None:
         if self.failure is not None:
             raise self.failure
         self.projects.append(project)
@@ -94,7 +98,7 @@ RECORDING_WEAVE = textwrap.dedent("""
         with open(os.environ["SP_WEAVE_CALLS"], "a") as calls:
             calls.write(json.dumps({"pid": os.getpid(), **call}) + "\\n")
 
-    def init(project):
+    def init(project, settings=None):
         _record(call="init", project=project)
 
     def finish():
@@ -143,3 +147,40 @@ def test_a_job_run_in_its_own_process_sends_its_traces(make_client, recording_we
     assert ("init", None) in in_child
     assert ("op", "child_stages.label") in in_child
     assert in_child[-1] == ("finish", None)
+
+
+class StalledWeave(FakeWeave):
+    """A W&B endpoint that accepts the connection and never answers."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.answer = threading.Event()
+
+    def init(self, project: str, settings: dict | None = None) -> None:
+        self.answer.wait()
+
+    def finish(self) -> None:
+        self.answer.wait()
+
+
+def test_a_weave_that_never_answers_does_not_hold_up_startup(tmp_path, monkeypatch):
+    stalled = StalledWeave()
+    monkeypatch.setitem(sys.modules, "weave", stalled)
+    monkeypatch.setenv("SP_WEAVE_INIT_TIMEOUT_SECONDS", "0.3")
+    started = time.monotonic()
+    try:
+        with serve(tmp_path, weave_project="physics") as client:
+            assert time.monotonic() - started < 10
+            tracing_report = client.get("/health/details").json()["tracing"]
+    finally:
+        stalled.answer.set()
+    assert tracing_report["active"] is False
+    assert "did not finish within 0.3 s" in tracing_report["off_because"]
+
+
+def test_a_child_whose_flush_never_returns_still_exits_and_reports(monkeypatch):
+    """The real SDK also waits for its queue at exit, without a limit, so the child must not wait on it."""
+    monkeypatch.setenv("SP_WEAVE_FLUSH_TIMEOUT_SECONDS", "0.5")
+    started = time.monotonic()
+    assert in_own_process(hanging_child.trace_through_a_stalled_flush, "physics", timeout_seconds=20) == "finished"
+    assert time.monotonic() - started < 20

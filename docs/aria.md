@@ -30,9 +30,11 @@ a correct answer is.
 | `preview_unverified` | Whether the run treated the rule pack as verified. A run with this on is not evidence about a shop. |
 | `rulepack_version`, `cases` | Which rules and how many cases produced the numbers. |
 
-**Metrics.** The seven scorers keep the names `scorers.py` gives them, so a
+**Metrics.** The eight scorers keep the names `scorers.py` gives them, so a
 metric means the same thing here and in Weave's Evals tab. `measurement_error_in`
-is an error and lower is better; the other six are shares of the cases.
+is an error and lower is better; the other seven are shares of the cases.
+`trajectory_ok` is about control flow rather than geometry: it scores the cases
+that list actions already taken, and is 0 when the router repeats one of them.
 
 Cost sits under `cost/`. `cost/measurements_taken` is the one to compare across
 configurations: it counts every measurement the run asked for, which is the same
@@ -102,6 +104,13 @@ field gets an answer with a panel behind it.
 5. Which measurement under `measurements/` is asked for most, and how does that
    change with `cell_size`?
 6. Propose the next configuration to run and say what you expect it to show.
+7. After `evaluate --router local` and `evaluate --router typesafe` have both
+   run, compare the eval versions `local_policy` and `typesafe` on
+   `router_action_match`, `trajectory_ok` and `measurement_error_in`. Why does
+   TypeSafe spend an extra pass on the fixture? Recommend one code change among
+   the last search on the router state, named target ids, stopping after one
+   escalation, or screening layouts after a failed ladder. Do not recommend
+   changing measured inches or unlocking fixtures.
 
 A W&B automation can send one of these on its own: point it at a run finishing
 in this project and ARIA starts the conversation. That needs the same account

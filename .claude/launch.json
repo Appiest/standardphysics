@@ -111,7 +111,6 @@
         "SP_API_HOST": "127.0.0.1",
         "SP_DATA_DIR": "/private/tmp/claude-501/-Users-yanzihao-Documents-standardphysics/a4001378-16cd-441f-b009-32a6e1d32684/scratchpad/demo-data",
         "SP_SEED_SAMPLE_SHOP": "1",
-        "SP_SEED_OWNER_PASSWORD": "local-test-xjeoYFTaugxD",
         "SP_MENU_MODEL_URL": "http://127.0.0.1:8095/v1",
         "SP_MENU_MODEL": "amelia-team/run-7a1ffb36d6e44ad7b4582e2b2294d405/sft-state",
         "SP_LOOP_MODEL_URL": "http://127.0.0.1:8095/v1",
@@ -153,8 +152,7 @@
         "PYTHONPATH": "/Users/yanzihao/Documents/sp-fix-all/packages/contracts:/Users/yanzihao/Documents/sp-fix-all/packages/fixtures:/Users/yanzihao/Documents/sp-fix-all/packages/pipeline:/Users/yanzihao/Documents/sp-fix-all/packages/agents:/Users/yanzihao/Documents/sp-fix-all/services/api:/Users/yanzihao/Documents/sp-fix-all/src",
         "SP_LOOP_MODEL_URL": "http://127.0.0.1:8095/v1",
         "SP_LOOP_MODEL": "amelia-team/run-7a1ffb36d6e44ad7b4582e2b2294d405/sft-state",
-        "SP_LOOP_MODEL_LABEL": "Your fine-tuned model",
-        "SP_SEED_OWNER_PASSWORD": "rIggdJTKcTJkPW4V"
+        "SP_LOOP_MODEL_LABEL": "Your fine-tuned model"
       }
     },
     {

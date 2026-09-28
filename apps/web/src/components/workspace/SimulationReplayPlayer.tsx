@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { ActivitySpinner } from "@/components/ui/ActivitySpinner";
 import { Button } from "@/components/ui/Button";
 import type { ReplayChapter, SimulationReplay } from "@/types/contracts";
 
@@ -28,7 +29,7 @@ export function SimulationReplayPlayer({ replay }: { replay: SimulationReplay })
       aria-label="Recorded scan simulations with eye-level and third-person views"
       aria-describedby="replay-description" src={`${base}/video.mp4`}
       onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)} onError={() => setError(true)} />
-    {error && <p role="alert" className="text-problem">The video could not load. Reload this page or download the recording below.</p>}
+    {error && <ActivitySpinner />}
     <p id="replay-description" className="max-w-3xl text-sm text-ink-muted">Both views replay the same wheelchair journey through the scanned room. The third-person view cuts away upper surfaces for visibility. Props are hypothetical and hand motion is illustrative. Select a task to seek, then press play.</p>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="heading-display text-xl">Recorded tasks</h2>

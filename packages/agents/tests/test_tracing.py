@@ -10,7 +10,10 @@ rather than assumed.
 from __future__ import annotations
 
 import builtins
+import logging
 import sys
+import threading
+import time
 
 import pytest
 from standardphysics_agents import tracing
@@ -22,12 +25,14 @@ class FakeWeave:
     def __init__(self, style: str = "factory") -> None:
         self.style = style
         self.projects: list[str] = []
+        self.settings: list[dict | None] = []
         self.ops: list[str] = []
         self.calls: list[str] = []
         self.flushes = 0
 
-    def init(self, project: str) -> None:
+    def init(self, project: str, settings: dict | None = None) -> None:
         self.projects.append(project)
+        self.settings.append(settings)
 
     def finish(self) -> None:
         self.flushes += 1
@@ -68,8 +73,9 @@ def weave(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def off():
+def off(monkeypatch):
     tracing.shutdown()
+    monkeypatch.setattr(tracing, "_TRACING", tracing._Tracing())
     yield
     tracing.shutdown()
 
@@ -215,6 +221,7 @@ class TestStatusAndShutdown:
         tracing.init()
         assert tracing.tracing_status() == {
             "active": False, "project_url": None, "off_because": "WANDB_PROJECT is not set",
+            "delivery_errors": 0, "last_delivery_error": None,
         }
 
     def test_the_status_names_a_failed_init(self, monkeypatch):
@@ -233,6 +240,7 @@ class TestStatusAndShutdown:
         tracing.init()
         assert tracing.tracing_status() == {
             "active": True, "project_url": "https://wandb.ai/standardphysics/weave", "off_because": None,
+            "delivery_errors": 0, "last_delivery_error": None,
         }
 
     def test_shutting_down_flushes_queued_traces_once(self, weave):
@@ -261,6 +269,140 @@ class TestStatusAndShutdown:
         assert len(registered) == 1
         registered[0]()
         assert weave.flushes == 1
+
+
+class StalledWeave(FakeWeave):
+    """A W&B endpoint that accepts the connection and never answers."""
+
+    def __init__(self, stall_init: bool = False, stall_finish: bool = False) -> None:
+        super().__init__()
+        self.stall_init, self.stall_finish = stall_init, stall_finish
+        self.answer = threading.Event()
+
+    def init(self, project: str, settings: dict | None = None) -> None:
+        if self.stall_init:
+            self.answer.wait()
+        super().init(project)
+
+    def finish(self) -> None:
+        if self.stall_finish:
+            self.answer.wait()
+        super().finish()
+
+
+@pytest.fixture
+def stalled(monkeypatch):
+    """Deadlines of a fifth of a second, and a Weave told which calls to hang on."""
+    monkeypatch.setenv("SP_WEAVE_INIT_TIMEOUT_SECONDS", "0.2")
+    monkeypatch.setenv("SP_WEAVE_FLUSH_TIMEOUT_SECONDS", "0.2")
+    monkeypatch.setenv("WANDB_PROJECT", "standardphysics")
+    installed: list[StalledWeave] = []
+
+    def install(**stalls: bool) -> StalledWeave:
+        fake = StalledWeave(**stalls)
+        monkeypatch.setitem(sys.modules, "weave", fake)
+        installed.append(fake)
+        return fake
+
+    yield install
+    for fake in installed:
+        fake.answer.set()
+
+
+def _seconds(work) -> float:
+    started = time.monotonic()
+    work()
+    return time.monotonic() - started
+
+
+class TestAStalledEndpoint:
+    """A W&B endpoint that stops answering may cost startup or a child's exit its deadline, never more."""
+
+    def test_an_init_that_never_returns_leaves_tracing_off_at_its_deadline(self, stalled):
+        stalled(stall_init=True)
+        assert _seconds(lambda: tracing.init()) < 2
+        assert not tracing.is_live()
+
+    def test_the_status_says_init_ran_out_of_time(self, stalled):
+        stalled(stall_init=True)
+        tracing.init()
+        status = tracing.tracing_status()
+        assert status["active"] is False
+        assert status["off_because"] == "weave.init for standardphysics did not finish within 0.2 s"
+
+    def test_a_traced_call_after_a_stalled_init_calls_straight_through(self, stalled):
+        fake = stalled(stall_init=True)
+
+        @tracing.traced("test.after_stall")
+        def double(value: int) -> int:
+            return value * 2
+
+        tracing.init()
+        fake.answer.set()
+        assert double(21) == 42
+        assert fake.calls == []
+
+    def test_a_flush_that_never_returns_lets_the_shutdown_finish(self, stalled, caplog):
+        stalled(stall_finish=True)
+        assert tracing.init()
+        with caplog.at_level("WARNING", logger=tracing.__name__):
+            assert _seconds(tracing.shutdown) < 2
+        assert not tracing.is_live()
+        assert "within 0.2 s" in caplog.text
+
+    def test_a_flush_that_ran_out_of_time_is_counted_and_remembered(self, stalled):
+        stalled(stall_finish=True)
+        tracing.init()
+        tracing.shutdown()
+        assert tracing.tracing_status()["delivery_errors"] == 1
+        assert tracing.tracing_status()["last_delivery_error"] == "weave did not flush within 0.2 s"
+        assert tracing.flush_was_abandoned()
+
+    def test_a_flush_that_finishes_is_not_abandoned(self, stalled):
+        stalled()
+        tracing.init()
+        tracing.shutdown()
+        assert not tracing.flush_was_abandoned()
+        assert tracing.tracing_status()["delivery_errors"] == 0
+
+    def test_a_process_block_with_a_stalled_flush_still_ends(self, stalled):
+        stalled(stall_finish=True)
+
+        def traced_block() -> None:
+            with tracing.tracing_for_this_process() as started:
+                assert started
+
+        assert _seconds(traced_block) < 2
+
+    def test_a_deadline_that_is_not_a_number_falls_back_to_the_default(self, monkeypatch, caplog):
+        monkeypatch.setenv("SP_WEAVE_INIT_TIMEOUT_SECONDS", "soon")
+        with caplog.at_level("WARNING", logger=tracing.__name__):
+            assert tracing._deadline("SP_WEAVE_INIT_TIMEOUT_SECONDS", 30.0) == 30.0
+        assert "SP_WEAVE_INIT_TIMEOUT_SECONDS" in caplog.text
+
+
+class TestDeliveryFailures:
+    """The SDK logs a batch it could not send and moves on; that log is all it surfaces."""
+
+    SENDER = "weave.trace_server_bindings.http_utils"
+
+    def test_a_dropped_batch_the_sdk_logs_is_counted(self, weave):
+        tracing.init()
+        logging.getLogger(self.SENDER).error("Error sending batch of %s call events to server", 3)
+        status = tracing.tracing_status()
+        assert status["delivery_errors"] == 1
+        assert status["last_delivery_error"] == "Error sending batch of 3 call events to server"
+
+    def test_a_warning_is_not_a_delivery_failure(self, weave):
+        tracing.init()
+        logging.getLogger(self.SENDER).warning("Batch processing failed, processing items individually")
+        assert tracing.tracing_status()["delivery_errors"] == 0
+
+    def test_nothing_is_counted_while_tracing_is_off(self, weave):
+        tracing.init()
+        tracing.shutdown()
+        logging.getLogger(self.SENDER).error("Error sending batch of 1 call events to server")
+        assert tracing.tracing_status()["delivery_errors"] == 0
 
 
 class TestEverythingIsTraced:
@@ -336,3 +478,148 @@ class TestEverythingIsTraced:
         names = [self._named(run_checks), *[self._named(c) for _, c in REGISTRY]]
         assert all("." in name for name in names)
         assert {name.split(".")[0] for name in names} == {"checks"}
+
+
+class FakeSpan:
+    """A conversation, turn, tool or model call, and what was written to it."""
+
+    def __init__(self, sdk, kind, fields) -> None:
+        self.sdk, self.kind, self.fields = sdk, kind, fields
+        self.result = None
+        self.recorded = None
+
+    def __enter__(self):
+        self.sdk.opened.append(self.kind)
+        self.sdk.current[self.kind] = self
+        return self
+
+    def __exit__(self, kind, error, traceback):
+        self.sdk.closed.append((self.kind, kind))
+        self.sdk.current.pop(self.kind, None)
+        return False
+
+    def start_turn(self, **fields):
+        return FakeSpan(self.sdk, "turn", fields)
+
+    def start_tool(self, **fields):
+        return FakeSpan(self.sdk, "tool", fields)
+
+    def start_llm(self, **fields):
+        return FakeSpan(self.sdk, "llm", fields)
+
+    def record(self, **fields):
+        self.recorded = fields
+
+
+class FakeConversationModule:
+    def __init__(self, sdk) -> None:
+        self.sdk = sdk
+
+    def get_current_conversation(self):
+        return self.sdk.current.get("conversation")
+
+    def get_current_turn(self):
+        return self.sdk.current.get("turn")
+
+    @staticmethod
+    def Message(role, content):  # noqa: N802 - matches weave.conversation.Message
+        return {"role": role, "content": content}
+
+    @staticmethod
+    def Usage(**counts):  # noqa: N802 - matches weave.conversation.Usage
+        return counts
+
+
+class FakeAgentsWeave(FakeWeave):
+    """Weave's Agents surface: a conversation holding turns holding tools and calls."""
+
+    def __init__(self, refuse: bool = False) -> None:
+        super().__init__()
+        self.refuse = refuse
+        self.opened: list[str] = []
+        self.closed: list[tuple] = []
+        self.current: dict = {}
+        self.conversation = FakeConversationModule(self)
+
+    def start_conversation(self, **fields):
+        if self.refuse:
+            raise RuntimeError("the SDK moved")
+        return FakeSpan(self, "conversation", fields)
+
+
+def _live(monkeypatch, fake):
+    monkeypatch.setitem(sys.modules, "weave", fake)
+    monkeypatch.setenv("WANDB_PROJECT", "standardphysics")
+    assert tracing.init()
+    return fake
+
+
+@pytest.fixture
+def agents(monkeypatch):
+    return _live(monkeypatch, FakeAgentsWeave())
+
+
+class TestTheAgentsTab:
+    def test_automatic_patching_stays_off(self, weave):
+        tracing.init()
+        assert weave.settings == [{"implicitly_patch_integrations": False}]
+
+    def test_nothing_is_recorded_without_an_account(self):
+        with tracing.start_conversation(agent_name="loop") as conversation:
+            with tracing.start_turn(user_message="Pass 1.") as turn:
+                with tracing.start_tool(name="assess") as tool:
+                    tool.result = "{}"
+        spans = (conversation, turn, tool)
+        assert all(isinstance(span, tracing.Unrecorded) for span in spans)
+
+    def test_a_pass_nests_under_its_conversation(self, agents):
+        with tracing.start_conversation(agent_name="loop"):
+            with tracing.start_turn(user_message="Pass 1."):
+                with tracing.start_tool(name="assess"):
+                    pass
+                with tracing.start_llm(model="jev-latest", provider_name="typesafe"):
+                    pass
+        assert agents.opened == ["conversation", "turn", "tool", "llm"]
+        assert [kind for kind, _ in agents.closed] == ["tool", "llm", "turn", "conversation"]
+
+    def test_a_tool_keeps_its_result_and_its_name(self, agents):
+        with tracing.start_conversation(agent_name="loop"), tracing.start_turn():
+            with tracing.start_tool(name="gate") as tool:
+                tool.result = '{"accepted": true}'
+        assert (tool.fields, tool.result) == ({"name": "gate"}, '{"accepted": true}')
+
+    def test_a_tool_outside_a_turn_is_not_recorded(self, agents):
+        with tracing.start_tool(name="assess") as tool:
+            pass
+        assert isinstance(tool, tracing.Unrecorded)
+        assert agents.opened == []
+
+    def test_an_sdk_that_refuses_costs_the_record_and_nothing_else(self, monkeypatch):
+        _live(monkeypatch, FakeAgentsWeave(refuse=True))
+        ran = []
+        with tracing.start_conversation(agent_name="loop") as conversation:
+            ran.append(True)
+        assert ran == [True]
+        assert isinstance(conversation, tracing.Unrecorded)
+
+    def test_an_error_in_the_work_closes_the_span_and_still_raises(self, agents):
+        with pytest.raises(ValueError):
+            with tracing.start_conversation(agent_name="loop"):
+                raise ValueError("measuring failed")
+        assert agents.closed == [("conversation", ValueError)]
+
+    def test_a_model_call_records_one_message_each_way(self, agents):
+        with tracing.start_conversation(agent_name="loop"), tracing.start_turn():
+            with tracing.start_llm(model="jev-latest", provider_name="typesafe") as llm:
+                tracing.record_llm(
+                    llm, sent="{}", received="FIX",
+                    usage={"input_tokens": 10, "output_tokens": 2, "cost": "unknown"},
+                )
+        assert llm.recorded == {
+            "input_messages": [{"role": "user", "content": "{}"}],
+            "output_messages": [{"role": "assistant", "content": "FIX"}],
+            "usage": {"input_tokens": 10, "output_tokens": 2},
+        }
+
+    def test_recording_on_nothing_is_harmless(self):
+        tracing.record_llm(tracing.Unrecorded(), sent="a", received="b")
