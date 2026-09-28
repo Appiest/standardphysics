@@ -978,6 +978,49 @@ export interface Mat4 {
   ];
 }
 /**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ModelLoopEvent".
+ */
+export interface ModelLoopEvent {
+  explanation: ProposalExplanation | null;
+  fixable_left: number | null;
+  kind: "started" | "turn" | "finished" | "failed";
+  message: string;
+  moves: NodeMove[];
+  picked: string[];
+  turn: number | null;
+  why: string;
+}
+/**
+ * A proposal in the owner's words, built only from what was measured.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ProposalExplanation".
+ */
+export interface ProposalExplanation {
+  bent: BentWish[];
+  fixed: string[];
+  kept: string[];
+  moves: string[];
+}
+/**
+ * Whether a model is set up to run the loop, and what to call it on the button.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ModelLoopInfo".
+ */
+export interface ModelLoopInfo {
+  available: boolean;
+  label: string;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ModelLoopRequest".
+ */
+export interface ModelLoopRequest {
+  base_revision: number;
+}
+/**
  * Nodes the primitive selected, such as everything standing on a desk.
  *
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -1324,18 +1367,6 @@ export interface PrimitiveSpec {
   name: string;
   returns: "quantity" | "nodes" | "texts" | "truth";
   summary: string;
-}
-/**
- * A proposal in the owner's words, built only from what was measured.
- *
- * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
- * via the `definition` "ProposalExplanation".
- */
-export interface ProposalExplanation {
-  bent: BentWish[];
-  fixed: string[];
-  kept: string[];
-  moves: string[];
 }
 /**
  * Ask the fix agent for a layout that clears these findings.

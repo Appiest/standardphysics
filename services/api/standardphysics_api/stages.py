@@ -360,8 +360,7 @@ class Stages:
     ) -> FixOutcome | None:
         """The model's pick from the menu of legal moves for these findings, or None when it has nothing to offer."""
         with self._search_lock:
-            checker = TrainingChecker(scenario, rules=load_pack(), ledger=self.ledger_factory(),
-                                      measure=self.search_measure, owner_layout=graph, space_typology=typology)
+            checker = self.menu_checker(graph, scenario, typology)
             menu = menu_for_findings(build_menu(graph, checker, stated=stated_book(graph, list(wishes))), targets)
             if menu is None:
                 return None
@@ -369,6 +368,15 @@ class Stages:
         reply = chooser.ask(messages)
         with self._search_lock:
             return picked_outcome(graph, checker, menu, reply, targets)
+
+    def menu_checker(self, graph: SceneGraph, scenario: Scenario, typology: SpaceTypology | None) -> TrainingChecker:
+        """The checker a menu is built with; the owner's own layout is `graph` as it stands."""
+        return TrainingChecker(scenario, rules=load_pack(), ledger=self.ledger_factory(), measure=self.search_measure,
+                               owner_layout=graph, space_typology=typology)
+
+    def locked(self):
+        """Holds the search lock, so a caller measuring on the search cache doesn't race another search."""
+        return self._search_lock
 
     def explain(
         self, before: SceneGraph, after: SceneGraph, scenario: Scenario, wishes: Sequence[OwnerWish] = ()

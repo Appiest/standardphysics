@@ -38,6 +38,7 @@ from .measurement import (
     MeasurementProvider,
     WidthResult,
 )
+from .model_loop import ModelLoopEvent, ModelLoopInfo, ModelLoopRequest
 from .owner import (
     AnswerRequest,
     Checklist,
@@ -289,6 +290,9 @@ __all__ = [
     "ScanList",
     "SpaceTypologyRequest",
     "OwnerWish",
+    "ModelLoopEvent",
+    "ModelLoopInfo",
+    "ModelLoopRequest",
     "OwnerWishesRequest",
     "BentWish",
     "ProposalExplanation",

@@ -34,6 +34,8 @@ from standardphysics_contracts import (
     LoopRequest,
     LoopResult,
     ManualMarkRequest,
+    ModelLoopInfo,
+    ModelLoopRequest,
     OwnerWishesRequest,
     ProposalRequest,
     ProposalResult,
@@ -68,6 +70,7 @@ from .layout import check_layout, save_layout
 from .lidar_mesh import InvalidLidarMesh, validate_lidar_mesh
 from .loop_run import run as run_loop_on
 from .loop_run import stream as stream_loop_on
+from .model_loop import loop_info, stream_model_loop
 from .notifications import notifier_from
 from .owner_accounts import install_account_routes
 from .owner_requests import carry_answers
@@ -504,6 +507,16 @@ def _install_layout_routes(app: FastAPI, database: Database, stages: Stages, wor
     def fix_what_it_can_as_it_goes(scan_id: uuid.UUID, body: LoopRequest) -> StreamingResponse:
         lines = stream_loop_on(database, stages, scan_id, body)
         # no-transform stops a compressing proxy from holding lines back until the loop ends.
+        headers = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
+        return StreamingResponse(lines, media_type="application/x-ndjson", headers=headers)
+
+    @app.get("/api/model-loop", response_model=ModelLoopInfo)
+    def model_loop_info() -> ModelLoopInfo:
+        return loop_info()
+
+    @app.post("/api/scans/{scan_id}/model-loop/stream")
+    def model_loop_stream(scan_id: uuid.UUID, body: ModelLoopRequest) -> StreamingResponse:
+        lines = stream_model_loop(database, stages, scan_id, body)
         headers = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
         return StreamingResponse(lines, media_type="application/x-ndjson", headers=headers)
 

@@ -33,11 +33,14 @@ MAX_REPLY_TOKENS = 256
 class ModelChooser:
     url: str
     model: str
+    label: str = "The model"
 
     @classmethod
-    def from_environment(cls) -> ModelChooser | None:
-        url, model = os.environ.get("SP_MENU_MODEL_URL"), os.environ.get("SP_MENU_MODEL")
-        return cls(url.rstrip("/"), model) if url and model else None
+    def from_environment(cls, prefix: str = "SP_MENU_") -> ModelChooser | None:
+        """The model named by `<prefix>MODEL_URL` and `<prefix>MODEL`, called `<prefix>MODEL_LABEL` to the owner."""
+        url, model = os.environ.get(f"{prefix}MODEL_URL"), os.environ.get(f"{prefix}MODEL")
+        label = os.environ.get(f"{prefix}MODEL_LABEL", "The model")
+        return cls(url.rstrip("/"), model, label) if url and model else None
 
     def ask(self, messages: list[dict]) -> str:
         body = json.dumps({"model": self.model, "messages": messages, "temperature": 0.0,
@@ -49,14 +52,16 @@ class ModelChooser:
         return reply["choices"][0]["message"]["content"] or ""
 
 
-def menu_for_findings(menu: Menu, targets: list[Finding]) -> Menu | None:
-    """The menu cut to furniture options that clear or improve a finding the owner asked about; None when empty.
+def furniture_only(menu: Menu) -> Menu:
+    """The menu without construction options, since a proposal or a plan here carries furniture moves only."""
+    return replace(menu, options=[option for option in menu.options
+                                  if not option.edits.fixture_moves and not option.edits.wall_shifts])
 
-    Construction options (fixture slides) are left out, because a proposal here
-    can only carry furniture moves.
-    """
+
+def menu_for_findings(menu: Menu, targets: list[Finding]) -> Menu | None:
+    """The menu cut to furniture options that clear or improve a finding the owner asked about; None when empty."""
     wanted = {menu.problems[finding.id] for finding in targets if finding.id in menu.problems}
-    options = [option for option in menu.options if not option.edits.fixture_moves and (
+    options = [option for option in furniture_only(menu).options if (
         wanted & set(option.effect.get("clears", []))
         or wanted & {item["problem"] for item in option.effect.get("improves", [])})]
     return replace(menu, options=options) if options else None
