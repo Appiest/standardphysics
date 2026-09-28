@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ModelLoopEvent, NodeMove } from "@/types/contracts";
-import { finishedDetail, finishedHeadline, isAllCleared, namedProblems, problemsLeft, turnClock, turnInProgress, turnMoves, turnTitle } from "./fix-all-copy";
+import { finishedDetail, finishedHeadline, isAllCleared, namedProblems, problemsLeft, turnClock, turnInProgress, turnLines, turnTitle } from "./fix-all-copy";
 import { NOT_STARTED } from "./model-loop-progress";
 
 const move: NodeMove = { node_id: "a", delta_translation: { x: 0.3, y: 0, z: 0 }, delta_rotation_z_degrees: 0 };
 
 function event(fields: Partial<ModelLoopEvent>): ModelLoopEvent {
-  return { kind: "turn", turn: null, picked: [], why: "", fixable_left: null, working_on: [], turns_at_most: null, moves: [], explanation: null, message: "", ...fields };
+  return { kind: "turn", turn: null, picked: [], why: "", fixable_left: null, working_on: [], turns_at_most: null, construction: [], built_ins: [], moves: [], explanation: null, message: "", ...fields };
 }
 
 describe("fix all copy", () => {
@@ -21,8 +21,10 @@ describe("fix all copy", () => {
   });
 
   it("lists each move of a turn that moved several pieces on its own line", () => {
-    expect(turnMoves(event({ picked: ["slide Table 3 in", "set Card reader down"] }))).toEqual(["Slide Table 3 in", "Set Card reader down"]);
-    expect(turnMoves(event({}))).toEqual(["Picked nothing it could use"]);
+    expect(turnLines(event({ picked: ["slide Table 3 in", "set Card reader down"] })).map((line) => line.text)).toEqual(["Slide Table 3 in", "Set Card reader down"]);
+    expect(turnLines(event({})).map((line) => line.text)).toEqual(["Picked nothing it could use"]);
+    const built = turnLines(event({ picked: ["slide Table 3 in", "slide Service counter 12 in"], construction: ["slide Service counter 12 in"] }));
+    expect(built.map((line) => line.construction)).toEqual([false, true]);
   });
 
   it("celebrates only a run that cleared everything with a real move", () => {
@@ -51,5 +53,12 @@ describe("fix all copy", () => {
   it("names the first few open problems and counts the rest", () => {
     expect(namedProblems(["a", "b"])).toEqual({ named: ["a", "b"], more: 0 });
     expect(namedProblems(["a", "b", "c", "d", "e"])).toEqual({ named: ["a", "b", "c"], more: 2 });
+  });
+
+  it("says when a built-in moves, because a contractor has to do it", () => {
+    const one = event({ kind: "finished", moves: [move], built_ins: ["a"], fixable_left: 0 });
+    expect(finishedDetail(one, true)).toBe("1 built-in piece moves. A contractor has to move it.");
+    const mixed = event({ kind: "finished", moves: [move, { ...move, node_id: "b" }, { ...move, node_id: "c" }], built_ins: ["c"], fixable_left: 0 });
+    expect(finishedDetail(mixed, true)).toBe("3 pieces move. One is built in, so a contractor has to move it.");
   });
 });

@@ -44,9 +44,13 @@ export function turnTitle(turn: ModelLoopEvent): string {
   return turn.picked.length > 0 ? sentenceCase(turn.picked.join("; ")) : NOTHING_PICKED;
 }
 
-/** Each move the model picked this turn as its own line, since one turn can move several pieces. */
-export function turnMoves(turn: ModelLoopEvent): string[] {
-  return turn.picked.length > 0 ? turn.picked.map(sentenceCase) : [NOTHING_PICKED];
+export type TurnLine = { text: string; construction: boolean };
+
+/** Each move the model picked this turn as its own line, since one turn can move several pieces; a slid built-in is construction. */
+export function turnLines(turn: ModelLoopEvent): TurnLine[] {
+  if (turn.picked.length === 0) return [{ text: NOTHING_PICKED, construction: false }];
+  const builtIn = new Set(turn.construction);
+  return turn.picked.map((pick) => ({ text: sentenceCase(pick), construction: builtIn.has(pick) }));
 }
 
 export function isAllCleared(finished: ModelLoopEvent | null, started: number | null): boolean {
@@ -62,13 +66,17 @@ export function finishedHeadline(finished: ModelLoopEvent, started: number): str
   return "No furniture move fixed a problem";
 }
 
-function piecesMoved(count: number): string {
-  return count === 1 ? "1 piece moves." : `${count} pieces move.`;
+/** How many pieces move, and how many of them are built in and need a contractor. */
+function piecesMoved(count: number, builtIns: number): string {
+  if (count === 1) return builtIns === 1 ? "1 built-in piece moves. A contractor has to move it." : "1 piece moves.";
+  if (builtIns === 0) return `${count} pieces move.`;
+  const contractor = builtIns === 1 ? "One is built in, so a contractor has to move it." : `${builtIns} are built in, so a contractor has to move them.`;
+  return `${count} pieces move. ${contractor}`;
 }
 
 /** What moves, and when the run stopped short, the server's reason why. */
 export function finishedDetail(finished: ModelLoopEvent, allCleared: boolean): string {
-  const moved = finished.moves.length === 0 ? "The layout stays as it is." : piecesMoved(finished.moves.length);
+  const moved = finished.moves.length === 0 ? "The layout stays as it is." : piecesMoved(finished.moves.length, finished.built_ins.length);
   return allCleared || !finished.message ? moved : `${moved} ${finished.message}`;
 }
 

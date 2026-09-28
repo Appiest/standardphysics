@@ -982,6 +982,8 @@ export interface Mat4 {
  * via the `definition` "ModelLoopEvent".
  */
 export interface ModelLoopEvent {
+  built_ins: string[];
+  construction: string[];
   explanation: ProposalExplanation | null;
   fixable_left: number | null;
   kind: "started" | "turn" | "finished" | "failed";

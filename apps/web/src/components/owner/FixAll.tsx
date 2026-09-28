@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle, CircleNotch, MagicWand, MinusCircle, Stop } from "@phosphor-icons/react";
+import { CheckCircle, CircleNotch, Hammer, MagicWand, MinusCircle, Stop } from "@phosphor-icons/react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import { type RefObject, useEffect, useReducer, useRef, useState } from "react";
 import { Explanation } from "@/components/proposal/ProposalReview";
@@ -17,7 +17,7 @@ import {
   stoppedSentence,
   turnClock,
   turnInProgress,
-  turnMoves,
+  turnLines,
   turnWork,
 } from "@/lib/fix-all-copy";
 import { ApiRefusal, modelLoopInfo, streamModelLoop } from "@/lib/layout-client";
@@ -191,8 +191,18 @@ function TurnRow({ turn }: { turn: ModelLoopEvent }) {
     <motion.li className="flex gap-3" initial={BLURRED_IN} animate={SHARP} transition={GROW}>
       <TurnMark moved={turn.picked.length > 0} />
       <div className="min-w-0">
-        <ul className="flex flex-col gap-1 font-semibold">
-          {turnMoves(turn).map((line) => <li key={line}>{line}</li>)}
+        <ul className="flex flex-col gap-1">
+          {turnLines(turn).map((line) => (
+            <li key={line.text}>
+              <span className="font-semibold">{line.text}</span>
+              {line.construction && (
+                <span className="mt-0.5 flex items-center gap-1.5 text-sm text-attention">
+                  <Hammer size={14} weight="bold" aria-hidden />
+                  Needs a contractor
+                </span>
+              )}
+            </li>
+          ))}
         </ul>
         {turn.why && <p className="mt-0.5 text-pretty text-sm text-ink-muted">{turn.why}</p>}
       </div>

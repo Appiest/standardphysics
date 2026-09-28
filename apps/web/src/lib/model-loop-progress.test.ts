@@ -3,7 +3,7 @@ import type { ModelLoopEvent } from "@/types/contracts";
 import { advanceModelLoop, CONNECTION_LOST, type ModelLoopAction, NOT_STARTED } from "./model-loop-progress";
 
 function event(fields: Partial<ModelLoopEvent>): ModelLoopEvent {
-  return { kind: "turn", turn: null, picked: [], why: "", fixable_left: null, working_on: [], turns_at_most: null, moves: [], explanation: null, message: "", ...fields };
+  return { kind: "turn", turn: null, picked: [], why: "", fixable_left: null, working_on: [], turns_at_most: null, construction: [], built_ins: [], moves: [], explanation: null, message: "", ...fields };
 }
 
 const replay = (actions: ModelLoopAction[]) => actions.reduce(advanceModelLoop, NOT_STARTED);

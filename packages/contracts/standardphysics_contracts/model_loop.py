@@ -8,6 +8,7 @@ plan and decide whether to keep it.
 
 from __future__ import annotations
 
+import uuid
 from typing import Literal
 
 from pydantic import BaseModel
@@ -34,6 +35,8 @@ class ModelLoopEvent(BaseModel):
     """The options the model chose this turn, in the owner's words."""
     why: str = ""
     """The model's own reason for this turn's pick."""
+    construction: list[str] = []
+    """On `turn`, the picks that slide a built-in such as a counter: construction a contractor does, not the owner."""
     fixable_left: int | None = None
     working_on: list[str] = []
     """On `started` and each `turn`, the titles of the problems still open, which the next turn works on."""
@@ -41,5 +44,7 @@ class ModelLoopEvent(BaseModel):
     """On `started`, how many turns the loop takes at most."""
     moves: list[NodeMove] = []
     """On `finished`, every move the loop made, measured from the layout it started with."""
+    built_ins: list[uuid.UUID] = []
+    """On `finished`, the pieces among `moves` that are built in, so moving them is construction."""
     explanation: ProposalExplanation | None = None
     message: str = ""

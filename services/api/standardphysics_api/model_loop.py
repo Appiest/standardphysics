@@ -4,8 +4,9 @@ Set SP_LOOP_MODEL_URL and SP_LOOP_MODEL (an OpenAI-compatible server, such as
 the Fireworks fine-tune behind scripts/finetune/fireworks_chat_server.py) and
 SP_LOOP_MODEL_LABEL (what the owner's button calls it). Each turn builds the
 menu for every problem still left, asks the model, applies its pick and
-re-checks, for at most MODEL_LOOP_TURNS turns, each menu built within MENU_SECONDS. Only furniture options are
-offered, because the owner's plan can only show furniture moves. Nothing is
+re-checks, for at most MODEL_LOOP_TURNS turns, each menu built within LOOP_MENU_SECONDS. Furniture and built-in
+moves are offered (a slid counter is construction, reported as such); wall
+shifts are not, because the owner's plan cannot show a moved wall. Nothing is
 saved: the stream ends with every move the loop made, for the owner to open
 in the plan and keep or not.
 
@@ -22,7 +23,7 @@ from dataclasses import dataclass, field
 
 from standardphysics_agents.fix.budget import deadline_in
 from standardphysics_agents.training.checker import TrainingChecker
-from standardphysics_agents.training.edits import apply_edits, node_moves, parse_edits
+from standardphysics_agents.training.edits import TrainingEdits, apply_edits, node_moves, parse_edits
 from standardphysics_agents.training.menu import MenuLimits, build_menu, menu_messages, resolve
 from standardphysics_agents.training.owner import WishBook, stated_book
 from standardphysics_contracts import (
@@ -33,14 +34,18 @@ from standardphysics_contracts import (
     NodeMove,
     SceneGraph,
     Vec3,
+    to_meters,
 )
 
 from .db import Database
-from .model_chooser import MENU_SECONDS, ModelChooser, furniture_only
+from .model_chooser import ModelChooser, without_wall_shifts
 from .proposals import fix_inputs, owner_wishes_of, space_typology_of
 from .stages import Stages
 
 MODEL_LOOP_TURNS = 5
+LOOP_MENU_SECONDS = 40.0
+"""Longer than a single proposal's menu: built-in slides are guessed last, and on Share Tea the whole menu,
+built-ins included, took 31 s. The card shows a turn clock, so the owner sees the wait."""
 LOOP_ENVIRONMENT = "SP_LOOP_"
 
 
@@ -69,6 +74,14 @@ def _combined(moves: dict[uuid.UUID, NodeMove], added: list[NodeMove]) -> dict[u
     return total
 
 
+def _all_moves(edits: TrainingEdits) -> list[NodeMove]:
+    """Furniture moves, then each built-in's slide as a move of that piece, so the plan can show both."""
+    slides = [NodeMove(node_id=move.node_id, delta_translation=Vec3(
+        x=to_meters(move.dx_inches), y=to_meters(move.dy_inches), z=0.0), delta_rotation_z_degrees=0.0)
+        for move in edits.fixture_moves]
+    return [*node_moves(edits), *slides]
+
+
 def _titles(problems: list[Finding]) -> list[str]:
     """Each open problem's title once, in the owner's words."""
     return list(dict.fromkeys(problem.title for problem in problems))
@@ -86,6 +99,7 @@ class ModelLoop:
     last: dict | None = None
     menu: object = None
     stop: str = ""
+    built_ins: set = field(default_factory=set)
 
     def __post_init__(self) -> None:
         self.current = self.current or self.start
@@ -101,8 +115,8 @@ class ModelLoop:
         if self.fixable_left() == 0:
             self.stop = "Every problem furniture can fix is fixed."
             return None
-        limits = MenuLimits(deadline=deadline_in(MENU_SECONDS))
-        self.menu = furniture_only(build_menu(self.current, self.checker, stated=self.stated, limits=limits))
+        limits = MenuLimits(deadline=deadline_in(LOOP_MENU_SECONDS))
+        self.menu = without_wall_shifts(build_menu(self.current, self.checker, stated=self.stated, limits=limits))
         if not self.menu.options:
             self.stop = "The menu has no move left for what remains."
             return None
@@ -111,16 +125,20 @@ class ModelLoop:
     def take(self, turn: int, reply: str) -> ModelLoopEvent:
         resolution = resolve(reply, self.current, self.menu, self.checker.pinned)
         edits = parse_edits(resolution.completion)
-        added = node_moves(edits) if edits else []
+        added = _all_moves(edits) if edits else []
         if added:
             self.current = apply_edits(self.current, edits)
             self.moves = _combined(self.moves, added)
+            self.built_ins |= {move.node_id for move in edits.fixture_moves}
         else:
             self.stop = "The model chose nothing it could use."
         open_problems = self.open_problems()
         self.last = {**resolution.as_dict(), "fixable_left": len(open_problems)}
         picked = [self.menu.picked_in_owner_words(number) for number in resolution.applied]
-        return ModelLoopEvent(kind="turn", turn=turn, picked=picked, why=self.menu.in_owner_words(resolution.why),
+        construction = [self.menu.picked_in_owner_words(number) for number in resolution.applied
+                        if self.menu.option(number).edits.fixture_moves]
+        return ModelLoopEvent(kind="turn", turn=turn, picked=picked, construction=construction,
+                              why=self.menu.in_owner_words(resolution.why),
                               fixable_left=len(open_problems), working_on=_titles(open_problems))
 
 
@@ -146,7 +164,8 @@ def _events(stages: Stages, graph: SceneGraph, scenario, chooser: ModelChooser, 
     with stages.locked():
         left = loop.fixable_left()
     explanation = stages.explain(graph, loop.current, scenario, wishes) if loop.moves else None
-    yield ModelLoopEvent(kind="finished", moves=list(loop.moves.values()), explanation=explanation, fixable_left=left,
+    yield ModelLoopEvent(kind="finished", moves=list(loop.moves.values()), built_ins=sorted(loop.built_ins, key=str),
+                         explanation=explanation, fixable_left=left,
                          message=loop.stop or f"Stopped after {MODEL_LOOP_TURNS} turns.")
 
 
