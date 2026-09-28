@@ -38,10 +38,10 @@ export function DeleteScanButton({ scanId, name, look = "menu" }: { scanId: stri
   async function deleteScan() {
     setDeleting(true);
     setFailure("");
-    const response = await fetch(`/api/scans/${scanId}`, { method: "DELETE" });
-    if (!response.ok) {
+    const failed = await deletionFailure(scanId);
+    if (failed) {
       setDeleting(false);
-      setFailure(await refusal(response));
+      setFailure(failed);
       return;
     }
     tellApp({ type: "shopDeleted", scanId });
@@ -83,6 +83,18 @@ export function DeleteScanButton({ scanId, name, look = "menu" }: { scanId: stri
   );
 }
 
+const NO_ANSWER = "Unable to delete this shop. Check your connection and try again.";
+
+/** Why the shop is still there, or an empty string once the server has deleted it. */
+async function deletionFailure(scanId: string): Promise<string> {
+  try {
+    const response = await fetch(`/api/scans/${scanId}`, { method: "DELETE" });
+    return response.ok ? "" : await refusal(response);
+  } catch {
+    return NO_ANSWER;
+  }
+}
+
 /** What the server said, when it said anything a person can act on. */
 async function refusal(response: Response): Promise<string> {
   try {
@@ -92,5 +104,5 @@ async function refusal(response: Response): Promise<string> {
   } catch {
     // A refusal with no readable body still has to say something.
   }
-  return "Unable to delete this shop. Check your connection and try again.";
+  return NO_ANSWER;
 }
