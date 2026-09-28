@@ -16,10 +16,17 @@
 # instead, says so, and records the deploy as untested-local-build.
 # SP_DEPLOY_IMAGE points at another registry repository.
 #
-# Either way the image is tagged standardphysics:<sha>, and each deploy adds a
-# line to /var/log/standardphysics-deploys.log on the box with the commit and
-# the registry digest it started, or untested-local-build, so what to roll back
-# to is written down. docs/DEPLOY.md has the rollback. A box left on an older
+# Either way the image is tagged standardphysics:<sha>. After the restart it
+# runs deploy/digitalocean/check_serving.py in the API container every five
+# seconds, for up to SP_DEPLOY_READY_SECONDS (180 by default), until
+# /health/ready answers 200, /health/details reports the commit just deployed
+# and the workspace serves its sign-in page. Only then does it add a line to
+# /var/log/standardphysics-deploys.log on the box with the commit and the
+# registry digest it started, or untested-local-build, so that file lists only
+# deploys that came up and is the list of what to roll back to. A deploy that
+# never passes the check is left running for you to look at, is not written
+# down, prints the rollback to the last deploy in that file, runs doctor.sh
+# and exits 70. docs/DEPLOY.md has the rollback. A box left on an older
 # commit by a rollback goes back to master here before it pulls.
 #
 # It refuses to deploy while the API has jobs queued or running. The restart
@@ -43,6 +50,7 @@ HISTORY="${SP_DEPLOY_HISTORY:-/var/log/standardphysics-deploys.log}"
 FORCE="${SP_DEPLOY_FORCE:-}"
 BUILD="${SP_DEPLOY_BUILD:-}"
 IMAGE="${SP_DEPLOY_IMAGE:-ghcr.io/imhaohao/standardphysics}"
+READY_SECONDS="${SP_DEPLOY_READY_SECONDS:-180}"
 
 # Read the way the Droplet's own tools read the queue: the API container's
 # Python opening the database it holds, read-only, so this cannot take a lock
@@ -141,6 +149,24 @@ if [ '$FORCE' != 1 ] && [ \"\$in_flight\" -gt 0 ]; then
   exit 75
 fi
 docker compose up -d
+waited=0
+until verdict=\$(docker compose exec -T api /opt/venv/bin/python - \"\$GIT_SHA\" < check_serving.py 2>&1); do
+  if [ \"\$waited\" -ge '$READY_SECONDS' ]; then
+    echo \"After \$waited seconds the new stack is still not serving \$GIT_SHA: \$verdict\" >&2
+    previous=\$(cat '$HISTORY.1' '$HISTORY' 2>/dev/null | tail -n 1 | cut -d ' ' -f 2) || true
+    if [ -n \"\$previous\" ]; then
+      echo \"To go back to \$previous, the last deploy that came up:\" >&2
+      echo \"  cd '$DIR' && git checkout \$previous && cd deploy/digitalocean && GIT_SHA=\$previous docker compose up -d\" >&2
+    else
+      echo 'No earlier deploy is written down in $HISTORY, so there is no commit to name for a rollback.' >&2
+    fi
+    ./doctor.sh || true
+    exit 70
+  fi
+  sleep 5
+  waited=\$((waited + 5))
+done
+echo \"\$verdict\"
 echo \"\$(date -u +%Y-%m-%dT%H:%M:%SZ) \$GIT_SHA \$origin\" >> '$HISTORY'
 ./doctor.sh"
 }

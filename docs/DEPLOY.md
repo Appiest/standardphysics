@@ -213,10 +213,30 @@ job that started in that second. Closing it completely needs the worker to
 stop claiming jobs while a maintenance flag is set, which lives in
 `worker.py` and has not been built.
 
-Each deploy appends the time, the commit and where its image came from to
-`/var/log/standardphysics-deploys.log` on the Droplet. The last field is the
-registry digest that was pulled, or `untested-local-build`. That file is the list
-of commits you can roll back to.
+After the restart the script waits for the new stack to prove it is the one
+it deployed. Every five seconds it runs `deploy/digitalocean/check_serving.py`
+inside the API container, which passes once `/health/ready` answers 200,
+`/health/details` reports the commit just deployed, and the workspace serves
+its sign-in page. The check runs in the container because the API publishes
+no port. It gives up after `SP_DEPLOY_READY_SECONDS`, 180 by default. `doctor.sh`
+runs the same check against the commit checked out on the box.
+
+Only a deploy that passes is written down. It appends the time, the commit and
+where its image came from to `/var/log/standardphysics-deploys.log` on the
+Droplet. The last field is the registry digest that was pulled, or
+`untested-local-build`. That file is the list of commits you can roll back to.
+Lines written before this check existed were written before `doctor.sh` ran,
+so an old line is not proof that deploy came up.
+
+A deploy that never passes is left running so you can look at it. The script
+prints what the check last saw, then the rollback command for the last commit
+in the deploy log, runs `doctor.sh`, and exits with code 70:
+
+```text
+After 180 seconds the new stack is still not serving 0123abc…: http://127.0.0.1:8787/health/ready answered 503: {"status":"degraded",…}
+To go back to 89ab…, the last deploy that came up:
+  cd '/root/standardphysics' && git checkout 89ab… && cd deploy/digitalocean && GIT_SHA=89ab… docker compose up -d
+```
 
 On the Droplet itself it is the commands the script runs:
 
@@ -228,6 +248,8 @@ docker pull ghcr.io/imhaohao/standardphysics:$GIT_SHA   # stop here if it fails
 docker tag ghcr.io/imhaohao/standardphysics:$GIT_SHA standardphysics:$GIT_SHA
 # count the unfinished jobs, as above, and stop here if there are any
 docker compose up -d
+# repeat until it prints "serving", then append the line to the deploy log
+docker compose exec -T api /opt/venv/bin/python - "$GIT_SHA" < check_serving.py
 ```
 
 ## Rolling back
