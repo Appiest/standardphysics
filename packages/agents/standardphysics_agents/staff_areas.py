@@ -12,11 +12,10 @@ from __future__ import annotations
 import math
 
 from standardphysics_contracts import Scenario, SceneGraph, SceneNode, StaffArea, Vec3
-from standardphysics_pipeline.footprints import rotation_about_z
 
 from .checks import roles
 from .checks.observation import Observation
-from .scenario_suggestion import outline_points
+from .scenario_suggestion import counter_axes, customer_side, outline_points
 
 SHALLOWEST = 1.0
 """Metres of floor behind a counter before it is somewhere to work, not the gap to a wall."""
@@ -57,24 +56,15 @@ def guess_staff_areas(graph: SceneGraph, scenario: Scenario) -> list[StaffArea]:
     return areas
 
 
-def _axes(counter: SceneNode) -> tuple[Axis, Axis, float]:
-    """Along the counter, across it, and its depth across."""
-    cos_t, sin_t = rotation_about_z(counter)
-    along, across = (cos_t, sin_t), (-sin_t, cos_t)
-    if counter.dimensions.x >= counter.dimensions.y:
-        return along, across, counter.dimensions.y
-    return across, along, counter.dimensions.x
-
-
 def _dot(a: Axis, b: Axis) -> float:
     return a[0] * b[0] + a[1] * b[1]
 
 
 def _behind(counter: SceneNode, door: Axis, outline: list[Axis]) -> StaffArea | None:
-    along, across, thickness = _axes(counter)
+    along, _, thickness, _ = counter_axes(counter)
     centre = counter.transform.position
-    to_door = (door[0] - centre.x, door[1] - centre.y)
-    back = across if _dot(across, to_door) < 0 else (-across[0], -across[1])
+    front = customer_side(counter, door)
+    back = (-front[0], -front[1])
     face = (centre.x + back[0] * thickness / 2, centre.y + back[1] * thickness / 2)
     offsets = [(x - face[0], y - face[1]) for x, y in outline]
     depth = min(DEEPEST, max(_dot(offset, back) for offset in offsets))
