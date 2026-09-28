@@ -330,17 +330,69 @@ The checkout also rolls back `docker-compose.yml` and `Caddyfile` to that
 commit, which is what you want: the image and the configuration it was
 deployed with go back together.
 
-The database is not rolled back with the code. Schema changes here only add
-tables and columns (`_add_missing_columns` in `db.py`), so an older server
-normally runs on a newer database without noticing. If the release being
-undone wrote data the older code cannot read, restore the database from the
-backup taken before that release (below).
+The database is not rolled back with the code. Migrations only add tables,
+columns and indexes (see [Schema migrations](#schema-migrations)), so an older
+server runs on a newer database without noticing. If the release being undone
+wrote data the older code cannot read, restore the database from the backup
+taken before that release (below).
 
 The next `scripts/deploy.sh` returns the box to master before it pulls, so
 rolling forward again is an ordinary deploy.
 
 Old images take a few GB each. Clear out the ones you will not roll back to
 with `docker image rm standardphysics:<sha>`, keeping the last few.
+
+## Schema migrations
+
+The schema is `MIGRATIONS` in `services/api/standardphysics_api/db.py`, a
+numbered list that starts at 1 and only grows at the end. When the API starts
+it runs every version the database has not recorded, oldest first. Each one
+runs in its own transaction and is recorded inside that transaction, so it
+either finishes and is recorded or leaves no trace. If one fails, the start
+stops with `Migration <version> (<name>) failed: ...`, and the database stays
+at the version before it. Fix the migration and start again; the versions
+that already ran are skipped.
+
+Each database records what it has run in `schema_migrations`:
+
+| Column | Holds |
+| --- | --- |
+| `version` | The migration's number, the primary key |
+| `name` | What it adds, such as `add_owners_team` |
+| `applied_at` | When it ran, in UTC |
+| `detected` | 1 when the first versioned start found it already built instead of running it |
+
+To see where the box is:
+
+```bash
+docker compose exec -T api /opt/venv/bin/python -c "
+import sqlite3
+rows = sqlite3.connect('/data/standardphysics.sqlite3').execute(
+    'SELECT version, name, applied_at, detected FROM schema_migrations ORDER BY version')
+for row in rows: print(*row)"
+```
+
+Before this table existed, the server added any missing column on every
+start. A database it built has tables but no `schema_migrations`. The first
+start of the versioned server checks each migration's tables, columns and
+indexes once, records the ones it finds with `detected = 1`, and runs only
+what is missing. It never runs a detected version.
+
+Migrations are additive. Never drop or rename a column in the same release
+that stops using it. A rollback runs the previous image on the database the
+newer one migrated, and the previous code still selects and inserts that
+column. Stop using the column in one release, and drop it in a later one,
+once no image you might roll back to reads it. Only add a column that has a
+default or allows NULL, so the older code's inserts that leave it out still
+succeed. A test in `services/api/tests/test_db_migration.py` fails if a
+migration contains `DROP`, `RENAME`, `DELETE` or `UPDATE`.
+
+To add one, append a migration with the next version number and run
+`services/api/tests/test_db_migration.py`. Never edit or renumber a migration
+that has shipped, since production has already recorded it and will not run it
+again. A change that needs the server's settings or has to read today's rows,
+like granting the team role from `SP_TEAM_EMAILS`, is a one-off step recorded
+with `first_time` in `applied_steps` instead.
 
 ## One container holds the database
 
