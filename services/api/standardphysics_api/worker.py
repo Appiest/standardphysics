@@ -10,7 +10,10 @@ lock is what makes that safe: no other live process can be running one of them.
 
 Neither loop stops on an error. A job's own failure is recorded on its row; an
 error outside any job, such as a database that stays locked, is logged and the
-loop tries again after a wait that doubles up to a minute.
+loop tries again after a wait that doubles up to a minute. Writing how a job
+ended waits out a locked database for SETTLE_PATIENCE_SECONDS at most and any
+other database error not at all; a job that can't be settled is left running
+for the next start to queue again, and /health/ready names it until then.
 """
 
 from __future__ import annotations
@@ -63,6 +66,8 @@ PROBLEM_STATES = ("stopped", "stalled", "overdue")
 LOOP_NAMES = {False: "jobs", True: "textures"}
 MAX_CLAIMS_BEFORE_START = 3
 """How many times a job may be claimed and put back because of an error before it ran."""
+SETTLE_PATIENCE_SECONDS = 60.0
+"""How long writing a job's outcome waits out a database another writer holds before giving up."""
 TRANSIENT_ATTEMPTS = 3
 """How many times a job runs when it keeps meeting an error that goes away by itself: a
 database another writer holds past its busy timeout, or a provider request that timed out."""
@@ -180,6 +185,9 @@ class Worker:
         self.notifier: Notifier = LoggedNotifier()
         self._guests_swept_at = 0.0
         self._on_this_thread = threading.local()
+        self._unsettled: dict[int, str] = {}
+        """Jobs whose outcome could not be written, by id, with the error. Cleared by a restart,
+        which queues them again."""
 
     def start(self) -> None:
         if not self.lock.acquire():
@@ -229,12 +237,14 @@ class Worker:
         }
 
     def problems(self) -> list[str]:
-        """Each loop that has died, is stuck outside any job, or is running a job past its deadline."""
+        """Each loop that has died, is stuck outside any job, or is running a job past its deadline,
+        and each job whose outcome could not be written."""
         if self._stop.is_set():
             return []
         now = time.monotonic()
         states = {LOOP_NAMES[texture_only]: pulse.state(now) for texture_only, pulse in self.pulses.items()}
-        return [f"the {name} loop is {state}" for name, state in states.items() if state in PROBLEM_STATES]
+        loops = [f"the {name} loop is {state}" for name, state in states.items() if state in PROBLEM_STATES]
+        return loops + [_unsettled_problem(job_id, error) for job_id, error in dict(self._unsettled).items()]
 
     def summary(self) -> str:
         """One word for /health: the worst loop problem first, otherwise whether this process holds the queue."""
@@ -345,7 +355,8 @@ class Worker:
         worker lock guarantees the next start finds the row running and queues it."""
         try:
             self._write_through_locks(write, f"job {job['id']}")
-        except Exception:
+        except Exception as error:
+            self._unsettled[job["id"]] = f"{type(error).__name__}: {error}"
             log.error(
                 "job %s is left running until the next start queues it again:\n%s",
                 job["id"],
@@ -360,20 +371,24 @@ class Worker:
         self._write_through_locks(record, f"job {job['id']}")
 
     def _write_through_locks(self, write: Callable[[sqlite3.Connection], object], what: str) -> None:
-        """Run one write in a transaction, waiting out a locked database rather than giving up.
+        """Run one write in a transaction, waiting out a locked database for SETTLE_PATIENCE_SECONDS.
 
-        It stops waiting only when the worker is stopping, and raises then.
+        Any other database error, such as a missing table, a disk I/O error or a
+        read-only file, won't go away by waiting, so it is raised at once. A lock
+        still held when the patience runs out, or when the worker is stopping, is
+        raised too.
         """
         backoff = _Backoff()
+        give_up_at = time.monotonic() + SETTLE_PATIENCE_SECONDS
         while True:
             try:
                 with self.database.transaction() as connection:
                     write(connection)
                 return
             except sqlite3.OperationalError as error:
-                if self._stop.is_set():
-                    raise
                 delay = backoff.delay()
+                if not _is_lock_contention(error) or self._stop.is_set() or time.monotonic() + delay > give_up_at:
+                    raise
                 log.warning("could not record %s (%s); trying again in %.1f s", what, error, delay)
                 self._stop.wait(delay)
 
@@ -782,9 +797,21 @@ def is_transient(error: BaseException) -> bool:
     return False
 
 
+def _is_lock_contention(error: sqlite3.OperationalError) -> bool:
+    """Another writer holds the database past its busy timeout, which ends when that writer commits."""
+    return "database is locked" in str(error) or "database is busy" in str(error)
+
+
+def _unsettled_problem(job_id: int, error: str) -> str:
+    return (
+        f"how job {job_id} ended could not be recorded ({error}); it stays running until"
+        " the API restarts and queues it again, so fix the database, then restart"
+    )
+
+
 def _transient_alone(error: BaseException) -> bool:
     if isinstance(error, sqlite3.OperationalError):
-        return "database is locked" in str(error) or "database is busy" in str(error)
+        return _is_lock_contention(error)
     if isinstance(error, urllib.error.URLError):
         return isinstance(error.reason, TimeoutError)
     return isinstance(error, TimeoutError)
