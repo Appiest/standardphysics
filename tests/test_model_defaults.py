@@ -23,3 +23,9 @@ def test_labelling_defaults_to_open_weights_on_fireworks_and_every_other_call_to
 
 def test_labelling_reads_its_own_setting_named_for_what_it_does():
     assert labelling.MODEL_ENV == "LABEL_MODEL"
+
+
+def test_the_example_settings_leave_the_labelling_model_blank_so_the_fallback_runs():
+    for name in SHIPPED_SETTINGS:
+        lines = (ROOT / name).read_text().splitlines()
+        assert "LABEL_MODEL=" in lines, name
