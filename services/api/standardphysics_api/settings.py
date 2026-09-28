@@ -86,6 +86,13 @@ class Settings:
     artifact at a time, and at most two while optional files follow the core ones; more is refused with a 429."""
     max_concurrent_uploads: int = 32
     """How many uploads the whole server streams at once, from SP_MAX_CONCURRENT_UPLOADS; more is refused with a 503."""
+    max_request_body_bytes: int = 1024 * 1024
+    """The largest body any route but the streamed uploads accepts, from SP_MAX_REQUEST_BODY_BYTES. A larger
+    one is refused with a 413 before it is read (see `request_size`). JSON bodies carry moves, answers and
+    ids rather than geometry, which travels as an uploaded artifact."""
+    max_concurrent_validations: int = 1
+    """How many uploaded files are checked at once, from SP_MAX_CONCURRENT_VALIDATIONS; the rest wait their
+    turn. Checking the largest mesh holds a few hundred megabytes, and the API has 3.2 GB for everything."""
     staging_max_age_seconds: int = 3600
     """How long a staged upload may go unwritten before it counts as abandoned and is deleted, from
     SP_STAGING_MAX_AGE_SECONDS. A streaming upload writes its file every few milliseconds, so an hour
@@ -239,6 +246,12 @@ class Settings:
             min_free_disk_bytes=_bounded_integer("SP_MIN_FREE_DISK_BYTES", cls.min_free_disk_bytes, 0, 2**50),
             max_owner_uploads=_bounded_integer("SP_MAX_OWNER_UPLOADS", cls.max_owner_uploads, 1, 1_000),
             max_concurrent_uploads=_bounded_integer("SP_MAX_CONCURRENT_UPLOADS", cls.max_concurrent_uploads, 1, 10_000),
+            max_request_body_bytes=_bounded_integer(
+                "SP_MAX_REQUEST_BODY_BYTES", cls.max_request_body_bytes, 1024, 64 * 1024 * 1024
+            ),
+            max_concurrent_validations=_bounded_integer(
+                "SP_MAX_CONCURRENT_VALIDATIONS", cls.max_concurrent_validations, 1, 16
+            ),
             staging_max_age_seconds=_bounded_integer(
                 "SP_STAGING_MAX_AGE_SECONDS", cls.staging_max_age_seconds, 60, 7 * 86_400
             ),

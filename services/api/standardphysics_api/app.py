@@ -85,6 +85,7 @@ from .proposals import propose
 from .questions import answer_question
 from .replays import install_replay_routes
 from .report import build_report
+from .request_size import BoundedRequestBodies
 from .route import confirm, legs, suggestion
 from .seed import seed_sample_shop
 from .settings import Settings
@@ -230,6 +231,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     )
 
     _install_health_routes(app, database, worker, settings.git_sha)
+    app.add_middleware(BoundedRequestBodies, max_bytes=settings.max_request_body_bytes)
     return app
 
 
