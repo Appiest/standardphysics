@@ -57,7 +57,7 @@ from . import evidence, guest_sweep
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
-from .furniture import FURNITURE, queue_furniture, run_furniture
+from .furniture import FURNITURE, furniture_runtime, queue_furniture, run_furniture
 from .notifications import LoggedNotifier, Notifier, Push, notifier_from
 from .rearrangement import (
     INTERRUPTED,
@@ -709,7 +709,7 @@ class Worker:
         return False
 
     def _furniture(self, scan_id, build_id, job=None) -> bool:
-        run_furniture(self.database, self.store, scan_id, build_id)
+        run_furniture(self.database, self.store, scan_id, build_id, furniture_runtime(self.settings))
         return False
 
     def _simulate(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:

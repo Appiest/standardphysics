@@ -451,7 +451,9 @@ def queue_missing_enhancements(database, store, worker, scan_id, revision) -> Te
     return status
 
 
-def read_furniture_status(database, store, scan_id, revision):
+def read_furniture_status(database, store, scan_id, revision, available: bool = True):
+    """Where furniture refinement stands for the current build. `available` is False on a server
+    with no SPAR3D runtime, where a build that could be refined says so instead of waiting for ever."""
     status = texture_status(database, store, scan_id, revision)
     if status.build is None:
         return {"state": "waiting_for_textures", "build_id": None, "report": None}
@@ -471,6 +473,8 @@ def read_furniture_status(database, store, scan_id, revision):
         return {"state": "done", "build_id": status.build.build_id, "error": None, "report": report}
     if not inputs.get("lidar") or not inputs.get("frames") or not status.build.scan_glb_url:
         return {"state": "not_applicable", "build_id": status.build.build_id, "report": None}
+    if not available:
+        return {"state": "unavailable", "build_id": status.build.build_id, "error": None, "report": report}
     return {
         "state": row["state"] or "not_started",
         "build_id": status.build.build_id,
@@ -480,8 +484,10 @@ def read_furniture_status(database, store, scan_id, revision):
 
 
 def retry_furniture(database, store, worker, scan_id, revision):
-    from .furniture import FURNITURE
+    from .furniture import FURNITURE, UNAVAILABLE, furniture_runtime
 
+    if furniture_runtime(worker.settings) is None:
+        raise ApiProblem(503, UNAVAILABLE)
     status = texture_status(database, store, scan_id, revision)
     if not status.exact or status.build is None:
         raise ApiProblem(409, "a current painted scan is needed before furniture refinement")
@@ -572,7 +578,10 @@ def install_texture_routes(app: FastAPI, database, store, worker):
 
     @app.get("/api/scans/{scan_id}/furniture")
     def furniture_status(scan_id: uuid.UUID, revision: int | None = None):
-        return read_furniture_status(database, store, scan_id, revision)
+        from .furniture import furniture_runtime
+
+        available = furniture_runtime(worker.settings) is not None
+        return read_furniture_status(database, store, scan_id, revision, available)
 
     @app.post("/api/scans/{scan_id}/furniture")
     def start_furniture(scan_id: uuid.UUID, revision: int | None = None):

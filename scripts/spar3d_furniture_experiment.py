@@ -51,8 +51,8 @@ from standardphysics_api.textures import bake_inputs, room_detections_dir
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 RUN = ROOT / "runs/spar3d-experiment"
-SOURCE = RUN / "source"
-SPAR_PYTHON = pathlib.Path.home() / ".venvs/spar3d/bin/python"
+SOURCE = pathlib.Path(os.environ.get("SP_FURNITURE_SOURCE") or RUN / "source")
+SPAR_PYTHON = pathlib.Path(os.environ.get("SP_FURNITURE_PYTHON") or pathlib.Path.home() / ".venvs/spar3d/bin/python")
 SCAN_ID = uuid.UUID("cdb7ced5-b67f-4f94-8639-0257a1dd8e9a")
 CHAIR_FRAME = "frame-0089"
 HOLDOUT_FRAMES = ("frame-0086", "frame-0087", "frame-0091", "frame-0092", "frame-0094")

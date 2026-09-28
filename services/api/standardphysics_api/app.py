@@ -73,6 +73,7 @@ from .coverage import parse_coverage
 from .db import Database
 from .errors import ApiProblem
 from .evidence import evidence_status_for, maybe_queue_semantic, record_closure
+from .furniture import furniture_health
 from .labels import (
     edit_object,
     mark_counter,
@@ -298,7 +299,7 @@ def _install_health_routes(app: FastAPI, database: Database, worker: Worker, com
     def health_details() -> dict:
         """What each worker loop is doing, how long since it last beat, how long the queue has waited,
         which commit this server was built from, whether tracing came up, the send failures Weave
-        logged, and whether a deploy is draining it."""
+        logged, whether a deploy is draining it, and whether furniture refinement can run here."""
         with database.connect() as connection:
             oldest = repo.oldest_queued_job_seconds(connection)
         problems = worker.problems()
@@ -310,6 +311,7 @@ def _install_health_routes(app: FastAPI, database: Database, worker: Worker, com
             "commit": commit,
             "tracing": tracing_status(),
             "draining": drain.is_draining(worker.settings.data_dir),
+            "furniture_refinement": furniture_health(worker.settings),
         }
 
 

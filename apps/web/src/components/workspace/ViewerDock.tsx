@@ -4,6 +4,7 @@ import { Check, CircleNotch, Cube, DotsThree, DownloadSimple, ImageSquare, Squar
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Menu, MENU_ITEM } from "@/components/ui/Menu";
+import { furnitureProgress, type FurnitureRefinement } from "@/lib/furniture-refinement";
 import { textureProgressView, textureStatusView } from "@/lib/texture-status";
 import type { TextureStatus } from "@/types/contracts";
 
@@ -33,12 +34,6 @@ export type Textures = {
   onRetryFurniture: () => void;
 };
 
-export type FurnitureRefinement = {
-  state: "waiting_for_textures" | "not_applicable" | "not_started" | "queued" | "running" | "done" | "failed";
-  build_id: string | null;
-  error?: string | null;
-  report?: { accepted: number } | null;
-};
 
 /** Two or three choices of which exactly one is on, drawn as one pill so they read as a set. */
 function Segmented({ children }: { children: ReactNode }) {
@@ -81,11 +76,13 @@ function LookChoice({ textures }: { textures: Textures }) {
 
 function FurnitureProgress({ textures }: { textures: Textures }) {
   const furniture = textures.furniture;
-  if (!furniture || ["not_applicable", "waiting_for_textures"].includes(furniture.state)) return null;
-  if (["queued", "running", "not_started"].includes(furniture.state)) {
+  if (!furniture) return null;
+  const progress = furnitureProgress(furniture.state);
+  if (progress === "hidden") return null;
+  if (progress === "working") {
     return <span role="status" className="flex items-center gap-1.5 px-2 text-sm text-ink-muted"><CircleNotch size={16} className="motion-safe:animate-spin" aria-hidden />Refining furniture</span>;
   }
-  if (furniture.state === "failed") {
+  if (progress === "failed") {
     return <Button onClick={textures.onRetryFurniture}>Try furniture again</Button>;
   }
   const accepted = furniture.report?.accepted ?? 0;

@@ -47,6 +47,11 @@ def _secret(name: str, path_name: str) -> str | None:
         return None
 
 
+def _path(name: str) -> pathlib.Path | None:
+    raw = os.environ.get(name)
+    return pathlib.Path(raw).expanduser() if raw else None
+
+
 def _email_set(name: str) -> frozenset[str]:
     return frozenset(part.strip().casefold() for part in os.environ.get(name, "").split(",") if part.strip())
 
@@ -215,6 +220,12 @@ class Settings:
     sofa, table, bed and stool in the build one after another; the script gives each fit up to forty
     minutes and each comparison render five. A run stopped here keeps the fits it finished, and retrying
     it picks up from the first object it had not reached."""
+    furniture_python: pathlib.Path | None = None
+    """SP_FURNITURE_PYTHON: the interpreter of the virtualenv SPAR3D is installed in. Furniture
+    refinement runs only when this and `furniture_source` both name something that exists; the
+    production image carries neither, so there it stays off and /health/details says why."""
+    furniture_source: pathlib.Path | None = None
+    """SP_FURNITURE_SOURCE: the SPAR3D source checkout, which inference runs from."""
     max_job_interruptions: int = MAX_INTERRUPTIONS
     """How many runs of one job restarts may cut short before startup fails it instead of queueing
     it again, from SP_MAX_JOB_INTERRUPTIONS. Retrying the scan clears the count."""
@@ -315,6 +326,8 @@ class Settings:
             simulate_timeout_seconds=_bounded_integer("SP_SIMULATE_TIMEOUT_SECONDS", 4 * 60 * 60, 60, 7 * 86_400),
             rearrange_timeout_seconds=_bounded_integer("SP_REARRANGE_TIMEOUT_SECONDS", 60 * 60, 60, 86_400),
             furniture_timeout_seconds=_bounded_integer("SP_FURNITURE_TIMEOUT_SECONDS", 3 * 60 * 60, 60, 86_400),
+            furniture_python=_path("SP_FURNITURE_PYTHON"),
+            furniture_source=_path("SP_FURNITURE_SOURCE"),
             max_job_interruptions=_bounded_integer("SP_MAX_JOB_INTERRUPTIONS", MAX_INTERRUPTIONS, 1, 100),
             team_emails=_email_set("SP_TEAM_EMAILS"),
             apns_key=_secret("SP_APNS_KEY", "SP_APNS_KEY_PATH"),
