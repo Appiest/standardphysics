@@ -32,7 +32,7 @@ check_env_file() {
   fi
   ok ".env exists"
 
-  for key in API_DOMAIN APP_DOMAIN SCANS_PATH APP_SESSION_SECRET OPENROUTER_API_KEY; do
+  for key in API_DOMAIN APP_DOMAIN SCANS_PATH OPENROUTER_API_KEY; do
     if [ -z "$(env_value "$key")" ]; then
       bad "$key is empty" "set it in .env"
     else

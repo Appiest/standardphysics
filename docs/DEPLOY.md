@@ -57,11 +57,8 @@ $EDITOR .env
 ```
 
 Fill in the two domains, `SCANS_PATH` as the script printed it, and the keys.
-Generate the session secret on the box:
-
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-```
+There is no session secret to generate: a session is a random token the API
+stores only as a hash, so nothing signs it.
 
 Set a spend limit on the OpenRouter account and turn on zero data retention
 before the first shop scans anything. Every scan sends photographs of
