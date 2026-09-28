@@ -60,7 +60,7 @@ from standardphysics_contracts import (
 from standardphysics_contracts.textures import FRAME_ID_PATTERN
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import accounts
+from . import accounts, drain
 from . import repository as repo
 from .approach import evaluate as evaluate_approach
 from .architecture_export import install_architecture_export_routes
@@ -275,7 +275,8 @@ def _install_health_routes(app: FastAPI, database: Database, worker: Worker, com
     @app.get("/health/details")
     def health_details() -> dict:
         """What each worker loop is doing, how long since it last beat, how long the queue has waited,
-        which commit this server was built from, whether tracing came up, and the send failures Weave logged."""
+        which commit this server was built from, whether tracing came up, the send failures Weave
+        logged, and whether a deploy is draining it."""
         with database.connect() as connection:
             oldest = repo.oldest_queued_job_seconds(connection)
         problems = worker.problems()
@@ -286,6 +287,7 @@ def _install_health_routes(app: FastAPI, database: Database, worker: Worker, com
             "oldest_queued_job_seconds": oldest,
             "commit": commit,
             "tracing": tracing_status(),
+            "draining": drain.is_draining(worker.settings.data_dir),
         }
 
 

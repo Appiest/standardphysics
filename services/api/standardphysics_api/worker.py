@@ -50,6 +50,7 @@ from datetime import UTC, datetime
 from standardphysics_agents.tracing import flush_was_abandoned, tracing_for_this_process
 from standardphysics_contracts import SimulationRequest
 
+from . import drain as deploy_drain
 from . import evidence, guest_sweep
 from . import repository as repo
 from .db import Database
@@ -315,6 +316,8 @@ class Worker:
             pass
 
     def run_once(self, texture_only: bool | None = None) -> bool:
+        if deploy_drain.is_draining(self.settings.data_dir):
+            return False
         with self.database.transaction() as connection:
             job = repo.claim_job(connection, texture_only)
         if job is None:
