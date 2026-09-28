@@ -241,25 +241,7 @@ def test_an_explicit_openrouter_base_url_keeps_openrouters_own_fields(monkeypatc
     assert "reasoning_effort" not in body
 
 
-def test_an_unusable_first_answer_retries_once_on_the_fallback_model():
-    graph = parse_room_json({"objects": [element("chair")]})
-    chair = graph.nodes[0]
-    attempted_models = []
-
-    def transport(_url, body, _headers):
-        attempted_models.append(body["model"])
-        if body["model"] == astra.DEFAULT_MODEL:
-            return {"choices": [{"message": {"content": "not valid json"}}]}
-        return model_response(patch_for(chair, "Chair"))
-
-    result = reconstruct_result(graph, transport=transport)
-
-    assert attempted_models == [astra.DEFAULT_MODEL, astra.FALLBACK_MODEL]
-    assert result.source == "astra"
-    assert result.graph.nodes[0].label == "Chair"
-
-
-def test_labelling_gives_up_to_local_labels_only_after_both_default_models_fail():
+def test_an_unusable_answer_tries_only_the_default_model_and_falls_back_to_local_labels():
     graph = parse_room_json(shop_payload())
     attempted_models = []
 
@@ -269,7 +251,10 @@ def test_labelling_gives_up_to_local_labels_only_after_both_default_models_fail(
 
     result = reconstruct_result(graph, transport=transport)
 
-    assert attempted_models == [astra.DEFAULT_MODEL, astra.FALLBACK_MODEL]
+    # The first invalid batch cancels batches not yet started, so how many ran depends on thread timing.
+    batch_count = len(range(0, len(graph.contents()), astra.RECONSTRUCTION_BATCH_SIZE))
+    assert set(attempted_models) == {astra.DEFAULT_MODEL}
+    assert 1 <= len(attempted_models) <= batch_count
     assert result.source == "roomplan"
 
 

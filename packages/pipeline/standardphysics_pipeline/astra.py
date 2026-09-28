@@ -48,12 +48,11 @@ MODEL_ENV = "LABEL_MODEL"
 Tea scan, DeepSeek v4.1 Flash on Fireworks matched Opus on the counters that mattered: both 35.7 in RoomPlan
 boxes came back not movable and both 44 in bar-counter tables came back "Table" and not movable, for $0.04
 against Opus's $0.73. It did not tell bar stools from chairs, calling both "Chair"; movability still came back
-right. FALLBACK_MODEL, Kimi K3, is tried once when DeepSeek's answer is unusable, before giving up to local
-labels. Kimi is not the default itself: on the same scan it ran to the wall-clock deadline before finishing
-every batch, at several times DeepSeek's token cost. Set LABEL_MODEL to pin one model instead of the pair,
-including anthropic/claude-opus-5.5 through OPENROUTER_API_KEY and OPENROUTER_BASE_URL. gpt-6-astra is
-retired: 2.5 times Opus's price would push a scan past the $1.50 it is allowed."""
-FALLBACK_MODEL = "accounts/fireworks/models/kimi-k3"
+right. An unusable answer falls back to local labels rather than a second model: Kimi K3 ran to the
+wall-clock deadline on the same scan before finishing every batch, at five times DeepSeek's cost. Set
+LABEL_MODEL to use another model, including anthropic/claude-opus-5.5 through OPENROUTER_API_KEY and
+OPENROUTER_BASE_URL. gpt-6-astra is retired: 2.5 times Opus's price would push a scan past the $1.50 it is
+allowed."""
 BASE_URL_ENV = "OPENROUTER_BASE_URL"
 DEFAULT_BASE_URL = "https://api.fireworks.ai/inference/v1"
 DEFAULT_MODEL = "accounts/fireworks/models/deepseek-v4p1-flash"
@@ -90,10 +89,8 @@ def _request_options(model: str, host: str) -> dict[str, Any]:
     return dict(REASONING_OFF_BY_HOST.get(host, {}))
 
 
-def _model_candidates() -> list[str]:
-    """DEFAULT_MODEL then FALLBACK_MODEL, unless MODEL_ENV pins one model explicitly."""
-    explicit = os.environ.get(MODEL_ENV)
-    return [explicit] if explicit else [DEFAULT_MODEL, FALLBACK_MODEL]
+def _label_model() -> str:
+    return os.environ.get(MODEL_ENV) or DEFAULT_MODEL
 
 
 REQUEST_TIMEOUT_SECONDS = 120.0
@@ -391,13 +388,8 @@ def _remote_patches(
     paths = tuple(frame_paths or ())
     mesh_profiles = object_mesh_profiles(graph, lidar_mesh_path)
     deadline = time.monotonic() + RECONSTRUCTION_WALL_TIMEOUT_SECONDS
-    for model in _model_candidates():
-        if time.monotonic() >= deadline:
-            return None
-        patches = _attempt_with_model(graph, objects, model, transport, api_key or "", paths, poses_path, mesh_profiles, deadline)
-        if patches is not None:
-            return patches
-    return None
+    return _attempt_with_model(graph, objects, _label_model(), transport, api_key or "", paths, poses_path,
+                               mesh_profiles, deadline)
 
 
 def _attempt_with_model(

@@ -11,7 +11,7 @@ export type PlanDragHandlers = {
 type Grip = { nodeId: string; pointerId: number; last: { x: number; y: number } };
 
 /** Where a pointer lands in the plan's own units: metres, with y flipped because the plan draws north up. */
-function roomPoint(svg: SVGSVGElement, event: { clientX: number; clientY: number }) {
+export function roomPoint(svg: SVGSVGElement, event: { clientX: number; clientY: number }) {
   const matrix = svg.getScreenCTM()?.inverse();
   if (!matrix) return null;
   const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix);
