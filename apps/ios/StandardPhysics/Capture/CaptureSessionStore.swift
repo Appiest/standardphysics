@@ -23,12 +23,17 @@ final class CaptureSessionStore: ObservableObject {
     private var announcedWallIDs: Set<UUID> = []
     private var hasAnnouncedCompletion = false
     private let coachesTheOpening = !WalkHistory.hasWalked
+    private let uploadPlan: WalkUploadPlan?
+
+    init(uploadPlan: WalkUploadPlan? = nil) {
+        self.uploadPlan = uploadPlan
+    }
 
     func attach(_ controller: RoomCaptureController) {
         guard self.controller == nil else { return }
         self.controller = controller
         do {
-            try controller.start(in: ScanExporter.makeCaptureDirectory())
+            try controller.start(in: ScanExporter.makeCaptureDirectory(), uploadPlan: uploadPlan)
             phase = .scanning
             scanningStartedAt = Date()
         } catch {

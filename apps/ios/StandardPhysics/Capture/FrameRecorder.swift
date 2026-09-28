@@ -60,6 +60,8 @@ final class FrameRecorder: NSObject {
     var onTimeLimit: (() -> Void)?
     var onTimeWarning: (() -> Void)?
     var onObservation: ((ARFrame) -> Void)?
+    /// Called on the keyframe queue, in capture order, once a JPEG is on disk.
+    var onKeyframeSaved: (@Sendable (WalkFrame) -> Void)?
 
     init(session: ARSession, directory: URL) throws {
         self.session = session
@@ -197,7 +199,7 @@ final class FrameRecorder: NSObject {
         let sequence = keyframeBook.reserveNextNumber()
         let fileURL = framesDirectory.appendingPathComponent(FrameIdentity.fileName(forNumber: sequence))
         let calibrationResolution = frame.camera.imageResolution
-        keyframeBook.append(PoseRecord.keyframe(
+        let pose = PoseRecord.keyframe(
             frameNumber: sequence,
             timestamp: frame.timestamp,
             transform: frame.camera.transform.flattened,
@@ -207,11 +209,12 @@ final class FrameRecorder: NSObject {
             imageHeight: CVPixelBufferGetHeight(frame.capturedImage),
             calibrationWidth: Int(calibrationResolution.width),
             calibrationHeight: Int(calibrationResolution.height)
-        ))
+        )
+        keyframeBook.append(pose)
         frameURLs.append(fileURL)
 
         let pixelBuffer = SendablePixelBuffer(frame.capturedImage)
-        imageQueue.async { [imageContext, recordingFailures] in
+        imageQueue.async { [imageContext, recordingFailures, onKeyframeSaved] in
             let image = CIImage(cvPixelBuffer: pixelBuffer.value)
             guard let cgImage = imageContext.createCGImage(image, from: image.extent),
                   let data = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.9) else {
@@ -220,6 +223,7 @@ final class FrameRecorder: NSObject {
             }
             do {
                 try data.write(to: fileURL, options: .atomic)
+                onKeyframeSaved?(WalkFrame(fileURL: fileURL, pose: pose))
             } catch {
                 recordingFailures.record(error)
             }
