@@ -19,8 +19,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from standardphysics_contracts import SceneGraph, SceneNode, lies_flat, to_meters
+from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, to_meters
 from standardphysics_pipeline import footprint
+from standardphysics_pipeline.discovery.taxonomy import is_fixture_name
 from standardphysics_pipeline.footprints import (
     Polygon,
     bounds_meet,
@@ -28,14 +29,17 @@ from standardphysics_pipeline.footprints import (
     distance_outside,
     floor_polygon,
     polygon_bounds,
+    rotation_about_z,
     sized_footprint,
     touching,
 )
 from standardphysics_pipeline.occupancy import blocks_floor
 
 from ..checks import roles
+from ..checks.rectangles import rectangle
 from ..checks.walls import upright_walls
 from ..hashing import inventory
+from ..rules import load_pack
 from .moves import (
     carried_by_hand,
     floor_height,
@@ -87,6 +91,10 @@ is an ordinary thing to ask. Where it lands is still held to every other rule.
 """
 
 
+def is_fixture(node: SceneNode) -> bool:
+    return is_fixture_name(node.kind) or is_fixture_name(node.label)
+
+
 @dataclass(frozen=True)
 class Violation:
     kind: str
@@ -115,7 +123,7 @@ def _locked_moves(base: SceneGraph, candidate: SceneGraph) -> list[Violation]:
     return [
         Violation("moved_something_fixed", str(node.id), node.label)
         for node in _moved_nodes(base, candidate)
-        if not before[node.id].movable
+        if not before[node.id].movable or is_fixture(before[node.id])
     ]
 
 
@@ -191,6 +199,47 @@ def _trimmed_to_wall(bounds: tuple, wall: Polygon) -> tuple:
     if abs(middle_y - max_y) <= WALL_ON_EDGE_METERS:
         return min_x, min_y, max_x, min(max_y, low_y)
     return bounds
+
+
+def floor_bounds(graph: SceneGraph) -> tuple[float, float, float, float] | None:
+    for node in graph.nodes:
+        if lies_flat(node):
+            return polygon_bounds(floor_polygon(node))
+    return None
+
+
+def interior_bounds(graph: SceneGraph) -> tuple[float, float, float, float] | None:
+    """The floor somebody can actually stand on, inside the walls, as a box square to the world's axes.
+
+    `interior_polygon` is the exact answer for a turned room; this box is the
+    view the Fireworks-trained prompt (`training.snapped_prompt`) and the
+    feedback loop were built on, so it stays for them.
+
+    The floor node and the walls overlap: a wall straddles the edge of the
+    floor it stands on, so half its thickness is inside the room. Placing
+    furniture against the floor boundary puts it inside a wall, which is why
+    this trims each side back to the wall's inner face.
+    """
+    bounds = floor_bounds(graph)
+    if bounds is None:
+        return None
+    min_x, min_y, max_x, max_y = bounds
+    centre_x, centre_y = (min_x + max_x) / 2, (min_y + max_y) / 2
+
+    for wall in upright_walls(graph):
+        shape = footprint(wall)
+        low_x, high_x = min(x for x, _ in shape), max(x for x, _ in shape)
+        low_y, high_y = min(y for _, y in shape), max(y for _, y in shape)
+        if high_y - low_y >= high_x - low_x:
+            if (low_x + high_x) / 2 < centre_x:
+                min_x = max(min_x, high_x)
+            else:
+                max_x = min(max_x, low_x)
+        elif (low_y + high_y) / 2 < centre_y:
+            min_y = max(min_y, high_y)
+        else:
+            max_y = min(max_y, low_y)
+    return min_x, min_y, max_x, max_y
 
 
 def interior_polygon(graph: SceneGraph) -> Polygon | None:
@@ -372,6 +421,50 @@ def _overlaps(node: SceneNode, obstacles, swings, scene: _Scene) -> list[Violati
     return []
 
 
+def _pos_space(counter: SceneNode) -> Polygon:
+    rule = load_pack().by_id("service_counter_approach")
+    width = to_meters(rule.parameter("clear_width_min_inches"))
+    depth = to_meters(rule.parameter("clear_depth_min_inches"))
+    cos_t, sin_t = rotation_about_z(counter)
+    origin = counter.transform.position
+    centre = Vec3(
+        x=origin.x + sin_t * (counter.dimensions.y + depth) / 2,
+        y=origin.y - cos_t * (counter.dimensions.y + depth) / 2,
+        z=0.0,
+    )
+    return rectangle(centre, width - OVERLAP_TOLERANCE, depth - OVERLAP_TOLERANCE, (cos_t, sin_t))
+
+
+def _keep_clear_zones(graph: SceneGraph) -> list[tuple[str, Polygon]]:
+    zones = [(node.label, footprint(node)) for node in graph.nodes
+             if node.kind.casefold() in {"ramp", "landing", "ramp_landing"}
+             or node.label.strip().casefold() in {"ramp", "ramp landing", "accessible ramp", "landing"}]
+    surfaces = roles.service_counters(graph) + roles.lowered_sections(graph)
+    for reader in roles.point_of_sale(graph):
+        for surface in surfaces:
+            if (reader.parent_id == surface.id
+                    or touching(footprint(reader), footprint(surface))):
+                zones.append((f"{surface.label} payment approach", _pos_space(surface)))
+                break
+    return zones
+
+
+def _blocked_keep_clear(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode]) -> list[Violation]:
+    original = {node.id: node for node in base.nodes}
+    zones = _keep_clear_zones(base)
+    floor_z = floor_height(base)
+    found = []
+    for node in moved:
+        if rests_on_something(node, floor_z) or is_fixture(node):
+            continue
+        for title, region in zones:
+            now = touching(collision_shape(node), region)
+            was = node.id in original and touching(collision_shape(original[node.id]), region)
+            if now and not was:
+                found.append(Violation("blocked_keep_clear", str(node.id), f"{node.label} into {title}", blocker=title))
+    return found
+
+
 def _travelled_too_far(base: SceneGraph, moved: list[SceneNode]) -> list[Violation]:
     """Pieces that ended up more than `MAX_TRAVEL_METERS` from where they were measured.
 
@@ -447,6 +540,7 @@ def violations(
         *_inventory_changes(base, candidate, added),
         *_off_the_floor(base, candidate, checked),
         *_collisions(base, candidate, checked),
+        *_blocked_keep_clear(base, candidate, checked),
         *_travelled_too_far(base, moved),
         *_lost_room_to_use(base, candidate, checked),
     ]

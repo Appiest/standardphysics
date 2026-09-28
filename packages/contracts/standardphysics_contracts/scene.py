@@ -198,6 +198,21 @@ class SurfaceAttachment(BaseModel):
     uncertainty_reasons: list[str] = Field(default_factory=list)
 
 
+class SurfaceHeight(BaseModel):
+    """Measured top above the scanned floor, or an explicitly unmeasured top."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    height_m: float | None = Field(default=None, ge=0)
+    uncertainty_m: float | None = Field(default=None, ge=0)
+    support_area_m2: float = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def measured_height_has_uncertainty(self) -> SurfaceHeight:
+        if (self.height_m is None) != (self.uncertainty_m is None):
+            raise ValueError("a measured height needs its uncertainty")
+        return self
+
+
 class SceneNode(BaseModel):
     id: UUID
     kind: NodeKind
@@ -214,6 +229,7 @@ class SceneNode(BaseModel):
     appearance: DisplayAppearance | None = Field(default=None, exclude_if=lambda value: value is None)
     reconstruction: DisplayReconstruction | None = Field(default=None, exclude_if=lambda value: value is None)
     attachment: SurfaceAttachment | None = Field(default=None, exclude_if=lambda value: value is None)
+    top_surface: SurfaceHeight | None = Field(default=None, exclude_if=lambda value: value is None)
     measured_position: Vec3 | None = Field(default=None, exclude_if=lambda value: value is None)
     """Where the scan found this piece, kept once a rearrangement has moved it.
 

@@ -48,7 +48,8 @@ RENDERER = "qwen3_8_disable_thinking_interleaved"
 SERVERLESS_URL = "https://api.fireworks.ai/training/v1/serverless"
 CONTROL_URL = "https://api.fireworks.ai"
 BUDGET_EXIT_CODE = 3
-HARD_STOP_DOLLARS = 47.0
+HARD_STOP_DOLLARS = 72.0
+"""A backstop above any single run's budget; the plan's `budget_dollars` is the working cap."""
 TRANSIENT_EXIT_CODE = 75
 MIN_PLAUSIBLE_PROMPT_TOKENS = 500
 """A room prompt renders to about 2,000 tokens. A handful means the tokenizer
@@ -299,7 +300,8 @@ class Trainer:
             label = f"{self.session['run_id']}-{checkpoint_prefix}"
             target = next(row for row in rows if row.get("promotable")
                           and str(row.get("name", "")).rsplit("/", 1)[-1].startswith(label))
-            model = control.promote_session_checkpoint(name=target["name"], output_model_id=output_model_id,
+            model_id = f"{output_model_id}-{self.session['run_id']}"
+            model = control.promote_session_checkpoint(name=target["name"], output_model_id=model_id,
                                                        base_model=BASE_MODEL)
         finally:
             control.close()
@@ -448,7 +450,7 @@ def main() -> None:
     trainer = Trainer(plan, data, progress, args.run_dir, os.environ["FIREWORKS_API_KEY"])
     try:
         run_sft_phase(trainer)
-        if "rl" in args.phases.split(","):
+        if "rl" in args.phases.split(",") and plan.rl_steps:
             run_rl_phase(trainer)
     except BudgetExceeded as stop:
         progress.record("budget", status="stopped", reason=str(stop))

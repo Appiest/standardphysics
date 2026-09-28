@@ -20,7 +20,7 @@ import pathlib
 import urllib.error
 import urllib.request
 
-DEFAULT_API = os.environ.get("SP_API", "http://127.0.0.1:8788")
+DEFAULT_API = os.environ.get("SP_API", "http://127.0.0.1:8787")
 
 
 def post(url: str, payload: dict, token: str) -> dict:

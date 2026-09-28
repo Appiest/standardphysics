@@ -24,7 +24,7 @@ ONTOLOGY_LITERAL = re.compile(
     r'^(?:NodeKind|Relation|QueryKind|Dimension|LabelSource)\s*(?::\s*\w+\s*)?=\s*Literal\[', re.M
 )
 
-BRANCHES_BASELINE = 36
+BRANCHES_BASELINE = 44
 """Places that ask what kind of thing something is. Target: nothing above the
 interpretation layer asks, because a name is for showing a person.
 
@@ -46,6 +46,15 @@ Raising this baseline is only ever an audit, never a shortcut. The last audit
 Previously 15; the growth came from the A/G/K/E integrations above, not from
 this file's owner. Any count above 34 must fail and be audited here.
 
+Audit of 2026-09-24 (merging finetune/multiroom-data), 24 to 27:
+
+- 2 in training/prompt.py, which lists walls and doors by kind. That JSON is
+  the exact input the fine-tuned rearrangement model was trained on, and the
+  web's suggestion endpoint must send it unchanged, so these two stay until
+  the model is retrained on a prompt built from predicates.
+- 1 in training/quality.py, the wall term of Q, which is logged beside the
+  reward and never paid. It can become `stands_upright` with the prompt.
+
 Audit 2026-09-26, lane D: 24 rose to 30 with the owner journey. All six are in
 api/owner_requests.py and branch on how the owner answers a request (a yes or
 no, a number, a photo, or another walk of the shop). That is the form of an
@@ -66,6 +75,22 @@ That branch had already moved training/prompt.py (walls and doors) and
 training/quality.py onto checks.walls.standing_walls and checks.roles.doors,
 which select exactly the nodes the kind tests did on the 2,075 synthetic
 training graphs (commit 1ca5be72), so the served fine-tune reads the same room.
+
+Audit 2026-09-27, merging fine-tuning into unified: 36 rose to 44. The
+fine-tuning branch had already reached 33 against its own baseline of 27
+without an audit; these eight are the ones it adds here:
+- training/snapped_prompt.py 3: the Fireworks model's prompt, kept byte for
+  byte as trained (walls and doors by kind, and facing_away's object test).
+  It retires only by retraining that model on a prompt built from predicates.
+- snap/solver.py 3: the solver treats walls and objects as obstacles, a
+  room-bounding node that is not a wall as the shell, and snaps only seats
+  that are objects.
+- training/usefulness.py 2: a seat or a wall-backed piece is only counted
+  when it is an object, not a door or a wall that happens to match the seat
+  or shelf test.
+The solver and usefulness five ask whether a node is a piece of furniture rather than structure, the
+same question as the structural backlog above, and one `is_furniture`
+predicate would retire them together.
 """
 
 LITERALS_BASELINE = 0

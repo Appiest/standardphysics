@@ -21,6 +21,7 @@ from standardphysics_contracts import (
     SceneNode,
     Vec3,
     WidthResult,
+    lies_flat,
     to_inches,
     to_meters,
 )
@@ -521,11 +522,21 @@ class PipelineMeasurements:
 
     def counter_height(self, graph: SceneGraph, counter_id: UUID) -> HeightResult:
         counter = graph.by_id(counter_id)
+        measured = counter.top_surface
+        if measured is not None and measured.height_m is None:
+            return HeightResult(
+                inches=0.0, node_id=counter_id,
+                measured_at=counter.transform.position, needs_measurement=True,
+            )
         top = counter.transform.position.z + counter.dimensions.z / 2
+        inches = to_inches(measured.height_m) if measured is not None else to_inches(top)
+        floor = next((node.transform.position.z for node in graph.nodes if lies_flat(node)), 0.0)
+        measured_top = floor + measured.height_m if measured is not None else top
         return HeightResult(
-            inches=to_inches(top),
+            inches=inches,
             node_id=counter_id,
-            measured_at=counter.transform.position,
+            measured_at=counter.transform.position.model_copy(update={"z": measured_top}),
+            uncertainty_inches=to_inches(measured.uncertainty_m) if measured is not None else None,
         )
 
     def counter_approach(

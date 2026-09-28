@@ -23,13 +23,13 @@ from typing import Literal
 from uuid import UUID
 
 from standardphysics_contracts import Finding, MeasurementProvider, Scenario, SceneGraph
-from standardphysics_contracts.precedents import SpaceTypology
+from standardphysics_contracts.precedents import PrecedentDirective, SpaceTypology
 from standardphysics_contracts.rules import Tier
 from standardphysics_pipeline import PipelineMeasurements
 
 from ..assess import Pass, assess
 from ..fix.search import CandidateRejection
-from ..precedents import rejection_for_space
+from ..precedents import directives_for_space, rejection_for_space
 from ..rules import AgentRulePack, RuleSpec, VerificationLedger, load_ledger, load_pack
 
 UNSURE_QUALITY = "needs_another_look"
@@ -88,6 +88,8 @@ class TrainingChecker:
     """The room as its owner has it, before any scramble, for judging how a layout looks."""
     space_typology: SpaceTypology | None = None
     """What kind of space the room is, which picks its ADA layout directives; None applies none."""
+    directives: list[PrecedentDirective] | None = None
+    """The directives to hold layouts to; None means the ones a person has verified."""
     scope: Scope = "layout"
 
     def __post_init__(self) -> None:
@@ -101,6 +103,9 @@ class TrainingChecker:
 
         return WishBook.read_from(self.owner_layout, self.measure) if self.owner_layout else WishBook()
 
+    def directives_for(self, graph: SceneGraph) -> list[PrecedentDirective]:
+        return directives_for_space(self.space_typology, graph, self.directives)
+
     def assess(self, graph: SceneGraph) -> Pass:
         return assess(
             trusted_geometry(graph),
@@ -113,7 +118,7 @@ class TrainingChecker:
 
     def directive_veto(self, room: SceneGraph) -> CandidateRejection | None:
         """The refusal the room's ADA layout directives put on a rearrangement of it, or None when none apply."""
-        return rejection_for_space(self.space_typology, room)
+        return rejection_for_space(self.space_typology, room, self.directives)
 
     def fixable_problems(self, result: Pass) -> list[Finding]:
         """Problems some edit type in the answer schema can clear."""

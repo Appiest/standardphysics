@@ -32,9 +32,10 @@ from collections import Counter
 
 from shop_generator import space_typology_for
 from standardphysics_agents.fix import apply_moves
+from standardphysics_agents.precedents.verification import load_precedents
 from standardphysics_agents.training import TrainingChecker, edits_between, edits_json, prompt_messages, scramble
 from standardphysics_agents.training.edits import node_moves, parse_edits
-from standardphysics_agents.training.feedback import feedback_message
+from standardphysics_agents.training.feedback import measured_feedback_message
 from standardphysics_agents.training.reward import score_completion
 from standardphysics_agents.training.rooms import build_window, plan_scan, whole_scan
 from standardphysics_agents.training.scans import export_scan, load_export, read_only, write_export
@@ -53,6 +54,7 @@ from standardphysics_agents.training.targets import searched_layout
 from standardphysics_agents.training.usability import usability
 from standardphysics_agents.training.windows import Window
 from standardphysics_contracts import SceneGraph, bounds_the_room
+from standardphysics_contracts.precedents import SpaceTypology
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DEFAULT_RUN = ROOT / "runs/finetune/multiroom"
@@ -227,12 +229,16 @@ def run_windows(run: pathlib.Path, workers: int, progress: Progress) -> None:
 
 TRAINING_SCOPE = os.environ.get("TRAINING_SCOPE", "layout")
 """`fittings` also asks about counter, table and reach heights; `layout` keeps the furniture-only checker."""
+TRAINING_DIRECTIVES = load_precedents(allow_unverified=True)
+"""Every ADA layout directive, signed or not: training holds layouts to the whole corpus, while the product
+applies only the directives a person has verified."""
 
 
 def checker_for(window: Window) -> TrainingChecker:
     """The window's checker; a generated room also gets its shop's space type, so its ADA directives apply."""
+    typology = SpaceTypology(window.space_typology) if window.space_typology else space_typology_for(window.scenario.name)
     return TrainingChecker(window.scenario, pinned=frozenset(uuid.UUID(i) for i in window.pinned),
-                           owner_layout=window.graph, space_typology=space_typology_for(window.scenario.name),
+                           owner_layout=window.graph, space_typology=typology, directives=TRAINING_DIRECTIVES,
                            scope=TRAINING_SCOPE)
 
 
@@ -276,6 +282,9 @@ def _load_windows(run: str) -> None:
         _WINDOWS[row["window_id"]] = Window.from_dict(row)
 
 
+SKIPPED_SEARCH = {"target": None, "verdict": None, "why": "not run: putting things back was accepted"}
+
+
 def search_record(variant: SceneGraph, checker: TrainingChecker) -> dict:
     """The search's answer for one variant and how well it does, including when it fails."""
     edits = edits_between(variant, searched_layout(variant, checker))
@@ -308,8 +317,9 @@ def _target_task(row: dict) -> dict:
     started = time.time()
     window = _WINDOWS[row["window_id"]]
     checker, variant = checker_for(window), SceneGraph.model_validate(row["graph"])
-    search = search_record(variant, checker)
     put_back = put_back_record(variant, window.graph, checker)
+    accepted = put_back is not None and put_back["verdict"]["gate_accepts"]
+    search = SKIPPED_SEARCH if accepted else search_record(variant, checker)
     return {"variant_id": row["variant_id"], "window_id": row["window_id"], **chosen_target(put_back, search),
             "search": search, "put_back": put_back, "seconds": round(time.time() - started, 1)}
 
@@ -419,7 +429,7 @@ def correction_rows(variant: dict, window: Window, max_steps: int = MAX_CORRECTI
         graph = candidate
         if verdict.fixable_left == 0:
             break
-        messages = [*messages, answer, feedback_message(
+        messages = [*messages, answer, measured_feedback_message(
             graph, checker, accepted=True, reason=verdict.reason, fixable_left=verdict.fixable_left,
             parsed=verdict.parsed, hard_constraints_pass=verdict.hard_constraints_pass,
             step_usability=step_usability, candidate_baseline_usability=baseline_usability,
@@ -441,7 +451,7 @@ def _replay_trace_attempt(attempt: dict, graph: SceneGraph, baseline: SceneGraph
         step_usability = usability(graph, candidate, graph, checker.scenario)
         candidate_usability = usability(baseline, candidate, baseline, checker.scenario)
         graph, current_usability = candidate, candidate_usability
-    feedback = feedback_message(
+    feedback = measured_feedback_message(
         graph, checker, accepted=verdict.gate_accepts, reason=verdict.reason,
         fixable_left=len(checker.fixable_problems(checker.assess(graph))), parsed=verdict.parsed,
         hard_constraints_pass=verdict.hard_constraints_pass, step_usability=step_usability,

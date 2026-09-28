@@ -138,6 +138,23 @@ def test_preview_only_rules_and_unsigned_directives_remain_unverified(graph, sce
     assert not result.accept_for_final_layout
 
 
+def test_measurement_is_kept_apart_from_sign_off(graph, scenario, pipeline, pack):
+    signed = _evaluate(graph, scenario, pipeline, pack)
+    unsigned = _evaluate(graph, scenario, pipeline, pack, reviewed=False)
+    for entry in (entry for entry in signed.entries if entry.applicable):
+        assert entry.measured == entry.outcome
+    assert [entry.measured for entry in unsigned.entries] == [entry.measured for entry in signed.entries]
+    assert unsigned.measured_failed == signed.failed
+    assert unsigned.measured_unknown == signed.unknown
+
+
+def test_each_measured_target_keeps_its_own_result(graph, scenario, pipeline, pack):
+    entries = _entries(_evaluate(graph, scenario, pipeline, pack, reviewed=False))
+    route = entries["rule:route_clear_width"]
+    assert route.evidence and all(item.measured in {"pass", "fail", "unknown"} for item in route.evidence)
+    assert (route.measured == "fail") == any(item.measured == "fail" for item in route.evidence)
+
+
 def test_inapplicable_directive_records_why(graph, scenario, pipeline, pack):
     entries = _entries(_evaluate(graph, scenario, pipeline, pack))
     door = entries["query:door_clearances:door_clear_width"]

@@ -41,7 +41,7 @@ from dataclasses import dataclass, replace
 from multiroom_train_data import MultiroomData, load
 from standardphysics_agents.training.edits import apply_edits, parse_edits
 from standardphysics_agents.training.explain import explain_change
-from standardphysics_agents.training.feedback import feedback_message
+from standardphysics_agents.training.feedback import measured_feedback_message
 from standardphysics_agents.training.menu import MenuView, build_menu, menu_messages, resolve
 from standardphysics_agents.training.owner import InteractiveOwner, SimulatedOwner, WishBook
 from standardphysics_agents.training.prompt import prompt_messages
@@ -95,7 +95,7 @@ def _attempt(completion, baseline, current, checker, index, current_baseline_usa
     if accepted:
         assert candidate_baseline_usability is not None
         current_baseline_usability = candidate_baseline_usability
-    feedback = feedback_message(
+    feedback = measured_feedback_message(
         updated, checker, accepted=accepted, reason=verdict.reason, fixable_left=_fixable_left(updated, checker),
         parsed=verdict.parsed, hard_constraints_pass=verdict.hard_constraints_pass,
         step_usability=step_usability, candidate_baseline_usability=candidate_baseline_usability,

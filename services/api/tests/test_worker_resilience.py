@@ -57,11 +57,11 @@ def test_the_loop_survives_a_locked_database_and_keeps_claiming(make_client, mon
     real_claim = repo.claim_job
     calls = {"claim": 0}
 
-    def locked_twice(connection, texture_only=None):
+    def locked_twice(connection, texture_only=None, *, kind=None):
         calls["claim"] += 1
         if calls["claim"] <= 2:
             raise sqlite3.OperationalError("database is locked")
-        return real_claim(connection, texture_only)
+        return real_claim(connection, texture_only, kind=kind)
 
     monkeypatch.setattr(worker_module.repo, "claim_job", locked_twice)
     with make_client() as client:
@@ -202,7 +202,7 @@ def test_an_idle_worker_is_ready(make_client):
 
 
 def test_health_fails_when_a_worker_loop_has_died(make_client, monkeypatch):
-    def die(self, texture_only=None):
+    def die(self, texture_only=None, kind=None):
         raise SystemExit("the loop is gone")
 
     monkeypatch.setattr(Worker, "run_once", die)

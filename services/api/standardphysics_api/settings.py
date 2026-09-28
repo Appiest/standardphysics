@@ -11,7 +11,7 @@ import math
 import os
 import pathlib
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from standardphysics_agents.env_file import load_dotenv
 from standardphysics_agents.tracing import ENTITY_ENV, PROJECT_ENV
@@ -176,6 +176,23 @@ class Settings:
     """The commit the image was built from, from SP_GIT_SHA, which the Dockerfile
     bakes in from the GIT_SHA build argument. /health/details reports it, so the
     commit to roll back from is on the server rather than in someone's memory."""
+    rearrange_provider: str = "openrouter"
+    rearrange_model: str | None = None
+    """SP_REARRANGE_MODEL is the Fireworks model when that provider is selected."""
+    rearrange_openrouter_model: str = "anthropic/claude-opus-5.5"
+    rearrange_reasoning_effort: str = "low"
+    rearrange_token_cap: int = 4000
+    rearrange_cost_cap_dollars: float = 0.50
+    rearrange_deployment: str | None = None
+    """SP_REARRANGE_DEPLOYMENT: the on-demand deployment serving it, as accounts/<a>/deployments/<id>
+    or a bare id. When set, a suggestion lets it run one replica and scales it back to zero after."""
+    rearrange_keep_warm_seconds: int = 300
+    """SP_REARRANGE_KEEP_WARM_SECONDS: how long the deployment stays up after a suggestion."""
+    rearrange_fake_model: bool = False
+    """SP_REARRANGE_FAKE_MODEL=1, development only: a local stand-in answers instead of Fireworks."""
+    fireworks_api_key: str | None = field(default=None, repr=False)
+    """FIREWORKS_API_KEY, from the repo-root .env."""
+    openrouter_api_key: str | None = field(default=None, repr=False)
 
     @property
     def database_path(self) -> pathlib.Path:
@@ -226,6 +243,17 @@ class Settings:
             max_owner_bytes=_bounded_integer("SP_MAX_OWNER_BYTES", cls.max_owner_bytes, 1, 2**50),
             max_queued_jobs=_bounded_integer("SP_MAX_QUEUED_JOBS", cls.max_queued_jobs, 1, 1_000_000),
             min_free_disk_bytes=_bounded_integer("SP_MIN_FREE_DISK_BYTES", cls.min_free_disk_bytes, 0, 2**50),
+            rearrange_provider=os.environ.get("SP_REARRANGE_PROVIDER", "openrouter"),
+            rearrange_model=os.environ.get("SP_REARRANGE_MODEL") or None,
+            rearrange_openrouter_model=os.environ.get("SP_REARRANGE_OPENROUTER_MODEL", "anthropic/claude-opus-5.5"),
+            rearrange_reasoning_effort=os.environ.get("SP_REARRANGE_REASONING_EFFORT", "low"),
+            rearrange_token_cap=_bounded_integer("SP_REARRANGE_TOKEN_CAP", 4000, 1024, 16000),
+            rearrange_cost_cap_dollars=float(os.environ.get("SP_REARRANGE_COST_CAP_DOLLARS", "0.50")),
+            rearrange_deployment=os.environ.get("SP_REARRANGE_DEPLOYMENT") or None,
+            rearrange_keep_warm_seconds=_bounded_integer("SP_REARRANGE_KEEP_WARM_SECONDS", 300, 0, 3600),
+            rearrange_fake_model=_flag("SP_REARRANGE_FAKE_MODEL"),
+            fireworks_api_key=os.environ.get("FIREWORKS_API_KEY") or None,
+            openrouter_api_key=os.environ.get("OPENROUTER_API_KEY") or None,
             evidence_settle_seconds=_bounded_integer(
                 "SP_EVIDENCE_SETTLE_SECONDS", 30, 0, 86_400
             ),

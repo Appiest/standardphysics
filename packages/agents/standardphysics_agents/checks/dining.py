@@ -25,6 +25,8 @@ RULE_ID = "dining_surface_height"
 
 def surface_height_inches(node: SceneNode) -> float:
     """The top of the table, above the floor."""
+    if node.top_surface is not None:
+        return to_inches(node.top_surface.height_m) if node.top_surface.height_m is not None else float("nan")
     return to_inches(node.transform.position.z + node.dimensions.z / 2)
 
 
@@ -51,13 +53,27 @@ def dining_surface_height(ctx: CheckContext) -> list[Observation]:
         return []
 
     heights = {node.id: surface_height_inches(node) for node in surfaces}
-    complying = [node for node in surfaces if within_range(heights[node.id], rule)]
+    uncertainties = {node.id: to_inches(node.top_surface.uncertainty_m)
+                     if node.top_surface is not None and node.top_surface.uncertainty_m is not None else 0.0
+                     for node in surfaces}
+    unknown_ids = {node.id for node in surfaces if math.isnan(heights[node.id])}
+    measured = [heights[node.id] for node in surfaces if node.id not in unknown_ids]
+    complying = [node for node in surfaces if node.id not in unknown_ids
+                 and within_range(heights[node.id] - uncertainties[node.id], rule)
+                 and within_range(heights[node.id] + uncertainties[node.id], rule)]
     needed = required_count(len(surfaces), rule)
+    possible = sum(
+        node.id in unknown_ids or (
+            heights[node.id] - uncertainties[node.id] <= rule.parameter("surface_max_inches")
+            and heights[node.id] + uncertainties[node.id] >= rule.parameter("surface_min_inches")
+        ) for node in surfaces
+    )
+    ambiguous = len(complying) < needed <= possible
     return [
         Observation(
             rule_id=RULE_ID,
             satisfied=len(complying) >= needed,
-            measured_inches=min(heights.values()),
+            measured_inches=min(measured) if measured else None,
             required_inches=rule.threshold,
             relied_on=tuple(node.id for node in surfaces),
             locus=mounted_locus(surfaces[0]),
@@ -65,12 +81,13 @@ def dining_surface_height(ctx: CheckContext) -> list[Observation]:
                 "surfaces": len(surfaces),
                 "complying": len(complying),
                 "needed": needed,
-                "lowest": min(heights.values()),
-                "highest": max(heights.values()),
+                "lowest": min(measured) if measured else None,
+                "highest": max(measured) if measured else None,
                 "range_low": rule.parameter("surface_min_inches"),
                 "range_high": rule.parameter("surface_max_inches"),
             },
             dedupe_key=(RULE_ID,),
             reason="measured" if len(complying) >= needed else "too_few_at_height",
+            asks_for="a measured table surface" if ambiguous else None,
         )
     ]

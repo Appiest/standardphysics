@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Checked, LayoutChecker, layoutKey } from "@/lib/layout-checker";
-import { ApiRefusal, checkLayout, saveLayout } from "@/lib/layout-client";
+import { type ArrangementEvent, type MovesSource, sourceAfter } from "@/lib/arrangement-source";
+import { ApiRefusal, checkLayout, putBackSuggestion, saveLayout } from "@/lib/layout-client";
 import { applyMoves, type MoveSet, withMove } from "@/lib/moves";
 import type { Blocked, LayoutCheckResult, NodeMove, SceneGraph } from "@/types/contracts";
 
@@ -16,7 +17,7 @@ const NO_BLOCKS: Blocked[] = [];
 export type Arrangement = ReturnType<typeof useArrangement>;
 
 /** Where a finished layout goes. The workspace saves it as the shop's record; the owner view saves it as a plan. */
-export type Persist = (scanId: string, baseRevision: number, moves: NodeMove[]) => Promise<unknown>;
+export type Persist = (scanId: string, baseRevision: number, moves: NodeMove[], suggestionId?: string) => Promise<unknown>;
 
 type Layout = {
   moves: MoveSet;
@@ -137,13 +138,52 @@ function useSettleTimer() {
   return { after, clear };
 }
 
-function useSave(scanId: string, revision: number, persist: Persist, movesRef: { current: MoveSet }, reset: () => void, setProblem: (problem: string) => void) {
+/**
+ * Which suggestion the pending moves came from, if any, and taking one back. A
+ * suggestion the model made is recorded on the server, so leaving it unsaved
+ * tells the server it was put back rather than forgetting it silently.
+ */
+function useSuggestion(scanId: string, revision: number, setProblem: (problem: string) => void) {
+  const [source, setSource] = useState<MovesSource>(null);
+  const [puttingBack, setPuttingBack] = useState(false);
+  const suggestionId = useRef<string | null>(null);
+  const puttingBackRef = useRef(false);
+
+  const mark = useCallback((event: ArrangementEvent, id: string | null = null) => {
+    if (event !== "suggested" || id) suggestionId.current = id;
+    setSource(sourceAfter(event));
+  }, []);
+
+  /** Tells the server the loaded suggestion was put back; false when it couldn't be reached. */
+  const release = useCallback(async () => {
+    const id = suggestionId.current;
+    if (!id) return true;
+    if (puttingBackRef.current) return false;
+    puttingBackRef.current = true;
+    setPuttingBack(true);
+    try {
+      await putBackSuggestion(scanId, revision, id);
+      if (suggestionId.current === id) suggestionId.current = null;
+      return true;
+    } catch {
+      setProblem("Couldn't put the suggested layout back. Check your connection and try again.");
+      return false;
+    } finally {
+      puttingBackRef.current = false;
+      setPuttingBack(false);
+    }
+  }, [scanId, revision, setProblem]);
+
+  return { source, puttingBack, suggestionId, mark, release };
+}
+
+function useSave(scanId: string, revision: number, persist: Persist, movesRef: { current: MoveSet }, suggestionId: { current: string | null }, reset: () => void, setProblem: (problem: string) => void) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      await persist(scanId, revision, Object.values(movesRef.current));
+      await persist(scanId, revision, Object.values(movesRef.current), suggestionId.current ?? undefined);
       reset();
       router.refresh();
       setTimeout(() => router.refresh(), 3000);
@@ -161,7 +201,7 @@ function useSave(scanId: string, revision: number, persist: Persist, movesRef: {
     } finally {
       setSaving(false);
     }
-  }, [scanId, revision, persist, movesRef, reset, router, setProblem]);
+  }, [scanId, revision, persist, movesRef, suggestionId, reset, router, setProblem]);
   return { save, saving };
 }
 
@@ -171,6 +211,9 @@ export function useArrangement(scanId: string, scene: SceneGraph, persist: Persi
   const { cached: cachedCheck, checking, latencyMs, request, cancel } = useChecker(scanId, scene.revision, state);
   const settle = useSettleTimer();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const setProblem = useCallback((problem: string) => setLayout((current) => ({ ...current, problem })), [setLayout]);
+  const suggestion = useSuggestion(scanId, scene.revision, setProblem);
+  const { mark } = suggestion;
 
   const shown = useMemo(() => applyMoves(scene, layout.moves), [scene, layout.moves]);
 
@@ -186,15 +229,17 @@ export function useArrangement(scanId: string, scene: SceneGraph, persist: Persi
 
   const drag = useCallback((nodeId: string, dx: number, dy: number) => {
     place(withMove(movesRef.current, nodeId, dx, dy, 0), { refused: NO_BLOCKS });
+    mark("moved");
     settle.after(DRAG_SETTLE_MS, () => request(movesRef.current, false));
-  }, [place, movesRef, settle, request]);
+  }, [place, movesRef, mark, settle, request]);
 
   /** Slides or turns a piece a step: the one in hand, or the one named, which a keyboard can do before the pick has rendered. */
   const nudge = useCallback((dx: number, dy: number, degrees: number, nodeId: string | null = activeId) => {
     if (!nodeId) return;
     place(withMove(movesRef.current, nodeId, dx, dy, degrees), { refused: NO_BLOCKS });
+    mark("moved");
     settle.after(NUDGE_SETTLE_MS, drop);
-  }, [activeId, place, movesRef, settle, drop]);
+  }, [activeId, place, movesRef, mark, settle, drop]);
 
   /** Jumps straight to a layout already known to be legal, such as an undo step, using its cached check when there is one. */
   const jumpTo = useCallback((moves: MoveSet, history: MoveSet[]) => {
@@ -217,32 +262,46 @@ export function useArrangement(scanId: string, scene: SceneGraph, persist: Persi
     if (layoutKey(movesRef.current) === SCANNED_LAYOUT) return;
     jumpTo({}, [...layout.history, legalRef.current]);
     setActiveId(null);
-  }, [movesRef, legalRef, layout.history, jumpTo]);
+    mark("cleared");
+  }, [movesRef, legalRef, layout.history, jumpTo, mark]);
 
-  const load = useCallback((proposed: NodeMove[]) => {
+  const loadFrom = useCallback((proposed: NodeMove[], event: ArrangementEvent, id: string | null = null) => {
     const moves = Object.fromEntries(proposed.map((move) => [move.node_id, move]));
     place(moves, { refused: NO_BLOCKS });
+    mark(event, id);
     setActiveId(proposed[0]?.node_id ?? null);
     request(moves, true);
-  }, [place, request]);
+  }, [place, mark, request]);
+  const load = useCallback((proposed: NodeMove[]) => loadFrom(proposed, "loaded"), [loadFrom]);
+  /** Loads the model's suggested layout, remembered by id so a save or a put-back reaches the server. */
+  const loadSuggestion = useCallback((proposed: NodeMove[], id: string) => loadFrom(proposed, "suggested", id), [loadFrom]);
 
   const preview = useCallback((proposed: NodeMove[]) => {
     cancel();
     place(Object.fromEntries(proposed.map((move) => [move.node_id, move])), { check: null, problem: null, refused: NO_BLOCKS });
-  }, [cancel, place]);
+    mark("loaded");
+  }, [cancel, place, mark]);
 
   /** Forgets every move and every undo step, for leaving or after a save. */
-  const reset = useCallback(() => {
+  const clearPending = useCallback(() => {
     cancel();
     settle.clear();
     legalRef.current = {};
     movesRef.current = {};
     setLayout((current) => ({ ...EMPTY_LAYOUT, baseline: current.baseline }));
     setActiveId(null);
-  }, [cancel, settle, legalRef, movesRef, setLayout]);
+    mark("cleared");
+  }, [cancel, settle, legalRef, movesRef, setLayout, mark]);
 
-  const setProblem = useCallback((problem: string) => setLayout((current) => ({ ...current, problem })), [setLayout]);
-  const { save, saving } = useSave(scanId, scene.revision, persist, movesRef, reset, setProblem);
+  /** Puts a loaded suggestion back on the server, then forgets every move; false when the server couldn't be told. */
+  const { release, suggestionId } = suggestion;
+  const reset = useCallback(async () => {
+    if (suggestionId.current && !(await release())) return false;
+    clearPending();
+    return true;
+  }, [suggestionId, release, clearPending]);
+
+  const { save, saving } = useSave(scanId, scene.revision, persist, movesRef, suggestionId, clearPending, setProblem);
 
   const { moves, check } = layout;
   const hasMoves = Object.keys(moves).length > 0;
@@ -252,6 +311,7 @@ export function useArrangement(scanId: string, scene: SceneGraph, persist: Persi
   return {
     shown, moves, check, checking, saving, problem: layout.problem, activeId, hasMoves, blockedIds, canSave,
     baseline: layout.baseline, refused: layout.refused, canUndo: layout.history.length > 0, latencyMs,
-    setActiveId, drag, drop, nudge, reset, putBack, undo, start, save, load, preview,
+    source: suggestion.source, puttingBack: suggestion.puttingBack,
+    setActiveId, drag, drop, nudge, reset, clearPending, putBack, undo, start, save, load, loadSuggestion, preview,
   };
 }

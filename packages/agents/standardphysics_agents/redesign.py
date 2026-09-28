@@ -1,7 +1,7 @@
 """OpenRouter proposes room edits; measured constraints decide whether to keep them."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -10,10 +10,12 @@ from standardphysics_contracts.precedents import PrecedentDirective
 
 from .assess import assess
 from .evaluation.gate import accepts
-from .fix import apply_moves, violations
+from .fix import violations
 from .models import ModelAnswer, OpenRouter
 from .precedents import PrecedentCompiler, precedent_rejection_for
+from .precedents.checker import check_precedent_constraints
 from .router import Rejected
+from .snap import snap
 from .workflows import workflow_candidate_rejection
 
 
@@ -36,6 +38,10 @@ class RedesignResult:
     model: str | None
     accepted: bool
     reasons: tuple[str, ...]
+    attempts: tuple[dict, ...] = ()
+    """What each refused try asked for and why it was refused, as the model was told."""
+    refused_candidate: SceneGraph | None = None
+    """The snapped layout that was refused, so the next try can be told what broke."""
 
 
 INSTRUCTION = (
@@ -51,15 +57,19 @@ INSTRUCTION = (
     "Do not move an object merely because an unlocalized raw-mesh collision exists. Do not return a no-op move. "
     "Do not infer that an attractive rendering is legally compliant. Return no moves if `actionable_failures` "
     "and `actionable_rule_problems` are both empty or the evidence does not support a safe improvement. "
-    "The application remeasures every route and rule before accepting edits."
+    "The application remeasures every route and rule before accepting edits. "
+    "Your moves are requests: each piece is placed at the nearest spot the room allows, so ask for where you "
+    "want it rather than hedging away from walls. A seat that is moved turns to face the table, desk or counter "
+    "it sits at, and shelving, fridges and stations turn their backs to the wall. When `refused_attempts` is "
+    "present, those layouts were refused: read each reason and `ada_directive_feedback` and propose something "
+    "that satisfies them instead of repeating the refused moves."
 )
 
+MAX_ATTEMPTS = 3
+"""Tries per call: the first proposal and up to two rebuilds told why the last one was refused."""
 
-def propose_redesign(
-    graph, workflows, profiles, feedback, measure, *, rules, ledger, model=None, collision_index=None,
-    directives: tuple[PrecedentDirective, ...] = (),
-) -> RedesignResult:
-    client = model or OpenRouter()
+
+def _payload(graph, feedback, rules, ledger, directives, refused: list[dict]) -> dict:
     movable_objects = [
         {
             "id": str(node.id),
@@ -70,35 +80,71 @@ def propose_redesign(
         for node in graph.nodes
         if not bounds_the_room(node) and node.movable
     ]
-    answer = client.structured(INSTRUCTION, {
+    return {
         "room": graph.model_dump(mode="json"),
         "movable_objects": movable_objects,
-        "actionable_failures": [
-            failure
-            for item in feedback
-            for failure in item.get("actionable_failures", [])
-        ],
+        "actionable_failures": [failure for item in feedback for failure in item.get("actionable_failures", [])],
         "actionable_rule_problems": [
-            problem
-            for item in feedback
-            for problem in item.get("actionable_rule_problems", [])
+            problem for item in feedback for problem in item.get("actionable_rule_problems", [])
         ],
         "route_trials": next((item["route_trials"] for item in feedback if "route_trials" in item), None),
-        "evidence_gaps": [
-            gap
-            for item in feedback
-            for gap in item.get("evidence_gaps", [])
-        ],
+        "evidence_gaps": [gap for item in feedback for gap in item.get("evidence_gaps", [])],
         "workflow_feedback": feedback,
         "verified_rules": [rule.model_dump(mode="json") for rule in rules.enabled(ledger, max_tier=3)],
+        **({"refused_attempts": refused} if refused else {}),
         **_directive_context(directives),
-    }, RoomEdits.model_json_schema(), "room_furniture_edits")
-    if isinstance(answer, Rejected):
-        return RedesignResult(None, client.model, False, (answer.reason,))
-    return validate_redesign(
-        graph, answer, workflows, profiles, measure,
-        rules=rules, ledger=ledger, collision_index=collision_index, directives=directives,
-    )
+    }
+
+
+def propose_redesign(
+    graph, workflows, profiles, feedback, measure, *, rules, ledger, model=None, collision_index=None,
+    directives: tuple[PrecedentDirective, ...] = (), attempts: int = MAX_ATTEMPTS,
+) -> RedesignResult:
+    """Ask for a layout, and when it is refused, ask again with the reasons, up to `attempts` times."""
+    client = model or OpenRouter()
+    refused: list[dict] = []
+    result = RedesignResult(None, client.model, False, ("no_attempt",))
+    for _ in range(max(1, attempts)):
+        answer = client.structured(INSTRUCTION, _payload(graph, feedback, rules, ledger, directives, refused),
+                                   RoomEdits.model_json_schema(), "room_furniture_edits")
+        if isinstance(answer, Rejected):
+            return RedesignResult(None, client.model, False, (answer.reason,), tuple(refused))
+        result = validate_redesign(
+            graph, answer, workflows, profiles, measure,
+            rules=rules, ledger=ledger, collision_index=collision_index, directives=directives,
+        )
+        if result.accepted:
+            break
+        refused.append(refusal(graph, answer, result, directives))
+    return replace(result, attempts=tuple(refused))
+
+
+def refusal(graph, answer: ModelAnswer, result: RedesignResult, directives) -> dict:
+    """What the model is told about a refused layout: its moves, the reasons, and what each directive saw."""
+    told = {"moves": answer.payload.get("moves", []) if isinstance(answer.payload, dict) else [],
+            "reasons": list(result.reasons)}
+    if directives and result.refused_candidate is not None:
+        told["ada_directive_feedback"] = directive_feedback(graph, result.refused_candidate, list(directives))
+    return told
+
+
+def directive_feedback(base: SceneGraph, candidate: SceneGraph, directives: list[PrecedentDirective]) -> list[dict]:
+    """Each directive violation the candidate added, with the directive's own words for what it requires."""
+    by_id = {directive.directive_id: directive for directive in directives}
+    existing = {(v.directive_id, v.rule_broken, v.target_node_id)
+                for v in check_precedent_constraints(base, base, directives)}
+    return [
+        {
+            "directive": by_id[v.directive_id].title,
+            "ada_sections": by_id[v.directive_id].authority,
+            "what_broke": v.rule_broken,
+            "detail": v.detail,
+            "requirement": by_id[v.directive_id].plain_english_warning,
+            "object_id": v.target_node_id,
+        }
+        for v in check_precedent_constraints(base, candidate, directives)
+        if (v.directive_id, v.rule_broken, v.target_node_id) not in existing and v.directive_id in by_id
+    ]
 
 
 def _directive_context(directives: tuple[PrecedentDirective, ...]) -> dict:
@@ -117,6 +163,8 @@ def _edit_complaint(graph, edits: RoomEdits) -> str | None:
         return "duplicate_objects"
     if not set(ids) <= {node.id for node in graph.nodes}:
         return "unknown_objects"
+    if set(ids) & {node.id for node in graph.nodes if not node.movable}:
+        return "moved_something_fixed"
     if all(edit.dx == 0 and edit.dy == 0 and edit.rotation_degrees == 0 for edit in edits.moves):
         return "no_op_moves"
     return None
@@ -154,8 +202,8 @@ def validate_redesign(
     graph, answer: ModelAnswer, workflows, profiles, measure, *, rules, ledger, collision_index=None,
     directives: tuple[PrecedentDirective, ...] = (),
 ) -> RedesignResult:
-    def rejected(*reasons: str) -> RedesignResult:
-        return RedesignResult(None, answer.model, False, tuple(reasons))
+    def rejected(*reasons: str, candidate: SceneGraph | None = None) -> RedesignResult:
+        return RedesignResult(None, answer.model, False, tuple(reasons), refused_candidate=candidate)
 
     try:
         edits = RoomEdits.model_validate(answer.payload)
@@ -166,20 +214,25 @@ def validate_redesign(
     if complaint:
         return rejected(complaint)
 
-    candidate = apply_moves(graph, _moves_of(edits))
+    snapped = snap(graph, _moves_of(edits), precedent_rejection_for(list(directives)) if directives else None)
+    candidate = snapped.graph
+    if len(snapped.unplaced) == len(snapped.placements):
+        return rejected("no_legal_spot_for_any_move")
     broken = violations(graph, candidate)
     if broken:
         return rejected(*sorted({item.kind for item in broken}))
+    if snapped.refused:
+        return rejected(snapped.refused, candidate=candidate)
     if not rules.enabled(ledger, max_tier=3):
         return rejected("no_verified_rules")
 
     reasons, improved = _scored_against_workflows(graph, candidate, workflows, measure, rules, ledger)
     if reasons:
-        return RedesignResult(None, answer.model, False, reasons)
+        return rejected(*reasons, candidate=candidate)
 
     regression = workflow_candidate_rejection(
         graph, candidate, workflows=workflows, profiles=profiles, measure=measure, collision_index=collision_index
-    ) or (precedent_rejection_for(list(directives))(graph, candidate) if directives else None)
+    )
     if regression or not improved:
-        return rejected(regression or "nothing_measurable_improved")
+        return rejected(regression or "nothing_measurable_improved", candidate=candidate)
     return RedesignResult(candidate, answer.model, True, ())

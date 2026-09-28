@@ -1,4 +1,4 @@
-"""U, how usable the tables, desks and counters a rearrangement touched still are, in [0, 1].
+"""U, how usable the tables, desks and counters a rearrangement affected still are, in [0, 1].
 
 For each piece used from the floor (`roles.used_from_the_floor`: a dining or
 work surface, or a service counter) that moved, or had something moved within
@@ -132,18 +132,31 @@ def affected_pieces(before: SceneGraph, after: SceneGraph, moved: set) -> list:
     return found
 
 
-def usability(before: SceneGraph, after: SceneGraph, owner: SceneGraph, scenario: Scenario) -> float:
-    """U for moving from `before` to `after`, against the owner's layout."""
-    affected = affected_pieces(before, after, moved_ids(before, after))
-    owned = {node.id for node in owner.nodes}
-    affected = [node_id for node_id in affected if node_id in owned]
-    if not affected:
-        return 1.0
+def _scores(graph: SceneGraph, owner: SceneGraph, scenario: Scenario, pieces: list) -> dict:
+    """Usable sides and seats per piece, in the owner's layout and in `graph`."""
     pairs = seat_table_pairs(owner)
-    measured = [(owner, Room.of(owner), Walkable(owner, scenario)), (after, Room.of(after), Walkable(after, scenario))]
-    scores = []
-    for node_id in affected:
+    measured = [(owner, Room.of(owner), Walkable(owner, scenario)), (graph, Room.of(graph), Walkable(graph, scenario))]
+    scores = {}
+    for node_id in pieces:
         seats = [seat for seat, table in pairs if table == node_id]
-        had, has = (_usable(graph, node_id, seats, room, floor) for graph, room, floor in measured)
-        scores.append(1.0 if had == 0 else min(1.0, has / had))
-    return round(sum(scores) / len(scores), 6)
+        had, has = (_usable(layout, node_id, seats, room, floor) for layout, room, floor in measured)
+        scores[node_id] = (had, has)
+    return scores
+
+
+def usability(before: SceneGraph, after: SceneGraph, owner: SceneGraph, scenario: Scenario) -> float:
+    """U for moving from `before` to `after`, against the owner's layout.
+
+    Every piece used from the floor is scored, not only those near a move: a
+    piece set down far away can still cut the only walkable way to a table. U
+    averages the pieces a move touched and any other piece whose score changed.
+    """
+    owned = {node.id for node in owner.nodes}
+    touched = set(affected_pieces(before, after, moved_ids(before, after))) & owned
+    everything = [node.id for node in after.nodes if roles.used_from_the_floor(node) is not None and node.id in owned]
+    scores = _scores(after, owner, scenario, everything)
+    counted = [node_id for node_id, (had, has) in scores.items() if node_id in touched or had != has]
+    if not counted:
+        return 1.0
+    shares = [1.0 if scores[n][0] == 0 else min(1.0, scores[n][1] / scores[n][0]) for n in counted]
+    return round(sum(shares) / len(shares), 6)

@@ -73,6 +73,8 @@ class Window:
     reproduction: dict = field(default_factory=dict)
     pinned: list[str] = field(default_factory=list)
     """Ids of pieces in the window the phantom filter holds still."""
+    space_typology: str | None = None
+    """The `SpaceTypology` value of the room, which decides the ADA layout directives that apply."""
 
     def floor_id(self) -> str | None:
         floor = next((node for node in self.graph.nodes if lies_flat(node)), None)
@@ -82,6 +84,7 @@ class Window:
         return {
             "window_id": self.window_id, "scan_id": self.scan_id, "centre": self.centre, "route": self.route,
             "seed": self.seed, "reproduction": self.reproduction, "pinned": self.pinned,
+            "space_typology": self.space_typology,
             "floor_id": self.floor_id(), "objects": self.object_count(), "movable": self.movable_count(),
             "graph": self.graph.model_dump(mode="json"), "scenario": self.scenario.model_dump(mode="json"),
         }
@@ -93,6 +96,7 @@ class Window:
             centre=None if row["centre"] is None else tuple(row["centre"]),
             graph=SceneGraph.model_validate(row["graph"]), scenario=Scenario.model_validate(row["scenario"]),
             route=row["route"], seed=row["seed"], reproduction=row["reproduction"], pinned=row.get("pinned", []),
+            space_typology=row.get("space_typology"),
         )
 
     def object_count(self) -> int:

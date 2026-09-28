@@ -37,6 +37,14 @@ class Observation:
     reason: str = ""
     """Which branch of the rule decided this, for tracing and for copy."""
 
+    seen_directly: bool = False
+    """The check measured a rule whose evidence is usually a photo, because this graph shows the thing.
+
+    A phone scan rarely captures a restroom's fixtures, so `restroom_turning_space`
+    is normally asked about; when the graph does hold a toilet the check measures
+    the room itself and the answer is a finding, not a request.
+    """
+
     asks_for: str | None = None
     """Set when the answer needs something a person has to supply.
 

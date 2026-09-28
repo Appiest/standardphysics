@@ -41,6 +41,8 @@ class HeightResult(BaseModel):
     inches: float
     node_id: UUID
     measured_at: Vec3
+    uncertainty_inches: float | None = None
+    needs_measurement: bool = False
 
 
 class MeasurementProvider(Protocol):

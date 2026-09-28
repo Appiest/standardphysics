@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .geometry import CameraPose, Vec3
 from .rules import Citation
@@ -58,6 +58,7 @@ class Finding(BaseModel):
     """What to do. "Move the two tables by the window 5 inches apart." """
 
     measured_inches: float | None = None
+    uncertainty_inches: float | None = Field(default=None, exclude_if=lambda value: value is None)
     required_inches: float | None = None
     citation: Citation
     locus: Locus | None = None

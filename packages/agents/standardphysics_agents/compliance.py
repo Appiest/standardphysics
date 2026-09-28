@@ -6,7 +6,7 @@ turn a preview rule or an unsigned directive into a verified requirement.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 from standardphysics_contracts import MeasurementProvider, Scenario, SceneGraph, to_inches
@@ -42,6 +42,8 @@ class RequirementEvidence:
     measured_value: float | None
     detail: str
     reliable: bool = True
+    measured: Outcome | None = None
+    """This one measurement's result, where the entry measures more than one target."""
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,8 @@ class RequirementEntry:
     reason: str
     implementation: str | None = None
     evidence: tuple[RequirementEvidence, ...] = ()
+    measured: Outcome | None = None
+    """What the room measurement says with legal sign-off set aside; never "unverified"."""
 
 
 @dataclass(frozen=True)
@@ -69,6 +73,9 @@ class ComplianceResult:
     failed: tuple[str, ...] = field(default_factory=tuple)
     unknown: tuple[str, ...] = field(default_factory=tuple)
     unverified: tuple[str, ...] = field(default_factory=tuple)
+    measured_failed: tuple[str, ...] = field(default_factory=tuple)
+    """Applicable entries whose measurement fails, whether or not a person has signed the rule off."""
+    measured_unknown: tuple[str, ...] = field(default_factory=tuple)
 
 
 def _applicable_rule(rule: RuleSpec, graph: SceneGraph, scenario: Scenario, typology: SpaceTypology | None) -> bool:
@@ -157,10 +164,12 @@ def _rule_entry(rule: RuleSpec, ctx: CheckContext, observations: list[Observatio
         target=_observation_target(observation, "/".join(rule.applies_to)),
         measured_value=observation.measured_inches,
         detail=observation.reason,
+        measured=_observation_outcome(observation, ctx.graph),
     ) for observation in observations)
     outcome: Outcome | None = _combined([_observation_outcome(item, ctx.graph) for item in observations])
     if gap:
         outcome = "unknown"
+    measured = outcome if applicable else None
     if not verified:
         outcome = "unverified"
     if not applicable:
@@ -175,7 +184,7 @@ def _rule_entry(rule: RuleSpec, ctx: CheckContext, observations: list[Observatio
         target="; ".join(dict.fromkeys(value.target for value in values)) or ", ".join(rule.applies_to),
         threshold=rule.threshold, comparison=rule.comparison,
         unit=rule.unit, applicable=applicable, outcome=outcome, reason=reason,
-        implementation=implementation, evidence=values,
+        implementation=implementation, evidence=values, measured=measured,
     )
 
 
@@ -218,6 +227,8 @@ def _query_entry(directive: PrecedentDirective, query: PrecedentQuerySpec, graph
                 "pass" if (value.measured_value <= query.threshold if query.comparison == "at_most"
                            else value.measured_value >= query.threshold) else "fail" for value in values]
     outcome = _combined(outcomes)
+    measured = outcome
+    values = tuple(replace(value, measured=result) for value, result in zip(values, outcomes))
     if not verified:
         outcome = "unverified"
     reason = ("human directive or linked rule review is missing" if not verified else
@@ -228,6 +239,7 @@ def _query_entry(directive: PrecedentDirective, query: PrecedentQuerySpec, graph
         id=f"query:{directive.directive_id}:{query.query_id}", source="query", citation=query.citation,
         target=query.target_role, threshold=query.threshold, comparison=query.comparison, unit="in",
         applicable=True, outcome=outcome, reason=reason, implementation=implementation, evidence=values,
+        measured=measured,
     )
 
 
@@ -273,12 +285,13 @@ def _constraint_entry(directive: PrecedentDirective, spec: tuple[str, str, str],
     )
     if relevant:
         outcome = "fail"
+    measured = outcome if applicable else None
     if not verified:
         outcome = "unverified"
     if not applicable:
         outcome = None
     evidence: tuple[RequirementEvidence, ...] = tuple(
-        RequirementEvidence(v.target_node_id or target, None, v.detail) for v in relevant
+        RequirementEvidence(v.target_node_id or target, None, v.detail, measured="fail") for v in relevant
     )
     threshold = None
     if name == "accessible_dining_share":
@@ -297,7 +310,7 @@ def _constraint_entry(directive: PrecedentDirective, spec: tuple[str, str, str],
                 "knee clearance is unmeasured" if name == "accessible_dining_share" and not relevant else
                 "five-metre dispersion screen is not a legal pass criterion" if name == "dining_dispersion" and not relevant else
                 "directive geometry check recorded"),
-        implementation="check_precedent_constraints", evidence=evidence,
+        implementation="check_precedent_constraints", evidence=evidence, measured=measured,
     )
 
 
@@ -371,4 +384,6 @@ def evaluate_candidate_room(
         accept_for_final_layout=bool(applicable) and all(entry.outcome == "pass" for entry in applicable),
         passed=buckets["pass"], failed=buckets["fail"], unknown=buckets["unknown"],
         unverified=buckets["unverified"],
+        measured_failed=tuple(entry.id for entry in applicable if entry.measured == "fail"),
+        measured_unknown=tuple(entry.id for entry in applicable if entry.measured == "unknown"),
     )

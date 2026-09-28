@@ -110,7 +110,7 @@ FIXED_NAMES = frozenset({
 INSTRUCTION = (
     "You look at one photo of a shop or workplace interior and list the objects in it. "
     "Include anything a person uses or that takes up floor or counter space: payment terminals, "
-    "card readers, cash registers, monitors, laptops, tablets, printers, phones, kettles, "
+    "card readers, cash drawers, cash registers, ramps, ramp landings, monitors, laptops, tablets, printers, phones, kettles, "
     "espresso machines, blenders, microwaves, refrigerators, display cases, shelving, signage, "
     "boxes, bins, chairs, stools, tables, counters, planters, fans, speakers, lamps. "
     "Also list every person you see, named exactly 'person'. "

@@ -221,6 +221,20 @@ def build_lawsuit_graph() -> SceneGraph:
     return graph.model_copy(update={"nodes": nodes})
 
 
+def build_crowded_counter_graph() -> SceneGraph:
+    """The lawsuit shop with a display case parked in front of the lowered section.
+
+    The 48 in approach space may slide along the counter but must overlap 36 in
+    of the lowered section (ADA 2010 904.4.1), so a case in front of that section
+    blocks every position, and the counter approach is a problem to fix.
+    """
+    graph = build_lawsuit_graph()
+    section = next(node for node in graph.nodes if node.label == "Lowered counter section")
+    parked = _box("parked_case", "object", "Display case", "storage",
+                  (section.transform.position.x, 2.87, 0.45), (0.5, 0.5, 0.9), True)
+    return graph.model_copy(update={"nodes": [*graph.nodes, parked]})
+
+
 def build_lawsuit_scenario() -> Scenario:
     """The plain route, with the Counter stop in front of the high section, where people pay."""
     scenario = build_scenario()

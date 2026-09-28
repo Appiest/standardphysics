@@ -34,7 +34,7 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
 
-from ..lidar import LidarMeshError, room_cloud
+from ..lidar import LidarMeshError, room_cloud, room_faces
 from ..textures.camera import CameraMetadataError, PhotoCamera, load_cameras
 from ..textures.project import depth_buffer, evenly_spread
 from . import taxonomy
@@ -53,6 +53,7 @@ from .detect import (
 from .extent import MeshViews, measured_on_the_mesh
 from .grow import grown, regions_of, seen_from
 from .merge import Candidate, DiscoveredObject, merge_candidates
+from .mesh_surfaces import SegmentedSurfaces, segment_surfaces
 from .people import PeopleRemoval, PersonVolume, without_people
 from .placement import (
     at_its_surface,
@@ -146,6 +147,7 @@ class DiscoveryResult:
     failures: list[str] = field(default_factory=list)
     """Frames the vision model could not read. Never silent: a dropped frame is a smaller answer."""
     model_requests: list[ModelRequestInfo] = field(default_factory=list)
+    surfaces: SegmentedSurfaces | None = None
     """Every actual detector request this run made, for the evidence trail."""
 
     @property
@@ -185,8 +187,16 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
 
     discovery_nodes = {node.id: node for node in [*worktops, *renamed, *carved_nodes, *reconciled_nodes]}
 
+    discovered = list(discovery_nodes.values())
+    replaced = {node.id: node for node in discovered}
+    updated_graph = graph.model_copy(update={
+        "nodes": [replaced.get(node.id, node) for node in graph.nodes]
+        + [node for node in discovered if node.id not in {existing.id for existing in graph.nodes}],
+    })
+    surfaces = segment_surfaces(room_faces(inputs.lidar_mesh_path, graph.capture_to_room), updated_graph, graph)
     return DiscoveryResult(
         nodes=list(discovery_nodes.values()),
+        surfaces=surfaces,
         objects=objects,
         frames_read=len(cameras) - len(failures),
         people_points_removed=removal.removed,
@@ -558,7 +568,7 @@ def _node_for(object_: DiscoveredObject, graph: SceneGraph, viewpoints: int) -> 
         dimensions=object_.box.as_vec3(),
         transform=object_.box.as_transform(),
         quality="measured" if viewpoints >= CONFIDENT_VIEWS else "needs_another_look",
-        movable=object_.movable,
+        movable=object_.movable and not taxonomy.is_fixture_name(object_.name),
         labeled_by="discovery",
         parent_id=resting,
         relation="rests_on" if resting is not None else None,

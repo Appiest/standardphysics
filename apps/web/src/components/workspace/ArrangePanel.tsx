@@ -8,6 +8,7 @@ import type { Finding } from "@/types/contracts";
 import { Button } from "@/components/ui/Button";
 import type { Arrangement } from "./useArrangement";
 import { FindingsList } from "./FindingsList";
+import { SuggestRearrangement } from "./SuggestRearrangement";
 
 function Status({ arrangement, problems, scope }: { arrangement: Arrangement; problems: number; scope: CheckScope }) {
   if (arrangement.checking) {
@@ -31,7 +32,25 @@ function Status({ arrangement, problems, scope }: { arrangement: Arrangement; pr
   );
 }
 
-export function ArrangePanel({ arrangement, fallbackFindings, scope }: { arrangement: Arrangement; fallbackFindings: Finding[]; scope: CheckScope }) {
+function LayoutActions({ arrangement }: { arrangement: Arrangement }) {
+  return (
+    <div className="mt-4 flex flex-wrap gap-2">
+      <Button variant="primary" onClick={arrangement.save} disabled={!arrangement.canSave} className="disabled:opacity-40">
+        {arrangement.saving ? "Saving" : "Save this layout"}
+      </Button>
+      {arrangement.hasMoves && (
+        <Button onClick={arrangement.reset} disabled={arrangement.puttingBack}>
+          <ArrowCounterClockwise size={16} weight="bold" aria-hidden />
+          {arrangement.puttingBack ? "Putting everything back" : "Put everything back"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+type Props = { arrangement: Arrangement; fallbackFindings: Finding[]; scope: CheckScope; scanId: string; revision: number };
+
+export function ArrangePanel({ arrangement, fallbackFindings, scope, scanId, revision }: Props) {
   const findings = arrangement.check?.findings ?? fallbackFindings;
   const groups = groupFindings(findings);
 
@@ -46,17 +65,10 @@ export function ArrangePanel({ arrangement, fallbackFindings, scope }: { arrange
           </p>
         ))}
         {arrangement.problem && <p className="mt-2 text-problem">{arrangement.problem}</p>}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button variant="primary" onClick={arrangement.save} disabled={!arrangement.canSave} className="disabled:opacity-40">
-            {arrangement.saving ? "Saving" : "Save this layout"}
-          </Button>
-          {arrangement.hasMoves && (
-            <Button onClick={arrangement.reset}>
-              <ArrowCounterClockwise size={16} weight="bold" aria-hidden />
-              Put everything back
-            </Button>
-          )}
+        <div className="mt-4">
+          <SuggestRearrangement key={revision} scanId={scanId} revision={revision} showingSuggestion={arrangement.source === "suggestion"} onSuggested={arrangement.loadSuggestion} />
         </div>
+        <LayoutActions arrangement={arrangement} />
       </div>
       <FindingsList groups={groups} selectedId={null} onSelect={() => undefined} />
     </div>

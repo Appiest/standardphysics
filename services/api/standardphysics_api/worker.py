@@ -36,6 +36,14 @@ from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
 from .notifications import LoggedNotifier, Notifier, Push
+from .rearrangement import (
+    INTERRUPTED,
+    REARRANGE,
+    Rearranger,
+    failure_text,
+    run_suggestion,
+    scale_down_when_idle,
+)
 from .settings import Settings
 from .simulations import SIMULATE, queue_simulation, run_simulation
 from .stages import DiscoveryOutcome, Stages
@@ -60,7 +68,9 @@ because a photo bake takes up to fifteen minutes and the loop beats only when
 it ends. A job that runs past its kind's deadline is reported overdue instead."""
 PROBLEM_STATES = ("stopped", "stalled", "overdue")
 """Loop states that mean jobs are not getting done, worst first."""
-LOOP_NAMES = {False: "jobs", True: "textures"}
+LOOP_NAMES: dict[bool | str, str] = {False: "jobs", True: "textures", REARRANGE: "rearrange"}
+"""Each worker loop by its lane: False takes every job but the laned kinds, True takes texture bakes,
+and REARRANGE takes layout suggestions, whose provider calls can wait on a cold deployment."""
 MAX_CLAIMS_BEFORE_START = 3
 """How many times a job may be claimed and put back because of an error before it ran."""
 TRANSIENT_ATTEMPTS = 3
@@ -169,9 +179,11 @@ class Worker:
         store: ArtifactStore,
         stages: Stages,
         settings: Settings,
+        rearranger: Rearranger | None = None,
     ):
         self.database, self.store, self.stages = database, store, stages
         self.settings = settings
+        self.rearranger = rearranger or Rearranger.from_settings(settings)
         self._wake = threading.Event()
         self._stop = threading.Event()
         self.pulses = {texture_only: LoopPulse() for texture_only in LOOP_NAMES}
@@ -209,6 +221,9 @@ class Worker:
     def _recover_interrupted_jobs(self) -> None:
         with self.database.transaction() as connection:
             repo.fail_interrupted_simulations(connection)
+            connection.execute(
+                "UPDATE jobs SET state='failed', error=? WHERE kind=? AND state='running'", (INTERRUPTED, REARRANGE)
+            )
             repo.requeue_interrupted_jobs(connection)
 
     def stop(self) -> None:
@@ -265,12 +280,12 @@ class Worker:
         while self.run_once():
             pass
 
-    def run_once(self, texture_only: bool | None = None) -> bool:
+    def run_once(self, texture_only: bool | None = None, kind: str | None = None) -> bool:
         with self.database.transaction() as connection:
-            job = repo.claim_job(connection, texture_only)
+            job = repo.claim_job(connection, texture_only, kind=kind)
         if job is None:
             return False
-        pulse = self.pulses[texture_only] if texture_only is not None else LoopPulse()
+        pulse = self.pulses.get(kind if kind is not None else texture_only) or LoopPulse()
         running = RunningJob(job["kind"], job["id"], time.monotonic(), self.settings.job_deadline_seconds(job["kind"]))
         pulse.begin(running)
         self._on_this_thread.job = running
@@ -408,18 +423,18 @@ class Worker:
             repo.queue_job_again(connection, scan_id, PROCESS, 0)
             self.wake()
 
-    def _loop(self, texture_only: bool = False) -> None:
-        pulse = self.pulses[texture_only]
+    def _loop(self, lane: bool | str = False) -> None:
+        pulse = self.pulses[lane]
         backoff = _Backoff()
         while not self._stop.is_set():
             pulse.beat()
             try:
-                self._tick(texture_only)
+                self._tick(lane)
             except Exception:
                 delay = backoff.delay()
                 log.error(
                     "worker loop %s failed; trying again in %.1f s:\n%s",
-                    LOOP_NAMES[texture_only],
+                    LOOP_NAMES[lane],
                     delay,
                     traceback.format_exc(),
                 )
@@ -427,10 +442,12 @@ class Worker:
                 continue
             backoff.reset()
 
-    def _tick(self, texture_only: bool) -> None:
-        if self.run_once(texture_only):
+    def _tick(self, lane: bool | str) -> None:
+        if self.run_once(*_claim_filter(lane)):
             return
-        if not texture_only:
+        if lane == REARRANGE:
+            scale_down_when_idle(self.database, self.rearranger)
+        elif lane is False:
             self._sweep_due_settled()
             self._sweep_guests_hourly()
         self._wake.wait(timeout=IDLE_WAIT_SECONDS)
@@ -499,7 +516,7 @@ class Worker:
             return _JobOutcome(follow_up=self._run_through_transient_errors(job, scan_id))
         except Exception as exc:
             log.error("job %s %s failed:\n%s", job["kind"], scan_id, traceback.format_exc())
-            if job["kind"] not in (DISPLAY, SIMULATE, TEXTURE):
+            if job["kind"] not in (DISPLAY, SIMULATE, TEXTURE, REARRANGE):
                 with self.database.transaction() as connection:
                     repo.set_state(connection, scan_id, "failed")
             return _JobOutcome(error=_job_error(job["kind"], exc))
@@ -529,10 +546,15 @@ class Worker:
             DISPLAY: self._display,
             SIMULATE: self._simulate,
             TEXTURE: self._texture,
+            REARRANGE: self._rearrange,
         }[job["kind"]]
         if job["kind"] == TEXTURE:
             return handler(scan_id=scan_id, build_id=revision, job=job)
         return handler(scan_id=scan_id, revision=revision, job=job)
+
+    def _rearrange(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
+        run_suggestion(self.database, self.rearranger, self.stages, scan_id, revision)
+        return False
 
     def _texture(self, scan_id, build_id, job=None) -> bool:
         if self.settings.bake_in_own_process:
@@ -767,7 +789,14 @@ def _job_error(kind: str, error: Exception) -> str:
         return str(error)
     if kind == SIMULATE:
         return "Simulation failed; check the server log and retry"
+    if kind == REARRANGE:
+        return failure_text(error)
     return f"{type(error).__name__}: {error}"
+
+
+def _claim_filter(lane: bool | str) -> tuple[bool | None, str | None]:
+    """The `run_once` arguments that claim only this lane's jobs."""
+    return (None, lane) if lane == REARRANGE else (lane, None)
 
 
 def is_transient(error: BaseException) -> bool:

@@ -42,6 +42,8 @@ from standardphysics_contracts import (
     OwnerWishesRequest,
     ProposalRequest,
     ProposalResult,
+    RearrangementRequest,
+    RearrangementStatus,
     RebuildRequest,
     Report,
     RouteLegs,
@@ -83,6 +85,8 @@ from .owner_routes import answered, install_owner_routes
 from .plans import install_plan_routes
 from .proposals import propose
 from .questions import answer_question
+from .rearrangement import Rearranger, queue_suggestion, suggestion_status
+from .rearrangement_data import record_outcome
 from .replays import install_replay_routes
 from .report import build_report
 from .route import confirm, legs, suggestion
@@ -149,7 +153,12 @@ def _install_error_handlers(app: FastAPI) -> None:
         return _problem_response(ApiProblem(exc.status_code, str(exc.detail).lower()))
 
 
-def create_app(settings: Settings | None = None, stages: Stages | None = None, run_worker: bool = True) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    stages: Stages | None = None,
+    run_worker: bool = True,
+    rearranger: Rearranger | None = None,
+) -> FastAPI:
     settings = settings or Settings.from_environment()
     if stages is None:
         stages = Stages(ledger_factory=preview_ledger) if settings.preview_unverified_rules else Stages()
@@ -157,7 +166,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     adopt_allowlist(database, settings.team_emails)
     quota = ScanQuota(settings.max_scan_artifacts, settings.max_scan_bytes)
     store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes, quota)
-    worker = Worker(database, store, stages, settings)
+    worker = Worker(database, store, stages, settings, rearranger)
     worker.notifier = notifier_from(settings)
 
     @contextlib.asynccontextmanager
@@ -197,6 +206,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     _install_layout_routes(app, database, stages, worker)
     _install_route_routes(app, database, stages, worker)
     _install_simulation_routes(app, database, stages, worker)
+    _install_rearrangement_routes(app, database, worker)
     install_replay_routes(app, database, store)
     install_texture_routes(app, database, store, worker)
     install_splat_routes(app, database, store)
@@ -847,6 +857,27 @@ def _install_file_routes(app: FastAPI, database: Database, store: ArtifactStore)
             content=store.artifact_path(scan_id, artifact.id).read_bytes(),
             media_type="image/jpeg",
         )
+
+
+def _install_rearrangement_routes(app: FastAPI, database: Database, worker: Worker) -> None:
+    path = "/api/scans/{scan_id}/rearrangement-suggestion"
+
+    @app.post(path, response_model=RearrangementStatus, status_code=202)
+    def suggest_rearrangement(scan_id: uuid.UUID, body: RearrangementRequest) -> RearrangementStatus:
+        """Queue a model suggestion. Never save a layout automatically."""
+        return queue_suggestion(database, worker, worker.rearranger, scan_id, body)
+
+    @app.get(path, response_model=RearrangementStatus)
+    def rearrangement_suggestion(scan_id: uuid.UUID, revision: int) -> RearrangementStatus:
+        """Whether suggestions are available, and the latest one for this revision."""
+        return suggestion_status(database, worker.rearranger, scan_id, revision)
+
+    @app.post(path + "/{suggestion_id}/put-back")
+    def put_back_suggestion(scan_id: uuid.UUID, suggestion_id: str, revision: int) -> dict:
+        with database.transaction() as connection:
+            if not record_outcome(connection, scan_id, revision, suggestion_id, "put_back"):
+                raise ApiProblem(404, "no such suggestion")
+        return {}
 
 
 def _install_simulation_routes(app: FastAPI, database: Database, stages: Stages, worker: Worker) -> None:

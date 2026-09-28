@@ -1,5 +1,18 @@
 import { readLines } from "@/lib/ndjson";
-import type { AskAnswer, LayoutCheckResult, LoopEvent, ModelLoopEvent, ModelLoopInfo, NodeMove, OwnerWish, ProposalResult, Scan, Scenario, SceneGraph } from "@/types/contracts";
+import type {
+  AskAnswer,
+  LayoutCheckResult,
+  LoopEvent,
+  ModelLoopEvent,
+  ModelLoopInfo,
+  NodeMove,
+  OwnerWish,
+  ProposalResult,
+  RearrangementStatus,
+  Scan,
+  Scenario,
+  SceneGraph,
+} from "@/types/contracts";
 
 export class ApiRefusal extends Error {
   constructor(readonly status: number, readonly error: string) {
@@ -23,6 +36,24 @@ async function sendJson<T>(url: string, body: unknown, method = "POST"): Promise
   return (await response.json()) as T;
 }
 
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw await refusal(response);
+  return (await response.json()) as T;
+}
+
+export function startRearrangement(scanId: string, baseRevision: number) {
+  return sendJson<RearrangementStatus>(`/api/scans/${scanId}/rearrangement-suggestion`, { base_revision: baseRevision });
+}
+
+export function rearrangementStatus(scanId: string, revision: number) {
+  return getJson<RearrangementStatus>(`/api/scans/${scanId}/rearrangement-suggestion?revision=${revision}`);
+}
+
+export function putBackSuggestion(scanId: string, revision: number, suggestionId: string) {
+  return sendJson<void>(`/api/scans/${scanId}/rearrangement-suggestion/${suggestionId}/put-back?revision=${revision}`, {});
+}
+
 export function checkLayout(scanId: string, baseRevision: number, sequence: number, moves: NodeMove[]) {
   return sendJson<LayoutCheckResult>(`/api/scans/${scanId}/layout-checks`, {
     base_revision: baseRevision,
@@ -31,8 +62,10 @@ export function checkLayout(scanId: string, baseRevision: number, sequence: numb
   });
 }
 
-export function saveLayout(scanId: string, baseRevision: number, moves: NodeMove[]) {
-  return sendJson<SceneGraph>(`/api/scans/${scanId}/revisions`, { base_revision: baseRevision, moves });
+export function saveLayout(scanId: string, baseRevision: number, moves: NodeMove[], suggestionId?: string) {
+  return sendJson<SceneGraph>(`/api/scans/${scanId}/revisions`, {
+    base_revision: baseRevision, moves, suggestion_id: suggestionId ?? null,
+  });
 }
 
 export type CombineRoom = {
@@ -112,4 +145,3 @@ export function confirmRoute(scanId: string, scenario: Scenario) {
 export function askAboutShop(scanId: string, baseRevision: number, text: string) {
   return sendJson<AskAnswer>(`/api/scans/${scanId}/ask`, { base_revision: baseRevision, text });
 }
-

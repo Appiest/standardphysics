@@ -10,6 +10,7 @@ import { Button, buttonClassName } from "@/components/ui/Button";
 import { Menu, MENU_ITEM } from "@/components/ui/Menu";
 import { overviewPose, poseAtPoint, poseFromLocus, topDownPose, type ViewerPose } from "@/lib/camera";
 import { nodePosition } from "@/lib/review-targets";
+import { pendingLabels } from "@/lib/arrangement-source";
 import { interpolateLayout } from "@/lib/compare";
 import { type FindingGroups, findingForNode, type Focus, focusOnLocus, groupFindings } from "@/lib/findings";
 import { AskBox } from "./AskBox";
@@ -97,7 +98,7 @@ function comparisonFor(arrangement: Arrangement, scene: SceneGraph, findings: Fi
   if (arrangement.hasMoves && arrangement.check) {
     return {
       before: scene, after: arrangement.shown, beforeFindings: findings, afterFindings: arrangement.check.findings,
-      beforeLabel: "Now", afterLabel: "With your moves",
+      ...pendingLabels(arrangement.source),
     };
   }
   if (!previous || previous.assessment === null) return null;
@@ -299,9 +300,9 @@ function compareTaskPanel(props: SidePanelProps): ReactNode {
 }
 
 function arrangeTaskPanel(props: SidePanelProps): ReactNode {
-  const { findings, arrangement, assessment, route } = props;
+  const { findings, arrangement, assessment, route, scan, scene } = props;
   const scope: CheckScope = { rulesChecked: assessment?.rules_checked ?? null, routeConfirmed: route.confirmed };
-  return <ArrangePanel arrangement={arrangement} fallbackFindings={findings} scope={scope} />;
+  return <ArrangePanel arrangement={arrangement} fallbackFindings={findings} scope={scope} scanId={scan.id} revision={scene.revision} />;
 }
 
 function combineTaskPanel(props: SidePanelProps): ReactNode {
@@ -430,9 +431,9 @@ function useWorkspaceActions(findings: Finding[], scene: SceneGraph, arrangement
   }, [findings, scene, setSelected, setPicked]);
   const toggle = (finding: Finding) => setSelected((current) => current?.id === finding.id ? null : finding);
   const showView = (next: ViewMode) => { setSelected(null); setMode(next); };
-  const switchTask = (next: Task) => {
+  const switchTask = async (next: Task) => {
+    if (next === "findings" && !(await arrangement.reset())) return;
     clear();
-    if (next === "findings") arrangement.reset();
     if (next === "compare") setAmount(0);
     setTask(next);
   };

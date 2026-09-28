@@ -284,10 +284,21 @@ class TestSpaceTypeWiring:
         assert combine_rejections(None, None) is None
 
 
-def _counter_marked_movable(graph: SceneGraph) -> SceneGraph:
+def _counter_marked_movable(graph: SceneGraph, label: str | None = None) -> SceneGraph:
+    def mislabelled(node):
+        update = {"movable": True} if label is None else {"movable": True, "label": label, "raw_category": node.label}
+        return node.model_copy(update=update)
+
     return graph.model_copy(update={"nodes": [
-        node.model_copy(update={"movable": True}) if node.id == node_id("counter") else node for node in graph.nodes
+        mislabelled(node) if node.id == node_id("counter") else node for node in graph.nodes
     ]})
+
+
+# A counter is a fixture whatever its movable flag says, so the hard constraints
+# already hold it still. Relabelled "Front desk" with the scanner's category kept,
+# it is a service counter to the directives but not a named fixture: the
+# mislabelled piece only the directives catch.
+FRONT_DESK = "Front desk"
 
 
 def _astra_answer(*moves: tuple[str, float, float]) -> ModelAnswer:
@@ -306,13 +317,20 @@ class TestAstraRedesign:
             rules=pack, ledger=ledger, directives=directives,
         )
 
-    def test_a_mislabelled_counter_slides_through_without_directives(self, graph, scenario, pipeline, pack, ledger):
+    def test_a_counter_marked_movable_still_stays_put(self, graph, scenario, pipeline, pack, ledger):
         room = _counter_marked_movable(graph)
+        answer = _astra_answer(*self.CASES_APART, ("counter", 0.0, -0.05))
+        result = self._validate(room, scenario, pipeline, pack, ledger, answer, ())
+        counter = next(node for node in result.graph.nodes if node.id == node_id("counter"))
+        assert counter.transform.m == next(node for node in room.nodes if node.id == node_id("counter")).transform.m
+
+    def test_a_mislabelled_counter_slides_through_without_directives(self, graph, scenario, pipeline, pack, ledger):
+        room = _counter_marked_movable(graph, FRONT_DESK)
         answer = _astra_answer(*self.CASES_APART, ("counter", 0.0, -0.05))
         assert self._validate(room, scenario, pipeline, pack, ledger, answer, ()).accepted
 
     def test_the_directives_refuse_it(self, graph, scenario, pipeline, pack, ledger):
-        room = _counter_marked_movable(graph)
+        room = _counter_marked_movable(graph, FRONT_DESK)
         directives = tuple(directives_for_space(SpaceTypology.QSR_BEVERAGE, room, ALL))
         answer = _astra_answer(*self.CASES_APART, ("counter", 0.0, -0.05))
         result = self._validate(room, scenario, pipeline, pack, ledger, answer, directives)
@@ -341,6 +359,30 @@ class TestAstraRedesign:
                              rules=pack, ledger=ledger, model=Recorder(), directives=given)
         assert "ada_layout_constraints" not in seen[0]
         assert "904.4.1" in seen[1]["ada_layout_constraints"]
+
+
+    def test_a_refused_layout_is_rebuilt_with_the_directive_s_own_words(self, graph, scenario, pipeline, pack, ledger):
+        room = _counter_marked_movable(graph, FRONT_DESK)
+        seen = []
+        answers = iter([_astra_answer(*self.CASES_APART, ("counter", 0.0, -0.05)), _astra_answer(*self.CASES_APART)])
+
+        class Rebuilder:
+            model = "test/astra"
+
+            def structured(self, instruction, payload, schema, name):
+                seen.append(payload)
+                return next(answers)
+
+        directives = tuple(directives_for_space(SpaceTypology.QSR_BEVERAGE, room, ALL))
+        result = propose_redesign(room, [Workflow(id="room", title="Room", scenario=scenario)], [WHEELCHAIR_PROFILE],
+                                  [], pipeline, rules=pack, ledger=ledger, model=Rebuilder(), directives=directives)
+        assert result.accepted and len(seen) == 2
+        assert "refused_attempts" not in seen[0]
+        told = seen[1]["refused_attempts"][0]
+        assert told["reasons"] == ["precedent_violation:moved_fixed_role"]
+        feedback = told["ada_directive_feedback"][0]
+        assert feedback["what_broke"] == "moved_fixed_role" and feedback["requirement"]
+        assert result.attempts == tuple(seen[1]["refused_attempts"])
 
 
 class TestSignOffs:

@@ -44,13 +44,13 @@
     },
     {
       "name": "rate-pairs",
-      "runtimeExecutable": "/Users/yanzihao/Documents/standardphysics/.venv/bin/python",
+      "runtimeExecutable": "/Users/yanzihao/Documents/standardphysics-finetuning/.venv/bin/python",
       "runtimeArgs": [
-        "/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/scripts/finetune/rate_pairs.py"
+        "/Users/yanzihao/Documents/standardphysics-finetuning/scripts/finetune/rate_pairs.py"
       ],
       "port": 8791,
       "env": {
-        "PYTHONPATH": "/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/packages/agents:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/packages/contracts:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/packages/pipeline:/Users/yanzihao/Documents/standardphysics/.claude/worktrees/multiroom-data/packages/fixtures"
+        "PYTHONPATH": "/Users/yanzihao/Documents/standardphysics-finetuning/packages/agents:/Users/yanzihao/Documents/standardphysics-finetuning/packages/contracts:/Users/yanzihao/Documents/standardphysics-finetuning/packages/pipeline:/Users/yanzihao/Documents/standardphysics-finetuning/packages/fixtures"
       }
     }
   ]

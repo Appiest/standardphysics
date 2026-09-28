@@ -183,6 +183,7 @@ export interface Finding {
   outcome: "passes" | "problem" | "question";
   required_inches: number | null;
   title: string;
+  uncertainty_inches?: number | null;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -709,7 +710,9 @@ export interface FunnelStep {
 export interface HeightResult {
   inches: number;
   measured_at: Vec3;
+  needs_measurement: boolean;
   node_id: string;
+  uncertainty_inches: number | null;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -1391,6 +1394,102 @@ export interface ProposalResult {
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "RearrangementAttempt".
+ */
+export interface RearrangementAttempt {
+  accepted: boolean;
+  /**
+   * Why the attempt was turned down, in plain words; empty when accepted.
+   */
+  reason: string;
+  reward: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "RearrangementRequest".
+ */
+export interface RearrangementRequest {
+  base_revision: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "RearrangementStatus".
+ */
+export interface RearrangementStatus {
+  available: boolean;
+  base_revision: number;
+  error: string | null;
+  phase: ("waiting" | "starting_model" | "asking_model" | "checking" | "trying_again") | null;
+  phase_reason: string | null;
+  result: RearrangementSuggestion | null;
+  state: "idle" | "queued" | "running" | "done" | "failed";
+  unavailable_reason: string | null;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "RearrangementSuggestion".
+ */
+export interface RearrangementSuggestion {
+  accepted: boolean;
+  attempts: RearrangementAttempt[];
+  base_revision: number;
+  budget_reached: boolean;
+  completion_tokens: number;
+  cost_dollars: number;
+  findings_after: Finding[];
+  findings_before: Finding[];
+  /**
+   * Hash of the layout the moves produce.
+   */
+  graph_hash: string | null;
+  /**
+   * One sentence for the owner: what the suggestion does, or why there is none.
+   */
+  message: string;
+  model: string | null;
+  /**
+   * Requests sent to the model for this click.
+   */
+  model_calls: number;
+  moves: NodeMove[];
+  prompt_tokens: number;
+  provider: string | null;
+  reward: RewardParts | null;
+  rounds: number;
+  snap_rescues: number;
+  suggestion_id: string | null;
+  /**
+   * Windows of a big scan asked about; 0 when the model saw it whole.
+   */
+  windows: number;
+}
+/**
+ * The training reward for the chosen attempt, and the terms it is made of.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "RewardParts".
+ */
+export interface RewardParts {
+  /**
+   * Whether every problem furniture can fix is gone.
+   */
+  all_clear: boolean;
+  /**
+   * Metres slid plus a fixed cost per turn.
+   */
+  disruption_meters: number;
+  /**
+   * Share of the measured shortfall the moves recover, 0 to 1.
+   */
+  recovered: number;
+  reward: number;
+  /**
+   * U: how usable the touched tables, desks and counters stay, 0 to 1.
+   */
+  usability: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
  * via the `definition` "RebuildRequest".
  */
 export interface RebuildRequest {
@@ -1514,6 +1613,7 @@ export interface SceneNode {
   reconstruction?: DisplayReconstruction | null;
   relation?: string | null;
   texts?: SurfaceText[];
+  top_surface?: SurfaceHeight | null;
   transform: Mat4;
 }
 /**
@@ -1565,6 +1665,17 @@ export interface SurfaceText {
   evidence_frame_ids: [string, ...string[]];
   face: ("top" | "front" | "back" | "left" | "right" | "bottom") | null;
   text: string;
+}
+/**
+ * Measured top above the scanned floor, or an explicitly unmeasured top.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "SurfaceHeight".
+ */
+export interface SurfaceHeight {
+  height_m: number | null;
+  support_area_m2: number;
+  uncertainty_m: number | null;
 }
 /**
  * A real thing photographed where no reliable measured surface places it.
@@ -1651,6 +1762,7 @@ export interface RulePack {
 export interface SaveLayoutRequest {
   base_revision: number;
   moves: NodeMove[];
+  suggestion_id: string | null;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema

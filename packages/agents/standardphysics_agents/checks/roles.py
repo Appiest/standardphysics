@@ -14,13 +14,14 @@ from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room, li
 SERVICE_COUNTER_LABELS = frozenset(
     {
         "ordering counter", "service counter", "counter", "checkout counter",
-        "cash wrap", "register counter", "sales counter", "bar",
+        "cash wrap", "register counter", "sales counter", "bar", "front desk", "reception desk",
+        "pos counter", "payment counter",
     }
 )
 
 ENTRANCE_LABELS = frozenset({"front door", "entrance", "entry door", "main door"})
 
-DINING_SURFACE_LABELS = frozenset({"table", "dining table", "cafe table", "bar table"})
+DINING_SURFACE_LABELS = frozenset({"table", "dining table", "cafe table", "bar table", "accessible table"})
 
 WORK_SURFACE_LABELS = frozenset({"desk", "work table", "work surface", "workbench"})
 
@@ -44,7 +45,7 @@ POINT_OF_SALE_LABELS = frozenset(
         "cash register",
         "point of sale",
         "payment terminal",
-        "card machine",
+        "card machine", "cash drawer", "pos terminal",
     }
 )
 

@@ -14,6 +14,8 @@ from uuid import UUID
 
 from standardphysics_contracts import Finding, SceneGraph, SceneNode, Vec3, bounds_the_room, to_meters
 
+from .constraints import is_fixture
+
 
 @dataclass(frozen=True)
 class Pinch:
@@ -77,7 +79,7 @@ def _unlockable(node: SceneNode) -> bool:
     wall is not a lock anybody can release, so offering to unlock one would be
     offering nothing.
     """
-    return not node.movable and not bounds_the_room(node)
+    return not node.movable and not bounds_the_room(node) and not is_fixture(node)
 
 
 def pinch_from(finding: Finding, graph: SceneGraph) -> Pinch | None:

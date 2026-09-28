@@ -113,7 +113,7 @@ def _counter_height(observation: Observation, rule: RuleSpec) -> FindingCopy:
     counter = observation.facts.get("counter", "counter").casefold()
     allowed = inches(rule.threshold)
     length = inches(observation.facts.get("accessible_length_inches", 36.0))
-    shown = measured(observation.measured_inches, rule.threshold)
+    shown = _height_with_uncertainty(observation, rule)
     portion = observation.facts.get("portion")
     if observation.satisfied and portion:
         return FindingCopy(
@@ -136,7 +136,7 @@ def _counter_height(observation: Observation, rule: RuleSpec) -> FindingCopy:
 def _point_of_sale(observation: Observation, rule: RuleSpec) -> FindingCopy:
     reader = observation.facts.get("reader", "card reader").casefold()
     portion = observation.facts.get("portion", "lowered section").casefold()
-    shown = measured(observation.measured_inches, rule.threshold)
+    shown = _height_with_uncertainty(observation, rule)
     allowed = inches(rule.threshold)
     if observation.satisfied:
         return FindingCopy(
@@ -148,6 +148,12 @@ def _point_of_sale(observation: Observation, rule: RuleSpec) -> FindingCopy:
         detail=f"The {reader} sits {shown} up. Ordering from a wheelchair needs {allowed} or lower.",
         fix=f"Move the {reader} to the {portion}.",
     )
+
+
+def _height_with_uncertainty(observation: Observation, rule: RuleSpec) -> str:
+    shown = measured(observation.measured_inches, rule.threshold)
+    uncertainty = observation.facts.get("uncertainty_inches")
+    return f"{shown} (uncertainty ±{inches(uncertainty)})" if uncertainty is not None else shown
 
 
 def _counter_approach(observation: Observation, rule: RuleSpec) -> FindingCopy:
@@ -207,6 +213,23 @@ def _turning_space(observation: Observation, rule: RuleSpec) -> FindingCopy:
         title=f"There's not enough room to turn around at {stop}",
         detail=f"The clear floor is {shown} across. Turning a wheelchair needs {needed}.",
         fix=f"Clear a {size(rule.threshold)} circle at {stop}.",
+    )
+
+
+def _restroom_turning(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    needed = inches(rule.threshold)
+    shown = measured(observation.measured_inches, rule.threshold)
+    if observation.satisfied:
+        return FindingCopy(
+            title="There's room to turn around in the restroom",
+            detail=f"The widest clear circle is {shown} across. Turning a wheelchair needs {needed}.",
+        )
+    blocking = observation.facts.get("blocking") or []
+    what = " and ".join(label.casefold() for label in blocking[:2]) or "what's standing on the floor"
+    return FindingCopy(
+        title="There's not enough room to turn around in the restroom",
+        detail=f"The widest clear circle is {shown} across. Turning a wheelchair needs {needed}.",
+        fix=f"Move the {what} so there's a {size(rule.threshold)} circle of clear floor inside the restroom.",
     )
 
 
@@ -385,6 +408,7 @@ WRITERS: dict[str, Callable[[Observation, RuleSpec], FindingCopy]] = {
     "service_counter_approach": _counter_approach,
     "passing_space": _passing_space,
     "turning_space": _turning_space,
+    "restroom_turning_space": _restroom_turning,
     "turn_clear_width": _turn_width,
     "exit_path": _exit_path,
 }
@@ -546,7 +570,7 @@ def escalation_note(count: int) -> str:
 
 
 def describe(observation: Observation, rule: RuleSpec) -> FindingCopy:
-    if rule.id in QUESTIONS and not (rule.measurable and rule.id in WRITERS):
+    if rule.id in QUESTIONS and not observation.seen_directly and not (rule.measurable and rule.id in WRITERS):
         return QUESTIONS[rule.id]
     writer = WRITERS.get(rule.id)
     if writer is None:
