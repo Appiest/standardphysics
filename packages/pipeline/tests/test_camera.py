@@ -156,3 +156,10 @@ def test_a_scan_with_no_room_frame_is_refused_as_camera_metadata(tmp_path):
     poses.write_text(json.dumps([pose().model_dump(mode="json")]))
     with pytest.raises(CameraMetadataError):
         load_cameras(poses, ["frame-0000"], None)
+
+
+def test_one_pose_with_no_room_frame_is_refused_as_camera_metadata():
+    """Astra's crop search skips a pose that raises CameraMetadataError and keeps
+    looking. An AttributeError escaped that search and the labelling call with it."""
+    with pytest.raises(CameraMetadataError):
+        camera_from_pose(pose(), None)

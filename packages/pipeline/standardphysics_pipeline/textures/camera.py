@@ -34,6 +34,9 @@ class CameraMetadataError(ValueError):
     pass
 
 
+NO_ROOM_FRAME = "the scan has no capture_to_room transform to place its photos with"
+
+
 @dataclass(frozen=True)
 class PhotoCamera:
     frame_id: str
@@ -80,9 +83,11 @@ class PhotoCamera:
         return self.fx * local[:, 0] / safe + self.cx, self.fy * local[:, 1] / safe + self.cy, depth
 
 
-def camera_from_pose(pose: PoseRecord, capture_to_room: Mat4) -> PhotoCamera:
+def camera_from_pose(pose: PoseRecord, capture_to_room: Mat4 | None) -> PhotoCamera:
     if not pose.projectable:
         raise CameraMetadataError(f"{pose.frame_id or pose.image} lacks version 2 image metadata")
+    if capture_to_room is None:
+        raise CameraMetadataError(NO_ROOM_FRAME)
     camera_to_arkit = np.array(pose.transform, dtype=np.float64).reshape(4, 4).T
     room_to_arkit = np.linalg.inv(np.array(capture_to_room.m, dtype=np.float64).reshape(4, 4))
     room_to_camera = ARKIT_TO_PIXEL_AXES @ np.linalg.inv(camera_to_arkit) @ room_to_arkit
@@ -102,7 +107,7 @@ def load_cameras(
 ) -> list[PhotoCamera]:
     """Cameras for the requested frames, in capture order. Records that cannot be projected are skipped."""
     if capture_to_room is None:
-        raise CameraMetadataError("the scan has no capture_to_room transform to place its photos with")
+        raise CameraMetadataError(NO_ROOM_FRAME)
     wanted = set(frame_ids)
     cameras = [
         camera_from_pose(pose, capture_to_room)
