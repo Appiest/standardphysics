@@ -4,6 +4,21 @@
  */
 
 /**
+ * Categorical classification of room use and public accommodation occupancy.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "SpaceTypology".
+ */
+export type SpaceTypology =
+  | "commercial.beverage.boba"
+  | "commercial.restaurant.dining"
+  | "commercial.hospitality.lounge"
+  | "commercial.retail.mercantile"
+  | "commercial.office.private"
+  | "assembly.presentation_room"
+  | "civic.library.reading_room"
+  | "facility.restroom.single_user";
+/**
  * One line of `POST /api/scans/{scan_id}/loop/stream`, which reports each pass as it finishes.
  *
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -337,6 +352,29 @@ export interface ScopeItem {
   source: "measured" | "owner_confirmed" | "manual_photo" | "requested_not_observed";
 }
 /**
+ * A choice the owner's layout showed that a proposal breaks, and the wish that would keep it.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "BentWish".
+ */
+export interface BentWish {
+  keep: OwnerWish | null;
+  text: string;
+}
+/**
+ * One thing the owner wants kept.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "OwnerWish".
+ */
+export interface OwnerWish {
+  anchor_id: string | null;
+  inches: number | null;
+  kind: "stays_put" | "stays_near";
+  node_id: string;
+  text: string;
+}
+/**
  * A hard constraint a layout breaks, from Lane C's fix constraints.
  *
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -346,6 +384,35 @@ export interface Blocked {
   detail: string;
   node_id: string;
   reason: string;
+}
+/**
+ * A court opinion showing the directive's rule being enforced.
+ *
+ * References are illustration, not authority. `verified_by` stays None until a
+ * person has read the opinion and confirmed the citation and the holding.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "CaseReference".
+ */
+export interface CaseReference {
+  case_name: string;
+  /**
+   * Reporter citation, e.g. '81 F. Supp. 3d 876 (N.D. Cal. 2015)'.
+   */
+  citation: string;
+  court: string;
+  decided: string;
+  docket_number: string;
+  /**
+   * What the court decided that bears on this directive.
+   */
+  holding: string;
+  /**
+   * Where the opinion text can be read.
+   */
+  source_url: string;
+  verified_at: string | null;
+  verified_by: string | null;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -422,6 +489,7 @@ export interface CreateScanRequest {
   duration_seconds: number;
   name: string;
   replaces: string | null;
+  space_typology: SpaceTypology | null;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -910,6 +978,49 @@ export interface Mat4 {
   ];
 }
 /**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ModelLoopEvent".
+ */
+export interface ModelLoopEvent {
+  explanation: ProposalExplanation | null;
+  fixable_left: number | null;
+  kind: "started" | "turn" | "finished" | "failed";
+  message: string;
+  moves: NodeMove[];
+  picked: string[];
+  turn: number | null;
+  why: string;
+}
+/**
+ * A proposal in the owner's words, built only from what was measured.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ProposalExplanation".
+ */
+export interface ProposalExplanation {
+  bent: BentWish[];
+  fixed: string[];
+  kept: string[];
+  moves: string[];
+}
+/**
+ * Whether a model is set up to run the loop, and what to call it on the button.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ModelLoopInfo".
+ */
+export interface ModelLoopInfo {
+  available: boolean;
+  label: string;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "ModelLoopRequest".
+ */
+export interface ModelLoopRequest {
+  base_revision: number;
+}
+/**
  * Nodes the primitive selected, such as everything standing on a desk.
  *
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -974,6 +1085,18 @@ export interface RequestAnswer {
   number: number | null;
   photo_url: string | null;
   yes: boolean | null;
+}
+/**
+ * Every wish the owner wants kept for this shop, replacing the ones saved before.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "OwnerWishesRequest".
+ */
+export interface OwnerWishesRequest {
+  /**
+   * @maxItems 50
+   */
+  wishes: OwnerWish[];
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -1072,6 +1195,119 @@ export interface PoseRecord {
   ];
 }
 /**
+ * Hard constraints on layout proposals for this kind of space.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrecedentConstraintSpec".
+ */
+export interface PrecedentConstraintSpec {
+  /**
+   * Whether accessible surfaces must sit among the others (226.2).
+   */
+  dispersed: boolean;
+  /**
+   * Roles a proposal may not move, whatever the scan says about movability.
+   */
+  fixed_roles: ("service_counter" | "point_of_sale")[];
+  /**
+   * Whether 226.1's share of dining surfaces must comply with 902.3.
+   */
+  requires_accessible_dining: boolean;
+  /**
+   * Remedy pattern a proposal should follow.
+   */
+  solution_pattern: string;
+}
+/**
+ * A layout constraint for one kind of space, grounded in ADA sections.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrecedentDirective".
+ */
+export interface PrecedentDirective {
+  /**
+   * ADA sections this directive rests on, e.g. 'ADA_2010_226.1'.
+   *
+   * @minItems 1
+   */
+  authority: [string, ...string[]];
+  case_references: CaseReference[];
+  constraints: PrecedentConstraintSpec;
+  /**
+   * Stable identifier, e.g. 'accessible_dining_surfaces'.
+   */
+  directive_id: string;
+  inspection_queries: PrecedentQuerySpec[];
+  plain_english_warning: string;
+  title: string;
+  trigger: PrecedentTrigger;
+}
+/**
+ * A measurement the directive needs, and the ADA section that sets its limit.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrecedentQuerySpec".
+ */
+export interface PrecedentQuerySpec {
+  /**
+   * ADA section that sets the limit, e.g. 'ADA_2010_904.4.1'.
+   */
+  citation: string;
+  /**
+   * Which side of the limit complies.
+   */
+  comparison: "at_most" | "at_least";
+  /**
+   * Physical dimension being measured.
+   */
+  metric: "height_inches" | "clear_width_inches" | "clear_length_inches" | "knee_clearance_inches" | "reach_inches";
+  /**
+   * Unique identifier for this query within the corpus.
+   */
+  query_id: string;
+  /**
+   * Rulepack rule that already measures this, or None when nothing measures it yet.
+   */
+  rule_id: string | null;
+  /**
+   * Target object role, e.g. 'dining_surface', 'service_counter'.
+   */
+  target_role: string;
+  /**
+   * Limit from the cited section.
+   */
+  threshold: number;
+}
+/**
+ * When a scan's scene graph activates this directive.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrecedentTrigger".
+ */
+export interface PrecedentTrigger {
+  /**
+   * Entity labels that must exist in the scene (case-insensitive substring match).
+   */
+  required_entities: string[];
+  /**
+   * Space typologies this directive governs.
+   */
+  space_typologies: SpaceTypology[];
+}
+/**
+ * A failure of a scene layout against a directive.
+ *
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "PrecedentViolation".
+ */
+export interface PrecedentViolation {
+  authority: string;
+  detail: string;
+  directive_id: string;
+  rule_broken: string;
+  target_node_id: string | null;
+}
+/**
  * One primitive's answer, with everything needed to show or cite it.
  *
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
@@ -1148,6 +1384,7 @@ export interface ProposalRequest {
  */
 export interface ProposalResult {
   base_revision: number;
+  explanation: ProposalExplanation | null;
   message: string;
   proposal: Proposal | null;
   question: string | null;
@@ -1208,6 +1445,8 @@ export interface Scan {
   duration_seconds: number;
   id: string;
   name: string;
+  owner_wishes: OwnerWish[];
+  space_typology: SpaceTypology | null;
   state: "uploading" | "measuring" | "checking" | "ready" | "failed";
 }
 /**
@@ -1267,6 +1506,7 @@ export interface SceneNode {
   kind: string;
   label: string;
   labeled_by: string;
+  measured_position?: Vec3 | null;
   movable: boolean;
   parent_id: string | null;
   quality: "measured" | "needs_another_look" | "confirmed";
@@ -1576,6 +1816,13 @@ export interface SimulationStatus {
   samples: number;
   state: "queued" | "running" | "done" | "failed";
   typesafe_call_limit: number;
+}
+/**
+ * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema
+ * via the `definition` "SpaceTypologyRequest".
+ */
+export interface SpaceTypologyRequest {
+  space_typology: SpaceTypology | null;
 }
 /**
  * This interface was referenced by `StandardPhysicsContracts`'s JSON-Schema

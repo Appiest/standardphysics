@@ -23,6 +23,7 @@ target/
 .DS_Store
 datasets/phone/moffett/
 datasets/phone/moffett.zip
+datasets/external/
 
 # K local dependency-link backports (worktree plumbing, never tracked)
 .node_modules-link

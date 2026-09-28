@@ -24,7 +24,7 @@ ONTOLOGY_LITERAL = re.compile(
     r'^(?:NodeKind|Relation|QueryKind|Dimension|LabelSource)\s*(?::\s*\w+\s*)?=\s*Literal\[', re.M
 )
 
-BRANCHES_BASELINE = 30
+BRANCHES_BASELINE = 39
 """Places that ask what kind of thing something is. Target: nothing above the
 interpretation layer asks, because a name is for showing a person.
 
@@ -50,6 +50,16 @@ Audit 2026-09-26, lane D: 24 rose to 30 with the owner journey. All six are in
 api/owner_requests.py and branch on how the owner answers a request (a yes or
 no, a number, a photo, or another walk of the shop). That is the form of an
 answer, like the artefact kinds above, not what a thing in the room is.
+
+Audit 2026-09-27, merging feat/model-sees-the-room: 30 rose to 39.
+- 5 branch on the form of an owner's wish, not on a thing in the room:
+  contracts/wishes.py (stays_near needs an anchor), training/owner.py 3
+  (stays_put, with_table, against_wall), training/explain.py 1 (clear_view).
+- 4 are wall, door and floor roles in the rearranger's training code:
+  training/prompt.py 2 (the walls and doors the model reads),
+  training/quality.py 1 and training/explain.py 1. They join the structural
+  backlog above. prompt.py is the text the served fine-tune was trained on,
+  so replacing those two with predicates means retraining or re-checking it.
 """
 
 LITERALS_BASELINE = 0

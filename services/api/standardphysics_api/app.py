@@ -37,6 +37,9 @@ from standardphysics_contracts import (
     LoopRequest,
     LoopResult,
     ManualMarkRequest,
+    ModelLoopInfo,
+    ModelLoopRequest,
+    OwnerWishesRequest,
     ProposalRequest,
     ProposalResult,
     RebuildRequest,
@@ -49,6 +52,7 @@ from standardphysics_contracts import (
     SceneGraph,
     SimulationRequest,
     SimulationStatus,
+    SpaceTypologyRequest,
     SurfaceCoverage,
     graph_hash,
 )
@@ -71,6 +75,7 @@ from .layout import check_layout, save_layout
 from .lidar_mesh import MAX_LIDAR_MESH_BYTES, InvalidLidarMesh, validate_lidar_mesh
 from .loop_run import run as run_loop_on
 from .loop_run import stream as stream_loop_on
+from .model_loop import loop_info, stream_model_loop
 from .notifications import notifier_from
 from .owner_accounts import install_account_routes
 from .owner_requests import carry_answers
@@ -597,6 +602,16 @@ def _install_layout_routes(app: FastAPI, database: Database, stages: Stages, wor
         headers = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
         return StreamingResponse(lines, media_type="application/x-ndjson", headers=headers)
 
+    @app.get("/api/model-loop", response_model=ModelLoopInfo)
+    def model_loop_info() -> ModelLoopInfo:
+        return loop_info()
+
+    @app.post("/api/scans/{scan_id}/model-loop/stream")
+    def model_loop_stream(scan_id: uuid.UUID, body: ModelLoopRequest) -> StreamingResponse:
+        lines = stream_model_loop(database, stages, scan_id, body)
+        headers = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
+        return StreamingResponse(lines, media_type="application/x-ndjson", headers=headers)
+
     @app.post("/api/scans/{scan_id}/proposals", response_model=ProposalResult)
     def proposal(scan_id: uuid.UUID, body: ProposalRequest) -> ProposalResult:
         return propose(database, stages, scan_id, body)
@@ -670,6 +685,21 @@ def _install_route_routes(app: FastAPI, database: Database, stages: Stages, work
     @app.post("/api/scans/{scan_id}/scenario/legs", response_model=RouteLegs)
     def scenario_legs(scan_id: uuid.UUID, body: Scenario) -> RouteLegs:
         return legs(database, stages, scan_id, body)
+
+    @app.put("/api/scans/{scan_id}/owner-wishes", response_model=Scan)
+    def set_owner_wishes(scan_id: uuid.UUID, body: OwnerWishesRequest) -> Scan:
+        """Everything the owner wants kept in this shop; every later proposal and loop is held to it."""
+        with database.transaction() as connection:
+            _scan_or_404(connection, scan_id)
+            repo.set_owner_wishes(connection, scan_id, body.wishes)
+            return repo.get_scan(connection, scan_id)
+
+    @app.put("/api/scans/{scan_id}/space-type", response_model=Scan)
+    def set_space_type(scan_id: uuid.UUID, body: SpaceTypologyRequest) -> Scan:
+        with database.transaction() as connection:
+            _scan_or_404(connection, scan_id)
+            repo.set_space_typology(connection, scan_id, body.space_typology)
+            return repo.get_scan(connection, scan_id)
 
     @app.put("/api/scans/{scan_id}/scenario", response_model=Scenario)
     def confirm_scenario(scan_id: uuid.UUID, body: Scenario) -> Scenario:

@@ -1,10 +1,14 @@
 from uuid import uuid4
 
+from standardphysics_agents import assess
+from standardphysics_agents.evaluation.gate import accepts
+from standardphysics_agents.fix import apply_moves
 from standardphysics_agents.models import ModelAnswer
 from standardphysics_agents.redesign import propose_redesign, validate_redesign
 from standardphysics_agents.router import Rejected
 from standardphysics_agents.rules import VerificationLedger
 from standardphysics_agents.workflows import WHEELCHAIR_PROFILE, Workflow
+from standardphysics_contracts import NodeMove, Vec3, to_meters
 from standardphysics_fixtures import node_id
 
 
@@ -146,3 +150,24 @@ def test_astra_receives_rule_problems_and_route_trials(graph, pipeline, pack, le
     assert client.state["actionable_rule_problems"] == [problem]
     assert client.state["route_trials"] == trials
     assert "route_trials" in client.instruction
+
+
+def test_astra_cannot_widen_an_aisle_by_shoving_a_table_into_a_corner(corner_cafe, pipeline, pack, ledger):
+    """The corner shove clears every finding it touches, so the gate alone would take it."""
+    graph, scenario = corner_cafe
+    table = node_id("corner_cafe_table")
+    shoved = apply_moves(graph, [NodeMove(node_id=table, delta_translation=Vec3(x=-0.713, y=1.1, z=0.0))])
+    before = assess(graph, scenario, pipeline, rules=pack, ledger=ledger, max_tier=3)
+    after = assess(shoved, scenario, pipeline, rules=pack, ledger=ledger, max_tier=3)
+    assert accepts(before, after)
+
+    result = validate(graph, scenario, pipeline, pack, ledger, [move(table, dx=-0.713, dy=1.1)])
+    assert not result.accepted
+    assert result.reasons == ("no_room_to_use",)
+    assert result.graph is None
+
+
+def test_astra_may_slide_a_table_that_keeps_room_in_front(corner_cafe, pipeline, pack, ledger):
+    graph, scenario = corner_cafe
+    result = validate(graph, scenario, pipeline, pack, ledger, [move(node_id("corner_cafe_table"), dx=-to_meters(5))])
+    assert result.accepted, result.reasons

@@ -5,7 +5,8 @@ floor keeps its height. A piece that was resting on something else, a laptop on
 a desk or a pillow on a sofa, settles onto whatever is under it where it lands,
 or onto the floor when nothing is. Nothing here can change a dimension, because
 there is no code path that writes one: the candidate node is copied from the
-original with a new transform and nothing else.
+original with a new transform and a record of where the scan found it, and
+nothing else.
 """
 
 from __future__ import annotations
@@ -50,8 +51,16 @@ def move_node(node: SceneNode, move: NodeMove) -> SceneNode:
         z=origin.z + move.delta_translation.z,
     )
     return node.model_copy(
-        update={"transform": _turned(node, move.delta_rotation_z_degrees, moved_to)}
+        update={
+            "transform": _turned(node, move.delta_rotation_z_degrees, moved_to),
+            "measured_position": measured_position(node),
+        }
     )
+
+
+def measured_position(node: SceneNode) -> Vec3:
+    """Where the scan found the node, before any rearrangement moved it."""
+    return node.measured_position or node.transform.position
 
 
 def floor_height(graph: SceneGraph) -> float:
@@ -71,7 +80,7 @@ def rests_on_something(node: SceneNode, floor_z: float) -> bool:
     return not bounds_the_room(node) and underside(node) > floor_z + RESTING_GAP
 
 
-def _surface_under(graph: SceneGraph, node: SceneNode, floor_z: float) -> float:
+def surface_under(graph: SceneGraph, node: SceneNode, floor_z: float) -> float:
     """The highest top among the pieces directly under this one's centre."""
     centre = (node.transform.position.x, node.transform.position.y)
     tops = [
@@ -85,7 +94,7 @@ def _surface_under(graph: SceneGraph, node: SceneNode, floor_z: float) -> float:
 def settle(graph: SceneGraph, node: SceneNode, floor_z: float) -> SceneNode:
     """The node lowered or raised so its underside sits on the surface below it."""
     position = node.transform.position
-    resting_at = _surface_under(graph, node, floor_z) + node.dimensions.z / 2
+    resting_at = surface_under(graph, node, floor_z) + node.dimensions.z / 2
     return node.model_copy(
         update={"transform": _turned(node, 0.0, Vec3(x=position.x, y=position.y, z=resting_at))}
     )

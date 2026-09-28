@@ -25,6 +25,7 @@ from .api import (
     ReviewedRule,
     SaveLayoutRequest,
     ScanList,
+    SpaceTypologyRequest,
 )
 from .findings import Annotation, AnnotationKind, Asks, Finding, Locus, Outcome
 from .geometry import CameraPose, Mat4, Vec3, to_inches, to_meters
@@ -37,6 +38,7 @@ from .measurement import (
     MeasurementProvider,
     WidthResult,
 )
+from .model_loop import ModelLoopEvent, ModelLoopInfo, ModelLoopRequest
 from .owner import (
     AnswerRequest,
     Checklist,
@@ -61,6 +63,15 @@ from .owner import (
     Session,
     ShareLink,
     ShopRequests,
+)
+from .precedents import (
+    CaseReference,
+    PrecedentConstraintSpec,
+    PrecedentDirective,
+    PrecedentQuerySpec,
+    PrecedentTrigger,
+    PrecedentViolation,
+    SpaceTypology,
 )
 from .primitives import (
     Evidence,
@@ -149,6 +160,7 @@ from .textures import (
     TextureState,
     TextureStatus,
 )
+from .wishes import BentWish, OwnerWish, OwnerWishesRequest, ProposalExplanation
 
 __all__ = [
     "Asks",
@@ -217,6 +229,7 @@ __all__ = [
     "Authority",
     "Blocked",
     "CameraPose",
+    "CaseReference",
     "Check",
     "Citation",
     "ClearFloorResult",
@@ -256,6 +269,11 @@ __all__ = [
     "PhysicsObservation",
     "PhysicsRoute",
     "PoseRecord",
+    "PrecedentConstraintSpec",
+    "PrecedentDirective",
+    "PrecedentQuerySpec",
+    "PrecedentTrigger",
+    "PrecedentViolation",
     "Proposal",
     "ProposalRequest",
     "ProposalResult",
@@ -270,6 +288,14 @@ __all__ = [
     "SaveLayoutRequest",
     "Scan",
     "ScanList",
+    "SpaceTypologyRequest",
+    "OwnerWish",
+    "ModelLoopEvent",
+    "ModelLoopInfo",
+    "ModelLoopRequest",
+    "OwnerWishesRequest",
+    "BentWish",
+    "ProposalExplanation",
     "ScanState",
     "Scenario",
     "SceneGraph",
@@ -280,6 +306,7 @@ __all__ = [
     "SimulationResult",
     "SimulationStatus",
     "SocketTarget",
+    "SpaceTypology",
     "Stop",
     "SurfaceAttachment",
     "SurfaceCoverage",

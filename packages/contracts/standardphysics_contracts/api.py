@@ -15,18 +15,25 @@ from pydantic import BaseModel, Field, RootModel
 from .findings import Finding, Locus
 from .geometry import Vec3
 from .loop import Assessment, NodeMove, Proposal, RouterAction
+from .precedents import SpaceTypology
 from .rules import Check
 from .scan import Scan
 from .scene import Scenario, SceneGraph
+from .wishes import ProposalExplanation
 
 
 class CreateScanRequest(BaseModel):
     name: str
     device_model: str
     duration_seconds: float
+    space_typology: SpaceTypology | None = None
     replaces: UUID | None = None
     """A shop this walk joins. The new walk replaces that scan once it's in, and
     keeps the owner's in-shop answers and photos. Leave it out for a new shop."""
+
+
+class SpaceTypologyRequest(BaseModel):
+    space_typology: SpaceTypology | None
 
 
 class ScanList(BaseModel):
@@ -178,6 +185,8 @@ class ProposalResult(BaseModel):
     """The sentence to show: the fix, or that no arrangement works."""
     question: str | None = None
     """One thing the owner could allow, when nothing works as things stand."""
+    explanation: ProposalExplanation | None = None
+    """The proposal in the owner's words, with the choices it keeps and bends."""
 
 
 class AskRequest(BaseModel):

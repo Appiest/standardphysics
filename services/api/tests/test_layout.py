@@ -89,3 +89,15 @@ def test_each_revision_keeps_its_own_assessment(make_client):
     after = client.get(f"/api/scans/{scan_id}/assessment?revision=1").json()
     assert (before["graph_revision"], after["graph_revision"]) == (0, 1)
     assert before["graph_hash"] != after["graph_hash"]
+
+
+def test_small_saved_moves_add_up_against_where_the_scan_found_a_piece(make_client):
+    client, scan_id = _sample(make_client)
+    step = _move(CASE_EAST, dy=-0.8)
+    saved = client.post(f"/api/scans/{scan_id}/revisions", json={"base_revision": 0, "moves": [step]})
+    assert saved.status_code == 201
+    drain(client)
+    body = client.post(
+        f"/api/scans/{scan_id}/layout-checks", json={"base_revision": 1, "sequence": 1, "moves": [step]}
+    ).json()
+    assert "moved_too_far" in {b["reason"] for b in body["blocked"]}

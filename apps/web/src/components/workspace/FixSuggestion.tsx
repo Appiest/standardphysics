@@ -1,15 +1,15 @@
 "use client";
 
 import { CircleNotch, Lock, MagicWand } from "@phosphor-icons/react";
-import { useState } from "react";
+import { ProposalReview, ReviewFailure, SavedWishes } from "@/components/proposal/ProposalReview";
+import { type ProposalReviewState, useProposalReview } from "@/components/proposal/useProposalReview";
 import { Button } from "@/components/ui/Button";
 import { formatInches } from "@/lib/findings";
 import { inventoryLines } from "@/lib/inventory";
-import { proposeFix } from "@/lib/layout-client";
 import { METERS_PER_INCH } from "@/lib/moves";
-import type { Finding, NodeMove, ProposalResult, SceneGraph } from "@/types/contracts";
+import type { Finding, NodeMove, OwnerWish, ProposalResult, SceneGraph } from "@/types/contracts";
 
-type Props = { scanId: string; scene: SceneGraph; finding: Finding; onTry: (moves: NodeMove[]) => void };
+type Props = { scanId: string; scene: SceneGraph; finding: Finding; wishes: OwnerWish[]; onTry: (moves: NodeMove[]) => void };
 
 function moveLine(scene: SceneGraph, move: NodeMove): string {
   const label = scene.nodes.find((node) => node.id === move.node_id)?.label ?? "A piece";
@@ -19,7 +19,9 @@ function moveLine(scene: SceneGraph, move: NodeMove): string {
   return `${label} ${parts.filter(Boolean).join(" and ")}`;
 }
 
-function Result({ result, scene, onTry }: { result: ProposalResult; scene: SceneGraph; onTry: Props["onTry"] }) {
+type ResultProps = { result: ProposalResult; scene: SceneGraph; finding: Finding; review: ProposalReviewState; onTry: Props["onTry"] };
+
+function Result({ result, scene, finding, review, onTry }: ResultProps) {
   const proposal = result.proposal;
   if (!proposal) {
     return (
@@ -31,48 +33,42 @@ function Result({ result, scene, onTry }: { result: ProposalResult; scene: Scene
   }
   const fixedCount = scene.nodes.filter((node) => node.kind === "object" && !node.movable).length;
   return (
-    <div className="mt-3 rounded-lg bg-paper p-3">
+    <div className="mt-3 flex flex-col gap-3 rounded-lg bg-paper p-3">
       <p className="font-semibold" role="status">{result.message}</p>
-      <ul className="mt-2 flex flex-col gap-1">
+      <ul className="flex flex-col gap-1">
         {proposal.moves.map((move) => <li key={move.node_id}>{moveLine(scene, move)}</li>)}
       </ul>
       {fixedCount > 0 && (
-        <p className="mt-2 flex items-center gap-2 text-sm text-ink-muted">
+        <p className="flex items-center gap-2 text-sm text-ink-muted">
           <Lock size={14} weight="bold" aria-hidden />
           {fixedCount === 1 ? "1 fixed piece stays put" : `${fixedCount} fixed pieces stay put`}
         </p>
       )}
-      <ul className="measurement mt-2 text-sm text-ink-muted">
+      <ul className="measurement text-sm text-ink-muted">
         {inventoryLines(proposal).map((line) => <li key={line}>{line}</li>)}
       </ul>
-      <Button variant="primary" className="mt-3" autoFocus onClick={() => onTry(proposal.moves)}>Try this layout</Button>
+      <ProposalReview key={JSON.stringify(proposal.moves)} result={result} scene={scene} review={review} findingId={finding.id}
+        onRelook={() => undefined}
+        primary={<Button variant="primary" autoFocus onClick={() => onTry(proposal.moves)}>Try this layout</Button>} />
     </div>
   );
 }
 
-export function FixSuggestion({ scanId, scene, finding, onTry }: Props) {
-  const [state, setState] = useState<"idle" | "looking" | "failed">("idle");
-  const [result, setResult] = useState<ProposalResult | null>(null);
-
-  async function find() {
-    if (state === "looking") return;
-    setState("looking");
-    try {
-      setResult(await proposeFix(scanId, scene.revision, [finding.id]));
-      setState("idle");
-    } catch {
-      setState("failed");
-    }
-  }
-
-  if (result) return <Result result={result} scene={scene} onTry={onTry} />;
+export function FixSuggestion({ scanId, scene, finding, wishes, onTry }: Props) {
+  const review = useProposalReview(scanId, scene.revision, wishes);
+  const result = review.result;
   return (
-    <div className="mt-3">
-      <Button variant="chip" onClick={find} aria-disabled={state === "looking"}>
-        {state === "looking" ? <CircleNotch size={16} className="animate-spin" aria-hidden /> : <MagicWand size={16} weight="bold" aria-hidden />}
-        {state === "looking" ? "Looking for a layout" : "Find a layout that fixes this"}
-      </Button>
-      {state === "failed" && <p className="mt-2 text-problem">We couldn&apos;t look for a layout just now. Try again.</p>}
+    <div className="mt-3 flex flex-col gap-2">
+      {result ? (
+        <Result result={result} scene={scene} finding={finding} review={review} onTry={onTry} />
+      ) : (
+        <Button variant="chip" className="self-start" onClick={() => review.propose(finding.id)} aria-disabled={review.looking}>
+          {review.looking ? <CircleNotch size={16} className="animate-spin" aria-hidden /> : <MagicWand size={16} weight="bold" aria-hidden />}
+          {review.looking ? "Looking for a layout" : "Find a layout that fixes this"}
+        </Button>
+      )}
+      <SavedWishes review={review} findingId={result ? finding.id : null} onRelook={() => undefined} />
+      <ReviewFailure review={review} />
     </div>
   );
 }

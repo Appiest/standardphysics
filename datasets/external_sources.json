@@ -1,0 +1,55 @@
+{
+  "sources": [
+    {
+      "id": "marketgen",
+      "repository": "HXX/MarketGen",
+      "revision": "3197e018f8a9590587bc72601b1176020c64cc86",
+      "license": "CC BY-NC-SA 4.0",
+      "training_status": "license_and_adapter_review_required",
+      "training_ready": false,
+      "data_role": "supermarket_geometry_and_assets",
+      "staged_content": "scene_metadata_only",
+      "files": [
+        "scenes/export01/metadata.json",
+        "scenes/export02/metadata.json",
+        "scenes/export03/metadata.json",
+        "scenes/export04/metadata.json",
+        "scenes/export05/metadata.json",
+        "scenes/export06/metadata.json",
+        "scenes/export07/metadata.json",
+        "scenes/export08/metadata.json",
+        "scenes/export09/metadata.json",
+        "scenes/export10/metadata.json",
+        "scenes/export11/metadata.json",
+        "scenes/export12/metadata.json",
+        "scenes/export13/metadata.json",
+        "scenes/export14/metadata.json",
+        "scenes/export15/metadata.json",
+        "scenes/export16/metadata.json",
+        "scenes/export17/metadata.json",
+        "scenes/export18/metadata.json",
+        "scenes/export19/metadata.json",
+        "scenes/export20/metadata.json"
+      ]
+    },
+    {
+      "id": "imaginarium",
+      "repository": "HiHiAllen/Imaginarium-Dataset",
+      "revision": "1c49a7221ea25513fdf0f134029c6e8ed91b6cb0",
+      "license": "not_declared_for_dataset",
+      "training_status": "rights_and_adapter_review_required",
+      "training_ready": false,
+      "data_role": "indoor_scene_layouts_and_asset_metadata",
+      "staged_content": "asset_metadata_only",
+      "files": [
+        "imaginarium_asset_info.csv"
+      ],
+      "scene_archives": [
+        "imaginarium_3d_scene_layout_dataset_part1.tar.gz",
+        "imaginarium_3d_scene_layout_dataset_part2.tar.gz",
+        "imaginarium_3d_scene_layout_dataset_part3.tar.gz",
+        "imaginarium_3d_scene_layout_dataset_part4.tar.gz"
+      ]
+    }
+  ]
+}

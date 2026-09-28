@@ -31,6 +31,8 @@ MODEL_KEYS = (
 @pytest.fixture(autouse=True)
 def _no_models(request, monkeypatch):
     """Every test runs without credentials unless it asks for them."""
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    monkeypatch.setenv("WANDB_SILENT", "true")
     if "with_models" in request.fixturenames:
         return
     for name in MODEL_KEYS:

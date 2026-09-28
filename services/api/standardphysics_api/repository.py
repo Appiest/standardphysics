@@ -15,9 +15,11 @@ from standardphysics_contracts import (
     Assessment,
     CreateScanRequest,
     EvidenceBundle,
+    OwnerWish,
     Scan,
     Scenario,
     SceneGraph,
+    SpaceTypology,
     SurfaceCoverage,
     graph_hash,
 )
@@ -57,6 +59,8 @@ def _scan(connection: sqlite3.Connection, row: sqlite3.Row, with_photos: bool = 
         artifacts=_artifacts(connection, row["id"], with_photos),
         coverage=[SurfaceCoverage.model_validate(c) for c in json.loads(row["coverage_json"])],
         content_hash=row["content_hash"],
+        space_typology=row["space_typology"],
+        owner_wishes=_wishes_from(row["owner_wishes_json"]),
     )
 
 
@@ -70,12 +74,43 @@ def insert_scan(
     scan_id = scan_id or uuid.uuid4()
     replaces = str(request.replaces) if request.replaces else None
     connection.execute(
-        "INSERT INTO scans (id, name, created_at, device_model, duration_seconds, state, owner_id, replaces_scan_id)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (str(scan_id), request.name, now(), request.device_model, request.duration_seconds, state, str(owner_id),
-         replaces),
+        "INSERT INTO scans (id, name, created_at, device_model, duration_seconds, state, owner_id, space_typology,"
+        " replaces_scan_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            str(scan_id), request.name, now(), request.device_model, request.duration_seconds, state,
+            str(owner_id), _typology_value(request.space_typology), replaces,
+        ),
     )
     return scan_id
+
+
+def _typology_value(typology: SpaceTypology | None) -> str | None:
+    return None if typology is None else typology.value
+
+
+def set_space_typology(connection: sqlite3.Connection, scan_id: uuid.UUID, typology: SpaceTypology | None) -> None:
+    connection.execute(
+        "UPDATE scans SET space_typology = ? WHERE id = ?", (_typology_value(typology), str(scan_id))
+    )
+
+
+def space_typology(connection: sqlite3.Connection, scan_id: uuid.UUID) -> SpaceTypology | None:
+    row = connection.execute("SELECT space_typology FROM scans WHERE id = ?", (str(scan_id),)).fetchone()
+    return SpaceTypology(row["space_typology"]) if row and row["space_typology"] else None
+
+
+def _wishes_from(stored: str) -> list[OwnerWish]:
+    return [OwnerWish.model_validate(wish) for wish in json.loads(stored)]
+
+
+def set_owner_wishes(connection: sqlite3.Connection, scan_id: uuid.UUID, wishes: list[OwnerWish]) -> None:
+    stored = json.dumps([wish.model_dump(mode="json") for wish in wishes])
+    connection.execute("UPDATE scans SET owner_wishes_json = ? WHERE id = ?", (stored, str(scan_id)))
+
+
+def owner_wishes(connection: sqlite3.Connection, scan_id: uuid.UUID) -> list[OwnerWish]:
+    row = connection.execute("SELECT owner_wishes_json FROM scans WHERE id = ?", (str(scan_id),)).fetchone()
+    return _wishes_from(row["owner_wishes_json"]) if row else []
 
 
 def get_scan(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Scan | None:

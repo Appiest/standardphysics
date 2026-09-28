@@ -392,7 +392,7 @@ function GroupedFindings({ scan, scene, groups, selected, onToggle, onTryLayout 
       groups={groups}
       selectedId={selected?.id ?? null}
       onSelect={onToggle}
-      extra={(finding) => <FixSuggestion scanId={scan.id} scene={scene} finding={finding} onTry={onTryLayout} />}
+      extra={(finding) => <FixSuggestion scanId={scan.id} scene={scene} finding={finding} wishes={scan.owner_wishes} onTry={onTryLayout} />}
     />
   );
 }

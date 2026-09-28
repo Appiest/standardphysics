@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowClockwise, ArrowCounterClockwise, CheckCircle } from "@phosphor-icons/react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import type { Arrangement } from "@/components/workspace/useArrangement";
 import { ActionBar, StepHeading } from "./StepHeading";
@@ -18,11 +18,13 @@ function problemsLeft(arrangement: Arrangement, before: number): number {
 }
 
 /** Plan a layout: drag pieces on the model, see what's left to fix, and keep the plan without changing the scan. */
-export function PlanPanel({ arrangement, before, pieceName, onDone }: {
+export function PlanPanel({ arrangement, before, pieceName, review, onDone }: {
   arrangement: Arrangement;
   before: number;
   /** The piece in hand, or the one worth trying first. */
   pieceName: string | null;
+  /** What a proposed layout changes and a way to say what must stay, when the plan started from one. */
+  review?: ReactNode;
   onDone: () => void;
 }) {
   const [saved, setSaved] = useState(false);
@@ -32,6 +34,7 @@ export function PlanPanel({ arrangement, before, pieceName, onDone }: {
     <div className="flex min-h-full flex-col gap-6">
       <StepHeading title="Plan a layout">{planIntro(piece, arrangement.hasMoves)}</StepHeading>
       <PlanScore before={before} left={problemsLeft(arrangement, before)} checking={arrangement.checking} moved={arrangement.hasMoves} />
+      {review}
       {turnable && <TurnControls piece={piece} onTurn={(degrees) => arrangement.nudge(0, 0, degrees)} />}
       {arrangement.problem && <p role="alert" className="text-problem">{arrangement.problem}</p>}
       {saved && <SavedNote />}

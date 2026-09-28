@@ -55,10 +55,15 @@ def _a_scan() -> pathlib.Path | None:
 
 @pytest.fixture(scope="module")
 def scan() -> surfaces.Scan:
+    from standardphysics_pipeline.textures.camera import CameraMetadataError
+
     directory = _a_scan()
     if directory is None:
         pytest.skip("no scan with video on this machine")
-    return surfaces.open_scan(directory)
+    try:
+        return surfaces.open_scan(directory)
+    except CameraMetadataError as error:
+        pytest.skip(f"local scan lacks compatible metadata: {error}")
 
 
 @pytest.fixture(scope="module")

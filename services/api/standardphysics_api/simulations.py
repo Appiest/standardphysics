@@ -19,6 +19,7 @@ from standardphysics_agents.adaptive_redesign import route_trial_evidence
 from standardphysics_agents.evaluation.scan_campaign import run_campaign
 from standardphysics_agents.evaluation.scan_tasks import choose_task, propose_tasks
 from standardphysics_agents.mesh_collision import MeshCollisionIndex
+from standardphysics_agents.precedents import directives_for_space
 from standardphysics_agents.router import LocalPolicyRouter, TypeSafeRouter
 from standardphysics_agents.scenario_suggestion import suggest_scenario
 from standardphysics_agents.simulation_report import simulation_result
@@ -40,6 +41,7 @@ from standardphysics_contracts import (
     bounds_the_room,
     graph_hash,
 )
+from standardphysics_contracts.precedents import PrecedentDirective
 from standardphysics_pipeline import PipelineMeasurements
 
 from . import repository as repo
@@ -193,6 +195,7 @@ def _run_accessibility_loop(
     on_progress: Callable[[int], None] | None,
     on_cycle_start: Callable[[int], None] | None = None,
     on_candidate: Callable[[int, SceneGraph], None] | None = None,
+    directives: tuple[PrecedentDirective, ...] = (),
 ) -> AccessibilityLoopOutcome:
     """Run complete trial batches, allowing exactly one Astra repair between them."""
     current = measured_graph
@@ -222,6 +225,7 @@ def _run_accessibility_loop(
             ledger=ledger,
             lidar_mesh=mesh,
             on_progress=on_progress,
+            directives=directives,
         )
         final_candidate = final_batch.recommended_graph or current
         if on_candidate is not None:
@@ -261,6 +265,7 @@ def _run_accessibility_loop(
             route_trials=route_trial_evidence(
                 measured_graph, trial_result, request.router
             ),
+            directives=directives,
         )
         astra_calls += redesign.astra_calls
         for item in redesign.rounds:
@@ -320,6 +325,8 @@ def run_simulation(
             if row["mesh_artifact_id"] else None)
     ledger = stages.ledger_factory()
     rules = load_pack()
+    with database.connect() as connection:
+        directives = tuple(directives_for_space(repo.space_typology(connection, scan_id), graph))
 
     progress_stride = _progress_stride(request)
 
@@ -372,6 +379,7 @@ def run_simulation(
             budget=workflow_budget,
             on_progress=progress,
             on_candidate=publish_candidate,
+            directives=directives,
         )
         batch = loop_outcome.batch
     else:
@@ -387,6 +395,7 @@ def run_simulation(
             ledger=ledger,
             lidar_mesh=mesh,
             on_progress=progress,
+            directives=directives,
         )
         candidate = batch.recommended_graph or graph
         loop_outcome = AccessibilityLoopOutcome(

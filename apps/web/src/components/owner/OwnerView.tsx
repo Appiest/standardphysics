@@ -4,24 +4,26 @@ import { ArrowLeft } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { useProposalReview } from "@/components/proposal/useProposalReview";
 import { useArrangement } from "@/components/workspace/useArrangement";
 import { canBeCounter } from "@/lib/counter";
 import { groupFindings } from "@/lib/findings";
-import { proposeFix } from "@/lib/layout-client";
 import { inApp, listenToApp, tellApp } from "@/lib/native-bridge";
 import { markStatus, savePlan, walkingRoute } from "@/lib/owner-client";
 import { type ChecklistStatus, checklistRows, type Destination, followUps, isFixing, type Panel, panelFor, pieceToTry, requestsForStep } from "@/lib/owner-journey";
-import type { Assessment, Checklist, Finding, Journey, OwnerRequest, Scan, Scenario, SceneGraph, Vec3 } from "@/types/contracts";
+import type { Assessment, Checklist, Finding, Journey, NodeMove, OwnerRequest, ProposalResult, Scan, Scenario, SceneGraph, Vec3 } from "@/types/contracts";
 import { CounterStep } from "./CounterStep";
 import { OwnerModel } from "./OwnerModel";
 import { PathStep } from "./PathStep";
 import { PlanPanel } from "./PlanPanel";
+import { PlanReview } from "./PlanReview";
 import { RequestList } from "./RequestList";
 import { ResultsPanel, type Row } from "./ResultsPanel";
 import { SavePrompt } from "./SavePrompt";
 import { SharePanel } from "./SharePanel";
 import { StepHeading } from "./StepHeading";
 import { StillToCheck } from "./StillToCheck";
+import { FixAll } from "./FixAll";
 import { ToolsPanel } from "./ToolsPanel";
 import { guessCounter, useOwnerModel } from "./useOwnerModel";
 import { usePathEditor } from "./usePathEditor";
@@ -182,6 +184,8 @@ function OwnerShop(props: ShopProps) {
   const [tool, setTool] = useState<Tool | null>(null);
   const [walkedLegs, setWalkedLegs] = useState<Vec3[][]>([]);
   const [fixingHere, setFixingHere] = useState(false);
+  const [planFinding, setPlanFinding] = useState<Finding | null>(null);
+  const review = useProposalReview(scan.id, scene.revision, scan.owner_wishes);
   const save = useSaveAsk(guest);
   const statuses = useStatuses(scan.id, guest, save.ask);
   const path = usePathEditor(scan.id, props.suggestedPath, props.defaultPlaces);
@@ -220,11 +224,26 @@ function OwnerShop(props: ShopProps) {
     if (tryPiece) arrangement.setActiveId(tryPiece.id);
   };
 
-  const planFor = async (finding: Finding) => {
+  const showProposal = (result: ProposalResult) => {
+    if (result.proposal) arrangement.load(result.proposal.moves);
+    else arrangement.reset();
+  };
+  const planFor = (finding: Finding) => {
     setTool("plan");
     setSelected(null);
-    const result = await proposeFix(scan.id, scene.revision, [finding.id]).catch(() => null);
-    if (result?.proposal) arrangement.load(result.proposal.moves);
+    setPlanFinding(finding);
+    review.propose(finding.id, showProposal);
+  };
+  const openFixedLayout = (moves: NodeMove[]) => {
+    setTool("plan");
+    setSelected(null);
+    arrangement.load(moves);
+  };
+  const leavePlan = () => {
+    arrangement.reset();
+    review.clear();
+    setPlanFinding(null);
+    setTool(null);
   };
 
   const content: Record<Panel | Tool, () => ReactNode> = {
@@ -234,7 +253,10 @@ function OwnerShop(props: ShopProps) {
     counter: () => <CounterStep scanId={scan.id} scene={scene} picked={counter} onSkip={() => setCounterSkipped(true)} />,
     path: () => <PathStep path={path} />,
     follow_ups: () => <FollowUpPanel scanId={scan.id} journey={journey} requests={props.requests} />,
-    plan: () => <PlanPanel arrangement={arrangement} before={problems.length} pieceName={pieceLabel(scene, arrangement.activeId) ?? tryPiece?.label ?? null} onDone={() => { arrangement.reset(); setTool(null); }} />,
+    plan: () => (
+      <PlanPanel arrangement={arrangement} before={problems.length} pieceName={pieceLabel(scene, arrangement.activeId) ?? tryPiece?.label ?? null}
+        review={<PlanReview review={review} scene={scene} finding={planFinding} onRelook={showProposal} onPreview={arrangement.setActiveId} />} onDone={leavePlan} />
+    ),
     wheelchair: () => <WheelchairPanel onDone={() => setTool(null)} />,
     results: () => (
       <ResultsPanel
@@ -251,7 +273,8 @@ function OwnerShop(props: ShopProps) {
         actions={{ onShow: (finding) => setSelected(finding.id === selected?.id ? null : finding), onStatus: statuses.set, onPlan: planFor }}
       >
         {!readOnly && <SharePanel scanId={scan.id} shopName={scan.name} onShared={save.ask} />}
-        {!readOnly && journey.tools_unlocked && <ToolsPanel scanId={scan.id} inApp={inApp()} onPlan={startPlanning} onWheelchair={startWheelchair} />}
+        {!readOnly && journey.tools_unlocked && <ToolsPanel scanId={scan.id} inApp={inApp()} onPlan={startPlanning} onWheelchair={startWheelchair}
+          lead={<FixAll key={scene.revision} scanId={scan.id} revision={scene.revision} onOpen={openFixedLayout} />} />}
       </ResultsPanel>
     ),
   };

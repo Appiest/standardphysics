@@ -152,6 +152,26 @@ def test_unknown_nodes_stay_refused_under_nonidentity_placement() -> None:
     assert "unknown node" in str(error.value)
 
 
+def test_placing_a_room_carries_where_a_moved_piece_was_measured() -> None:
+    node_id, node = _node("rearranged", 1.0, 0.0, 0.5)
+    rearranged = node.model_copy(update={"measured_position": Vec3(x=0.0, y=0.0, z=0.5)})
+    graph = SceneGraph(scan_id=uuid.uuid4(), revision=1, nodes=[rearranged])
+
+    placed = apply_room_placements(graph, [_placement([node_id], yaw=90.0, tx=2.0, ty=0.0)]).by_id(node_id)
+
+    assert placed.transform.position.x == pytest.approx(2.0, abs=1e-9)
+    assert placed.transform.position.y == pytest.approx(1.0, abs=1e-9)
+    assert placed.measured_position.x == pytest.approx(2.0, abs=1e-9)
+    assert placed.measured_position.y == pytest.approx(0.0, abs=1e-9)
+    assert placed.measured_position.z == pytest.approx(0.5)
+
+
+def test_placing_a_room_leaves_unmoved_pieces_without_a_record() -> None:
+    node_id, node = _node("untouched", 1.0, 0.0)
+    placed = apply_room_placements(_graph((node_id, node)), [_placement([node_id], yaw=30.0, tx=1.0, ty=1.0)])
+    assert placed.by_id(node_id).measured_position is None
+
+
 def test_a_placed_room_keeps_what_lies_flat_lying_flat() -> None:
     """A real scan's floor lies flat in its own frame; placing the room turns it, never stands it up."""
     graph = parse_room_json(json.loads((REPO / "datasets/phone/test1/room.json").read_text()))

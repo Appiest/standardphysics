@@ -6,6 +6,7 @@ import math
 from dataclasses import dataclass
 
 from standardphysics_contracts import AdaptiveRoundResult, Scenario, SceneGraph, SimulationResult, graph_hash
+from standardphysics_contracts.precedents import PrecedentDirective
 
 from .accessibility_intelligence import AccessibilityIntelligence, LayoutCandidate
 from .assess import assess
@@ -58,6 +59,7 @@ def run_adaptive_redesign(
     intelligence: AccessibilityIntelligence | None = None,
     scenario: Scenario | None = None,
     route_trials: dict | None = None,
+    directives: tuple[PrecedentDirective, ...] = (),
 ) -> AdaptiveRedesignResult:
     """Try one candidate per round and stop at the first unsafe or unhelpful step.
 
@@ -65,6 +67,8 @@ def run_adaptive_redesign(
     for Astra and as evidence for Jev, so a layout the route trials already
     cleared still gets its remaining furniture problems looked at.
     `route_trials` is what those trials learned; Astra builds on it.
+    `directives` are the space type's ADA layout directives: Astra sees them
+    and any layout that breaks one is refused.
     """
     if not 1 <= rounds <= 8:
         raise ValueError("adaptive redesign rounds must be between 1 and 8")
@@ -115,6 +119,7 @@ def run_adaptive_redesign(
             ledger=ledger,
             collision_index=redesign_collision_index,
             model=astra_client,
+            directives=directives,
         )
         if not proposal.accepted or proposal.graph is None:
             history.append(

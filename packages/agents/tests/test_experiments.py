@@ -417,10 +417,11 @@ class TestAgainstTheRealSdk:
     @pytest.fixture
     def offline(self, monkeypatch, tmp_path):
         module = pytest.importorskip("wandb")
+        module.teardown()
         monkeypatch.setenv("WANDB_MODE", "offline")
         monkeypatch.setenv("WANDB_DIR", str(tmp_path))
         monkeypatch.setenv("WANDB_SILENT", "true")
-        monkeypatch.delenv("WANDB_API_KEY", raising=False)
+        monkeypatch.setenv("WANDB_API_KEY", "dummy-for-offline")
         monkeypatch.setenv("WANDB_ENTITY", "team")
         monkeypatch.setenv("WANDB_PROJECT", "shop-review")
         yield tmp_path
