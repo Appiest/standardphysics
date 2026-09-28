@@ -20,7 +20,11 @@
 # runs deploy/digitalocean/check_serving.py in the API container every five
 # seconds, for up to SP_DEPLOY_READY_SECONDS (180 by default), until
 # /health/ready answers 200, /health/details reports the commit just deployed
-# and the workspace serves its sign-in page. Only then does it add a line to
+# and the workspace serves its sign-in page. It also asks
+# https://$APP_DOMAIN/api/auth/session, from APP_DOMAIN in the box's .env,
+# and expects the API's signed-out 401, which proves Caddy's certificate and
+# its routing of the browser's /api requests. SP_DEPLOY_PUBLIC_ORIGIN names
+# another origin, and a box with no APP_DOMAIN skips it. Only then does it add a line to
 # /var/log/standardphysics-deploys.log on the box with the commit and the
 # registry digest it started, or untested-local-build, so that file lists only
 # deploys that came up and is the list of what to roll back to. A deploy that
@@ -57,6 +61,7 @@ BUILD="${SP_DEPLOY_BUILD:-}"
 IMAGE="${SP_DEPLOY_IMAGE:-ghcr.io/imhaohao/standardphysics}"
 READY_SECONDS="${SP_DEPLOY_READY_SECONDS:-180}"
 DRAIN_SECONDS="${SP_DEPLOY_DRAIN_SECONDS:-1200}"
+PUBLIC_ORIGIN="${SP_DEPLOY_PUBLIC_ORIGIN:-}"
 
 # Read the way the Droplet's own tools read the queue: the API container's
 # Python opening the database it holds, read-only, so this cannot take a lock
@@ -198,10 +203,13 @@ else
   echo 'SP_DEPLOY_BUILD=1 builds it on the box instead, untested.' >&2
   exit 66
 fi
+public_origin='$PUBLIC_ORIGIN'
+app_domain=\$(grep -E '^APP_DOMAIN=' .env 2>/dev/null | tail -n 1 | cut -d= -f2-) || true
+[ -n \"\$public_origin\" ] || [ -z \"\$app_domain\" ] || public_origin=https://\$app_domain
 drain_then_wait_for_running_jobs
 docker compose up -d
 waited=0
-until verdict=\$(docker compose exec -T api /opt/venv/bin/python - \"\$GIT_SHA\" < check_serving.py 2>&1); do
+until verdict=\$(docker compose exec -T api /opt/venv/bin/python - \"\$GIT_SHA\" \"\$public_origin\" < check_serving.py 2>&1); do
   if [ \"\$waited\" -ge '$READY_SECONDS' ]; then
     echo \"After \$waited seconds the new stack is still not serving \$GIT_SHA: \$verdict\" >&2
     previous=\$(cat '$HISTORY.1' '$HISTORY' 2>/dev/null | tail -n 1 | cut -d ' ' -f 2) || true

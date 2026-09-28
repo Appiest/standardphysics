@@ -266,7 +266,11 @@ it deployed. Every five seconds it runs `deploy/digitalocean/check_serving.py`
 inside the API container, which passes once `/health/ready` answers 200,
 `/health/details` reports the commit just deployed, and the workspace serves
 its sign-in page. The check runs in the container because the API publishes
-no port. It gives up after `SP_DEPLOY_READY_SECONDS`, 180 by default. `doctor.sh`
+no port, so those three go past Caddy. It then asks
+`https://$APP_DOMAIN/api/auth/session` with no cookie and expects the API's
+401, which proves the certificate and that Caddy sends the browser's `/api`
+requests to the API. `SP_DEPLOY_PUBLIC_ORIGIN` names another origin, and a box
+with no `APP_DOMAIN` in its `.env` skips this step. It gives up after `SP_DEPLOY_READY_SECONDS`, 180 by default. `doctor.sh`
 runs the same check against the commit checked out on the box.
 
 Only a deploy that passes is written down. It appends the time, the commit and
@@ -297,7 +301,7 @@ docker tag ghcr.io/imhaohao/standardphysics:$GIT_SHA standardphysics:$GIT_SHA
 # count the unfinished jobs, as above, and stop here if there are any
 docker compose up -d
 # repeat until it prints "serving", then append the line to the deploy log
-docker compose exec -T api /opt/venv/bin/python - "$GIT_SHA" < check_serving.py
+docker compose exec -T api /opt/venv/bin/python - "$GIT_SHA" "https://$(grep ^APP_DOMAIN= .env | cut -d= -f2-)" < check_serving.py
 ```
 
 ## Rolling back
