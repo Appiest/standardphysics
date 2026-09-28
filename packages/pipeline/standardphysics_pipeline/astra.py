@@ -394,12 +394,21 @@ def _remote_batch(
         payload = transport(_chat_url(), body, _chat_headers(api_key))
     else:
         payload = _openrouter_post(_chat_url(), body, _chat_headers(api_key), deadline=deadline)
+    _log_usage(body.get("model"), payload.get("usage"))
     return _patches_from_model(
         payload,
         scoped,
         allow_appearance=_body_has_images(body),
         evidence_by_node=_body_evidence_by_node(body),
     )
+
+
+def _log_usage(model: Any, usage: Any) -> None:
+    """One line per labelling request with its tokens and, where the host reports it, its cost in dollars."""
+    if not isinstance(usage, dict):
+        return
+    logger.info("astra_usage model=%s prompt_tokens=%s completion_tokens=%s cost=%s", model,
+                usage.get("prompt_tokens"), usage.get("completion_tokens"), usage.get("cost"))
 
 
 def _body_has_images(body: dict[str, Any]) -> bool:
@@ -476,6 +485,7 @@ def _chat_body(
         "messages": [{"role": "system", "content": INSTRUCTION}, {"role": "user", "content": content}],
         "response_format": {"type": "json_schema", "json_schema": {"name": "astra_labels", "strict": True, "schema": LABEL_SCHEMA}},
         "provider": provider_routing(model),
+        "usage": {"include": True},
     }
 
 
