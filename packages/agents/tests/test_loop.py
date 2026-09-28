@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 from standardphysics_agents import assess, graph_hash
-from standardphysics_agents.loop import HANDLERS, MAX_PASSES, Loop, run_loop, run_pass
+from standardphysics_agents.loop import HANDLERS, MAX_PASSES, Loop, loop_steps, run_loop, run_pass
 from standardphysics_agents.router import (
     ACTIONS,
     MAX_FIX_ATTEMPTS,
@@ -293,3 +293,18 @@ def test_three_failed_rearrangements_end_the_loop(
     failed = sum(1 for s in steps if s.result.fix_failed)
     assert failed <= MAX_FIX_ATTEMPTS
     assert len(steps) <= 12
+
+
+def test_each_pass_is_handed_over_before_the_next_one_runs(
+    graph, scenario, pipeline, pack, ledger, question
+):
+    """The API streams passes to the workspace, so the first cannot wait on the rest."""
+    router = ScriptedRouter(
+        {"action": "RESCAN_AREA", "target_finding_ids": [str(question.id)]},
+    )
+    passes = loop_steps(graph, scenario, pipeline, router, rules=pack, ledger=ledger)
+
+    first = next(iter(passes))
+
+    assert first.action == "RESCAN_AREA"
+    assert len(router.seen) == 1

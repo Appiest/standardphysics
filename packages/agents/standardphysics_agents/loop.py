@@ -341,7 +341,7 @@ def loop_steps(
     for pass_number in range(1, max_passes + 1):
         step = run_pass(loop, pass_number)
         steps.append(step)
+        yield step
         loop = _advance(loop, step)
         if _stop(steps, loop):
             break
-    return steps
