@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# the marimo notebook's WebAssembly export, built by `npm run notebook:export`
+/.notebooks/
+
 # production
 /build
 

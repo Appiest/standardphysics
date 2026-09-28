@@ -12,6 +12,8 @@ WORKDIR /app/apps/web
 COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci --no-audit --no-fund --loglevel=error
 COPY apps/web ./
+# The deck imports the fine-tuning ledger the marimo notebook draws, from outside apps/web.
+COPY notebooks/public /app/notebooks/public
 # The deck imports fixture JSON through the @fixtures monorepo alias in
 # tsconfig; the build needs those files where the alias points.
 COPY packages/fixtures/standardphysics_fixtures/data /app/packages/fixtures/standardphysics_fixtures/data
@@ -94,6 +96,15 @@ RUN /opt/venv/bin/pip install --no-cache-dir --no-deps \
       -e packages/contracts -e packages/fixtures -e packages/pipeline \
       -e "packages/agents[observability]" -e services/api \
  && /opt/venv/bin/pip check
+
+# The team's fine-tuning page serves notebooks/finetune_story.py as a marimo
+# WebAssembly export: the browser runs its Python, so the server only hands out files.
+# marimo finds the notebook's stylesheet relative to where it runs, hence the cd.
+COPY notebooks ./notebooks
+RUN /opt/venv/bin/pip install --no-cache-dir "marimo>=0.24" \
+ && cd notebooks \
+ && /opt/venv/bin/marimo export html-wasm finetune_story.py \
+      -o ../apps/web/.notebooks/finetune-story --mode run -f
 
 COPY --from=web /app/apps/web/.next ./apps/web/.next
 COPY --from=web /app/apps/web/node_modules ./apps/web/node_modules
