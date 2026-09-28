@@ -16,6 +16,7 @@ elsewhere on the counter down on the section too, clear of the high part, since
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from typing import Literal
 from uuid import UUID
 
@@ -83,7 +84,7 @@ class LoweredSection(BaseModel):
     carry: list[UUID] = Field(default_factory=list, max_length=4)
 
 
-def _replace_nodes(graph: SceneGraph, changed: dict[UUID, SceneNode], added: list[SceneNode] = ()) -> SceneGraph:
+def _replace_nodes(graph: SceneGraph, changed: dict[UUID, SceneNode], added: Sequence[SceneNode] = ()) -> SceneGraph:
     nodes = [changed.get(node.id, node) for node in graph.nodes] + list(added)
     return graph.model_copy(update={"nodes": nodes, "revision": graph.revision + 1, "base_hash": None})
 

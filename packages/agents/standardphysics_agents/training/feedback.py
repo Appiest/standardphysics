@@ -25,7 +25,7 @@ from standardphysics_agents.fix.constraints import MAX_TRAVEL_METERS
 from standardphysics_agents.fix.moves import measured_position
 
 from .checker import TrainingChecker
-from .edits import node_moves, parse_edits
+from .edits import TrainingEdits, node_moves, parse_edits
 from .prompt import room_view
 from .snapped_reward import MOVED_PINNED, Verdict, judge
 
@@ -135,9 +135,16 @@ def _violation_note(violation, candidate: SceneGraph, room: SceneGraph, names: N
     return f"{violation.kind.replace('_', ' ')}: {violation.detail} ({piece})."
 
 
+def _parsed(completion: str) -> TrainingEdits:
+    """The edits of an answer already known to parse."""
+    edits = parse_edits(completion)
+    assert edits is not None
+    return edits
+
+
 def explain_constraints(completion: str, room: SceneGraph) -> tuple[str, tuple[str, ...]]:
     """The first broken constraint's kind, and every broken constraint in plain words."""
-    candidate = apply_moves(room, node_moves(parse_edits(completion)))
+    candidate = apply_moves(room, node_moves(_parsed(completion)))
     broken = violations(room, candidate)
     names = Names.of(room)
     notes = tuple(dict.fromkeys(_violation_note(item, candidate, room, names) for item in broken))
@@ -179,7 +186,7 @@ def _gate_notes(category: str, before, after, names: Names) -> list[str]:
 
 
 def _gate_attempt(verdict: Verdict, completion: str, room: SceneGraph, checker: TrainingChecker) -> Attempt:
-    candidate = apply_moves(room, node_moves(parse_edits(completion)))
+    candidate = apply_moves(room, node_moves(_parsed(completion)))
     before, after = checker.assess(room), checker.assess(candidate)
     reasons = [part.strip() for part in verdict.reason.split(";") if part.strip()]
     category = gate_category(reasons)
@@ -191,7 +198,7 @@ def _gate_attempt(verdict: Verdict, completion: str, room: SceneGraph, checker: 
 
 def _pinned_attempt(verdict: Verdict, completion: str, room: SceneGraph, checker: TrainingChecker) -> Attempt:
     names = Names.of(room)
-    held = [names.node(move.node_id) for move in parse_edits(completion).moves if move.node_id in checker.pinned]
+    held = [names.node(move.node_id) for move in _parsed(completion).moves if move.node_id in checker.pinned]
     notes = tuple(f"{node.label} ({node.id}) must stay where it is: the scan is not sure it is really there."
                   for node in held if node is not None)
     return Attempt(verdict, "pinned", notes)

@@ -88,6 +88,6 @@ def dining_surface_height(ctx: CheckContext) -> list[Observation]:
             },
             dedupe_key=(RULE_ID,),
             reason="measured" if len(complying) >= needed else "too_few_at_height",
-            asks_for="a measured table surface" if ambiguous else None,
+            asks_for="measurement" if ambiguous else None,
         )
     ]

@@ -157,7 +157,7 @@ def _point_of_sale(observation: Observation, rule: RuleSpec) -> FindingCopy:
 
 
 def _height_with_uncertainty(observation: Observation, rule: RuleSpec) -> str:
-    shown = measured(observation.measured_inches, rule.threshold)
+    shown = measured(_measured_inches(observation), rule.threshold)
     uncertainty = observation.facts.get("uncertainty_inches")
     return f"{shown} (uncertainty ±{inches(uncertainty)})" if uncertainty is not None else shown
 
@@ -224,7 +224,7 @@ def _turning_space(observation: Observation, rule: RuleSpec) -> FindingCopy:
 
 def _restroom_turning(observation: Observation, rule: RuleSpec) -> FindingCopy:
     needed = inches(rule.threshold)
-    shown = measured(observation.measured_inches, rule.threshold)
+    shown = measured(_measured_inches(observation), rule.threshold)
     if observation.satisfied:
         return FindingCopy(
             title="There's room to turn around in the restroom",
@@ -392,12 +392,12 @@ def _reach(observation: Observation, rule: RuleSpec) -> FindingCopy:
     if observation.reason == "too_low":
         return FindingCopy(
             title=f"The {subject} is too low to reach",
-            detail=f"Its bottom is {inches(observation.measured_inches)} up. A seated person reaches down to {low}.",
+            detail=f"Its bottom is {inches(_measured_inches(observation))} up. A seated person reaches down to {low}.",
             fix=f"Raise the {subject} so it sits between {low} and {high} up.",
         )
     return FindingCopy(
         title=f"The {subject} is too high to reach",
-        detail=f"Its top is {inches(observation.measured_inches)} up. A seated person reaches up to {high}.",
+        detail=f"Its top is {inches(_measured_inches(observation))} up. A seated person reaches up to {high}.",
         fix=f"Lower the {subject} so its top is no more than {high} up.",
     )
 

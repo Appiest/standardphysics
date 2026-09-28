@@ -70,6 +70,10 @@ HALF_BODY_DEPTH = 0.15
 """How far behind the surface a photo carved the middle of a body stands: about half a torso."""
 
 
+PhotoView = tuple[PhotoCamera, list[Detection], np.ndarray | None]
+"""A photo's view of the mesh: its camera, what it detected, and its depth buffer when one was drawn."""
+
+
 @dataclass(frozen=True)
 class PersonVolume:
     """Where one person stood long enough to be scanned: an upright cylinder from the floor."""
@@ -102,7 +106,7 @@ class PeopleRemoval:
 def person_points(
     points: np.ndarray,
     graph: SceneGraph,
-    views: list[tuple[PhotoCamera, list[Detection], np.ndarray | None]],
+    views: list[PhotoView],
 ) -> tuple[np.ndarray, int]:
     """Which points are a person's surface, and in how many frames a person appeared.
 
@@ -194,7 +198,7 @@ def _in_a_person(points: np.ndarray, camera: PhotoCamera, detections: list[Detec
 def without_people(
     points: np.ndarray,
     graph: SceneGraph,
-    views: list[tuple[PhotoCamera, list[Detection], np.ndarray | None]],
+    views: list[PhotoView],
 ) -> PeopleRemoval:
     """The mesh minus the surfaces people occupied and the volumes they stood in, with the room's structure kept."""
     is_person, frames = person_points(points, graph, views)
@@ -208,7 +212,7 @@ def without_people(
 def in_person_volumes(
     points: np.ndarray,
     graph: SceneGraph,
-    views: list[tuple[PhotoCamera, list[Detection], np.ndarray | None]],
+    views: list[PhotoView],
 ) -> np.ndarray:
     """Points of a full-resolution mesh standing where a person stood, the room's structure kept.
 
@@ -229,7 +233,7 @@ def _inside_any(points: np.ndarray, volumes: tuple[PersonVolume, ...] | list[Per
 def person_volumes(
     points: np.ndarray,
     graph: SceneGraph,
-    views: list[tuple[PhotoCamera, list[Detection], np.ndarray | None]],
+    views: list[PhotoView],
 ) -> list[PersonVolume]:
     """Every place at least two photos carve a standing body, as a volume to clear."""
     loose = points[~structure_points(points, graph) & ~claimed_by_any(points, graph)]
@@ -257,7 +261,7 @@ class _BodySighting:
 
 def _person_carves(
     loose: np.ndarray,
-    views: list[tuple[PhotoCamera, list[Detection], np.ndarray | None]],
+    views: list[PhotoView],
 ) -> list[_BodySighting]:
     carved = []
     for camera, detections, depth_buffer in views:

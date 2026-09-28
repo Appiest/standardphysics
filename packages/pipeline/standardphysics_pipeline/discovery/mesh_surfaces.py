@@ -218,7 +218,7 @@ def _components(centres: np.ndarray, owners: np.ndarray, vertical: np.ndarray) -
 
 def _candidate_nodes(pieces: list[SurfacePiece], graph: SceneGraph,
                      floor_z: float | None) -> list[SceneNode]:
-    candidates = []
+    candidates: list[SceneNode] = []
     for index in sorted(range(len(pieces)), key=lambda item: -pieces[item].area_m2):
         piece = pieces[index]
         if len(candidates) >= MAX_CANDIDATES:

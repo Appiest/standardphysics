@@ -327,7 +327,8 @@ class Worker:
             job = repo.claim_job(connection, texture_only, kind=kind)
         if job is None:
             return False
-        pulse = self.pulses.get(kind if kind is not None else texture_only) or LoopPulse()
+        lane = kind if kind is not None else texture_only
+        pulse = (self.pulses.get(lane) if lane is not None else None) or LoopPulse()
         running = RunningJob(job["kind"], job["id"], time.monotonic(), self.settings.job_deadline_seconds(job["kind"]))
         pulse.begin(running)
         self._on_this_thread.job = running
@@ -970,7 +971,9 @@ def _job_error(kind: str, error: Exception) -> str:
 
 def _claim_filter(lane: bool | str) -> tuple[bool | None, str | None]:
     """The `run_once` arguments that claim only this lane's jobs."""
-    return (None, lane) if lane in (REARRANGE, FURNITURE) else (lane, None)
+    if isinstance(lane, str):
+        return None, lane
+    return lane, None
 
 
 def is_transient(error: BaseException) -> bool:

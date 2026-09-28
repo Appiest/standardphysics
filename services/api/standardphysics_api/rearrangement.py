@@ -239,6 +239,7 @@ def _inputs(database, scan_id: uuid.UUID, revision: int) -> Inputs:
 def ask_patiently(rearranger: Rearranger, messages: list[dict], on_warming: Callable[[], None]) -> list[str]:
     """Ask, and while the deployment is starting from zero, wait and ask again for up to ten minutes."""
     model, started, delay = rearranger.model, rearranger.clock(), FIRST_RETRY_SECONDS
+    assert model is not None, "only a configured rearranger is asked"
     while True:
         try:
             return model.complete(messages, rearranger.sampling)
@@ -251,8 +252,9 @@ def ask_patiently(rearranger: Rearranger, messages: list[dict], on_warming: Call
 
 
 def run_suggestion(database, rearranger: Rearranger, stages, scan_id: uuid.UUID, revision: int) -> None:
-    if hasattr(rearranger.model, "reset_job"):
-        rearranger.model.reset_job()
+    reset_job = getattr(rearranger.model, "reset_job", None)
+    if reset_job is not None:
+        reset_job()
     inputs = _inputs(database, scan_id, revision)
     plan = scan_plan(scan_id, inputs.graph, inputs.scenario)
     checker = whole_checker(plan)
@@ -375,8 +377,10 @@ def describe(found: Search, inputs: Inputs, stages, revision: int, *, nothing_to
 # --- letting the deployment run, and scaling it back to zero ------------------
 
 
-def _controls_deployment(rearranger: Rearranger) -> bool:
-    return rearranger.model is not None and rearranger.model.controls_deployment
+def _deployed_model(rearranger: Rearranger) -> RearrangeModel | None:
+    """The model when it runs on a deployment this server scales, else None."""
+    model = rearranger.model
+    return model if model is not None and model.controls_deployment else None
 
 
 def _hold(database) -> bool:
@@ -404,13 +408,14 @@ def deployment_lease(database, rearranger: Rearranger):
     The row is marked before the PATCH is sent, so a PATCH that half-happened
     still gets scaled back down.
     """
-    if not _controls_deployment(rearranger):
+    model = _deployed_model(rearranger)
+    if model is None:
         yield
         return
     already_running = _hold(database)
     try:
         if not already_running:
-            rearranger.model.allow_one_replica()
+            model.allow_one_replica()
         yield
     finally:
         _release(database, rearranger.clock() + rearranger.keep_warm_seconds)
@@ -436,10 +441,11 @@ def scale_down_when_idle(database, rearranger: Rearranger) -> bool:
     server never finished, so it is scaled down straight away. Returns whether
     it scaled anything down.
     """
-    if not _controls_deployment(rearranger) or not _due_to_scale_down(database, rearranger.clock()):
+    model = _deployed_model(rearranger)
+    if model is None or not _due_to_scale_down(database, rearranger.clock()):
         return False
     try:
-        rearranger.model.scale_to_zero()
+        model.scale_to_zero()
     except (ModelFailed, ValueError) as error:
         log.warning("could not scale the rearrangement deployment to zero yet: %s", error)
         return False

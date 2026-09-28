@@ -54,7 +54,7 @@ from .extent import MeshViews, measured_on_the_mesh
 from .grow import grown, regions_of, seen_from
 from .merge import Candidate, DiscoveredObject, merge_candidates
 from .mesh_surfaces import SegmentedSurfaces, segment_surfaces
-from .people import PeopleRemoval, PersonVolume, without_people
+from .people import PeopleRemoval, PersonVolume, PhotoView, without_people
 from .placement import (
     at_its_surface,
     part_of_a_scanned_piece,
@@ -160,6 +160,7 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
     graph = inputs.graph
     if graph.capture_to_room is None:
         raise DiscoveryError("the scan has no capture_to_room transform, so photos cannot be projected")
+    capture_to_room = graph.capture_to_room
     points = _mesh_points(inputs)
     cameras = _cameras(inputs, graph)
     requests: list[ModelRequestInfo] = []
@@ -168,7 +169,8 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
         cameras, inputs.frame_paths, transport, _cache_for(inputs), orientations, recorded=requests,
     )
     buffers = {camera.frame_id: depth_buffer(camera, points) for camera in cameras}
-    views = [(camera, detections.get(camera.frame_id, []), buffers[camera.frame_id]) for camera in cameras]
+    views: list[PhotoView] = [(camera, detections.get(camera.frame_id, []), buffers[camera.frame_id])
+                              for camera in cameras]
     removal = without_people(points, graph, views)
     worktops = measure_worktops(graph, removal.points)
     graph = _with_replaced(graph, worktops)
@@ -193,7 +195,7 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
         "nodes": [replaced.get(node.id, node) for node in graph.nodes]
         + [node for node in discovered if node.id not in {existing.id for existing in graph.nodes}],
     })
-    surfaces = segment_surfaces(room_faces(inputs.lidar_mesh_path, graph.capture_to_room), updated_graph, graph)
+    surfaces = segment_surfaces(room_faces(inputs.lidar_mesh_path, capture_to_room), updated_graph, graph)
     return DiscoveryResult(
         nodes=list(discovery_nodes.values()),
         surfaces=surfaces,
