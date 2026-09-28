@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 
 from standardphysics_agents.training.checker import TrainingChecker
 from standardphysics_agents.training.edits import apply_edits, node_moves, parse_edits
-from standardphysics_agents.training.menu import build_menu, menu_messages, resolve
+from standardphysics_agents.training.menu import Menu, build_menu, menu_messages, resolve
 from standardphysics_agents.training.owner import WishBook, stated_book
 from standardphysics_contracts import ModelLoopEvent, ModelLoopInfo, ModelLoopRequest, NodeMove, SceneGraph, Vec3
 
@@ -67,14 +67,20 @@ class ModelLoop:
     start: SceneGraph
     checker: TrainingChecker
     stated: WishBook
-    current: SceneGraph | None = None
+    current: SceneGraph = field(init=False)
     moves: dict = field(default_factory=dict)
     last: dict | None = None
-    menu: object = None
+    menu: Menu | None = None
     stop: str = ""
 
     def __post_init__(self) -> None:
-        self.current = self.current or self.start
+        self.current = self.start
+
+    def offered(self) -> Menu:
+        """The menu the last prompt showed; a reply only means something against it."""
+        if self.menu is None:
+            raise RuntimeError("a reply arrived before any menu was offered")
+        return self.menu
 
     def fixable_left(self) -> int:
         return len(self.checker.fixable_problems(self.checker.assess(self.current)))
@@ -84,25 +90,27 @@ class ModelLoop:
         if self.fixable_left() == 0:
             self.stop = "Every problem furniture can fix is fixed."
             return None
-        self.menu = furniture_only(build_menu(self.current, self.checker, stated=self.stated))
-        if not self.menu.options:
+        menu = furniture_only(build_menu(self.current, self.checker, stated=self.stated))
+        self.menu = menu
+        if not menu.options:
             self.stop = "The menu has no move left for what remains."
             return None
-        return menu_messages(self.current, self.checker, self.menu, self.last)
+        return menu_messages(self.current, self.checker, menu, self.last)
 
     def take(self, turn: int, reply: str) -> ModelLoopEvent:
-        resolution = resolve(reply, self.current, self.menu, self.checker.pinned)
+        menu = self.offered()
+        resolution = resolve(reply, self.current, menu, self.checker.pinned)
         edits = parse_edits(resolution.completion)
         added = node_moves(edits) if edits else []
-        if added:
+        if edits is not None and added:
             self.current = apply_edits(self.current, edits)
             self.moves = _combined(self.moves, added)
         else:
             self.stop = "The model chose nothing it could use."
         left = self.fixable_left()
         self.last = {**resolution.as_dict(), "fixable_left": left}
-        picked = [self.menu.picked_in_owner_words(number) for number in resolution.applied]
-        return ModelLoopEvent(kind="turn", turn=turn, picked=picked, why=self.menu.in_owner_words(resolution.why),
+        picked = [menu.picked_in_owner_words(number) for number in resolution.applied]
+        return ModelLoopEvent(kind="turn", turn=turn, picked=picked, why=menu.in_owner_words(resolution.why),
                               fixable_left=left)
 
 
