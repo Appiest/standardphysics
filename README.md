@@ -65,13 +65,13 @@ cd apps/web && npm run lint && npm run typecheck && npm run test
 
 ## Evaluation
 
-The held-out suite is 39 labelled cases: the sample shop as shipped, and variants that move its walls, fixtures and doors so that the right answer changes. `standardphysics-agents weave-eval` scores each configuration of the system against them as a Weave Evaluation, and the [Evals tab](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/evaluations) holds every run with its per-case table. The latest run:
+The held-out suite is 39 labelled cases: the sample shop as shipped, and variants that move its walls, fixtures and doors so that the right answer changes. `standardphysics-agents weave-eval` scores each configuration of the system against them as a Weave Evaluation, and the [Evals tab](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/evaluations) holds every run with its per-case table. Each run is tagged with the commit it scored. The latest, at commit `5ce8e53`:
 
 | Configuration | Finding precision | Finding recall | Fix resolves finding | Mean measurement error |
 |---|---|---|---|---|
-| Measured pipeline, fixes on | 0.986 | 0.924 | 1.000 | 0.0008 in |
-| Simplified stand-in measurements | 0.384 | 0.924 | 0.800 | 8.57 in |
-| Measured pipeline, fixes off | 0.986 | 0.924 | not scored | 0.0008 in |
+| [Measured pipeline, fixes on](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e705-edda-7723-b498-6e7dbd09b111) | 0.972 | 0.924 | 1.000 | 0.0008 in |
+| [Simplified stand-in measurements](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e707-23af-7205-91be-c9e9c1f1e0d8) | 0.380 | 0.924 | 0.800 | 8.57 in |
+| [Measured pipeline, fixes off](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e708-c957-76ce-8422-dbab54f22ed8) | 0.972 | 0.924 | not scored | 0.0008 in |
 
 The stand-in row is the control. Swapping the measured geometry for merged boxes keeps recall but loses most of the precision, so nearly all of the score comes from measuring the room correctly.
 
