@@ -29,8 +29,8 @@
 # listed in the snapshot with its files already gone. After the copy, every
 # listed artifact without a file is looked up in the live database. If its
 # row is gone there too, it was deleted during the backup, and its name goes
-# into artifacts-deleted-during-backup.txt in the snapshot, which restore.sh
-# reads so it does not report it as lost. If its row is still there, the file
+# into artifacts-deleted-during-backup.txt in the snapshot. restore.sh reads
+# it and deletes those scans from the restored copy, finishing the delete. If its row is still there, the file
 # really is missing: the snapshot is kept, older ones are not pruned, since
 # they may hold the only copy, and the backup exits 2 so the timer fails.
 #
@@ -180,7 +180,7 @@ copy_deletion_manifest() {
   local manifest="$VOLUME/$STAGING/$DELETED_DURING_BACKUP"
   [ -f "$manifest" ] || return 0
   rsync -a "$manifest" "$SP_BACKUP_DEST/$1/$DELETED_DURING_BACKUP"
-  echo "$(grep -c . "$manifest") artifact(s) were deleted while the backup ran; restore.sh will not count them as lost."
+  echo "$(grep -c . "$manifest") artifact(s) were deleted while the backup ran; restore.sh removes their scans from a restored copy."
 }
 
 prune_old_snapshots() {

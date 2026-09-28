@@ -326,7 +326,8 @@ How it works, and why:
   in the snapshot, with its files already gone. So after the copy, every
   listed artifact without a file is looked up in the live database. If its
   row has gone there too, it was deleted during the backup, and its name goes
-  into `artifacts-deleted-during-backup.txt` in the snapshot. If its row is
+  into `artifacts-deleted-during-backup.txt` in the snapshot, which
+  `restore.sh` applies to the copy it restores. If its row is
   still there, the file is really missing: the backup keeps the snapshot,
   deletes no older one, since an older one may hold the only copy, names the
   files and exits 2, which fails the systemd unit.
@@ -357,11 +358,18 @@ cd /root/standardphysics/deploy/digitalocean
 ```
 
 It prints SQLite's integrity check, the number of scans, and the number of
-artifacts the database lists against the number of files. It exits 1 if the
-database is damaged, and 2 if some listed artifact has no file, naming each
-one. Artifacts the backup recorded as deleted while it ran are printed on
-their own lines and do not count as missing. A scan uploaded while the backup
-ran can show up as a file the database does not list yet, which is harmless.
+artifacts the database lists against the number of files. Then it hashes
+every listed artifact's file and compares it with the sha256 the database
+recorded at upload. It exits 1 if the database is damaged, and 2 if some
+listed artifact has no file (`missing file:`) or a file whose hash differs
+(`corrupt file:`), naming each one.
+
+A scan its owner deleted while the backup ran is finished off in the copy:
+its rows go from every table with a `scan_id` column, the same set the API's
+delete clears, and whatever of its files were copied go too. The restored
+database then lists exactly the files it holds, with no exceptions to
+explain away. A scan uploaded while the backup ran can show up as a file the
+database does not list yet, which is harmless.
 
 To put a checked copy back under the API:
 

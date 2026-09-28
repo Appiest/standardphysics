@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Copies one snapshot that backup.sh made into a new directory, then checks
 # the copy: SQLite's integrity check on the database, how many scans and
-# artifacts it lists, and whether every artifact it lists has its file.
+# artifacts it lists, and whether every artifact it lists has its file with
+# the sha256 the database recorded when it was uploaded.
 #
 #   ./restore.sh                               # list the snapshots
 #   ./restore.sh latest /root/restored
@@ -13,10 +14,17 @@
 # inspected at any time without touching what is running.
 #
 # Exits 1 when the copy fails or the database is damaged, and 2 when the
-# database is sound but some artifacts it lists have no file. An artifact
-# whose scan was deleted while the backup ran is listed with no file too;
-# backup.sh names those in artifacts-deleted-during-backup.txt, and they are
-# reported on their own lines without counting as lost.
+# database is sound but some artifact it lists has no file, or has a file
+# whose bytes no longer hash to the recorded sha256. The second is corruption,
+# in the snapshot or on the disk under it.
+#
+# A scan deleted while the backup ran is still listed in the snapshot's
+# database with its files gone, and backup.sh names its artifacts in
+# artifacts-deleted-during-backup.txt. The restored copy is made to agree
+# with the delete: the scan's rows go from every table with a scan_id column,
+# which is the set the API's own delete clears, and so does whatever of its
+# files were copied. The manifest is removed once it has been applied, so the
+# copy holds what the live volume held once that delete had finished.
 set -euo pipefail
 
 CALLER_DIRECTORY="$PWD"
@@ -28,32 +36,73 @@ SP_BACKUP_DEST="$(setting SP_BACKUP_DEST)"
 PYTHON="$(setting SP_BACKUP_PYTHON python3)"
 
 CHECK_SCRIPT='
+import hashlib
 import pathlib
+import shutil
 import sqlite3
 import sys
 
 root = pathlib.Path(sys.argv[1])
 deletion_manifest = root / sys.argv[3]
-deleted_during_backup = set(deletion_manifest.read_text().split()) if deletion_manifest.is_file() else set()
-database = sqlite3.connect(f"file:{root / sys.argv[2]}?mode=ro", uri=True)
+database = sqlite3.connect(root / sys.argv[2])
+
+
+def tables_naming_a_scan():
+    names = [name for (name,) in database.execute("SELECT name FROM sqlite_master WHERE type = \"table\"")]
+    return [name for name in names
+            if any(column[1] == "scan_id" for column in database.execute(f"PRAGMA table_info(\"{name}\")"))]
+
+
+def scans_deleted_during_backup():
+    if not deletion_manifest.is_file():
+        return []
+    return sorted({line.split("/")[0] for line in deletion_manifest.read_text().split()})
+
+
+def remove_scans_deleted_during_backup():
+    children = tables_naming_a_scan()
+    for scan in scans_deleted_during_backup():
+        for table in children:
+            database.execute(f"DELETE FROM \"{table}\" WHERE scan_id = ?", (scan,))
+        database.execute("DELETE FROM scans WHERE id = ?", (scan,))
+        shutil.rmtree(root / "scans" / scan, ignore_errors=True)
+        print(f"removed a scan its owner deleted while the backup ran: {scan}")
+    database.commit()
+    deletion_manifest.unlink(missing_ok=True)
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def artifact_problem(scan, artifact, recorded_sha256):
+    path = root / "scans" / scan / "artifacts" / artifact
+    if not path.is_file():
+        return "missing file:"
+    if file_sha256(path) != recorded_sha256:
+        return "corrupt file:"
+    return None
+
+
 integrity = database.execute("PRAGMA integrity_check").fetchone()[0]
-scans = database.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
-listed = database.execute("SELECT scan_id, id FROM artifacts").fetchall()
-absent = [f"{scan}/{artifact}" for scan, artifact in listed
-          if not (root / "scans" / scan / "artifacts" / artifact).is_file()]
-missing = [name for name in absent if name not in deleted_during_backup]
-files = sum(1 for path in root.glob("scans/*/artifacts/*") if path.is_file())
 print(f"integrity check: {integrity}")
-print(f"scans:           {scans}")
-print(f"artifacts:       {len(listed)} listed, {files} files")
-for name in absent:
-    if name in deleted_during_backup:
-        print(f"deleted by its owner while the backup ran: {name}")
-for name in missing:
-    print(f"missing file:    {name}")
 if integrity != "ok":
     sys.exit(1)
-sys.exit(2 if missing else 0)
+remove_scans_deleted_during_backup()
+scans = database.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
+listed = database.execute("SELECT scan_id, id, sha256 FROM artifacts ORDER BY scan_id, id").fetchall()
+files = sum(1 for path in root.glob("scans/*/artifacts/*") if path.is_file())
+print(f"scans:           {scans}")
+print(f"artifacts:       {len(listed)} listed, {files} files")
+problems = [(artifact_problem(*row), f"{row[0]}/{row[1]}") for row in listed]
+problems = [(problem, name) for problem, name in problems if problem]
+for problem, name in problems:
+    print(f"{problem:<16} {name}")
+sys.exit(2 if problems else 0)
 '
 
 usage() {
