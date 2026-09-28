@@ -18,13 +18,15 @@ function problemsLeft(arrangement: Arrangement, before: number): number {
 }
 
 /** Plan a layout: drag pieces on the model, see what's left to fix, and keep the plan without changing the scan. */
-export function PlanPanel({ arrangement, before, pieceName, review, onDone }: {
+export function PlanPanel({ arrangement, before, pieceName, review, onReset, onDone }: {
   arrangement: Arrangement;
   before: number;
   /** The piece in hand, or the one worth trying first. */
   pieceName: string | null;
   /** What a proposed layout changes and a way to say what must stay, when the plan started from one. */
   review?: ReactNode;
+  /** Puts every piece back where it was scanned, and drops the suggestion that moved them. */
+  onReset: () => void;
   onDone: () => void;
 }) {
   const [saved, setSaved] = useState(false);
@@ -38,7 +40,7 @@ export function PlanPanel({ arrangement, before, pieceName, review, onDone }: {
       {turnable && <TurnControls piece={piece} onTurn={(degrees) => arrangement.nudge(0, 0, degrees)} />}
       {arrangement.problem && <p role="alert" className="text-problem">{arrangement.problem}</p>}
       {saved && <SavedNote />}
-      <PlanActions arrangement={arrangement} saved={saved} onSave={async () => setSaved(await arrangement.save())} onDone={onDone} />
+      <PlanActions arrangement={arrangement} saved={saved} onSave={async () => setSaved(await arrangement.save())} onReset={onReset} onDone={onDone} />
     </div>
   );
 }
@@ -52,14 +54,14 @@ function SavedNote() {
   );
 }
 
-function PlanActions({ arrangement, saved, onSave, onDone }: { arrangement: Arrangement; saved: boolean; onSave: () => void; onDone: () => void }) {
+function PlanActions({ arrangement, saved, onSave, onReset, onDone }: { arrangement: Arrangement; saved: boolean; onSave: () => void; onReset: () => void; onDone: () => void }) {
   return (
     <ActionBar>
       <Button variant="primary" className="justify-center" disabled={!arrangement.canSave} onClick={onSave}>
         {arrangement.saving ? "Saving" : "Save this plan"}
       </Button>
       <div className="grid grid-cols-2 gap-2">
-        <Button className="justify-center" disabled={!arrangement.hasMoves} onClick={arrangement.reset}>
+        <Button className="justify-center" disabled={!arrangement.hasMoves} onClick={onReset}>
           <ArrowCounterClockwise size={18} weight="bold" aria-hidden />
           Put it all back
         </Button>

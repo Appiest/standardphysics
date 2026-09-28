@@ -246,9 +246,12 @@ function OwnerShop(props: ShopProps) {
     setSelected(null);
     arrangement.load(moves);
   };
-  const leavePlan = () => {
+  const putItAllBack = () => {
     arrangement.reset();
     review.clear();
+  };
+  const leavePlan = () => {
+    putItAllBack();
     setPlanFinding(null);
     setTool(null);
   };
@@ -264,7 +267,7 @@ function OwnerShop(props: ShopProps) {
     follow_ups: () => <FollowUpPanel scanId={scan.id} journey={journey} requests={props.requests} />,
     plan: () => (
       <PlanPanel arrangement={arrangement} before={problems.length} pieceName={pieceLabel(scene, arrangement.activeId) ?? tryPiece?.label ?? null}
-        review={<PlanReview review={review} scene={scene} finding={planFinding} onRelook={showProposal} onPreview={arrangement.setActiveId} />} onDone={leavePlan} />
+        review={<PlanReview review={review} scene={scene} finding={planFinding} onRelook={showProposal} onPreview={arrangement.setActiveId} />} onReset={putItAllBack} onDone={leavePlan} />
     ),
     wheelchair: () => <WheelchairPanel onDone={() => setTool(null)} />,
     results: () => (
