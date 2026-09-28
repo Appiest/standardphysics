@@ -78,6 +78,7 @@ from .layout import check_layout, save_layout
 from .lidar_mesh import MAX_LIDAR_MESH_BYTES, InvalidLidarMesh, validate_lidar_mesh_file
 from .loop_run import run as run_loop_on
 from .loop_run import stream as stream_loop_on
+from .model_chooser import ModelSlots
 from .model_loop import loop_info, stream_model_loop
 from .notifications import notifier_from
 from .owner_accounts import install_account_routes, revoke_passwords_left_on_apple_accounts
@@ -228,7 +229,8 @@ def create_app(
     install_owner_routes(app, database, store, stages, PhotoLimits(budgets, reservations))
     _install_combine_routes(app, database, store, worker)
     _install_file_routes(app, database, store)
-    _install_layout_routes(app, database, stages, worker)
+    model_slots = ModelSlots(settings.max_owner_model_runs, settings.max_concurrent_model_runs)
+    _install_layout_routes(app, database, stages, worker, model_slots)
     _install_route_routes(app, database, stages, worker)
     _install_simulation_routes(app, database, stages, worker)
     _install_rearrangement_routes(app, database, worker)
@@ -644,7 +646,9 @@ def _install_combine_routes(app: FastAPI, database: Database, store: ArtifactSto
 
 
 
-def _install_layout_routes(app: FastAPI, database: Database, stages: Stages, worker: Worker) -> None:
+def _install_layout_routes(
+    app: FastAPI, database: Database, stages: Stages, worker: Worker, model_slots: ModelSlots
+) -> None:
     @app.post("/api/scans/{scan_id}/layout-checks", response_model=LayoutCheckResult)
     def layout_check(scan_id: uuid.UUID, body: LayoutCheckRequest) -> LayoutCheckResult:
         return check_layout(database, stages, scan_id, body)
@@ -669,14 +673,14 @@ def _install_layout_routes(app: FastAPI, database: Database, stages: Stages, wor
         return loop_info()
 
     @app.post("/api/scans/{scan_id}/model-loop/stream")
-    def model_loop_stream(scan_id: uuid.UUID, body: ModelLoopRequest) -> StreamingResponse:
-        lines = stream_model_loop(database, stages, scan_id, body)
+    def model_loop_stream(scan_id: uuid.UUID, body: ModelLoopRequest, request: Request) -> StreamingResponse:
+        lines = stream_model_loop(database, stages, model_slots, owner_of(request).id, scan_id, body)
         headers = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
         return StreamingResponse(lines, media_type="application/x-ndjson", headers=headers)
 
     @app.post("/api/scans/{scan_id}/proposals", response_model=ProposalResult)
-    def proposal(scan_id: uuid.UUID, body: ProposalRequest) -> ProposalResult:
-        return propose(database, stages, scan_id, body)
+    def proposal(scan_id: uuid.UUID, body: ProposalRequest, request: Request) -> ProposalResult:
+        return propose(database, stages, model_slots, owner_of(request).id, scan_id, body)
 
     @app.post("/api/scans/{scan_id}/revisions", response_model=SceneGraph, status_code=201)
     def save_revision(scan_id: uuid.UUID, body: SaveLayoutRequest) -> SceneGraph:
