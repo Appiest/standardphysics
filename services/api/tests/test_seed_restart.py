@@ -1,38 +1,35 @@
 import logging
-import re
 import secrets
 
 from fastapi.testclient import TestClient
 
 from conftest import no_blender_stages, sign_in
-from standardphysics_api.app import create_app
+from standardphysics_api.app import DEMO_PASSWORD_FILE, create_app
 from standardphysics_api.settings import Settings
 
-CLAIMED_PASSWORD = re.compile(r"Sign in as (\S+) with password (\S+)")
 
-
-def _server(data_dir) -> TestClient:
+def _server(data_dir, password: str) -> TestClient:
     """A server as `from_environment` builds it with SP_SEED_OWNER_PASSWORD unset: a new
     random password on every startup."""
-    settings = Settings(data_dir=data_dir, seed_sample_shop=True, seed_owner_password=secrets.token_urlsafe(12))
+    settings = Settings(
+        data_dir=data_dir, seed_sample_shop=True, seed_owner_password=password, seed_owner_password_generated=True
+    )
     return TestClient(create_app(settings, no_blender_stages(), run_worker=False))
 
 
-def _seed_messages(caplog) -> list[str]:
-    return [record.getMessage() for record in caplog.records if "sample shop seeded" in record.getMessage()]
-
-
-def test_a_restart_never_logs_a_password_that_fails_to_sign_in(tmp_path, caplog):
+def test_a_restart_keeps_the_password_file_pointing_at_a_password_that_signs_in(tmp_path, caplog):
+    data_dir = tmp_path / "var"
+    first_password, restart_password = secrets.token_urlsafe(12), secrets.token_urlsafe(12)
     caplog.set_level(logging.WARNING, logger="standardphysics_api.app")
 
-    with _server(tmp_path / "var") as first:
-        [first_message] = _seed_messages(caplog)
-        email, password = CLAIMED_PASSWORD.search(first_message).groups()
-        sign_in(first, email, password)
+    with _server(data_dir, first_password) as first:
+        written = (data_dir / DEMO_PASSWORD_FILE).read_text().strip()
+        sign_in(first, "demo@standardphysics.app", written)
 
-    caplog.clear()
-    with _server(tmp_path / "var") as restarted:
-        [restart_message] = _seed_messages(caplog)
-        assert CLAIMED_PASSWORD.search(restart_message) is None
-        assert email in restart_message
-        sign_in(restarted, email, password)
+    with _server(data_dir, restart_password) as restarted:
+        assert (data_dir / DEMO_PASSWORD_FILE).read_text().strip() == written
+        sign_in(restarted, "demo@standardphysics.app", written)
+
+    assert first_password not in caplog.text
+    assert restart_password not in caplog.text
+    assert "it was created with" in caplog.text
