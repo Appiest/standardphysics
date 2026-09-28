@@ -23,10 +23,9 @@ from standardphysics_contracts import SceneGraph
 
 from standardphysics_api.combine import (
     captured_graph,
-    carried_onto_floor,
-    found_since_capture,
     placement_matrix,
     placement_since_capture,
+    walk_on_floor,
 )
 from standardphysics_api.store import ArtifactStore
 
@@ -66,10 +65,13 @@ def walks():
         placed_ids = {node.id: uuid.UUID(node_id) for node, node_id in zip(capture.nodes, room["node_ids"])}
         first = (index + 1) * FRAMES_PER_WALK
         walk = latest(database, scan_id)
-        found = found_since_capture(walk, capture)
-        moved = carried_onto_floor(
-            found, motion, placed_ids, lambda frame: f"frame-{first + int(frame.removeprefix('frame-')):05d}"
+        measured = {node.id for node in capture.nodes}
+        on_floor = walk_on_floor(
+            walk, capture, placed, motion, placed_ids,
+            lambda frame: f"frame-{first + int(frame.removeprefix('frame-')):05d}",
         )
+        found = [node for node in walk.nodes if node.id not in measured]
+        moved = [after for before, after in zip(walk.nodes, on_floor) if before.id not in measured]
         carried.append({"walk": walk, "found": found, "moved": moved, "motion": motion, "first": first})
     return placed, carried
 
