@@ -52,7 +52,7 @@ def evaluate(
             raise ApiProblem(404, "no such revision")
         if latest["revision"] != base_revision:
             raise ApiProblem(409, "the shop changed since this revision; refresh and try again")
-        graph: SceneGraph = repo.graph_of(repo.get_revision(connection, scan_id, base_revision))
+        graph: SceneGraph = repo.graph_of(latest)
         scenario = repo.get_scenario(connection, scan_id)
 
     if scenario is None:
@@ -67,14 +67,7 @@ def evaluate(
     profile = OCCUPANT_CATALOG.get(body.occupant_profile)
     if profile is None:
         raise ApiProblem(400, "unknown occupant profile")
-    if body.horizontal_reach_inches is not None and body.horizontal_reach_provenance is None:
-        raise ApiProblem(400, "a horizontal reach needs its provenance")
-    horizontal = (
-        HorizontalReach(inches=body.horizontal_reach_inches, provenance=body.horizontal_reach_provenance)
-        if body.horizontal_reach_inches is not None
-        else None
-    )
-    occupant = dataclasses.replace(profile, horizontal_reach=horizontal)
+    occupant = dataclasses.replace(profile, horizontal_reach=_horizontal_reach(body))
 
     result = evaluate_approach(
         graph, target, scenario.stops[0], stages.measure,
@@ -82,6 +75,14 @@ def evaluate(
         approach_stop=body.approach_stop,
     )
     return _report(result)
+
+
+def _horizontal_reach(body: ApproachRequest) -> HorizontalReach | None:
+    if body.horizontal_reach_inches is None:
+        return None
+    if body.horizontal_reach_provenance is None:
+        raise ApiProblem(400, "a horizontal reach needs its provenance")
+    return HorizontalReach(inches=body.horizontal_reach_inches, provenance=body.horizontal_reach_provenance)
 
 
 def _report(result) -> ApproachReport:

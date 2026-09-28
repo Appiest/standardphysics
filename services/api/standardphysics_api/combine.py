@@ -119,7 +119,7 @@ def save_combine(database: Database, worker: Worker, scan_id: uuid.UUID, body: S
     combined = apply_room_placements(base, body.rooms)
     saved = combined.model_copy(update={"revision": body.base_revision + 1})
     with database.transaction() as connection:
-        if repo.get_revision(connection, scan_id)["revision"] != body.base_revision:
+        if repo.latest_revision_number(connection, scan_id) != body.base_revision:
             raise ApiProblem(409, "a newer layout was saved since this one started")
         repo.save_revision(connection, saved, source="owner", base_revision=body.base_revision)
         repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)

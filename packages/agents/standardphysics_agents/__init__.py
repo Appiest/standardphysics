@@ -58,7 +58,7 @@ from .rules import (
     save_ledger,
 )
 from .tracing import init as init_tracing
-from .tracing import is_live, project_url, traced
+from .tracing import is_live, project_url, traced, tracing_status
 from .tracing import shutdown as shutdown_tracing
 from .workflows import (
     DEFAULT_PROFILES,
@@ -187,4 +187,5 @@ __all__ = [
     "to_finding",
     "to_findings",
     "traced",
+    "tracing_status",
 ]

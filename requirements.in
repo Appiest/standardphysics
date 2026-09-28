@@ -1,0 +1,7 @@
+# What the image runs. scripts/lock_python.sh resolves this into
+# requirements.lock; edit this file or a pyproject, then run that script.
+-e ./packages/contracts
+-e ./packages/fixtures
+-e ./packages/pipeline
+-e ./packages/agents[observability]
+-e ./services/api

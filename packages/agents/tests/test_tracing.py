@@ -9,6 +9,7 @@ rather than assumed.
 
 from __future__ import annotations
 
+import builtins
 import sys
 
 import pytest
@@ -23,9 +24,13 @@ class FakeWeave:
         self.projects: list[str] = []
         self.ops: list[str] = []
         self.calls: list[str] = []
+        self.flushes = 0
 
     def init(self, project: str) -> None:
         self.projects.append(project)
+
+    def finish(self) -> None:
+        self.flushes += 1
 
     def op(self, *args, **kwargs):
         """Both spellings Weave has used, so the wrapper survives either.
@@ -89,6 +94,45 @@ class TestWithoutAnAccount:
         monkeypatch.setitem(sys.modules, "weave", None)
         monkeypatch.setenv("WANDB_PROJECT", "standardphysics")
         assert tracing.init() is False
+
+    def test_a_missing_weave_install_is_announced_when_a_project_is_set(self, monkeypatch, caplog):
+        """Production sets WANDB_PROJECT expecting traces. An image built
+        without the observability extra must say so, not go quiet."""
+        monkeypatch.setitem(sys.modules, "weave", None)
+        monkeypatch.setenv("WANDB_PROJECT", "standardphysics")
+        with caplog.at_level("WARNING", logger=tracing.__name__):
+            assert tracing.init() is False
+        assert "observability" in caplog.text
+        assert "standardphysics" in caplog.text
+
+    def test_a_weave_that_breaks_on_import_is_announced(self, monkeypatch, caplog):
+        real_import = builtins.__import__
+
+        def import_with_broken_weave(name, *args, **kwargs):
+            if name == "weave":
+                raise RuntimeError("incompatible protobuf")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.delitem(sys.modules, "weave", raising=False)
+        monkeypatch.setattr(builtins, "__import__", import_with_broken_weave)
+        monkeypatch.setenv("WANDB_PROJECT", "standardphysics")
+        with caplog.at_level("WARNING", logger=tracing.__name__):
+            assert tracing.init() is False
+        assert "incompatible protobuf" in caplog.text
+
+    def test_a_key_without_a_project_is_announced(self, monkeypatch, caplog):
+        monkeypatch.delenv("WANDB_PROJECT", raising=False)
+        monkeypatch.setenv("WANDB_API_KEY", "not-a-real-key")
+        with caplog.at_level("WARNING", logger=tracing.__name__):
+            assert tracing.init() is False
+        assert "WANDB_PROJECT" in caplog.text
+
+    def test_no_key_and_no_project_stays_quiet(self, monkeypatch, caplog):
+        monkeypatch.delenv("WANDB_PROJECT", raising=False)
+        monkeypatch.delenv("WANDB_API_KEY", raising=False)
+        with caplog.at_level("WARNING", logger=tracing.__name__):
+            assert tracing.init() is False
+        assert caplog.text == ""
 
 
 class TestWithAnAccount:
@@ -163,6 +207,60 @@ class TestWithAnAccount:
         tracing.shutdown()
         noop()
         assert len(weave.calls) == 1
+
+
+class TestStatusAndShutdown:
+    def test_the_status_says_why_tracing_is_off(self, monkeypatch):
+        monkeypatch.delenv("WANDB_PROJECT", raising=False)
+        tracing.init()
+        assert tracing.tracing_status() == {
+            "active": False, "project_url": None, "off_because": "WANDB_PROJECT is not set",
+        }
+
+    def test_the_status_names_a_failed_init(self, monkeypatch):
+        def reject(project: str) -> None:
+            raise RuntimeError("401 bad key")
+
+        broken = FakeWeave()
+        broken.init = reject
+        monkeypatch.setitem(sys.modules, "weave", broken)
+        monkeypatch.setenv("WANDB_PROJECT", "standardphysics")
+        tracing.init()
+        assert tracing.tracing_status()["active"] is False
+        assert "weave.init failed" in tracing.tracing_status()["off_because"]
+
+    def test_the_status_points_at_live_traces(self, weave):
+        tracing.init()
+        assert tracing.tracing_status() == {
+            "active": True, "project_url": "https://wandb.ai/standardphysics/weave", "off_because": None,
+        }
+
+    def test_shutting_down_flushes_queued_traces_once(self, weave):
+        tracing.init()
+        tracing.shutdown()
+        tracing.shutdown()
+        assert weave.flushes == 1
+
+    def test_a_flush_that_fails_does_not_stop_the_shutdown(self, weave, caplog):
+        def refuse() -> None:
+            raise ConnectionError("no network")
+
+        weave.finish = refuse
+        tracing.init()
+        with caplog.at_level("WARNING", logger=tracing.__name__):
+            tracing.shutdown()
+        assert not tracing.is_live()
+        assert "no network" in caplog.text
+
+    def test_a_process_that_exits_without_shutting_down_still_flushes(self, weave, monkeypatch):
+        registered: list = []
+        monkeypatch.setattr(tracing.atexit, "register", registered.append)
+        monkeypatch.setattr(tracing, "_TRACING", tracing._Tracing())
+        tracing.init()
+        tracing.init()
+        assert len(registered) == 1
+        registered[0]()
+        assert weave.flushes == 1
 
 
 class TestEverythingIsTraced:

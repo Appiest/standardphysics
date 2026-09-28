@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import uuid
 
+from standardphysics_agents.scenario_suggestion import suggest_scenario
 from standardphysics_contracts import AskAnswer, AskRequest
 
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
-from .scenario import suggest_scenario
 from .stages import Stages
 
 

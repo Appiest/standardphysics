@@ -198,6 +198,23 @@ def artifact_usage(connection: sqlite3.Connection, scan_id: uuid.UUID) -> tuple[
     return row["held"], row["held_bytes"]
 
 
+def owner_scan_count(connection: sqlite3.Connection, owner_id: uuid.UUID) -> int:
+    return connection.execute("SELECT COUNT(*) FROM scans WHERE owner_id = ?", (str(owner_id),)).fetchone()[0]
+
+
+def owner_artifact_bytes(connection: sqlite3.Connection, owner_id: uuid.UUID) -> int:
+    """Every uploaded byte across the owner's scans."""
+    return connection.execute(
+        "SELECT COALESCE(SUM(artifacts.bytes), 0) FROM artifacts"
+        " JOIN scans ON scans.id = artifacts.scan_id WHERE scans.owner_id = ?",
+        (str(owner_id),),
+    ).fetchone()[0]
+
+
+def queued_job_count(connection: sqlite3.Connection) -> int:
+    return connection.execute("SELECT COUNT(*) FROM jobs WHERE state = 'queued'").fetchone()[0]
+
+
 def artifact_of_kind(connection: sqlite3.Connection, scan_id: uuid.UUID, kind: str) -> Artifact | None:
     row = connection.execute(
         "SELECT id, kind, sha256, bytes FROM artifacts WHERE scan_id = ? AND kind = ? ORDER BY created_at DESC LIMIT 1",
@@ -471,6 +488,22 @@ def finish_job(connection: sqlite3.Connection, job_id: int, error: str | None = 
     connection.execute("UPDATE jobs SET state = ?, error = ? WHERE id = ?", (state, error, job_id))
 
 
+def fail_running_job(connection: sqlite3.Connection, job_id: int, error: str) -> bool:
+    """Fail a job only if it is still running, so an outcome already written is never overwritten."""
+    cursor = connection.execute(
+        "UPDATE jobs SET state = 'failed', error = ? WHERE id = ? AND state = 'running'", (error, job_id)
+    )
+    return cursor.rowcount > 0
+
+
+def requeue_running_job(connection: sqlite3.Connection, job_id: int) -> bool:
+    """Put a claimed job back at its place in the queue, if nothing has settled it since."""
+    cursor = connection.execute(
+        "UPDATE jobs SET state = 'queued', queued_at = ? WHERE id = ? AND state = 'running'", (now(), job_id)
+    )
+    return cursor.rowcount > 0
+
+
 def retry_failed_jobs(connection: sqlite3.Connection, scan_id: uuid.UUID) -> None:
     """Queue again whichever stage failed, and show the state that stage runs in."""
     kinds = {
@@ -489,6 +522,23 @@ def retry_failed_jobs(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Non
         "UPDATE jobs SET state = 'queued', error = NULL, queued_at = ? WHERE scan_id = ? AND state = 'failed'"
         " AND kind NOT IN ('display', 'simulate', 'texture')",
         (now(), str(scan_id)),
+    )
+
+
+INTERRUPTED_SIMULATION = "Simulation interrupted; start a new run to continue"
+
+
+def fail_interrupted_simulations(connection: sqlite3.Connection) -> None:
+    """Fail every simulation a stopped process left running, rather than queueing it again.
+
+    A simulation spends paid TypeSafe and Astra calls against a per-run budget
+    that lives only in the process running it. Queued again, it would start
+    from nothing with a fresh budget and could spend the owner's limit a second
+    time without anyone asking, so the owner starts the new run.
+    """
+    connection.execute(
+        "UPDATE jobs SET state = 'failed', error = ? WHERE kind = 'simulate' AND state = 'running'",
+        (INTERRUPTED_SIMULATION,),
     )
 
 
@@ -540,6 +590,14 @@ def get_revision(connection: sqlite3.Connection, scan_id: uuid.UUID, revision: i
     return connection.execute(
         "SELECT * FROM revisions WHERE scan_id = ? AND revision = ?", (str(scan_id), revision)
     ).fetchone()
+
+
+def require_revision(connection: sqlite3.Connection, scan_id: uuid.UUID, revision: int) -> sqlite3.Row:
+    """A revision a queued job names. The job was queued after it was saved, so its absence is a fault."""
+    row = get_revision(connection, scan_id, revision)
+    if row is None:
+        raise LookupError(f"scan {scan_id} has no revision {revision}")
+    return row
 
 
 def graph_of(row: sqlite3.Row) -> SceneGraph:

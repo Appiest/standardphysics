@@ -31,7 +31,7 @@ def _guests(database: Database) -> list[tuple[Owner, datetime, datetime | None]]
         for row in rows:
             owner = accounts.owner_from_row(row)
             reminded = datetime.fromisoformat(row["reminded_at"]) if row["reminded_at"] else None
-            guests.append((owner, accounts.guest_deletes_at(connection, owner), reminded))
+            guests.append((owner, accounts.guest_shops_expire_at(connection, owner.id), reminded))
     return guests
 
 

@@ -410,8 +410,8 @@ class TestAgainstTheRealSdk:
 
     Offline mode writes the run to a directory instead of sending it, so the
     real `init`, `log`, `Table` and `finish` all run with no account. Skipped
-    where wandb is not installed, which is CI and any clone that did not ask
-    for the observability extra.
+    where wandb is not installed, which is any environment that did not install
+    the observability extra. CI installs it through requirements-dev.lock.
     """
 
     @pytest.fixture

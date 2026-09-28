@@ -8,6 +8,8 @@ import logging
 import pathlib
 import re
 import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import FastAPI, Header, Request, Response
@@ -15,7 +17,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from PIL import Image as PILImage
 from pydantic import BaseModel
-from standardphysics_agents import init_tracing, project_url, shutdown_tracing
+from standardphysics_agents import init_tracing, project_url, shutdown_tracing, tracing_status
+from standardphysics_agents.scenario_suggestion import DESTINATIONS
 from standardphysics_contracts import (
     ApproachReport,
     ApproachRequest,
@@ -47,6 +50,7 @@ from standardphysics_contracts import (
     SimulationRequest,
     SimulationStatus,
     SpaceTypologyRequest,
+    SurfaceCoverage,
     graph_hash,
 )
 from standardphysics_contracts.textures import FRAME_ID_PATTERN
@@ -57,6 +61,7 @@ from . import repository as repo
 from .approach import evaluate as evaluate_approach
 from .architecture_export import install_architecture_export_routes
 from .auth import install_auth, owner_of
+from .budgets import Budgets, UploadAdmission
 from .combine import SaveCombineRequest, rooms_of, save_combine
 from .coverage import parse_coverage
 from .db import Database
@@ -64,7 +69,7 @@ from .errors import ApiProblem
 from .evidence import evidence_status_for, maybe_queue_semantic, record_closure
 from .labels import mark_counter, mark_observation, review_outlet, unmark_counter
 from .layout import check_layout, save_layout
-from .lidar_mesh import InvalidLidarMesh, validate_lidar_mesh
+from .lidar_mesh import MAX_LIDAR_MESH_BYTES, InvalidLidarMesh, validate_lidar_mesh
 from .loop_run import run as run_loop_on
 from .loop_run import stream as stream_loop_on
 from .notifications import notifier_from
@@ -77,17 +82,16 @@ from .questions import answer_question
 from .replays import install_replay_routes
 from .report import build_report
 from .route import confirm, legs, suggestion
-from .scenario import DESTINATIONS
 from .seed import seed_sample_shop
 from .settings import Settings
 from .sharing import install_share_routes
 from .simulations import queue_simulation, simulation_status
 from .splats import install_splat_routes
 from .stages import Stages, preview_ledger
-from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId, ScanFull, ScanQuota
+from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId, ScanQuota, StagedUpload
 from .team import adopt_allowlist
-from .textures import install_texture_routes, maybe_queue_texture, validate_manifest
-from .usdz_validation import InvalidUsdz, validate_room_usdz
+from .textures import MAX_METADATA_BYTES, install_texture_routes, maybe_queue_texture, validate_manifest
+from .usdz_validation import MAX_ARCHIVE_BYTES, InvalidUsdz, validate_room_usdz
 from .worker import ASSESS, PROCESS, Worker
 
 PLACES = {*DESTINATIONS, "pickup"}
@@ -112,7 +116,7 @@ def _seed_demo_account(database: Database, store: ArtifactStore, settings: Setti
 
 
 def _problem_response(exc: ApiProblem) -> JSONResponse:
-    return JSONResponse(exc.body.model_dump(exclude_none=True), status_code=exc.status)
+    return JSONResponse(exc.body.model_dump(exclude_none=True), status_code=exc.status, headers=exc.headers)
 
 
 def _install_error_handlers(app: FastAPI) -> None:
@@ -166,8 +170,11 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     install_auth(app, database, store)
     install_account_routes(app, database, settings.apple_audiences)
     install_architecture_export_routes(app, database)
-    _install_scan_routes(app, database, store)
-    _install_upload_routes(app, database, store, worker, settings)
+    budgets = Budgets(
+        settings.max_owner_scans, settings.max_owner_bytes, settings.max_queued_jobs, settings.min_free_disk_bytes
+    )
+    _install_scan_routes(app, database, store, budgets)
+    _install_upload_routes(app, database, store, worker, settings, budgets)
     _install_workspace_routes(app, database, store, stages)
     install_owner_routes(app, database, store, stages)
     _install_combine_routes(app, database, store, worker)
@@ -188,16 +195,24 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
         lambda scan_id, finding_id: _render_response(store, database, scan_id, finding_id),
     )
 
+    _install_health_routes(app, database, worker, settings.git_sha)
+    return app
+
+
+def _install_health_routes(app: FastAPI, database: Database, worker: Worker, commit: str) -> None:
     @app.get("/health")
     def health():
-        """Reachable without a session, so a load balancer can ask.
+        """Liveness, reachable without a session, so a load balancer and the container healthcheck can ask.
 
         It touches the database, because a process that is listening but cannot
         read its own scans is not healthy in any way that matters. It fails when
         a worker loop has died, since then uploads are accepted and never
         measured. It stays healthy while a loop is busy with a fifteen-minute
         bake, and in a second process that found the worker lock taken, because
-        restarting either one would fix nothing. /health/details says which.
+        restarting either one would fix nothing. A loop that is stalled or
+        running a job past its deadline is named in the body but not failed
+        here. Both are judged from timing alone, and a restart in the middle of
+        a slow job throws its work away. /health/ready fails on them.
         """
         with database.connect() as connection:
             connection.execute("SELECT 1 FROM scans LIMIT 1").fetchone()
@@ -205,14 +220,31 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
         body = {"status": "ok" if state != "stopped" else "worker stopped", "worker": state}
         return JSONResponse(body, status_code=503 if state == "stopped" else 200)
 
+    @app.get("/health/ready")
+    def health_ready():
+        """Whether queued work is getting done: 503 while any worker loop has died, is stuck
+        outside a job, or is running a job past its kind's deadline."""
+        with database.connect() as connection:
+            connection.execute("SELECT 1 FROM scans LIMIT 1").fetchone()
+        problems = worker.problems()
+        body = {"status": "degraded" if problems else "ready", "problems": problems}
+        return JSONResponse(body, status_code=503 if problems else 200)
+
     @app.get("/health/details")
     def health_details() -> dict:
-        """What each worker loop is doing, how long since it last beat, and how long the queue has waited."""
+        """What each worker loop is doing, how long since it last beat, how long the queue has waited,
+        which commit this server was built from, and whether its traces are reaching Weave."""
         with database.connect() as connection:
             oldest = repo.oldest_queued_job_seconds(connection)
-        return {"worker": worker.status(), "oldest_queued_job_seconds": oldest}
-
-    return app
+        problems = worker.problems()
+        return {
+            "status": "degraded" if problems else "ok",
+            "problems": problems,
+            "worker": worker.status(),
+            "oldest_queued_job_seconds": oldest,
+            "commit": commit,
+            "tracing": tracing_status(),
+        }
 
 
 def answered_report(database: Database, stages: Stages, scan_id: uuid.UUID) -> Report:
@@ -237,17 +269,18 @@ def _scan_or_404(connection, scan_id: uuid.UUID) -> Scan:
     return scan
 
 
-def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore) -> None:
+def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore, budgets: Budgets) -> None:
     @app.post("/api/scans", status_code=201, response_model=Scan)
     def create_scan(body: CreateScanRequest, request: Request) -> Scan:
         owner = owner_of(request)
         with database.transaction() as connection:
+            budgets.admit_scan(connection, store, owner)
             if body.replaces is not None and repo.scan_owner(connection, body.replaces) != owner.id:
                 raise ApiProblem(404, "no scan")
             scan_id = repo.insert_scan(connection, body, owner.id)
             if body.replaces is not None:
                 carry_answers(connection, store, body.replaces, scan_id)
-            return repo.get_scan(connection, scan_id)
+            return _scan_or_404(connection, scan_id)
 
     @app.get("/api/scans", response_model=ScanList)
     def list_scans(request: Request) -> ScanList:
@@ -279,86 +312,104 @@ def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore)
         return Response(status_code=204)
 
 
-def _accept_staged(database, store, scan_id, artifact_id, kind, claimed, staged) -> tuple[int, Artifact]:
+def _accept_staged(
+    database: Database, admission: UploadAdmission, artifact_id: str, kind: str, claimed: str, staged: StagedUpload
+) -> tuple[int, Artifact]:
+    """Store a staged upload, or refuse it. The caller discards whatever is still staged afterwards."""
+    store, scan_id = admission.store, admission.scan_id
     if staged.sha256 != claimed.lower():
-        store.discard(staged)
         raise ApiProblem(400, "checksum mismatch")
     with database.transaction() as connection:
         _scan_or_404(connection, scan_id)
         existing = repo.find_artifact(connection, scan_id, artifact_id)
         if existing is not None:
-            store.discard(staged)
             if existing.kind != kind:
                 raise ApiProblem(409, "artifact already stored with different kind")
             if existing.sha256 != staged.sha256:
                 raise ApiProblem(409, "artifact already stored with different content")
             return 200, existing
-        try:
-            _admit(connection, store, scan_id, staged.bytes)
-        except ApiProblem:
-            store.discard(staged)
-            raise
+        admission.before_storing(connection, staged.bytes)
         artifact = Artifact(id=artifact_id, kind=kind, sha256=staged.sha256, bytes=staged.bytes)
         repo.insert_artifact(connection, scan_id, artifact)
         store.commit(staged, store.artifact_path(scan_id, artifact_id))
         return 201, artifact
 
 
-def _admit(connection, store: ArtifactStore, scan_id: uuid.UUID, incoming_bytes: int) -> None:
-    """Refuse an artifact the scan has no room left for, with a 413 that says which limit it hit."""
-    try:
-        store.quota.admit(*repo.artifact_usage(connection, scan_id), incoming_bytes)
-    except ScanFull as full:
-        raise ApiProblem(413, str(full)) from None
-
-
-def _refuse_a_full_scan_early(database: Database, store: ArtifactStore, scan_id: uuid.UUID, artifact_id: str) -> None:
+def _refuse_a_doomed_upload_early(
+    database: Database, admission: UploadAdmission, artifact_id: str, request: Request
+) -> None:
     """Say no before reading the body when a new artifact could not fit anyway. A repeat upload still gets its 200."""
+    declared = request.headers.get("content-length", "")
     with database.connect() as connection:
-        _scan_or_404(connection, scan_id)
-        if repo.find_artifact(connection, scan_id, artifact_id) is None:
-            _admit(connection, store, scan_id, 0)
+        _scan_or_404(connection, admission.scan_id)
+        if repo.find_artifact(connection, admission.scan_id, artifact_id) is None:
+            admission.before_reading(connection, int(declared) if declared.isdigit() else 0)
 
 
-def _finalize(database: Database, store: ArtifactStore, scan_id: uuid.UUID) -> tuple[Scan, bool]:
+def _coverage_of(store: ArtifactStore, scan: Scan) -> list[SurfaceCoverage]:
+    """The phone's coverage.json, or none. Coverage never blocks a scan, so an oversized file is skipped unread."""
+    artifact = next((a for a in scan.artifacts if a.kind == "coverage"), None)
+    if artifact is None or artifact.bytes > MAX_METADATA_BYTES:
+        return []
+    return parse_coverage(store.artifact_path(scan.id, artifact.id).read_bytes())
+
+
+def _finalize(database: Database, store: ArtifactStore, budgets: Budgets, scan_id: uuid.UUID) -> tuple[Scan, bool]:
     with database.transaction() as connection:
         scan = _scan_or_404(connection, scan_id)
+        if scan.state in ("failed", "uploading"):
+            budgets.admit_queued_work(connection)
         if scan.state == "failed":
             repo.retry_failed_jobs(connection, scan_id)
-            return repo.get_scan(connection, scan_id), True
+            return _scan_or_404(connection, scan_id), True
         if scan.state != "uploading":
             return scan, False
         missing = repo.missing_required(scan)
         if missing:
             raise ApiProblem(409, "missing artifacts", need=missing)
-        coverage_artifact = next((a for a in scan.artifacts if a.kind == "coverage"), None)
-        coverage = (
-            parse_coverage(store.artifact_path(scan_id, coverage_artifact.id).read_bytes())
-            if coverage_artifact else []
-        )
-        repo.mark_finalized(connection, scan, coverage)
+        repo.mark_finalized(connection, scan, _coverage_of(store, scan))
         record_closure(connection, scan)
         repo.enqueue_job(connection, scan_id, PROCESS, 0)
-        return repo.get_scan(connection, scan_id), True
+        return _scan_or_404(connection, scan_id), True
 
 
-STAGED_VALIDATORS = {
-    "lidar_mesh": (validate_lidar_mesh, InvalidLidarMesh, "invalid lidar mesh"),
-    "photo_manifest": (validate_manifest, ValueError, "invalid photo manifest"),
-    "room_usdz": (validate_room_usdz, InvalidUsdz, "invalid usdz archive"),
+@dataclass(frozen=True)
+class StagedCheck:
+    """How an artifact kind is checked before it is stored: its size cap, the check, what it raises, the 400."""
+
+    max_bytes: int
+    validate: Callable[[pathlib.Path], object]
+    invalid: type[Exception]
+    message: str
+
+
+def _lidar_mesh_file(path: pathlib.Path) -> object:
+    return validate_lidar_mesh(path.read_bytes())
+
+
+def _photo_manifest_file(path: pathlib.Path) -> object:
+    return validate_manifest(path.read_bytes())
+
+
+STAGED_CHECKS = {
+    "lidar_mesh": StagedCheck(MAX_LIDAR_MESH_BYTES, _lidar_mesh_file, InvalidLidarMesh, "invalid lidar mesh"),
+    "photo_manifest": StagedCheck(MAX_METADATA_BYTES, _photo_manifest_file, ValueError, "invalid photo manifest"),
+    "room_usdz": StagedCheck(MAX_ARCHIVE_BYTES, validate_room_usdz, InvalidUsdz, "invalid usdz archive"),
 }
-"""Artifact kinds whose bytes are checked before they are stored: the check, what it raises, and the 400 to send."""
+"""Artifact kinds whose bytes are checked before they are stored. The size is
+compared from the staged file's length, so an oversized one is never read."""
 
 
-def _validate_staged(store: ArtifactStore, staged, kind: str) -> None:
-    if kind not in STAGED_VALIDATORS:
+def _validate_staged(staged: StagedUpload, kind: str) -> None:
+    check = STAGED_CHECKS.get(kind)
+    if check is None:
         return
-    validate, invalid, message = STAGED_VALIDATORS[kind]
+    if staged.bytes > check.max_bytes:
+        raise ApiProblem(413, f"{kind} is larger than {check.max_bytes} bytes")
     try:
-        validate(staged.temp_path.read_bytes())
-    except invalid:
-        store.discard(staged)
-        raise ApiProblem(400, message) from None
+        check.validate(staged.temp_path)
+    except check.invalid:
+        raise ApiProblem(400, check.message) from None
 
 
 async def _stage_upload(store: ArtifactStore, scan_id: uuid.UUID, artifact_id: str, request: Request):
@@ -405,6 +456,7 @@ def _install_upload_routes(
     store: ArtifactStore,
     worker: Worker,
     settings: Settings,
+    budgets: Budgets,
 ) -> None:
     @app.put("/api/scans/{scan_id}/artifacts/{artifact_id}", response_model=Artifact, status_code=201)
     async def upload_artifact(
@@ -414,12 +466,16 @@ def _install_upload_routes(
         x_checksum_sha256: Annotated[str, Header()],
         x_artifact_kind: Annotated[ArtifactKind, Header()],
     ):
-        _refuse_a_full_scan_early(database, store, scan_id, artifact_id)
+        admission = UploadAdmission(budgets, store, owner_of(request), scan_id)
+        _refuse_a_doomed_upload_early(database, admission, artifact_id, request)
         staged = await _stage_upload(store, scan_id, artifact_id, request)
-        _validate_staged(store, staged, x_artifact_kind)
-        status, artifact = _accept_staged(
-            database, store, scan_id, artifact_id, x_artifact_kind, x_checksum_sha256, staged
-        )
+        try:
+            _validate_staged(staged, x_artifact_kind)
+            status, artifact = _accept_staged(
+                database, admission, artifact_id, x_artifact_kind, x_checksum_sha256, staged
+            )
+        finally:
+            store.discard(staged)
         if _queue_for_arrival(
             database, store, worker, scan_id, x_artifact_kind, settings.evidence_settle_seconds
         ):
@@ -428,7 +484,7 @@ def _install_upload_routes(
 
     @app.post("/api/scans/{scan_id}/complete", response_model=Scan)
     def complete(scan_id: uuid.UUID, body: CompleteRequest | None = None) -> Scan:
-        scan, queued = _finalize(database, store, scan_id)
+        scan, queued = _finalize(database, store, budgets, scan_id)
         if not queued and scan.state != "uploading":
             with database.transaction() as connection:
                 current = _scan_or_404(connection, scan_id)
@@ -784,7 +840,7 @@ def _install_simulation_routes(app: FastAPI, database: Database, stages: Stages,
             lidar_mesh_path=lidar_mesh_path, capture_graph=captured,
         ).model_copy(update={"revision": base.revision + 1, "base_hash": graph_hash(base)})
         with database.transaction() as connection:
-            if repo.get_revision(connection, scan_id)["revision"] != base.revision:
+            if repo.latest_revision_number(connection, scan_id) != base.revision:
                 raise ApiProblem(409, STALE_LAYOUT)
             repo.save_revision(connection, rebuilt, source="rebuild", base_revision=base.revision)
             repo.enqueue_job(connection, scan_id, ASSESS, rebuilt.revision)

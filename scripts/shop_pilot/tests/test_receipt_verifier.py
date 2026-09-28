@@ -261,10 +261,30 @@ def test_declared_dirty_file_with_wrong_hash_is_invalid(tmp_path):
     assert any("dirty.py" in reason for reason in result["invalid_reasons"])
 
 
+def _repository_with_two_commits(root: pathlib.Path) -> tuple[str, str]:
+    """A throwaway repository, so the test needs no history from the real one; CI clones one commit deep."""
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+
+    root.mkdir()
+    git("init", "--quiet")
+    git("config", "user.email", "verifier@example.com")
+    git("config", "user.name", "Receipt verifier test")
+    commits = []
+    for text in ("first\n", "second\n"):
+        (root / "source.txt").write_text(text, encoding="utf-8")
+        git("add", "source.txt")
+        git("commit", "--quiet", "-m", text.strip())
+        commits.append(git("rev-parse", "HEAD"))
+    return commits[0], commits[1]
+
+
 def test_receipt_bound_to_stale_commit_is_blocked(tmp_path):
     receipt = _base_receipt(tmp_path)
-    receipt["source_commit"] = "8f2962fc992e7ef502ad57d37eb0695b2bd66e08"
-    result = verify_receipt(receipt, artifacts_dir=tmp_path, git_worktree=REPO_ROOT)
+    worktree = tmp_path / "worktree"
+    stale, _ = _repository_with_two_commits(worktree)
+    receipt["source_commit"] = stale
+    result = verify_receipt(receipt, artifacts_dir=tmp_path, git_worktree=worktree)
     assert result["status"] == "externally_blocked"
 
 

@@ -18,7 +18,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from .pack import DATA_DIR, RuleSpec
+from .pack import DATA_DIR, RuleSpec, load_pack
 
 LEDGER_FILE = DATA_DIR / "verification.json"
 
@@ -171,3 +171,11 @@ def save_ledger(ledger: VerificationLedger, path: Path | None = None) -> None:
         json.dumps(json.loads(ledger.model_dump_json()), indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def preview_ledger() -> VerificationLedger:
+    """Every rule in the pack recorded under the preview marker, for development runs."""
+    ledger = VerificationLedger()
+    for rule in load_pack().rules:
+        ledger = ledger.record(rule, verified_by=PREVIEW_REVIEWER)
+    return ledger

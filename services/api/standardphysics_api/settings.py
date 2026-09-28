@@ -7,11 +7,13 @@ never appear in a response, a log line or the web build.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import pathlib
 import secrets
 from dataclasses import dataclass
 
+from standardphysics_agents.env_file import load_dotenv
 from standardphysics_agents.tracing import ENTITY_ENV, PROJECT_ENV
 
 from .store import ScanQuota
@@ -19,18 +21,6 @@ from .store import ScanQuota
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 log = logging.getLogger(__name__)
 DEFAULT_DATA_DIR = pathlib.Path(__file__).resolve().parents[1] / "var"
-
-
-def load_dotenv(path: pathlib.Path) -> None:
-    """KEY=value lines, without overriding anything already in the environment."""
-    if not path.exists():
-        return
-    for line in path.read_text().splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, value = stripped.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
 def _flag(name: str) -> bool:
@@ -75,6 +65,22 @@ class Settings:
     """How many artifacts one scan may hold, from SP_MAX_SCAN_ARTIFACTS. See `store.ScanQuota`."""
     max_scan_bytes: int = ScanQuota.max_bytes
     """How many bytes one scan's artifacts may add up to, from SP_MAX_SCAN_BYTES."""
+    max_owner_scans: int = 25
+    """How many scans one account may hold, from SP_MAX_OWNER_SCANS. The team is exempt (see `budgets`)."""
+    max_owner_bytes: int = 6 * 1024 * 1024 * 1024
+    """How many uploaded bytes one account may hold across its scans, from SP_MAX_OWNER_BYTES.
+
+    The largest walk on file, the Moffitt library's full floor, is 2.5 GB, so an
+    owner has room for two walks that size. A shop is far smaller than a library
+    floor. The team, whose account holds about ten Moffitt-scale walks, is exempt.
+    """
+    max_queued_jobs: int = 200
+    """How many jobs may wait in the queue before finalizing a scan is refused with a 503, from SP_MAX_QUEUED_JOBS.
+    A finalized walk queues a handful of jobs, so this is dozens of walks waiting at once."""
+    min_free_disk_bytes: int = 1024 * 1024 * 1024
+    """The free space kept on the data volume, from SP_MIN_FREE_DISK_BYTES. Below it, new scans and
+    uploads are refused with a 507. It is at least one artifact at the largest size allowed, so an
+    upload admitted just above the floor can't run the 10 GB volume out of space by itself."""
     preview_unverified_rules: bool = False
     """Development only. Runs every rule as if a person had verified it, so the
     viewer has findings to draw before the rule pack is reviewed."""
@@ -118,6 +124,26 @@ class Settings:
     fifteen minutes, so three times that only ever stops a bake that has hung.
     SP_BAKE_TIMEOUT_SECONDS changes it.
     """
+    process_timeout_seconds: float = 60 * 60
+    """How long a process job (ingest, discovery and the first check) may run, from SP_PROCESS_TIMEOUT_SECONDS.
+
+    These four deadlines are for jobs that run on the worker's own thread,
+    where Python can't be interrupted from outside. The job checks its deadline
+    at each stage boundary and fails there once it is past, discarding what the
+    late stage produced; /health/ready reports a job past its deadline as
+    degraded while it is still inside a stage. Each default sits far above what
+    the job's slowest step is allowed on its own: a model request here gives up
+    after two minutes and a Blender run after five.
+    """
+    assess_timeout_seconds: float = 20 * 60
+    """How long an assess job (the rule check and its model calls) may run, from SP_ASSESS_TIMEOUT_SECONDS."""
+    display_timeout_seconds: float = 30 * 60
+    """How long a display job may run, from SP_DISPLAY_TIMEOUT_SECONDS. It runs Blender once for the
+    geometry and once per finding for its still, each run killed after five minutes."""
+    simulate_timeout_seconds: float = 4 * 60 * 60
+    """How long a simulation may run, from SP_SIMULATE_TIMEOUT_SECONDS. A deep one runs its trials, a
+    thousand by default, once for each of up to nine redesign rounds. The job checks its deadline
+    between rounds, so a run past it stops after the round in progress."""
     team_emails: frozenset[str] = frozenset()
     """The team's emails before the team was a role, from SP_TEAM_EMAILS (comma separated).
 
@@ -143,10 +169,27 @@ class Settings:
     not changed for this long (or an explicit /complete arrives), one semantic
     job is queued. Zero keeps the immediate per-artifact behavior for tests.
     """
+    git_sha: str = "unknown"
+    """The commit the image was built from, from SP_GIT_SHA, which the Dockerfile
+    bakes in from the GIT_SHA build argument. /health/details reports it, so the
+    commit to roll back from is on the server rather than in someone's memory."""
 
     @property
     def database_path(self) -> pathlib.Path:
         return self.data_dir / "standardphysics.sqlite3"
+
+    def job_deadline_seconds(self, kind: str) -> float:
+        """How long a job of this kind may run. A photo bake's deadline is its kill timeout.
+
+        A kind with no deadline gets none; the worker fails such a job as soon as it runs it.
+        """
+        return {
+            "process": self.process_timeout_seconds,
+            "assess": self.assess_timeout_seconds,
+            "display": self.display_timeout_seconds,
+            "simulate": self.simulate_timeout_seconds,
+            "texture": self.bake_timeout_seconds,
+        }.get(kind, math.inf)
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -162,14 +205,23 @@ class Settings:
             auto_deep_simulation=_flag("SP_AUTO_DEEP_SIMULATION"),
             bake_in_own_process=not _flag("SP_BAKE_IN_PROCESS"),
             bake_timeout_seconds=_bounded_integer("SP_BAKE_TIMEOUT_SECONDS", 45 * 60, 60, 86_400),
+            process_timeout_seconds=_bounded_integer("SP_PROCESS_TIMEOUT_SECONDS", 60 * 60, 60, 86_400),
+            assess_timeout_seconds=_bounded_integer("SP_ASSESS_TIMEOUT_SECONDS", 20 * 60, 60, 86_400),
+            display_timeout_seconds=_bounded_integer("SP_DISPLAY_TIMEOUT_SECONDS", 30 * 60, 60, 86_400),
+            simulate_timeout_seconds=_bounded_integer("SP_SIMULATE_TIMEOUT_SECONDS", 4 * 60 * 60, 60, 7 * 86_400),
             team_emails=_email_set("SP_TEAM_EMAILS"),
             apns_key=_secret("SP_APNS_KEY", "SP_APNS_KEY_PATH"),
             apns_key_id=os.environ.get("SP_APNS_KEY_ID") or None,
             apns_team_id=os.environ.get("SP_APNS_TEAM_ID") or None,
             apns_topic=os.environ.get("SP_APNS_TOPIC") or "com.standardphysics.capture",
+            git_sha=os.environ.get("SP_GIT_SHA") or "unknown",
             apple_audiences=_email_set("SP_APPLE_AUDIENCES") or frozenset({"com.standardphysics.capture"}),
             max_scan_artifacts=_bounded_integer("SP_MAX_SCAN_ARTIFACTS", ScanQuota.max_artifacts, 1, 1_000_000),
             max_scan_bytes=_bounded_integer("SP_MAX_SCAN_BYTES", ScanQuota.max_bytes, 1, 2**50),
+            max_owner_scans=_bounded_integer("SP_MAX_OWNER_SCANS", cls.max_owner_scans, 1, 1_000_000),
+            max_owner_bytes=_bounded_integer("SP_MAX_OWNER_BYTES", cls.max_owner_bytes, 1, 2**50),
+            max_queued_jobs=_bounded_integer("SP_MAX_QUEUED_JOBS", cls.max_queued_jobs, 1, 1_000_000),
+            min_free_disk_bytes=_bounded_integer("SP_MIN_FREE_DISK_BYTES", cls.min_free_disk_bytes, 0, 2**50),
             evidence_settle_seconds=_bounded_integer(
                 "SP_EVIDENCE_SETTLE_SECONDS", 30, 0, 86_400
             ),

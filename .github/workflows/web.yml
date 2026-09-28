@@ -5,11 +5,13 @@ on:
     paths:
       - "packages/contracts/**"
       - "apps/web/**"
+      - "services/api/**"
       - ".github/workflows/web.yml"
   pull_request:
     paths:
       - "packages/contracts/**"
       - "apps/web/**"
+      - "services/api/**"
       - ".github/workflows/web.yml"
 
 jobs:
@@ -54,3 +56,43 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+
+  e2e:
+    name: Owner flow in a browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      PYTHON: python
+      SP_SEED_OWNER_PASSWORD: playwright-demo-owner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install the API
+        working-directory: .
+        run: |
+          python -m pip install -r requirements-dev.lock
+          python -m pip install --no-deps -e tools/loopforge -e packages/contracts -e packages/fixtures -e packages/pipeline -e packages/agents -e services/api
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
+          retention-days: 7

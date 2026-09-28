@@ -9,13 +9,14 @@ staging keeps a bad capture a specific 400 at the moment it is sent.
 
 from __future__ import annotations
 
-import io
+import pathlib
 import zipfile
 
 ZIP_SIGNATURE = b"PK"
 USD_ENTRIES = (".usda", ".usdc", ".usd", ".usdz")
 MAX_ENTRIES = 1000
 MAX_EXPANDED_BYTES = 256 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 """A RoomPlan room.usdz is one usdc and a few textures, well under a megabyte
 for the largest walk on file. The caps are far above that, and low enough that
 a small archive can't claim gigabytes for the Blender conversion to unpack."""
@@ -25,15 +26,22 @@ class InvalidUsdz(ValueError):
     pass
 
 
-def validate_room_usdz(payload: bytes) -> None:
-    """Accept only an archive that parses and carries a usd payload entry."""
-    if len(payload) < 4 or payload[:2] != ZIP_SIGNATURE:
+def validate_room_usdz(path: pathlib.Path) -> None:
+    """Accept only an archive that parses and carries a usd payload entry.
+
+    zipfile reads the central directory from the file, so only the entry list
+    is ever in memory, never the archive.
+    """
+    if path.stat().st_size < 4:
         raise InvalidUsdz("not a usdz archive")
-    try:
-        with zipfile.ZipFile(io.BytesIO(payload), "r") as archive:
-            _check_entries(archive.infolist())
-    except zipfile.BadZipFile as error:
-        raise InvalidUsdz(f"not a valid usdz archive: {error}") from error
+    with path.open("rb") as handle:
+        if handle.read(len(ZIP_SIGNATURE)) != ZIP_SIGNATURE:
+            raise InvalidUsdz("not a usdz archive")
+        try:
+            with zipfile.ZipFile(handle, "r") as archive:
+                _check_entries(archive.infolist())
+        except zipfile.BadZipFile as error:
+            raise InvalidUsdz(f"not a valid usdz archive: {error}") from error
 
 
 def _check_entries(entries: list[zipfile.ZipInfo]) -> None:
