@@ -512,7 +512,7 @@ mount point and moving it would move the mount.
 ## Alerts
 
 `deploy/digitalocean/monitor.sh` runs every five minutes from a systemd
-timer that `setup.sh` installs. It checks four things and posts a message to
+timer that `setup.sh` installs. It checks five things and posts a message to
 `SP_ALERT_WEBHOOK` when one starts failing and again when it recovers:
 
 | Check | Fails when | Threshold in `.env` |
@@ -520,7 +520,8 @@ timer that `setup.sh` installs. It checks four things and posts a message to
 | readiness | `/health/ready` answers anything but 200, or cannot be reached | none |
 | queue | `oldest_queued_job_seconds` in `/health/details` is over the limit | `SP_MONITOR_QUEUE_SECONDS=1800` |
 | disk | the scans volume has less free space than the limit, measured with `df` | `SP_MONITOR_MIN_FREE_PERCENT=15` |
-| backup | the newest snapshot in `SP_BACKUP_DEST` is older than the limit, or there is none. Skipped when `SP_BACKUP_DEST` is empty. | `SP_MONITOR_BACKUP_HOURS=26` |
+| backup | the newest snapshot in `SP_BACKUP_DEST` is older than the limit, or there is none, or `SP_BACKUP_DEST` is empty. `SP_BACKUPS_NOT_WANTED=1` skips it on a box whose data nobody needs back. | `SP_MONITOR_BACKUP_HOURS=26` |
+| tracing | `WANDB_API_KEY` is set and `tracing` in `/health/details` says tracing is off, or counts a failed delivery | none |
 
 It asks the API at `https://$API_DOMAIN` by default, through Caddy, so an
 expired certificate or a stopped Caddy fails readiness too.
@@ -596,12 +597,12 @@ already answers it. Its body looks like this:
 | Disk free | Under 15% or 5 GB free on the scans volume, or on the backup destination. Uploads and bakes write there, and SQLite fails every write once it is full. | `df -h /mnt/standardphysics-scans`, or the `space:` line of `doctor.sh` | No |
 | Failed backup | The unit failed, or the newest snapshot is more than 26 hours old. `backup.sh` exits 2 when a file the live database lists is missing, and 75 when another backup was already running. | `systemctl is-failed standardphysics-backup.service`, `./restore.sh` with no arguments lists the snapshots | No |
 | Failed deploy | `scripts/deploy.sh` exits non-zero: 75 means a job was still running after `SP_DEPLOY_DRAIN_SECONDS`, 69 means the queue could not be read or the drain could not be set, 66 means no tested image exists for the commit, anything else means the pull, build or restart failed. After a deploy, the `commit` in `/health/details` should match the last line of `/var/log/standardphysics-deploys.log`, which only records deploys that got as far as the restart. | the script's exit code, `/health/details` | The commit only |
-| Tracing off | Only when `WANDB_PROJECT` is set on purpose and traces stop arriving. `tracing` in `/health/details` says whether tracing started and, when it did not, why, including a `weave.init` that ran past `SP_WEAVE_INIT_TIMEOUT_SECONDS` (30 s). `delivery_errors` and `last_delivery_error` count the send failures the Weave SDK logged and any flush that ran past `SP_WEAVE_FLUSH_TIMEOUT_SECONDS` (15 s). Zero means none were logged, not that each trace arrived. | `/health/details`, the API log's `weave tracing is off` warning | Yes |
+| Tracing off | Only when `WANDB_PROJECT` is set on purpose and traces stop arriving. `tracing` in `/health/details` says whether tracing started and, when it did not, why, including a `weave.init` that ran past `SP_WEAVE_INIT_TIMEOUT_SECONDS` (30 s). `delivery_errors` and `last_delivery_error` count the send failures the Weave SDK logged and any flush that raised or ran past `SP_WEAVE_FLUSH_TIMEOUT_SECONDS` (15 s). Zero means none were logged, not that each trace arrived. | `/health/details`, the API log's `weave tracing is off` warning | Yes |
 
 `monitor.sh` covers the queue age, a worker that has died, stalled or overrun
-its deadline (through `/health/ready`), the scans volume's free space and
-the backup's age. It does not watch the backup destination's disk, a failed
-deploy, or tracing.
+its deadline (through `/health/ready`), the scans volume's free space, the
+backup's age and, when `WANDB_API_KEY` is set, tracing. It does not watch the
+backup destination's disk or a failed deploy.
 
 ## Pointing the app at it
 
