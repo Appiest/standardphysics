@@ -44,8 +44,8 @@ esac
     "docker": """echo "docker $* GIT_SHA=${GIT_SHA:-}" >> "$STAND_IN_LOG"
 [ "$1" = pull ] && [ -z "${FAKE_PUBLISHED:-}" ] && exit 1
 [ "$1" = image ] && echo "$FAKE_DIGEST"
-if [ "$2" = exec ] && [ "${@: -2:1}" = - ]; then
-  exec "$STAND_IN_PYTHON" - "${@: -1}" "$FAKE_ORIGIN" "$FAKE_ORIGIN"
+if [ "$2" = exec ] && [ "${@: -3:1}" = - ]; then
+  exec "$STAND_IN_PYTHON" - "${@: -2}" "$FAKE_ORIGIN" "$FAKE_ORIGIN"
 fi
 if [ "${@: -2:1}" = standardphysics_api.drain ]; then
   [ "${@: -1}" = on ] && exit "${FAKE_DRAIN_ON_EXIT:-0}"
@@ -64,8 +64,9 @@ fi
 
 
 class FakeStack(http.server.BaseHTTPRequestHandler):
-    """The API's two health routes and the workspace's sign-in page, each answering
-    from `answers` with the number of requests the server has had so far."""
+    """The API's two health routes, the workspace's sign-in page and the session route
+    the browser reaches through Caddy, each answering from `answers` with the number
+    of requests the server has had so far."""
 
     answers: dict = {}
 
@@ -85,6 +86,7 @@ def healthy_answers(commit: str = COMMIT) -> dict:
         "/health/ready": lambda asked: (200, {"status": "ready", "problems": []}),
         "/health/details": lambda asked: (200, {"commit": commit}),
         "/sign-in": lambda asked: (200, {}),
+        "/api/auth/session": lambda asked: (401, {"error": "Sign in to continue.", "need": None}),
     }
 
 
@@ -353,6 +355,29 @@ def test_a_workspace_that_does_not_answer_is_not_written_down(box):
     FakeStack.answers["/sign-in"] = lambda asked: (502, {})
     result = a_failed_deploy(box)
     assert "/sign-in answered 502" in result.stderr
+
+
+def test_the_public_origin_is_asked_for_a_session_and_must_refuse_one(stack, box):
+    result = deploy(box, SP_DEPLOY_PUBLIC_ORIGIN=os.environ["FAKE_ORIGIN"])
+    assert result.returncode == 0, result.stderr
+    assert stack.asked == ["/health/ready", "/health/details", "/sign-in", "/api/auth/session"]
+
+
+def test_a_public_origin_that_does_not_route_api_to_the_backend_is_not_written_down(box):
+    FakeStack.answers["/api/auth/session"] = lambda asked: (404, {})
+    earlier = f"2026-09-01T00:00:00Z {PREVIOUS} {DIGEST}"
+    (box / "deploys.log").write_text(earlier + "\n")
+    result = deploy(box, SP_DEPLOY_READY_SECONDS="10", SP_DEPLOY_PUBLIC_ORIGIN=os.environ["FAKE_ORIGIN"])
+    assert result.returncode == 70
+    assert "/api/auth/session answered 404, not the 401" in result.stderr
+    assert (box / "deploys.log").read_text().splitlines() == [earlier]
+
+
+def test_the_public_origin_defaults_to_the_app_domain_in_the_box_env(box):
+    (box / "standardphysics/deploy/digitalocean/.env").write_text("APP_DOMAIN=app.invalid\n")
+    result = deploy(box, SP_DEPLOY_READY_SECONDS="0")
+    assert result.returncode == 70
+    assert "https://app.invalid/api/auth/session did not answer" in result.stderr
 
 
 def test_the_rollback_named_comes_from_a_history_that_was_just_rotated(box):

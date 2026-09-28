@@ -15,6 +15,26 @@ It runs in production today on real scans, from a boba shop to a whole floor of 
 | Production | A DigitalOcean droplet running the compose stack in [`deploy/digitalocean`](deploy/digitalocean), deployed only from images CI has tested |
 | Health, live | [`/health/details`](https://api.standardphysics.app/health/details): deployed commit, worker heartbeats, queue age, tracing status |
 
+## Running it
+
+You need Python 3.11+ and Node 20.9+.
+
+```bash
+./start.sh                          # installs into .venv and apps/web, runs the API on :8787 and the web on :3000
+SP_SEED_SAMPLE_SHOP=1 ./start.sh    # same, with a sample shop; the log says where the demo account's password is
+docker compose up --build           # the production image, API and web as two containers
+```
+
+The same checks CI runs:
+
+```bash
+.venv/bin/python -m ruff check .
+.venv/bin/python -m mypy                       # after .venv/bin/python -m pip install mypy==2.3.1
+.venv/bin/python -m pytest                     # every package, the scripts and the tools
+.venv/bin/python -m pytest services/api/tests   # the API, run on its own because its test helpers share names with the agents'
+cd apps/web && npm run lint && npm run typecheck && npm run test && npm run e2e
+```
+
 ## Production readiness at a glance
 
 | What a reviewer asks | What is in the repo |
@@ -51,8 +71,8 @@ Each row names what goes wrong, what the system does about it, and the test that
 | Someone asks for another owner's scan | Ownership is checked for every spelling of a scan id; the answer is the same 404 as a scan that does not exist | [`test_auth.py`](services/api/tests/test_auth.py) |
 | Someone pre-registers a victim's email | When Apple proves the email, the squatter's password and sessions are revoked | [`test_guests.py`](services/api/tests/test_guests.py) |
 | A deploy goes wrong | The deploy refuses over running jobs, waits until the new commit is serving, and prints the rollback command if it never is | [`test_deploy.py`](scripts/tests/test_deploy.py) |
-| Data is lost | Nightly snapshots of the database and artifacts; a restore verifies every file against its recorded hash | [`test_backup_restore.py`](scripts/tests/test_backup_restore.py) |
-| Production goes down at night | A monitor checks readiness, queue age, disk and backup age every five minutes and alerts once per outage and once on recovery | [`test_monitor.py`](scripts/tests/test_monitor.py) |
+| Data is lost | Nightly snapshots of the database and artifacts; a restore checks every uploaded artifact against the sha256 recorded at upload | [`test_backup_restore.py`](scripts/tests/test_backup_restore.py) |
+| Production goes down at night | A monitor checks readiness, queue age, disk, backup age (a box with no backup destination fails too) and tracing every five minutes and alerts once per outage and once on recovery | [`test_monitor.py`](scripts/tests/test_monitor.py) |
 
 ## How it's built
 
@@ -88,7 +108,7 @@ An upload lands in the artifact store and queues a `process` job. The worker tur
 
 Dependencies point one way: `contracts` at the bottom, `pipeline` and `agents` above it, `services/api` above those, and the two apps talk to the API over HTTP only. [`tests/test_layering.py`](tests/test_layering.py) fails the build if a package imports upward or imports a sibling its `pyproject.toml` does not declare, and [`tests/test_test_names.py`](tests/test_test_names.py) fails it if any test file sits outside a collected directory.
 
-The API is one service with one SQLite database, which is the right size for a 2 vCPU droplet: WAL mode, `BEGIN IMMEDIATE` transactions and atomic job claims make it safe, and every query lives behind [`repository.py`](services/api/standardphysics_api/repository.py).
+The API is one service with one SQLite database, which is the right size for a 2 vCPU droplet: WAL mode, `BEGIN IMMEDIATE` transactions and atomic job claims make it safe. Scans, artifacts, revisions and the job queue are written through [`repository.py`](services/api/standardphysics_api/repository.py).
 
 ## What CI enforces on every push
 
@@ -106,7 +126,7 @@ One workflow, [`ci.yml`](.github/workflows/ci.yml), runs everything below. The r
 1. CI tests the image and publishes it to GHCR as `standardphysics:<commit>`.
 2. [`scripts/deploy.sh`](scripts/deploy.sh) refuses while jobs are running, pulls that exact image, restarts, and waits until `/health/ready` is green, `/health/details` reports the new commit and the web app answers. Only then does it record the deploy.
 3. Rolling back is `git checkout <sha>` and a restart with the image already tagged for it; the deploy prints the command if the new commit never becomes healthy.
-4. [`backup.sh`](deploy/digitalocean/backup.sh) takes a consistent SQLite online backup and incremental artifact snapshots every night; [`restore.sh`](deploy/digitalocean/restore.sh) restores into a fresh directory and verifies integrity, row counts and every file's hash.
+4. [`backup.sh`](deploy/digitalocean/backup.sh) takes a consistent SQLite online backup and incremental artifact snapshots every night; [`restore.sh`](deploy/digitalocean/restore.sh) restores into a fresh directory and verifies SQLite's integrity check, the row counts, and every uploaded artifact's sha256.
 5. [`monitor.sh`](deploy/digitalocean/monitor.sh) runs every five minutes and alerts a webhook or an ntfy topic on an outage and on recovery.
 
 The containers run as a non-root user with memory and CPU limits and rotated logs. The runbook is [`docs/DEPLOY.md`](docs/DEPLOY.md).
@@ -124,26 +144,6 @@ The checks are also scored as a [Weave Evaluation](packages/agents/standardphysi
 | [Measured pipeline, fixes off](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e708-c957-76ce-8422-dbab54f22ed8) | 0.972 | 0.924 | not scored | 0.0008 in |
 
 The stand-in row is the control: swapping the measured geometry for merged boxes keeps recall but loses most of the precision, which shows the score comes from measuring the room correctly. Reproduce it with `standardphysics-agents weave-eval`.
-
-## Running it
-
-You need Python 3.11+ and Node 20.9+.
-
-```bash
-./start.sh                          # installs into .venv and apps/web, runs the API on :8787 and the web on :3000
-SP_SEED_SAMPLE_SHOP=1 ./start.sh    # same, with a sample shop; the log says where the demo account's password is
-docker compose up --build           # the production image, API and web as two containers
-```
-
-The same checks CI runs:
-
-```bash
-.venv/bin/python -m ruff check .
-.venv/bin/python -m mypy                       # after .venv/bin/python -m pip install mypy==2.3.1
-.venv/bin/python -m pytest                     # every package, the scripts and the tools
-.venv/bin/python -m pytest services/api/tests   # the API, run on its own because its test helpers share names with the agents'
-cd apps/web && npm run lint && npm run typecheck && npm run test && npm run e2e
-```
 
 ## More
 

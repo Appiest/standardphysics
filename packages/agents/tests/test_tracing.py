@@ -260,6 +260,18 @@ class TestStatusAndShutdown:
         assert not tracing.is_live()
         assert "no network" in caplog.text
 
+    def test_a_flush_that_raises_is_counted_but_not_abandoned(self, weave):
+        def refuse() -> None:
+            raise ConnectionError("no network")
+
+        weave.finish = refuse
+        tracing.init()
+        tracing.shutdown()
+        status = tracing.tracing_status()
+        assert status["delivery_errors"] == 1
+        assert status["last_delivery_error"] == "weave could not flush: no network"
+        assert not tracing.flush_was_abandoned()
+
     def test_a_process_that_exits_without_shutting_down_still_flushes(self, weave, monkeypatch):
         registered: list = []
         monkeypatch.setattr(tracing.atexit, "register", registered.append)

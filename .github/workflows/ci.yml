@@ -31,7 +31,7 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: requirements-dev.lock
-      - run: python -m pip install --upgrade pip
+      - run: python -m pip install pip==26.2.1
       - run: python -m pip install -r requirements-dev.lock
       - run: python -m pip install --no-deps -e tools/loopforge -e packages/contracts -e packages/fixtures -e packages/pipeline -e packages/agents -e services/api
       - run: python -m pip check
@@ -76,7 +76,7 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: requirements-dev.lock
-      - run: python -m pip install --upgrade pip
+      - run: python -m pip install pip==26.2.1
       - run: python -m pip install -r requirements-dev.lock
       - run: python -m pip install --no-deps -e tools/loopforge -e packages/contracts -e packages/fixtures -e packages/pipeline -e packages/agents -e services/api
       - run: python -m pip check
@@ -214,13 +214,20 @@ jobs:
   image:
     name: Image smoke test and Blender regressions
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
     # packages: write lets a master push stage the image it just tested.
     # Pull requests from forks get a read-only token whatever this says, and
     # the staging step below only runs on master anyway.
     permissions:
       contents: read
       packages: write
+    # The one image every later job checks or releases. candidate is its
+    # repository@digest on GHCR, set only on master; image-id is the local
+    # image's id, which the scan compares against the archive it loads
+    # everywhere else.
+    outputs:
+      candidate: ${{ steps.stage.outputs.candidate }}
+      image-id: ${{ steps.tested.outputs.image-id }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
@@ -235,6 +242,9 @@ jobs:
           build-args: GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Record the id of the image under test
+        id: tested
+        run: echo "image-id=$(docker image inspect --format '{{.Id}}' standardphysics:ci)" >> "$GITHUB_OUTPUT"
       # Accounts, then a real RoomPlan bedroom through the worker, the
       # assessment and Blender, then the workspace. The bedroom takes seconds;
       # the limit is for a worker that hangs.
@@ -248,16 +258,33 @@ jobs:
       # The bytes that passed both are pushed now, under a candidate tag that
       # scripts/deploy.sh never pulls, so the publish job can release this
       # exact image without rebuilding it or moving gigabytes between jobs.
-      # The owner is lowercased because registry names must be.
+      # The owner is lowercased because registry names must be. The pushed
+      # digest is the job's candidate output, so the scan and publish name the
+      # image by content rather than by a tag that a re-run could move.
       - name: Stage the tested image as a release candidate
+        id: stage
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          candidate="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/standardphysics:candidate-$GITHUB_SHA"
+          repository="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/standardphysics"
           echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          docker tag standardphysics:ci "$candidate"
-          docker push --quiet "$candidate"
+          docker tag standardphysics:ci "$repository:candidate-$GITHUB_SHA"
+          docker push --quiet "$repository:candidate-$GITHUB_SHA"
+          digest="$(docker buildx imagetools inspect "$repository:candidate-$GITHUB_SHA" --format '{{.Manifest.Digest}}')"
+          echo "candidate=$repository@$digest" >> "$GITHUB_OUTPUT"
+      # Branches and pull requests push nothing, so the scan gets the same image
+      # as an archive instead. It is kept for a day: only the scan reads it.
+      - name: Archive the tested image for the scan
+        if: steps.stage.outcome == 'skipped'
+        run: docker save standardphysics:ci | zstd -T0 -3 -o "$RUNNER_TEMP/standardphysics.tar.zst"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.stage.outcome == 'skipped'
+        with:
+          name: tested-image
+          path: ${{ runner.temp }}/standardphysics.tar.zst
+          compression-level: 0
+          retention-days: 1
 
   # Secrets anywhere in the history, and known vulnerabilities in the pinned
   # Python and web dependencies. The scanners are downloaded at pinned versions
@@ -307,26 +334,24 @@ jobs:
         working-directory: apps/web
         run: npm audit --package-lock-only --omit=dev --audit-level=high
 
-  # The release image, built from the same layer cache as the image job, then
-  # scanned with grype. It fails on a critical vulnerability only when a fixed
-  # version exists, because one without a fix gives nobody anything to do.
+  # The image the image job tested, scanned with grype: the candidate by digest
+  # straight from GHCR on master, and the archived image everywhere else, whose
+  # id is checked against the one the image job recorded before it is scanned.
+  # It fails on a critical vulnerability only when a fixed version exists,
+  # because one without a fix gives nobody anything to do.
   image-vulnerabilities:
     name: Critical vulnerabilities with a fix in the image
+    needs: image
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     permissions:
       contents: read
+      packages: read
+    env:
+      CANDIDATE: ${{ needs.image.outputs.candidate }}
+      TESTED_IMAGE_ID: ${{ needs.image.outputs.image-id }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
-        with:
-          context: .
-          load: true
-          tags: standardphysics:scan
-          build-args: GIT_SHA=${{ github.sha }}
-          cache-from: type=gha
-      - name: Scan the image
+      - name: Install grype
         env:
           GRYPE_VERSION: 0.119.0
           GRYPE_SHA256: 3fa2dc4b924621ab65404cf08d0b8438d896d80ab949c9d5a4ca283c36004c9b
@@ -335,12 +360,34 @@ jobs:
           curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o "$archive" "https://github.com/anchore/grype/releases/download/v$GRYPE_VERSION/grype_${GRYPE_VERSION}_linux_amd64.tar.gz"
           echo "$GRYPE_SHA256  $archive" | sha256sum --check --strict
           tar -xzf "$archive" -C "$RUNNER_TEMP" grype
-          "$RUNNER_TEMP/grype" docker:standardphysics:scan --only-fixed --fail-on critical
+      - name: Scan the candidate by digest
+        if: env.CANDIDATE != ''
+        env:
+          GRYPE_REGISTRY_AUTH_AUTHORITY: ghcr.io
+          GRYPE_REGISTRY_AUTH_USERNAME: ${{ github.actor }}
+          GRYPE_REGISTRY_AUTH_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: '"$RUNNER_TEMP/grype" "registry:$CANDIDATE" --only-fixed --fail-on critical'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: env.CANDIDATE == ''
+        with:
+          name: tested-image
+          path: ${{ runner.temp }}
+      - name: Scan the archived image
+        if: env.CANDIDATE == ''
+        run: |
+          zstd -dc "$RUNNER_TEMP/standardphysics.tar.zst" | docker load
+          loaded_id="$(docker image inspect --format '{{.Id}}' standardphysics:ci)"
+          if [ "$loaded_id" != "$TESTED_IMAGE_ID" ]; then
+            echo "the archive holds $loaded_id, but the image job tested $TESTED_IMAGE_ID" >&2
+            exit 1
+          fi
+          "$RUNNER_TEMP/grype" "docker:standardphysics:ci" --only-fixed --fail-on critical
 
   # A master commit whose every check passed gets its candidate retagged as
   # ghcr.io/<owner>/standardphysics:<sha>, the tag scripts/deploy.sh pulls.
-  # --prefer-index=false copies the manifest as it is instead of wrapping it in
-  # a new index, so the released digest is the digest the image job tested.
+  # The candidate is named by the digest the image job pushed and the scan
+  # read. --prefer-index=false copies the manifest as it is instead of wrapping
+  # it in a new index, and the step fails if the released digest differs.
   publish:
     name: Publish the tested image to GHCR
     needs: [test, coverage, contracts, web, e2e, image, supply-chain, image-vulnerabilities]
@@ -353,10 +400,14 @@ jobs:
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE: ${{ needs.image.outputs.candidate }}
         run: |
-          repository="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/standardphysics"
+          repository="${CANDIDATE%@*}"
           echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          docker buildx imagetools create --prefer-index=false \
-            --tag "$repository:$GITHUB_SHA" "$repository:candidate-$GITHUB_SHA"
+          docker buildx imagetools create --prefer-index=false --tag "$repository:$GITHUB_SHA" "$CANDIDATE"
           digest="$(docker buildx imagetools inspect "$repository:$GITHUB_SHA" --format '{{.Manifest.Digest}}')"
+          if [ "$repository@$digest" != "$CANDIDATE" ]; then
+            echo "published $repository@$digest, but the tested candidate is $CANDIDATE" >&2
+            exit 1
+          fi
           echo "Published \`$repository:$GITHUB_SHA\` as \`$repository@$digest\`" >> "$GITHUB_STEP_SUMMARY"

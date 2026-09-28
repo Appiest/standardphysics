@@ -5,7 +5,7 @@
 #
 #   ./monitor.sh
 #
-# Four checks, each against a threshold in .env:
+# Five checks, each against a threshold or a setting in .env:
 #
 #   readiness  /health/ready answers 200. It fails while a worker loop has
 #              died, stalled, or run a job past its deadline, which /health,
@@ -18,8 +18,15 @@
 #              15 by default. SQLite fails every write once it is full.
 #   backup     the newest snapshot in SP_BACKUP_DEST is at most
 #              SP_MONITOR_BACKUP_HOURS old, 26 by default, which is one nightly
-#              run plus its randomised delay and some slack. Skipped when
-#              SP_BACKUP_DEST is empty.
+#              run plus its randomised delay and some slack. An empty
+#              SP_BACKUP_DEST fails too, because a box with nowhere to back up
+#              to is not backed up. SP_BACKUPS_NOT_WANTED=1 skips the check on
+#              a box whose data nobody needs back, such as a dev box.
+#   tracing    when WANDB_API_KEY is set, /health/details says tracing is on
+#              and that Weave has reported no failed delivery since the API
+#              started. A key is only set on a deployment meant to be traced,
+#              and without this check a rejected key or an unreachable W&B
+#              goes unnoticed.
 #
 # SP_MONITOR_URL is where the API is asked, https://$API_DOMAIN by default, so
 # the request goes through Caddy and its certificate the way the phone's does.
@@ -51,6 +58,8 @@ ALERT_FORMAT="$(setting SP_ALERT_FORMAT)"
 API_URL="$(setting SP_MONITOR_URL "https://$(setting API_DOMAIN)")"
 SCANS="$(setting SCANS_PATH)"
 SP_BACKUP_DEST="$(setting SP_BACKUP_DEST)"
+BACKUPS_NOT_WANTED="$(setting SP_BACKUPS_NOT_WANTED)"
+WANDB_KEY="$(setting WANDB_API_KEY)"
 QUEUE_LIMIT_SECONDS="$(setting SP_MONITOR_QUEUE_SECONDS 1800)"
 MIN_FREE_PERCENT="$(setting SP_MONITOR_MIN_FREE_PERCENT 15)"
 BACKUP_LIMIT_HOURS="$(setting SP_MONITOR_BACKUP_HOURS 26)"
@@ -73,6 +82,18 @@ taken = datetime.datetime.strptime(sys.argv[1], "%Y-%m-%dT%H%M%SZ").replace(tzin
 print(int((datetime.datetime.now(datetime.timezone.utc) - taken).total_seconds() // 3600))
 '
 
+TRACING_PROBLEM_SCRIPT='
+import json
+import sys
+
+tracing = json.load(sys.stdin)["tracing"]
+failures = tracing.get("delivery_errors") or 0
+if not tracing["active"]:
+    print("WANDB_API_KEY is set but tracing is off: " + (tracing.get("off_because") or "no reason given"))
+elif failures:
+    print(f"Weave failed to deliver traces {failures} time(s); the last: " + str(tracing.get("last_delivery_error")))
+'
+
 JSON_BODY_SCRIPT='
 import json
 import sys
@@ -93,10 +114,14 @@ check_readiness() {
   return 1
 }
 
+health_details() {
+  curl -fsS --max-time 15 "$API_URL/health/details" 2>/dev/null \
+    || { echo "$API_URL/health/details could not be read"; return 1; }
+}
+
 check_queue() {
   local details oldest
-  details="$(curl -fsS --max-time 15 "$API_URL/health/details" 2>/dev/null)" \
-    || { echo "$API_URL/health/details could not be read"; return 1; }
+  details="$(health_details)" || { echo "$details"; return 1; }
   oldest="$(printf '%s' "$details" | "$PYTHON" -c "$OLDEST_QUEUED_SCRIPT" 2>/dev/null)" \
     || { echo "$API_URL/health/details did not say how old the queue is"; return 1; }
   [ "$oldest" -le "$QUEUE_LIMIT_SECONDS" ] && return 0
@@ -116,7 +141,9 @@ check_disk() {
 }
 
 check_backup() {
-  [ -n "$SP_BACKUP_DEST" ] || return 0
+  [ "$BACKUPS_NOT_WANTED" != 1 ] || return 0
+  [ -n "$SP_BACKUP_DEST" ] \
+    || { echo "SP_BACKUP_DEST is not set, so nothing is backed up. Set SP_BACKUPS_NOT_WANTED=1 if that is meant."; return 1; }
   local newest age_hours
   newest="$(list_snapshots | tail -1)"
   [ -n "$newest" ] || { echo "$SP_BACKUP_DEST holds no finished snapshot"; return 1; }
@@ -127,10 +154,21 @@ check_backup() {
   return 1
 }
 
+check_tracing() {
+  [ -n "$WANDB_KEY" ] || return 0
+  local details problem
+  details="$(health_details)" || { echo "$details"; return 1; }
+  problem="$(printf '%s' "$details" | "$PYTHON" -c "$TRACING_PROBLEM_SCRIPT" 2>/dev/null)" \
+    || { echo "$API_URL/health/details did not say whether tracing is on"; return 1; }
+  [ -z "$problem" ] && return 0
+  echo "$problem"
+  return 1
+}
+
 # One line per failing check: its name, a tab, and why.
 failing_checks() {
   local name reason
-  for name in readiness queue disk backup; do
+  for name in readiness queue disk backup tracing; do
     reason="$("check_$name")" || printf '%s\t%s\n' "$name" "$reason"
   done
 }

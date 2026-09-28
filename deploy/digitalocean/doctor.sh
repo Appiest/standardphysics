@@ -143,14 +143,15 @@ check_blender() {
 }
 
 # The same check deploy.sh waits on after a restart: /health/ready answers 200,
-# /health/details reports the commit checked out here, and the workspace
-# serves its sign-in page. After a rollback the checkout is the rolled-back
-# commit, so the two still agree.
+# /health/details reports the commit checked out here, the workspace serves
+# its sign-in page, and https://$APP_DOMAIN routes /api to the API. After a
+# rollback the checkout is the rolled-back commit, so the two still agree.
 check_serving() {
   head_ "Serving"
-  local commit verdict
+  local commit public_origin="" verdict
   commit="$(git -C ../.. rev-parse HEAD 2>/dev/null)"
-  if verdict="$(docker compose exec -T api /opt/venv/bin/python - "$commit" < check_serving.py 2>&1)"; then
+  [ -z "$(env_value APP_DOMAIN)" ] || public_origin="https://$(env_value APP_DOMAIN)"
+  if verdict="$(docker compose exec -T api /opt/venv/bin/python - "$commit" "$public_origin" < check_serving.py 2>&1)"; then
     ok "$verdict"
   else
     bad "$verdict" "docker compose logs --tail 50 api web"
