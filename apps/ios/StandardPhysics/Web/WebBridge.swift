@@ -227,7 +227,9 @@ final class LinkPDFRenderer: NSObject, WKNavigationDelegate {
     /// US Letter, so the file prints on the paper a landlord or inspector has.
     private static let pageSize = CGSize(width: 612, height: 792)
     private static let settleTime: Duration = .milliseconds(800)
-    private static let timeout: Duration = .seconds(20)
+    /// A report page with its model and pictures took over 20 s to finish loading on a
+    /// cold simulator, and a phone on shop Wi-Fi can be slower still.
+    private static let timeout: Duration = .seconds(45)
 
     private var webView: WKWebView?
     private var continuation: CheckedContinuation<Data?, Never>?

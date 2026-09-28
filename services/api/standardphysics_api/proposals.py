@@ -2,17 +2,30 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
+from dataclasses import dataclass
 
+from standardphysics_agents.fix import FixOutcome
 from standardphysics_agents.fix.budget import deadline_in
-from standardphysics_contracts import OwnerWish, ProposalRequest, ProposalResult, SpaceTypology
+from standardphysics_contracts import (
+    Finding,
+    OwnerWish,
+    ProposalRequest,
+    ProposalResult,
+    Scenario,
+    SceneGraph,
+    SpaceTypology,
+)
 
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
-from .model_chooser import MENU_SECONDS, SEARCH_AFTER_MENU_SECONDS, ModelChooser
+from .model_chooser import MENU_SECONDS, SEARCH_AFTER_MENU_SECONDS, ModelChooser, ModelReplyError, ModelSlots
 from .rearrangement_base import rearrangement_base
 from .stages import Stages
+
+log = logging.getLogger(__name__)
 
 
 def fix_inputs(database: Database, scan_id: uuid.UUID, revision: int):
@@ -38,27 +51,53 @@ def owner_wishes_of(database: Database, scan_id: uuid.UUID) -> list[OwnerWish]:
         return repo.owner_wishes(connection, scan_id)
 
 
-def _model_outcome(stages: Stages, graph, scenario, targets, chooser: ModelChooser, typology, wishes):
-    """The model's pick from a menu built within `MENU_SECONDS`, else the search within `SEARCH_AFTER_MENU_SECONDS`.
+@dataclass(frozen=True)
+class _Asked:
+    graph: SceneGraph
+    scenario: Scenario
+    targets: list[Finding]
+    typology: SpaceTypology | None
+    wishes: list[OwnerWish]
+
+
+def _model_pick(stages: Stages, slots: ModelSlots, owner_id: uuid.UUID, chooser: ModelChooser,
+                asked: _Asked) -> FixOutcome | None:
+    """The model's pick from a menu built within `MENU_SECONDS`, or None when it sent nothing usable."""
+    with slots.held(owner_id):
+        try:
+            return stages.model_proposal(asked.graph, asked.scenario, asked.targets, chooser, asked.typology,
+                                         asked.wishes, deadline=deadline_in(MENU_SECONDS))
+        except (OSError, ModelReplyError) as error:
+            log.warning("%s gave no usable pick, so the search proposes instead: %s", chooser.label, error)
+            return None
+
+
+def _model_outcome(stages: Stages, slots: ModelSlots, owner_id: uuid.UUID, asked: _Asked) -> FixOutcome | None:
+    """The configured model's pick, else the search within `SEARCH_AFTER_MENU_SECONDS`; None with no model.
 
     The menu has already measured the search's own slides and placements for
     these findings, so the search after it only gets a short budget of its own.
     """
-    picked = stages.model_proposal(graph, scenario, targets, chooser, typology, wishes,
-                                   deadline=deadline_in(MENU_SECONDS))
-    return picked or stages.propose(graph, scenario, targets, typology, wishes,
+    chooser = ModelChooser.from_environment()
+    if chooser is None:
+        return None
+    picked = _model_pick(stages, slots, owner_id, chooser, asked)
+    return picked or stages.propose(asked.graph, asked.scenario, asked.targets, asked.typology, asked.wishes,
                                     deadline=deadline_in(SEARCH_AFTER_MENU_SECONDS))
 
 
-def propose(database: Database, stages: Stages, scan_id: uuid.UUID, body: ProposalRequest) -> ProposalResult:
+def propose(
+    database: Database, stages: Stages, slots: ModelSlots, owner_id: uuid.UUID, scan_id: uuid.UUID,
+    body: ProposalRequest,
+) -> ProposalResult:
     graph, scenario, assessment = fix_inputs(database, scan_id, body.base_revision)
     wanted = set(body.finding_ids)
     targets = [finding for finding in assessment.findings if finding.id in wanted]
     if len(targets) != len(wanted):
         raise ApiProblem(400, "unknown finding", need=sorted(str(i) for i in wanted - {f.id for f in targets}))
     wishes, typology = owner_wishes_of(database, scan_id), space_typology_of(database, scan_id)
-    chooser = ModelChooser.from_environment()
-    outcome = _model_outcome(stages, graph, scenario, targets, chooser, typology, wishes) if chooser else None
+    asked = _Asked(graph, scenario, targets, typology, wishes)
+    outcome = _model_outcome(stages, slots, owner_id, asked)
     outcome = outcome or stages.propose(graph, scenario, targets, typology, wishes)
     explanation = stages.explain(graph, outcome.graph, scenario, wishes) if outcome.graph is not None else None
     return ProposalResult(
