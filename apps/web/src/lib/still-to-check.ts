@@ -10,13 +10,23 @@ export interface StillToCheckItems {
 export function stillToCheckItems(questions: Finding[], requests: OwnerRequest[]): StillToCheckItems {
   const byFinding = new Map(requests.map((request) => [request.finding_id, request]));
   const sendable = new Map<string, OwnerRequest>();
-  const lookAgain = new Map<string, Finding>();
+  const lookAgain: Finding[] = [];
   for (const finding of questions) {
     const request = byFinding.get(finding.id);
     if (isSendable(request)) sendable.set(request.id, request);
-    else if (!lookAgain.has(finding.title)) lookAgain.set(finding.title, finding);
+    else lookAgain.push(finding);
   }
-  return { sendable: [...sendable.values()], lookAgain: [...lookAgain.values()] };
+  return { sendable: [...sendable.values()], lookAgain: onePerTitle(lookAgain) };
+}
+
+/** One card per thing to look at: the first of each title, in order. */
+export function onePerTitle<T extends { title: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.title)) return false;
+    seen.add(item.title);
+    return true;
+  });
 }
 
 export function stillToCheckCount(items: StillToCheckItems): number {

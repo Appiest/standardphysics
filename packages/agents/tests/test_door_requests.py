@@ -44,3 +44,22 @@ def test_a_named_door_is_asked_about_by_its_name():
     graph = _with_second_door(build_graph(), label="Restroom door")
     restroom = graph.by_id(node_id("door_second"))
     assert _width_request(graph, restroom).title == "Measure how wide the restroom door opens and send us the number"
+
+
+def _request_for(rule_id, facts):
+    from standardphysics_agents.copy import request
+
+    return request(load_pack().by_id(rule_id), facts)
+
+
+def test_a_counter_height_request_asks_for_a_height_and_names_the_counter():
+    text = _request_for("service_counter_height", {"counter": "Ordering counter"})
+    assert text.title == "Measure how high the ordering counter is where customers pay"
+    assert "narrowest" not in text.detail and "36 inches" in text.detail
+
+
+def test_every_measured_rule_that_can_ask_for_a_number_has_its_own_request():
+    from standardphysics_agents.copy import GENERIC_REQUEST
+
+    for rule_id in ("service_counter_height", "point_of_sale_height", "dining_surface_height", "door_clear_width"):
+        assert _request_for(rule_id, {}).title != GENERIC_REQUEST.title, rule_id
