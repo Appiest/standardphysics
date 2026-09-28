@@ -23,7 +23,7 @@ from standardphysics_agents.evaluation.gate import UNMEASURED_SHORTFALL_INCHES
 from standardphysics_agents.redesign import FurnitureMove, RoomEdits
 from standardphysics_agents.training import TrainingChecker, edits_json
 from standardphysics_agents.training.edits import moves_between
-from standardphysics_agents.training.feedback import diagnose, feedback_message
+from standardphysics_agents.training.feedback import Attempt, diagnose, feedback_message
 from standardphysics_agents.training.phantoms import phantoms, pin, scan_errors, without_nodes, without_unmeasured
 from standardphysics_agents.training.rooms import ScanPlan, build_window, movable_named
 from standardphysics_agents.training.snapped_prompt import openrouter_prompt_messages, prompt_messages
@@ -129,12 +129,21 @@ def _accepted(verdict: Verdict, room: SceneGraph, layout: SceneGraph) -> Answer:
     return Answer(verdict, moves_between(room, layout), snapped=verdict.snapped_meters > 0)
 
 
+def _answer_of(attempt: Attempt, room: SceneGraph) -> Answer | None:
+    if not attempt.accepted:
+        return None
+    if attempt.layout is None:
+        raise ValueError("an accepted attempt arrived without the layout it scored")
+    return _accepted(attempt.verdict, room, attempt.layout)
+
+
 def _ask_part(part: Part, ask: Ask, result: Search, provider: str,
               progress: Callable[[str, str | None], None], index: int) -> Answer | None:
     prompt = openrouter_prompt_messages if provider == "openrouter" else prompt_messages
     messages = prompt(part.graph, part.checker)
+    rounds: list[dict] = []
     chain = {"window": index, "window_graph_hash": graph_hash(part.graph),
-             "prompt_messages": messages, "rounds": []}
+             "prompt_messages": messages, "rounds": rounds}
     result.chains.append(chain)
     for round_index in range(1, MAX_ROUNDS + 1):
         if round_index == 1:
@@ -149,11 +158,11 @@ def _ask_part(part: Part, ask: Ask, result: Search, provider: str,
         progress("checking", None)
         attempt = diagnose(text, part.graph, part.checker)
         result.verdicts.append(attempt.verdict)
-        answer = _accepted(attempt.verdict, part.graph, attempt.layout) if attempt.accepted else None
+        answer = _answer_of(attempt, part.graph)
         if answer is not None and answer.snapped:
             result.snap_rescues += 1
         feedback = None if answer is not None or round_index == MAX_ROUNDS else feedback_message(attempt)
-        chain["rounds"].append({"round": round_index, "proposal": text, "category": attempt.category,
+        rounds.append({"round": round_index, "proposal": text, "category": attempt.category,
                                 "notes": list(attempt.notes), "feedback": feedback,
                                 "verdict": attempt.verdict.as_dict(), "snapped": bool(answer and answer.snapped)})
         if answer is not None:

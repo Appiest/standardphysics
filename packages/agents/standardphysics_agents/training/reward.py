@@ -216,10 +216,10 @@ def _gated(room: SceneGraph, candidate: SceneGraph, checker: TrainingChecker, di
     gate = accepts(before, after)
     recovered = _recovered(gate.shortfall_before, gate.shortfall_after)
     left = len(checker.fixable_problems(after))
-    built = {"construction_inches": construction.inches, "construction_cost": construction.cost}
     if not gate:
         return Verdict(0.0, parsed=True, hard_constraints_pass=True, shortfall_recovered=recovered,
-                       fixable_left=left, disruption_meters=disruption, reason="; ".join(gate.reasons), **built)
+                       fixable_left=left, disruption_meters=disruption, reason="; ".join(gate.reasons),
+                       construction_inches=construction.inches, construction_cost=construction.cost)
     owner = checker.owner_layout or room
     quality = layout_quality(room, candidate, owner, checker.measure)
     usable = usability(room, candidate, owner, checker.scenario)
@@ -228,5 +228,5 @@ def _gated(room: SceneGraph, candidate: SceneGraph, checker: TrainingChecker, di
         shaped_reward(recovered, left == 0, disruption, usable, construction.cost, wishes, quality.wall),
         parsed=True, hard_constraints_pass=True, gate_accepts=True, shortfall_recovered=recovered, fixable_left=left,
         disruption_meters=disruption, quality=quality.as_dict(), usability=usable, wishes_kept=wishes,
-        wall=quality.wall, **built,
+        wall=quality.wall, construction_inches=construction.inches, construction_cost=construction.cost,
     )

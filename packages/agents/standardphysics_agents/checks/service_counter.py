@@ -48,9 +48,10 @@ def _portion_for(graph, counter, rule: RuleSpec) -> SceneNode | None:
 def _upper_height(node: SceneNode) -> float:
     if node.top_surface is None:
         return to_inches(node.dimensions.z)
-    if node.top_surface.height_m is None:
+    surface = node.top_surface
+    if surface.height_m is None or surface.uncertainty_m is None:
         return float("inf")
-    return to_inches(node.top_surface.height_m + node.top_surface.uncertainty_m)
+    return to_inches(surface.height_m + surface.uncertainty_m)
 
 
 def _section_under(item: SceneNode, surfaces: list[SceneNode]) -> SceneNode | None:
@@ -89,7 +90,7 @@ def service_counter_height(ctx: CheckContext) -> list[Observation]:
                 },
                 dedupe_key=(HEIGHT_RULE, str(counter.id)),
                 reason="measured" if not result.needs_measurement else "unmeasured_mesh_top",
-                asks_for="a measured counter surface" if result.needs_measurement or _height_ambiguous(rule, result) else None,
+                asks_for="measurement" if result.needs_measurement or _height_ambiguous(rule, result) else None,
             )
         )
     return observations
@@ -219,7 +220,7 @@ def point_of_sale_height(ctx: CheckContext) -> list[Observation]:
                 },
                 dedupe_key=(POS_RULE, str(reader.id)),
                 reason="measured" if not result.needs_measurement else "unmeasured_mesh_top",
-                asks_for="a measured payment surface" if result.needs_measurement or _height_ambiguous(rule, result) else None,
+                asks_for="measurement" if result.needs_measurement or _height_ambiguous(rule, result) else None,
             )
         )
     return observations

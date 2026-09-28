@@ -21,10 +21,10 @@ import zlib
 from dataclasses import dataclass
 
 import numpy as np
-from standardphysics_contracts import FloorCoverage, LidarMesh, Mat4, SceneGraph, SceneNode, lies_flat
+from standardphysics_contracts import FloorCoverage, Mat4, SceneGraph, SceneNode, lies_flat
 
 from .footprints import floor_polygon, footprint, polygon_bounds, rotation_about_z
-from .lidar import into_room, load_mesh, triangles_in_arkit_world
+from .lidar import MeshArrays, into_room, load_mesh, triangles_in_arkit_world
 from .occupancy import CELL_SIZE, blocks_floor
 
 METHOD = 1
@@ -65,7 +65,7 @@ def with_floor_coverage(graph: SceneGraph, mesh_path: pathlib.Path, mesh_sha256:
     return graph.model_copy(update={"floor_coverage": measure_floor_coverage(graph, mesh, mesh_sha256)})
 
 
-def measure_floor_coverage(graph: SceneGraph, mesh: LidarMesh, mesh_sha256: str) -> list[FloorCoverage]:
+def measure_floor_coverage(graph: SceneGraph, mesh: MeshArrays, mesh_sha256: str) -> list[FloorCoverage]:
     """One grid per floor sheet, from a mesh already read, or none without a room frame."""
     if graph.capture_to_room is None:
         return []

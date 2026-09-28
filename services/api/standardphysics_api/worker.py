@@ -327,7 +327,7 @@ class Worker:
             job = repo.claim_job(connection, texture_only, kind=kind)
         if job is None:
             return False
-        pulse = self.pulses.get(kind if kind is not None else texture_only) or LoopPulse()
+        pulse = self._pulse_for(texture_only, kind)
         running = RunningJob(job["kind"], job["id"], time.monotonic(), self.settings.job_deadline_seconds(job["kind"]))
         pulse.begin(running)
         self._on_this_thread.job = running
@@ -337,6 +337,11 @@ class Worker:
             self._on_this_thread.job = None
             pulse.end()
         return True
+
+    def _pulse_for(self, texture_only: bool | None, kind: str | None) -> LoopPulse:
+        """The pulse of the loop claiming this way; a drain from a test has none of its own."""
+        lane = kind if kind is not None else texture_only
+        return (None if lane is None else self.pulses.get(lane)) or LoopPulse()
 
     def _checkpoint(self) -> None:
         """A stage boundary: stop the job this thread is running if it is past its deadline.
@@ -964,7 +969,9 @@ def _job_error(kind: str, error: Exception) -> str:
 
 def _claim_filter(lane: bool | str) -> tuple[bool | None, str | None]:
     """The `run_once` arguments that claim only this lane's jobs."""
-    return (None, lane) if lane == REARRANGE else (lane, None)
+    if isinstance(lane, str):
+        return None, lane
+    return lane, None
 
 
 def is_transient(error: BaseException) -> bool:

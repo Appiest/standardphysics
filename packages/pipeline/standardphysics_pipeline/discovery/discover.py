@@ -160,6 +160,7 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
     graph = inputs.graph
     if graph.capture_to_room is None:
         raise DiscoveryError("the scan has no capture_to_room transform, so photos cannot be projected")
+    capture_to_room = graph.capture_to_room
     points = _mesh_points(inputs)
     cameras = _cameras(inputs, graph)
     requests: list[ModelRequestInfo] = []
@@ -193,7 +194,7 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
         "nodes": [replaced.get(node.id, node) for node in graph.nodes]
         + [node for node in discovered if node.id not in {existing.id for existing in graph.nodes}],
     })
-    surfaces = segment_surfaces(room_faces(inputs.lidar_mesh_path, graph.capture_to_room), updated_graph, graph)
+    surfaces = segment_surfaces(room_faces(inputs.lidar_mesh_path, capture_to_room), updated_graph, graph)
     return DiscoveryResult(
         nodes=list(discovery_nodes.values()),
         surfaces=surfaces,

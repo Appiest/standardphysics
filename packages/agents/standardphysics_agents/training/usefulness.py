@@ -75,7 +75,8 @@ def _xy(node: SceneNode) -> tuple[float, float]:
 def seats_facing(graph: SceneGraph) -> float | None:
     seated = [node for node in graph.nodes
               if node.kind == "object" and is_seat(node) and served_surface(_xy(node), graph, node.id)]
-    return _share([facing_error_degrees(seat, graph) <= FACING_TOLERANCE_DEGREES for seat in seated])
+    errors = [facing_error_degrees(seat, graph) for seat in seated]
+    return _share([error <= FACING_TOLERANCE_DEGREES for error in errors if error is not None])
 
 
 def _front_patch(node: SceneNode):

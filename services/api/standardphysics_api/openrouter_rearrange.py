@@ -62,6 +62,12 @@ class OpenRouterRearrange:
             self._prices = self.price(self.model)
         return self._prices
 
+    def _client(self) -> Any:
+        client = self.router.client() if self.router is not None else None
+        if client is None:
+            raise ValueError("OpenRouter has no API key")
+        return client
+
     def _reserve(self, messages: list[dict]) -> None:
         prompt_price, completion_price = self._price()
         # UTF-8 byte count is a conservative upper bound for text tokens.
@@ -73,7 +79,7 @@ class OpenRouterRearrange:
     def complete(self, messages: list[dict], sampling: Sampling) -> list[str]:
         self._reserve(messages)
         try:
-            response = self.router.client().chat.completions.create(
+            response = self._client().chat.completions.create(
                 model=self.model, messages=messages, temperature=sampling.temperature,
                 max_tokens=self.token_cap,
                 extra_body={"provider": provider_routing(self.model), "usage": {"include": True},
@@ -101,7 +107,7 @@ class OpenRouterRearrange:
         self.completion_tokens += completion
         estimated = prompt * prompt_price + completion * completion_price
         try:
-            reported = float(quoted)
+            reported = float("nan") if quoted is None else float(quoted)
         except (TypeError, ValueError):
             reported = float("nan")
         self.cost_dollars += reported if math.isfinite(reported) and reported >= 0 else estimated

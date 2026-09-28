@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Set as AbstractSet
 
 from standardphysics_contracts import Finding, Scenario, SceneGraph, SceneNode, bounds_the_room, to_inches
 from standardphysics_pipeline import footprint, gap_between
@@ -115,7 +116,7 @@ def _door(node: SceneNode) -> dict:
     return {**_placed(node), "keep_clear": _corners(door_keep_clear(node))}
 
 
-def _fixed(node: SceneNode, fixtures: set, on_counters: set) -> dict:
+def _fixed(node: SceneNode, fixtures: AbstractSet, on_counters: AbstractSet) -> dict:
     entry = {"id": str(node.id), **_placed(node)} if node.id in fixtures else _placed(node)
     return {**entry, "on_a_counter": True} if node.id in on_counters else entry
 
@@ -147,8 +148,10 @@ def _top_inches(node: SceneNode) -> float:
 
 def _replacements_for(graph: SceneGraph, node: SceneNode) -> list[str]:
     use = use_of(graph, node)
-    serves = {"counter": True, "surface": False}.get(use)
-    return [] if serves is None else [item.name for item in CATALOG.values()
+    if use is None:
+        return []
+    serves = {"counter": True, "surface": False}[use]
+    return [item.name for item in CATALOG.values()
                                       if (item.knee_clearance_inches is None) == serves]
 
 

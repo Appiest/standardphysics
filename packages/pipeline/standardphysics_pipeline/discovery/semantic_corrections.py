@@ -125,7 +125,8 @@ def _projected_box(node: SceneNode, camera: PhotoCamera) -> tuple[float, float, 
     points = [_project_point(camera, corner[:3]) for corner in corners]
     if any(point is None for point in points):
         return None
-    cols, rows = [point[0] for point in points], [point[1] for point in points]
+    projected = [point for point in points if point is not None]
+    cols, rows = [point[0] for point in projected], [point[1] for point in projected]
     return (max(min(cols), 0.0), max(min(rows), 0.0), min(max(cols), camera.width), min(max(rows), camera.height))
 
 

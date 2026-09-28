@@ -120,6 +120,11 @@ class Rearranger:
     def available(self) -> bool:
         return self.model is not None
 
+    def required_model(self) -> RearrangeModel:
+        if self.model is None:
+            raise ModelFailed(UNAVAILABLE)
+        return self.model
+
     @classmethod
     def from_settings(cls, settings: Settings) -> Rearranger:
         return cls(model=model_from_settings(settings), provider=settings.rearrange_provider,
@@ -240,7 +245,7 @@ def _inputs(database, scan_id: uuid.UUID, revision: int) -> Inputs:
 
 def ask_patiently(rearranger: Rearranger, messages: list[dict], on_warming: Callable[[], None]) -> list[str]:
     """Ask, and while the deployment is starting from zero, wait and ask again for up to ten minutes."""
-    model, started, delay = rearranger.model, rearranger.clock(), FIRST_RETRY_SECONDS
+    model, started, delay = rearranger.required_model(), rearranger.clock(), FIRST_RETRY_SECONDS
     while True:
         try:
             return model.complete(messages, rearranger.sampling)
@@ -253,8 +258,9 @@ def ask_patiently(rearranger: Rearranger, messages: list[dict], on_warming: Call
 
 
 def run_suggestion(database, rearranger: Rearranger, stages, scan_id: uuid.UUID, revision: int) -> None:
-    if hasattr(rearranger.model, "reset_job"):
-        rearranger.model.reset_job()
+    model = rearranger.model
+    if model is not None and hasattr(model, "reset_job"):
+        model.reset_job()
     inputs = _inputs(database, scan_id, revision)
     plan = scan_plan(scan_id, inputs.graph, inputs.scenario)
     checker = whole_checker(plan)
@@ -412,7 +418,7 @@ def deployment_lease(database, rearranger: Rearranger):
     already_running = _hold(database)
     try:
         if not already_running:
-            rearranger.model.allow_one_replica()
+            rearranger.required_model().allow_one_replica()
         yield
     finally:
         _release(database, rearranger.clock() + rearranger.keep_warm_seconds)
@@ -441,7 +447,7 @@ def scale_down_when_idle(database, rearranger: Rearranger) -> bool:
     if not _controls_deployment(rearranger) or not _due_to_scale_down(database, rearranger.clock()):
         return False
     try:
-        rearranger.model.scale_to_zero()
+        rearranger.required_model().scale_to_zero()
     except (ModelFailed, ValueError) as error:
         log.warning("could not scale the rearrangement deployment to zero yet: %s", error)
         return False

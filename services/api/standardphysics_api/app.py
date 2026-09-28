@@ -186,7 +186,7 @@ def create_app(
     adopt_allowlist(database, settings.team_emails)
     revoke_passwords_left_on_apple_accounts(database)
     quota = ScanQuota(settings.max_scan_artifacts, settings.max_scan_bytes)
-    store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes, quota)
+    store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes, quota, settings.receive_deadlines())
     worker = Worker(database, store, stages, settings, rearranger)
     worker.notifier = notifier_from(settings)
 

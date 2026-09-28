@@ -235,8 +235,8 @@ def move_fixtures(graph: SceneGraph, moves: list[FixtureMove]) -> SceneGraph:
 
 
 def build(graph: SceneGraph, shifts: list[WallShift], fixtures: list[FixtureMove],
-          heights: list[HeightChange] = (), replacements: list[Replacement] = (),
-          sections: list[LoweredSection] = ()) -> SceneGraph:
+          heights: Sequence[HeightChange] = (), replacements: Sequence[Replacement] = (),
+          sections: Sequence[LoweredSection] = ()) -> SceneGraph:
     """The room after all its construction: walls pushed out, fixtures relocated, then pieces refitted."""
     return fit(move_fixtures(shift_walls(graph, shifts), fixtures), list(heights), list(replacements), list(sections))
 

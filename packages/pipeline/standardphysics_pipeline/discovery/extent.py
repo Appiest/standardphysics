@@ -90,7 +90,7 @@ class MeshViews:
     """The mesh before any person was taken out of it, and every photo's view of it."""
 
     points: np.ndarray
-    views: list[tuple[PhotoCamera, list[Detection], np.ndarray | None]]
+    views: Sequence[tuple[PhotoCamera, list[Detection], np.ndarray | None]]
 
     def loose_near(self, objects: list[DiscoveredObject], graph: SceneGraph, people: Sequence[PersonVolume]) -> np.ndarray:
         """The mesh no scanned piece claims round the small objects, less what most photos saw as a person.
@@ -124,7 +124,7 @@ def measured_on_the_mesh(objects: list[DiscoveredObject], loose: np.ndarray) -> 
     ]
 
 
-def grown_to_the_mesh(box: CarvedBox, loose: np.ndarray, others: list[CarvedBox] = ()) -> CarvedBox:
+def grown_to_the_mesh(box: CarvedBox, loose: np.ndarray, others: Sequence[CarvedBox] = ()) -> CarvedBox:
     """The box stretched up and down to where the mesh says the object ends, never shrunk and never widened."""
     if max(box.dimensions[:2]) > SMALL or not len(loose):
         return box
@@ -146,7 +146,7 @@ def grown_to_the_mesh(box: CarvedBox, loose: np.ndarray, others: list[CarvedBox]
     )
 
 
-def _column_of(box: CarvedBox, loose: np.ndarray, others: list[CarvedBox]) -> _Column:
+def _column_of(box: CarvedBox, loose: np.ndarray, others: Sequence[CarvedBox]) -> _Column:
     bottom, top = _vertical_span(box)
     nearby = loose[(loose[:, 2] >= bottom - GROWTH - STEP) & (loose[:, 2] <= top + GROWTH + STEP)]
     local = _footprint_offsets(box, nearby)
@@ -171,7 +171,7 @@ def _near_small(objects: list[DiscoveredObject], points: np.ndarray) -> np.ndarr
     return near
 
 
-def _held_by_others(points: np.ndarray, others: list[CarvedBox]) -> np.ndarray:
+def _held_by_others(points: np.ndarray, others: Sequence[CarvedBox]) -> np.ndarray:
     held = np.zeros(len(points), dtype=bool)
     for other in others:
         held |= _inside(other, points)
