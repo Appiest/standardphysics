@@ -60,6 +60,7 @@ def test_the_model_takes_turns_until_it_stops_and_the_moves_add_up(make_client, 
     assert not re.search(r"\[[0-9a-f]{4}\]|\bP\d+\b", owner_text)
     finished = events[-1]
     assert finished["moves"] and finished["explanation"]["fixed"] and finished["message"]
+    assert set(finished["proposed"]) == {move["node_id"] for move in finished["moves"]}
     assert finished["fixable_left"] <= turns[0]["fixable_left"] <= events[0]["fixable_left"]
     assert events[0]["fixable_left"] > 0 and events[0]["turns_at_most"] == 5
     assert 0 < len(events[0]["working_on"]) <= events[0]["fixable_left"]
@@ -263,6 +264,7 @@ def test_the_loop_starts_from_the_owners_plan_and_returns_moves_from_the_saved_s
     finished = {move["node_id"]: move for move in events[-1]["moves"]}
     assert set(finished) == {owner_move["node_id"]}
     assert finished[owner_move["node_id"]]["delta_translation"]["x"] == pytest.approx(0.05, abs=1e-6)
+    assert events[-1]["proposed"] == []
 
 
 def test_a_plan_with_a_piece_where_it_cannot_stand_is_refused_before_the_model_is_asked(make_client, monkeypatch):

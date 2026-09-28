@@ -14,6 +14,7 @@ import {
   namedProblems,
   problemsLeft,
   problemsLeftLabel,
+  showMovesLabel,
   stoppedSentence,
   turnClock,
   turnInProgress,
@@ -28,7 +29,8 @@ import type { ModelLoopEvent, NodeMove } from "@/types/contracts";
 type Props = {
   scanId: string;
   revision: number;
-  onOpen: (moves: NodeMove[]) => void;
+  /** Puts the finished layout on the plan, with the pieces the run proposes moving so they can be picked out. */
+  onOpen: (moves: NodeMove[], proposed: string[]) => void;
   /** The owner's unsaved moves; given, the loop fixes that layout instead of the saved shop. */
   plan?: NodeMove[];
 };
@@ -282,6 +284,7 @@ function useQuietFocus() {
 
 function Finished({ finished, started, onOpen }: { finished: ModelLoopEvent; started: number; onOpen: Props["onOpen"] }) {
   const allCleared = isAllCleared(finished, started);
+  const proposes = finished.proposed.length > 0;
   const openButton = useQuietFocus();
   return (
     <motion.div className="mt-5 flex flex-col items-start gap-3" initial={BLURRED_IN} animate={SHARP} transition={{ ...GROW, delay: allCleared ? 0.35 : 0 }}>
@@ -289,9 +292,9 @@ function Finished({ finished, started, onOpen }: { finished: ModelLoopEvent; sta
         <p className="text-lg font-semibold">{finishedHeadline(finished, started)}</p>
         <p className="mt-1 text-pretty text-ink-muted">{finishedDetail(finished, allCleared)}</p>
       </div>
-      {finished.explanation && <Explanation explanation={finished.explanation} />}
-      {finished.moves.length > 0 && (
-        <Button ref={openButton} variant="primary" onClick={() => onOpen(finished.moves)}>Open this layout in the plan</Button>
+      {proposes && finished.explanation && <Explanation explanation={finished.explanation} />}
+      {proposes && (
+        <Button ref={openButton} variant="primary" onClick={() => onOpen(finished.moves, finished.proposed)}>{showMovesLabel(finished.proposed.length)}</Button>
       )}
     </motion.div>
   );

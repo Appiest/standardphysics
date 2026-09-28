@@ -189,6 +189,20 @@ function fixPlanCard(label: string | null, card: Omit<ComponentProps<typeof FixA
   return label ? <FixAll key={`${card.revision}:${planKey(card.plan ?? [])}`} {...card} label={label} /> : null;
 }
 
+/**
+ * The pieces a fix run proposed moving, outlined on the plan while the layout it
+ * loaded stands; the first move the owner makes on their own lets go of them.
+ */
+function useProposedPieces(arrangement: ReturnType<typeof useArrangement>) {
+  const [proposal, setProposal] = useState<{ key: string; ids: Set<string> } | null>(null);
+  const current = planKey(Object.values(arrangement.moves));
+  const ids = proposal?.key === current ? proposal.ids : NOTHING_PROPOSED;
+  const show = (moves: NodeMove[], proposed: string[]) => setProposal({ key: planKey(moves), ids: new Set(proposed) });
+  return { ids, show };
+}
+
+const NOTHING_PROPOSED = new Set<string>();
+
 function planKey(plan: NodeMove[]): string {
   return plan.map((move) => `${move.node_id}:${move.delta_translation.x.toFixed(3)},${move.delta_translation.y.toFixed(3)},${move.delta_rotation_z_degrees.toFixed(1)}`).sort().join("|");
 }
@@ -252,6 +266,7 @@ function OwnerShop(props: ShopProps) {
   const problems = groups.problems;
   const tryPiece = useMemo(() => pieceToTry(problems, scene), [problems, scene]);
   const tools = useTools(scan.id, props.scenario, arrangement, tryPiece);
+  const proposed = useProposedPieces(arrangement);
   const panel = currentPanel(journey, counterSkipped, tools.tool, readOnly);
   const letGoOfFinding = useCallback(() => setSelected(null), []);
   const { trying, found, trial, scanned } = useTrying(panel, arrangement, scene, assessment, letGoOfFinding);
@@ -278,11 +293,16 @@ function OwnerShop(props: ShopProps) {
     setPlanFinding(finding);
     review.propose(finding.id, showProposal);
   };
-  const openFixedLayout = (moves: NodeMove[]) => {
+  const showFixedLayout = (moves: NodeMove[], proposedIds: string[]) => {
+    arrangement.load(moves);
+    arrangement.setActiveId(null);
+    proposed.show(moves, proposedIds);
+  };
+  const openFixedLayout = (moves: NodeMove[], proposedIds: string[]) => {
     tools.setTool("plan");
     setSelected(null);
     arrangement.start();
-    arrangement.load(moves);
+    showFixedLayout(moves, proposedIds);
   };
   const putItAllBack = () => {
     arrangement.reset();
@@ -319,7 +339,7 @@ function OwnerShop(props: ShopProps) {
         pieceName={pieceLabel(scene, arrangement.activeId) ?? tryPiece?.label ?? null}
         builtIn={isBuiltIn(scene, arrangement.activeId)}
         review={<PlanReview review={review} scene={scene} finding={planFinding} onRelook={showProposal} onPreview={arrangement.setActiveId} />}
-        fixPlan={fixPlanCard(modelLabel, { scanId: scan.id, revision: scene.revision, onOpen: arrangement.load, plan: Object.values(arrangement.moves) })}
+        fixPlan={fixPlanCard(modelLabel, { scanId: scan.id, revision: scene.revision, onOpen: showFixedLayout, plan: Object.values(arrangement.moves) })}
         onReset={putEverythingBack} onDone={leavePlan} />
     ),
     wheelchair: () => <WheelchairPanel onDone={() => tools.setTool(null)} />,
@@ -334,7 +354,7 @@ function OwnerShop(props: ShopProps) {
     <>
       <OwnerModel scene={scene} glbUrl={props.glbUrl} scanGlbUrl={props.scanGlbUrl ?? null} setup={setup} lightweight={props.embedded} />
       {panel === "wheelchair" && <DrivingPad />}
-      {trying && <LayoutStage arrangement={arrangement} scanned={scene} trial={trial} pointedIds={pointedNodes(found)} />}
+      {trying && <LayoutStage arrangement={arrangement} scanned={scene} trial={trial} pointedIds={new Set([...pointedNodes(found), ...proposed.ids])} />}
       <FoundLegend list={found} shown={foundShown} />
     </>
   );
