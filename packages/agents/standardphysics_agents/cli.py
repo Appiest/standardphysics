@@ -582,7 +582,9 @@ def _print_runs(experiments) -> None:
     if reason is not None:
         print(f"{GRID_STAYED_LOCAL}{reason}", file=sys.stderr)
         return
-    project, team = target()
+    where = target()
+    assert where is not None
+    project, team = where
     print(f"\n{len(experiments)} runs in {team or 'your default entity'}/{project}")
     for url in log_experiments(experiments):
         print(f"  {url}")

@@ -246,7 +246,9 @@ def _query_target_present(query: PrecedentQuerySpec, graph: SceneGraph) -> bool:
 
 
 def _constraint_specs(directive: PrecedentDirective) -> list[tuple[str, str, str]]:
-    specs = [(f"fixed_role:{role}", directive.authority[0], role) for role in directive.constraints.fixed_roles]
+    specs: list[tuple[str, str, str]] = [
+        (f"fixed_role:{role}", directive.authority[0], role) for role in directive.constraints.fixed_roles
+    ]
     if directive.constraints.requires_accessible_dining:
         specs.append(("accessible_dining_share", "ADA_2010_226.1", "dining_surface"))
     if directive.constraints.dispersed:

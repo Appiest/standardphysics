@@ -23,6 +23,7 @@ from standardphysics_contracts import MeasurementProvider
 from ..assess import assess
 from ..fix.search import propose_fix
 from ..router import LocalPolicyRouter, state_for
+from ..router.decision import Rejected
 from ..rules import AgentRulePack, VerificationLedger, load_ledger, load_pack
 from ..tracing import is_live, project_url, traced
 from .dataset import Case, dataset
@@ -86,7 +87,9 @@ def action_name(outcome: CaseOutcome) -> str | None:
     decision = outcome.decision
     if decision is None:
         return None
-    return getattr(decision, "action", None) or f"rejected:{decision.reason}"
+    if isinstance(decision, Rejected):
+        return f"rejected:{decision.reason}"
+    return decision.action
 
 
 def _score_case(outcome: CaseOutcome) -> dict[str, float | None]:
@@ -101,7 +104,7 @@ def _aggregate(per_case: dict[str, dict[str, float | None]]) -> dict[str, float]
     scores: dict[str, float] = {}
     for name in SCORERS:
         values = [
-            row[name] for row in per_case.values() if row[name] is not None
+            value for row in per_case.values() if (value := row[name]) is not None
         ]
         if values:
             scores[name] = _mean(values)

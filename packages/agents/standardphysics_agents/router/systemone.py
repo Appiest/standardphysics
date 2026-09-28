@@ -206,13 +206,13 @@ def _parse_answer(
 ) -> Answer:
     try:
         if isinstance(question, ChoiceQuestion):
-            answer = ChoiceAnswer.model_validate(raw)
-            _validate_choice(answer, question)
-            return answer
+            choice = ChoiceAnswer.model_validate(raw)
+            _validate_choice(choice, question)
+            return choice
         if isinstance(question, ScoreQuestion):
-            answer = ScoreAnswer.model_validate(raw)
-            _validate_score(answer, question)
-            return answer
+            score = ScoreAnswer.model_validate(raw)
+            _validate_score(score, question)
+            return score
         return NoulAnswer.model_validate(raw)
     except ValidationError as error:
         raise SystemOneError("response_answer_invalid") from error

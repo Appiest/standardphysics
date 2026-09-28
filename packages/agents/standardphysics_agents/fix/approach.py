@@ -339,17 +339,16 @@ def _reach_record(
             horizontal_reach_provenance=horizontal_provenance,
             horizontal_status=horizontal_status,
         )
-    vertical_status = (
-        "within_vertical_reach"
-        if height <= profile.personal_reach_inches
-        else "beyond_vertical_reach"
-    )
     return ReachRecord(
         occupant_id=profile.id,
         occupant_title=profile.title,
         target_height_inches=height,
         personal_reach_inches=profile.personal_reach_inches,
-        vertical_status=vertical_status,
+        vertical_status=(
+            "within_vertical_reach"
+            if height <= profile.personal_reach_inches
+            else "beyond_vertical_reach"
+        ),
         horizontal_distance_inches=distance,
         horizontal_reach_inches=horizontal_inches,
         horizontal_reach_provenance=horizontal_provenance,

@@ -52,7 +52,7 @@ def verified(answer: Answer, graph: SceneGraph, asked: str = "") -> Answer:
         (measured_enough(graph, asked), None),
     ):
         if problem:
-            return _refuse(answer, problem if reason is None else reason)
+            return _refuse(answer, reason or str(problem))
     return answer
 
 

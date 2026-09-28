@@ -15,7 +15,7 @@ if the gate accepts it.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Callable, Iterator
+from typing import Callable, Iterator, Protocol
 from uuid import UUID
 
 from standardphysics_contracts import (
@@ -81,6 +81,10 @@ class LoopStep:
         return self.result.message
 
 
+class Router(Protocol):
+    def decide(self, state: RouterState) -> Decision | Rejected: ...
+
+
 @dataclass
 class Loop:
     """Everything one run of the loop carries between passes."""
@@ -88,7 +92,7 @@ class Loop:
     graph: SceneGraph
     scenario: Scenario
     measure: MeasurementProvider
-    router: object
+    router: Router
     rules: AgentRulePack = field(default_factory=load_pack)
     ledger: VerificationLedger = field(default_factory=load_ledger)
     max_tier: Tier = 1
@@ -145,6 +149,7 @@ def _do_fix(loop: Loop, current: Pass, decision: Decision) -> StepResult:
         return StepResult(
             graph=loop.graph, message=outcome.message, fix_failed=True
         )
+    assert outcome.proposal is not None
 
     after = assess(
         outcome.graph,

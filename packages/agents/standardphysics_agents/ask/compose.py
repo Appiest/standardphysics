@@ -234,7 +234,7 @@ def _unit(name: str) -> str:
 def _run(plan: dict, graph: SceneGraph, asked: str) -> Composed:
     known = {_handle(index): node for index, node in enumerate(graph.nodes)}
     sets: dict[str, list[SceneNode]] = {}
-    figures: dict[str, float] = {}
+    figures: dict[str, tuple] = {}
     for step in plan["steps"]:
         if step["op"] == "given":
             figures[step["id"]] = _given(step, asked)
@@ -503,7 +503,7 @@ def _once(sets: dict) -> tuple:
     return tuple(seen)
 
 
-def _whichever(figure: tuple[float, str], wording: str) -> str:
+def _whichever(figure: tuple, wording: str) -> str:
     """The wording the comparison found true, from the three the model wrote.
 
     "The same" is said of two figures within a centimetre, because a phone cannot

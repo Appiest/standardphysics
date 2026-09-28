@@ -30,6 +30,7 @@ MAX_PIECES = 8
 def _space(finding: Finding, graph: SceneGraph, rules: AgentRulePack) -> Polygon:
     """The required region, rather than the undersized region that was measured."""
     rule = rules.by_id(finding.check_id)
+    assert finding.locus is not None and finding.required_inches is not None
     width = depth = to_meters(finding.required_inches)
     rotation = (1.0, 0.0)
     if finding.check_id == "service_counter_approach":
@@ -133,7 +134,7 @@ def placements(graph: SceneGraph, pinch: Pinch, finding: Finding,
     space = _space(finding, graph, rules)
     pieces = sorted(pinch.movable, key=lambda n: str(n.id))[:MAX_PIECES]
     options = {node.id: _options(node, space) for node in pieces}
-    found = []
+    found: list[Candidate] = []
     for group in _groups(pieces):
         found.extend(_candidate(moves) for moves in _beam_for(graph, group, options))
         if len(found) >= limit:

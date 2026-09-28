@@ -11,7 +11,7 @@ import math
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 from standardphysics_contracts import Finding
@@ -631,7 +631,7 @@ class AccessibilityIntelligence:
             confidence_values.append(target_answer.confidence)
         return OwnerGoal(
             source_text=text,
-            kind=kind_answer.value,
+            kind=_goal_kind(kind_answer.value),
             target=(
                 target_answer.value
                 if target_answer is not None and target_answer.value != "none"
@@ -824,6 +824,12 @@ class AccessibilityIntelligence:
             },
         )
         return _choice_answer(result.answers["decision"])
+
+
+def _goal_kind(value: str) -> GoalKind:
+    if value not in get_args(GoalKind):
+        raise TypeError("validated answer type changed unexpectedly")
+    return cast(GoalKind, value)
 
 
 def _choice_answer(answer) -> ChoiceJudgment:

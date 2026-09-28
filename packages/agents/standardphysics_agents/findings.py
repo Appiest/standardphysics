@@ -52,7 +52,7 @@ def resolve(
 
 def asks_of(observation: Observation, rule: RuleSpec, graph: SceneGraph) -> Asks | None:
     """What would answer this check, when it can't be settled from the scan. Mirrors `resolve`."""
-    if not rule.measurable:
+    if rule.evidence != "measured":
         return rule.evidence
     if observation.asks_for:
         return observation.asks_for

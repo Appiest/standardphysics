@@ -118,11 +118,17 @@ def _recovered(before: float, after: float) -> float:
     return max(0.0, min(1.0, (before - after) / before))
 
 
+def _moves_pinned(edits: TrainingEdits, pinned) -> bool:
+    return any(move.node_id in pinned for move in edits.moves) or any(
+        move.node_id in pinned for move in edits.fixture_moves
+    )
+
+
 def score_completion(completion: str, room: SceneGraph, checker: TrainingChecker) -> Verdict:
     edits = parse_edits(completion)
     if edits is None:
         return Verdict(0.0, reason="unparseable")
-    if any(move.node_id in checker.pinned for move in [*edits.moves, *edits.fixture_moves]):
+    if _moves_pinned(edits, checker.pinned):
         return Verdict(0.0, parsed=True, reason=MOVED_PINNED)
     complaint = edit_complaint(room, edits)
     if complaint:

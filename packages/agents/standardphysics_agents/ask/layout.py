@@ -67,7 +67,9 @@ def moves_for(
     distance = to_meters(inches)
     if direction in RELATIVE:
         return _spread(nodes, distance, direction)
-    return [_slide(node, axis_for(direction, scenario), distance) for node in nodes]
+    axis = axis_for(direction, scenario)
+    assert axis is not None
+    return [_slide(node, axis, distance) for node in nodes]
 
 
 def _proposal(
@@ -102,6 +104,7 @@ def rearrange(query: Query, context: AskContext) -> Answer:
     if not movable:
         return _nothing_to_move(query, context)
 
+    assert query.direction is not None
     before = context.baseline()
     best: tuple[Proposal, SceneGraph, float] | None = None
     blocked_by: str | None = None
@@ -113,7 +116,7 @@ def rearrange(query: Query, context: AskContext) -> Answer:
         if broken:
             blocked_by = broken[0].blocker
             break
-        after = context and _look(context, candidate)
+        after = _look(context, candidate)
         if not accepts(before, after, require_improvement=False).accepted:
             blocked_by = blocked_by or "walkway"
             break

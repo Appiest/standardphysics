@@ -14,7 +14,7 @@ import time
 from collections import deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import numpy as np
 from standardphysics_contracts import LidarMesh, SceneGraph, graph_hash
@@ -178,7 +178,7 @@ def run_campaign(graph: SceneGraph, mesh: LidarMesh, suite: TaskSuite,
     spaces = build_spaces(graph, mesh)
     rng = np.random.default_rng(seed)
     digest = hashlib.sha256()
-    result = {
+    result: dict[str, Any] = {
         "scan_id": str(graph.scan_id), "revision": graph.revision, "graph_hash": immutable_hash,
         "seed": seed, "requested_evaluations": evaluations, "evaluations": 0,
         "unique_layouts": 1, "connectivity_builds": len(spaces),

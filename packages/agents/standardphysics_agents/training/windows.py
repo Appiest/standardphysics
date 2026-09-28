@@ -198,7 +198,9 @@ def with_one_floor(graph: SceneGraph, floor: SceneNode) -> SceneGraph:
 def cut(graph: SceneGraph, centre: tuple[float, float], radius: float = WINDOW_RADIUS_METERS) -> SceneGraph | None:
     """Every node reaching within `radius` of `centre`, standing on its floor cropped to the window."""
     floor = floor_under(graph, centre)
-    cropped = None if floor is None else cropped_floor(floor, centre, radius)
+    if floor is None:
+        return None
+    cropped = cropped_floor(floor, centre, radius)
     if cropped is None:
         return None
     chosen = {node.id for node in graph.nodes if not lies_flat(node) and reaches(node, centre, radius)}

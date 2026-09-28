@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import Any
 
 from standardphysics_contracts import Scenario, SceneGraph, bounds_the_room
 
@@ -75,7 +76,8 @@ def _far_from(centre, taken: list[tuple[float, float]], distance: float) -> bool
 
 def seed_problems(graph: SceneGraph, checker: TrainingChecker, radius: float) -> tuple[list[dict], list[dict]]:
     """Problems to cut windows around, one window for problems closer than half a radius, and what was passed over."""
-    seeds, skipped = [], []
+    seeds: list[dict] = []
+    skipped: list[dict] = []
     for problem in checker.fixable_problems(checker.assess(graph)):
         summary = summarize_problem(problem)
         if not movable_named(graph, problem):
@@ -179,7 +181,7 @@ def build_window(plan: ScanPlan, centre: tuple[float, float], seed: dict | None,
     Routes are tried in order, the scan's own leg first, until one gives a
     window that reproduces the scan.
     """
-    log = {"window_id": window_id, "centre": [round(centre[0], 3), round(centre[1], 3)], "seed": seed}
+    log: dict[str, Any] = {"window_id": window_id, "centre": [round(centre[0], 3), round(centre[1], 3)], "seed": seed}
     graph = cut(plan.graph, centre, radius)
     if graph is None:
         return None, {**log, "kept": False, "why": "no floor under the centre"}
@@ -188,7 +190,9 @@ def build_window(plan: ScanPlan, centre: tuple[float, float], seed: dict | None,
     dropped = _too_phantom(share, log)
     if dropped:
         return None, dropped
-    reference = with_one_floor(plan.graph, floor_under(plan.graph, centre))
+    floor = floor_under(plan.graph, centre)
+    assert floor is not None
+    reference = with_one_floor(plan.graph, floor)
     attempts = []
     for route in candidate_routes(plan, reference, graph, centre, radius)[:MAX_ROUTES_TRIED]:
         window = _tried(window_id, plan, graph, reference, centre, seed, route)

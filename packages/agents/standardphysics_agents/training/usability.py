@@ -83,6 +83,7 @@ class Walkable:
 
 def usable_sides(node: SceneNode, room: Room, floor: Walkable) -> int:
     role = roles.used_from_the_floor(node)
+    assert role is not None
     return sum(
         1 for outward in OUTWARD
         if any(room.clear(area, ignoring=node.id) and floor.joins(area)

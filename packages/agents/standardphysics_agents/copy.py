@@ -38,12 +38,18 @@ def stop_phrase(name: str | None) -> str:
     return STOP_PHRASES.get(name.strip().casefold(), f"the {name.strip().casefold()}")
 
 
+def _measured_inches(observation: Observation) -> float:
+    if observation.measured_inches is None:
+        raise ValueError(f"{observation.rule_id} reached its copy without a measurement")
+    return observation.measured_inches
+
+
 def _route_width(observation: Observation, rule: RuleSpec) -> FindingCopy:
     destination = stop_phrase(observation.facts.get("destination"))
     if observation.reason == "unreachable":
         return _route_blocked(observation, destination)
     needed = inches(rule.threshold)
-    shown = measured(observation.measured_inches, rule.threshold)
+    shown = measured(_measured_inches(observation), rule.threshold)
     if observation.satisfied:
         return FindingCopy(
             title=f"The path to {destination} fits",
@@ -73,7 +79,7 @@ def _widen_fix(observation: Observation, rule: RuleSpec) -> str:
     neither. Naming a fixed fixture in a fix would send the owner to shove a
     wall.
     """
-    deficit = inches(rule.threshold - observation.measured_inches)
+    deficit = inches(rule.threshold - _measured_inches(observation))
     movable = things(observation.facts.get("movable_blockers", []))
     fixed = things(observation.facts.get("fixed_blockers", []))
     if movable and len(observation.facts.get("movable_blockers", [])) >= 2:
@@ -90,7 +96,7 @@ def _widen_fix(observation: Observation, rule: RuleSpec) -> str:
 def _door_width(observation: Observation, rule: RuleSpec) -> FindingCopy:
     door = observation.facts.get("door", "door").casefold()
     needed = inches(rule.threshold)
-    shown = measured(observation.measured_inches, rule.threshold)
+    shown = measured(_measured_inches(observation), rule.threshold)
     if observation.satisfied:
         return FindingCopy(
             title=f"The {door} is wide enough",
@@ -107,7 +113,7 @@ def _counter_height(observation: Observation, rule: RuleSpec) -> FindingCopy:
     counter = observation.facts.get("counter", "counter").casefold()
     allowed = inches(rule.threshold)
     length = inches(observation.facts.get("accessible_length_inches", 36.0))
-    shown = measured(observation.measured_inches, rule.threshold)
+    shown = measured(_measured_inches(observation), rule.threshold)
     portion = observation.facts.get("portion")
     if observation.satisfied and portion:
         return FindingCopy(
@@ -130,7 +136,7 @@ def _counter_height(observation: Observation, rule: RuleSpec) -> FindingCopy:
 def _point_of_sale(observation: Observation, rule: RuleSpec) -> FindingCopy:
     reader = observation.facts.get("reader", "card reader").casefold()
     portion = observation.facts.get("portion", "lowered section").casefold()
-    shown = measured(observation.measured_inches, rule.threshold)
+    shown = measured(_measured_inches(observation), rule.threshold)
     allowed = inches(rule.threshold)
     if observation.satisfied:
         return FindingCopy(
@@ -169,7 +175,7 @@ def _counter_approach(observation: Observation, rule: RuleSpec) -> FindingCopy:
 def _passing_space(observation: Observation, rule: RuleSpec) -> FindingCopy:
     needed = inches(rule.threshold)
     if not observation.facts.get("applies", True):
-        shown = measured(observation.measured_inches)
+        shown = measured(_measured_inches(observation))
         return FindingCopy(
             title="Two people can pass anywhere on the path",
             detail=f"It's {shown} wide at the tightest point, and passing needs {needed}.",
@@ -191,7 +197,7 @@ def _passing_space(observation: Observation, rule: RuleSpec) -> FindingCopy:
 def _turning_space(observation: Observation, rule: RuleSpec) -> FindingCopy:
     stop = stop_phrase(observation.facts.get("stop"))
     needed = inches(rule.threshold)
-    shown = measured(observation.measured_inches, rule.threshold)
+    shown = measured(_measured_inches(observation), rule.threshold)
     if observation.satisfied:
         return FindingCopy(
             title=f"There's room to turn around at {stop}",
@@ -209,7 +215,7 @@ def _turn_width(observation: Observation, rule: RuleSpec) -> FindingCopy:
     pivot = observation.facts.get("pivot")
     around = f"the {pivot.casefold()}" if pivot else "the corner"
     needed = inches(observation.required_inches or rule.threshold)
-    shown = measured(observation.measured_inches, observation.required_inches)
+    shown = measured(_measured_inches(observation), observation.required_inches)
     if observation.satisfied:
         return FindingCopy(
             title=f"The turn around {around} is wide enough",
@@ -300,7 +306,7 @@ def _door_clearance(observation: Observation, rule: RuleSpec) -> FindingCopy:
 def _protrusion(observation: Observation, rule: RuleSpec) -> FindingCopy:
     thing = observation.facts.get("object", "object").casefold()
     edge = inches(observation.facts.get("leading_edge_inches", 40.0))
-    out = measured(observation.measured_inches, observation.required_inches)
+    out = measured(_measured_inches(observation), observation.required_inches)
     allowed = inches(observation.required_inches or rule.threshold)
     if observation.satisfied:
         return FindingCopy(
