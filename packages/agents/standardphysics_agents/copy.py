@@ -8,7 +8,7 @@ measurement and what is needed, and the fix says what to do.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable
 
 from .checks.observation import Observation
@@ -422,11 +422,11 @@ WRITERS: dict[str, Callable[[Observation, RuleSpec], FindingCopy]] = {
 
 REQUESTS = {
     "door_maneuvering_clearance": FindingCopy(
-        title="Tell us which way your front door opens",
+        title="Tell us which way {door_name} opens",
         detail="Pushed outward or pulled inward, from where a customer stands. Pulling one open takes more room in front of it, so it decides whether this passes.",
     ),
     "door_clear_width": FindingCopy(
-        title="Measure the front doorway and send us the number",
+        title="Measure how wide {door_name} opens and send us the number",
         detail="Open the door all the way and measure from the face of the door across to the frame. That's the width a wheelchair actually gets, and it needs 32 inches.",
     ),
 }
@@ -437,9 +437,11 @@ GENERIC_REQUEST = FindingCopy(
 )
 
 
-def request(rule: RuleSpec) -> FindingCopy:
-    """What to ask for when geometry cannot settle a rule on its own."""
-    return REQUESTS.get(rule.id, GENERIC_REQUEST)
+def request(rule: RuleSpec, facts: dict | None = None) -> FindingCopy:
+    """What to ask for when geometry cannot settle a rule on its own, naming the thing when there are several."""
+    template = REQUESTS.get(rule.id, GENERIC_REQUEST)
+    door_name = (facts or {}).get("door_name") or "the front door"
+    return replace(template, title=template.title.format(door_name=door_name))
 
 
 def another_look(labels: list[str]) -> FindingCopy:

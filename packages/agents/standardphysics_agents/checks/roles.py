@@ -90,6 +90,21 @@ def entrance(graph: SceneGraph) -> SceneNode | None:
     return all_doors[0] if len(all_doors) == 1 else None
 
 
+GENERIC_DOOR_LABELS = frozenset({"door", "doorway", "opening"})
+
+
+def door_name(graph: SceneGraph, door: SceneNode) -> str:
+    """How a request names this door: the front door, its own label, or its place among unnamed doors."""
+    front = entrance(graph)
+    if front is not None and front.id == door.id:
+        return "the front door"
+    label = _normalized(door.label)
+    if label and label not in GENERIC_DOOR_LABELS:
+        return f"the {label}"
+    ids = [each.id for each in doors(graph)]
+    return f"door {ids.index(door.id) + 1}" if door.id in ids else "the door"
+
+
 def dining_surfaces(graph: SceneGraph) -> list[SceneNode]:
     return [
         node

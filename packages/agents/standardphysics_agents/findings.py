@@ -42,7 +42,7 @@ def resolve(
     if not (rule.measurable or observation.seen_directly):
         return "question", describe(observation, rule)
     if observation.asks_for:
-        return "question", request(rule)
+        return "question", request(rule, observation.facts)
     unsure = roles.needs_another_look(graph, observation.relied_on)
     if unsure:
         return "question", another_look([node.label for node in unsure])

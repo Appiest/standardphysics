@@ -167,6 +167,7 @@ def _observation(ctx: CheckContext, rule: RuleSpec, door: SceneNode) -> Observat
         locus=region_locus(found.pull, [door.id]),
         facts={
             "door": door.label,
+            "door_name": roles.door_name(ctx.graph, door),
             "pull_depth": found.pull.inches_deep,
             "push_depth": found.push.inches_deep,
             "latch_side": rule.parameter("front_approach_pull_latch_side_inches"),

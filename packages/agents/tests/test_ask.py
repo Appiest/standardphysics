@@ -433,7 +433,7 @@ class TestStandards:
     def test_is_my_front_door_wide_enough(self, answer):
         result = answer("is my front door wide enough?")
         assert result.kind == "CHECK"
-        assert "Measure the front doorway" in result.text
+        assert "Measure how wide the front door opens" in result.text
         assert result.data["citation"].endswith("404.2.3")
 
     def test_it_gives_the_same_sentence_as_the_report(self, answer, context):
@@ -572,7 +572,7 @@ class TestWhichCheckAQuestionIsAbout:
         """Not with the photograph we also want of its handle."""
         result = answer("is my front door wide enough")
         assert result.data["citation"].endswith("404.2.3")
-        assert "Measure the front doorway" in result.text
+        assert "Measure how wide the front door opens" in result.text
 
     def test_turning_round_is_measured_even_where_the_rule_is_silent(self, answer):
         """304.3 asks for a turning space where one is required, which is at a
