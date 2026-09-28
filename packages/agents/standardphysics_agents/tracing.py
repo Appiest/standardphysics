@@ -60,6 +60,12 @@ class _Outcome:
     error: Exception | None = None
 
 
+@dataclass(frozen=True)
+class _FlushFailure:
+    message: str
+    abandoned: bool
+
+
 def _run_with_deadline(work: Callable[[], object], seconds: float, name: str) -> _Outcome:
     """Run `work` on a daemon thread and stop waiting for it after `seconds`.
 
@@ -156,10 +162,10 @@ class _Tracing:
         return True
 
     def stop(self) -> None:
-        stalled = _flush(self._weave) if self._weave is not None else None
-        if stalled is not None:
-            self.flush_abandoned = True
-            self.sender_errors.note(stalled)
+        failure = _flush(self._weave) if self._weave is not None else None
+        if failure is not None:
+            self.flush_abandoned = self.flush_abandoned or failure.abandoned
+            self.sender_errors.note(failure.message)
         logging.getLogger(SENDER_LOGGER).removeHandler(self.sender_errors)
         self._weave, self.project, self._ops = None, None, {}
         self.off_because = "tracing was shut down"
@@ -297,11 +303,11 @@ def _open_project(module: Any, target: str) -> str | None:
     return None
 
 
-def _flush(module: Any) -> str | None:
-    """Drain the queue of calls not yet sent. Returns what went wrong when it ran out of time.
+def _flush(module: Any) -> _FlushFailure | None:
+    """Drain the queue of calls not yet sent. Returns what went wrong, if anything.
 
-    A failure here is logged and swallowed, because it happens on the way out
-    and must not stop a shutdown.
+    A failure here is logged, counted by the caller and otherwise swallowed,
+    because it happens on the way out and must not stop a shutdown.
     """
     finish = getattr(module, "finish", None)
     if finish is None:
@@ -310,9 +316,10 @@ def _flush(module: Any) -> str | None:
     outcome = _run_with_deadline(finish, seconds, "weave-flush")
     if not outcome.finished:
         log.warning("weave did not flush its last traces within %s s; the unsent ones are lost", seconds)
-        return f"weave did not flush within {seconds} s"
+        return _FlushFailure(f"weave did not flush within {seconds} s", abandoned=True)
     if outcome.error is not None:
         log.warning("weave could not flush its last traces: %s", outcome.error)
+        return _FlushFailure(f"weave could not flush: {outcome.error}"[:500], abandoned=False)
     return None
 
 
@@ -379,7 +386,7 @@ def tracing_status() -> dict[str, Any]:
     """Whether traces are being sent and where, or why not, for /health/details.
 
     `delivery_errors` counts the send failures the Weave SDK logged and any
-    flush that ran out of time. The SDK reports nothing for a call that
+    flush that raised or ran out of time. The SDK reports nothing for a call that
     arrived, so "active" means tracing came up, not that W&B has every call.
     """
     return {
