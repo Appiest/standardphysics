@@ -141,26 +141,54 @@ taken, the stack half torn down and the site answering 502. It stops if you have
 pulls from GitHub and a deploy that quietly ships the previous commit is worse
 than one that refuses. `SP_DEPLOY_HOST` moves it to another box.
 
-It also waits while the API has jobs queued or running. The restart stops
-the API, and a bake interrupted ten minutes in starts again from nothing, so
-the script counts the unfinished rows in the `jobs` table, through the API
-container's own Python, and stops with exit code 75 if there are any. It
-stops with exit code 69 if it cannot read the queue at all, because a
-stopped or wedged API is when nobody knows what it was doing. To deploy
-anyway in either case:
+Before the restart it drains the API. The restart stops the API, and a bake
+interrupted ten minutes in starts again from nothing, so once the image is
+ready the script turns on the drain flag through the API container:
+
+```bash
+docker compose exec api /opt/venv/bin/python -m standardphysics_api.drain on
+```
+
+The flag is a file, `/data/draining`, on the scans volume. While it is there,
+every request that would queue new work gets 503 (finishing a walk, saving
+or combining a layout, marking a counter, confirming a route, and asking for a
+simulation or a texture all go through the same admission check in
+`budgets.admit_new_job`). Each refusal comes with `Retry-After: 60` and says
+"Standard Physics is updating; try again in a minute." Uploads of a walk's files carry on, because
+their scan was admitted already and its job is queued only when the phone
+finishes the walk. The worker starts no queued job but finishes the one it is
+running, and `/health/details` reports `"draining": true`.
+
+Then the script waits for the running job to finish, reading the `jobs` table
+through the API container's own Python every five seconds for up to
+`SP_DEPLOY_DRAIN_SECONDS`, 1200 by default. Queued jobs don't hold it up: they
+wait in the database and the new worker takes them. It stops with exit code 75
+if a job is still running at the end of that wait, and with 69 if it cannot
+read the queue or set the flag at all, because a stopped or wedged API is when
+nobody knows what it was doing. To deploy anyway in either case:
 
 ```bash
 SP_DEPLOY_FORCE=1 scripts/deploy.sh
 ```
 
-The order on the box is pull, fetch the image, read the queue, restart. A
-pull (or a build, below) takes minutes and the old API keeps serving through it, so
-the queue is read after the image is ready and immediately before
-`docker compose up -d` swaps the containers. A refused deploy leaves the new
-image on the box, and running the script again once the queue drains reuses
-it. Fetching or building also moves the `standardphysics:latest` tag to the
-new image, so a bare `docker compose up -d` typed on the box without `GIT_SHA`
+The order on the box is pull, fetch the image, drain, wait for the running job,
+restart, check the new stack is serving, and turn the drain off. A pull (or a
+build, below) takes minutes and the old API keeps serving and taking work
+through it, so the drain starts only after the image is ready. A refused deploy
+leaves the new image on the box, and running the script again reuses it.
+Fetching or building also moves the `standardphysics:latest` tag to the new
+image, so a bare `docker compose up -d` typed on the box without `GIT_SHA`
 would start it.
+
+The drain comes off on every way out of the script: after the new stack
+passes its check, and on any failure before that (jobs still running, a queue
+it cannot read, a stack that never comes up), so a failed deploy never leaves
+the site refusing work. The new API does not clear the flag by itself when it
+starts, so a deploy whose SSH session dies half way can leave it set. That
+shows as `"draining": true` in `/health/details` and as shops getting the
+"updating" message; clear it with
+`docker compose exec api /opt/venv/bin/python -m standardphysics_api.drain off`
+(`status` says whether it is on).
 
 ### The image CI tested
 
@@ -222,17 +250,16 @@ check on the commit without blocking a hotfix. The fix is a dependency bump:
 the workspace, or a newer `NODE_IMAGE` digest for the base image. Every action
 in the workflows is pinned to a commit SHA, with its version in a comment.
 
-A window remains. An upload that finalises between the queue read and the
-moment the old container stops, about a second, queues a job the check did
-not see. That job is not lost: `requeue_interrupted_jobs` puts every job left
-`running` back in the queue on the next start (a simulation is marked failed
-instead, so a restart never pays for its model calls twice, and so is a job
-that `SP_MAX_JOB_INTERRUPTIONS` restarts, three by default, have now cut
-short, until someone retries the scan), and a job still `queued`
-simply waits for the new worker. What the window costs is the progress of a
-job that started in that second. Closing it completely needs the worker to
-stop claiming jobs while a maintenance flag is set, which lives in
-`worker.py` and has not been built.
+Nothing new can start between the queue read and the restart. A request that
+passed admission a moment before the flag was set queues its job, and that job
+waits for the new worker. A worker loop that read the flag just before it was
+set can still claim one job, so the script waits two seconds before it first
+reads the queue and sees that job as running. If a restart does interrupt a
+job, which only `SP_DEPLOY_FORCE=1` allows, `requeue_interrupted_jobs` puts
+every job left `running` back in the queue on the next start (a simulation is
+marked failed instead, so a restart never pays for its model calls twice, and
+so is a job that `SP_MAX_JOB_INTERRUPTIONS` restarts, three by default, have
+cut short, until someone retries the scan).
 
 After the restart the script waits for the new stack to prove it is the one
 it deployed. Every five seconds it runs `deploy/digitalocean/check_serving.py`
@@ -516,7 +543,7 @@ already answers it. Its body looks like this:
 | Worker stall | `/health` answers 503 because a loop has died, or a loop's `state` is `stalled`, or a `busy` loop's `job.running_seconds` passes the longest bake you expect | `/health`, `/health/details` | Yes |
 | Disk free | Under 15% or 5 GB free on the scans volume, or on the backup destination. Uploads and bakes write there, and SQLite fails every write once it is full. | `df -h /mnt/standardphysics-scans`, or the `space:` line of `doctor.sh` | No |
 | Failed backup | The unit failed, or the newest snapshot is more than 26 hours old. `backup.sh` exits 2 when a file the live database lists is missing, and 75 when another backup was already running. | `systemctl is-failed standardphysics-backup.service`, `./restore.sh` with no arguments lists the snapshots | No |
-| Failed deploy | `scripts/deploy.sh` exits non-zero: 75 means jobs were in flight, 69 means the queue could not be read, 66 means no tested image exists for the commit, anything else means the pull, build or restart failed. After a deploy, the `commit` in `/health/details` should match the last line of `/var/log/standardphysics-deploys.log`, which only records deploys that got as far as the restart. | the script's exit code, `/health/details` | The commit only |
+| Failed deploy | `scripts/deploy.sh` exits non-zero: 75 means a job was still running after `SP_DEPLOY_DRAIN_SECONDS`, 69 means the queue could not be read or the drain could not be set, 66 means no tested image exists for the commit, anything else means the pull, build or restart failed. After a deploy, the `commit` in `/health/details` should match the last line of `/var/log/standardphysics-deploys.log`, which only records deploys that got as far as the restart. | the script's exit code, `/health/details` | The commit only |
 | Tracing off | Only when `WANDB_PROJECT` is set on purpose and traces stop arriving. `tracing` in `/health/details` says whether tracing started and, when it did not, why, including a `weave.init` that ran past `SP_WEAVE_INIT_TIMEOUT_SECONDS` (30 s). `delivery_errors` and `last_delivery_error` count the send failures the Weave SDK logged and any flush that ran past `SP_WEAVE_FLUSH_TIMEOUT_SECONDS` (15 s). Zero means none were logged, not that each trace arrived. | `/health/details`, the API log's `weave tracing is off` warning | Yes |
 
 `monitor.sh` covers the queue age, a worker that has died, stalled or overrun

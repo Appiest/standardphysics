@@ -4,6 +4,8 @@ The stand-in ssh runs the command it is handed in a local bash, which is the
 same text the Droplet would run, so these tests read the real remote script.
 The stand-in docker runs the real check_serving.py against a local server
 playing the API and the workspace, so a deploy is judged by what they answer.
+It answers the queue query from FAKE_IN_FLIGHT, a comma-separated list read one
+entry per query with the last repeating, so a job can finish while it waits.
 """
 
 from __future__ import annotations
@@ -45,10 +47,17 @@ esac
 if [ "$2" = exec ] && [ "${@: -2:1}" = - ]; then
   exec "$STAND_IN_PYTHON" - "${@: -1}" "$FAKE_ORIGIN" "$FAKE_ORIGIN"
 fi
+if [ "${@: -2:1}" = standardphysics_api.drain ]; then
+  [ "${@: -1}" = on ] && exit "${FAKE_DRAIN_ON_EXIT:-0}"
+  exit 0
+fi
 if [ "$2" = exec ]; then
   printf '%s' "${@: -1}" > "$STAND_IN_QUERY"
   [ -n "${FAKE_IN_FLIGHT_FAILS:-}" ] && exit 1
-  echo "$FAKE_IN_FLIGHT"
+  echo read >> "$STAND_IN_QUERY.reads"
+  IFS=, read -ra answers <<< "$FAKE_IN_FLIGHT"
+  reads=$(wc -l < "$STAND_IN_QUERY.reads")
+  echo "${answers[$(( reads < ${#answers[@]} ? reads - 1 : ${#answers[@]} - 1 ))]}"
 fi
 """,
 }
@@ -108,7 +117,7 @@ def box(tmp_path: pathlib.Path) -> pathlib.Path:
     return tmp_path
 
 
-def deploy(box: pathlib.Path, in_flight: int = 0, **environment: str) -> subprocess.CompletedProcess:
+def deploy(box: pathlib.Path, in_flight: int | str = 0, **environment: str) -> subprocess.CompletedProcess:
     env = {
         **os.environ,
         "PATH": f"{box / 'bin'}{os.pathsep}{os.environ['PATH']}",
@@ -122,6 +131,7 @@ def deploy(box: pathlib.Path, in_flight: int = 0, **environment: str) -> subproc
         "SP_DEPLOY_DIR": str(box / "standardphysics"),
         "SP_DEPLOY_LOCK": str(box / "deploy.lock"),
         "SP_DEPLOY_HISTORY": str(box / "deploys.log"),
+        "SP_DEPLOY_DRAIN_SECONDS": "10",
         **environment,
     }
     return subprocess.run(["bash", str(DEPLOY)], env=env, capture_output=True, text=True, timeout=60)
@@ -148,12 +158,68 @@ def test_a_box_left_on_an_old_commit_by_a_rollback_returns_to_master_before_pull
     assert git == ["git checkout --quiet master", "git pull --ff-only"]
 
 
-def test_a_deploy_waits_for_queued_and_running_jobs(box):
+def drain_calls(box: pathlib.Path) -> list[str]:
+    return [line.split()[-2] for line in calls(box) if "standardphysics_api.drain" in line]
+
+
+def test_a_deploy_waits_for_a_running_job_and_gives_up_after_the_drain_time(box):
     result = deploy(box, in_flight=2)
     assert result.returncode == 75
     assert "2 job(s)" in result.stderr
     assert compose_up(box) == []
     assert not (box / "deploys.log").exists()
+
+
+def test_a_job_that_finishes_while_draining_lets_the_deploy_go_on(box):
+    result = deploy(box, in_flight="1,1,0")
+    assert result.returncode == 0, result.stderr
+    assert "Waiting for 1 running job(s)" in result.stdout
+    assert len(compose_up(box)) == 1
+
+
+def test_the_drain_is_on_from_before_the_queue_is_read_until_the_new_container_serves(box):
+    """New work admitted between the queue read and the restart would be interrupted by it."""
+    assert deploy(box).returncode == 0
+    steps = [line for line in calls(box) if line.startswith("docker")]
+
+    def first(predicate) -> int:
+        return next(index for index, line in enumerate(steps) if predicate(line))
+
+    drained = first(lambda line: "drain on" in line)
+    queue_read = first(lambda line: " -c " in line)
+    restarted = first(lambda line: line.startswith("docker compose up"))
+    served = first(lambda line: "python - " in line)
+    released = first(lambda line: "drain off" in line)
+    assert drained < queue_read < restarted < served < released
+    assert drain_calls(box) == ["on", "off"]
+
+
+def never_ready() -> None:
+    FakeStack.answers["/health/ready"] = lambda asked: (503, {})
+
+
+@pytest.mark.parametrize(
+    ("failure", "stack_answers"),
+    [
+        ({"FAKE_IN_FLIGHT": "1", "SP_DEPLOY_DRAIN_SECONDS": "0"}, None),
+        ({"FAKE_IN_FLIGHT_FAILS": "1"}, None),
+        ({"SP_DEPLOY_READY_SECONDS": "0"}, never_ready),
+    ],
+    ids=["jobs still running", "queue unreadable", "never serving"],
+)
+def test_a_failed_deploy_turns_the_drain_off_so_the_site_takes_work_again(box, failure, stack_answers):
+    if stack_answers:
+        stack_answers()
+    result = deploy(box, **failure)
+    assert result.returncode != 0
+    assert compose_up(box) == ([] if stack_answers is None else [f"docker compose up -d GIT_SHA={COMMIT}"])
+    assert drain_calls(box) == ["on", "off"]
+
+
+def test_a_drain_that_cannot_be_turned_on_refuses_the_deploy(box):
+    result = deploy(box, FAKE_DRAIN_ON_EXIT="1")
+    assert result.returncode == 69
+    assert compose_up(box) == []
 
 
 def test_the_queue_is_read_after_the_image_is_fetched_and_just_before_the_restart(box):
@@ -165,7 +231,8 @@ def test_the_queue_is_read_after_the_image_is_fetched_and_just_before_the_restar
     assert fetched < queue_read < restarted
 
 
-def test_the_container_is_asked_a_query_that_counts_only_unfinished_jobs(box):
+def test_the_container_is_asked_a_query_that_counts_only_running_jobs(box):
+    """Queued jobs wait in the database through the restart, and the drain stops the worker starting them."""
     deploy(box, in_flight=0)
     database = box / "standardphysics.sqlite3"
     with sqlite3.connect(database) as connection:
@@ -173,7 +240,7 @@ def test_the_container_is_asked_a_query_that_counts_only_unfinished_jobs(box):
         connection.executemany("INSERT INTO jobs VALUES (?)", [("queued",), ("running",), ("done",), ("failed",)])
     query = (box / "query.py").read_text().replace("/data/standardphysics.sqlite3", str(database))
     counted = subprocess.run([sys.executable, "-c", query], capture_output=True, text=True, check=True)
-    assert counted.stdout.strip() == "2"
+    assert counted.stdout.strip() == "1"
 
 
 def test_forcing_a_deploy_goes_ahead_with_jobs_in_flight(box):
