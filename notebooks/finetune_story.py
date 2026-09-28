@@ -20,7 +20,17 @@ def _():
 def _(json, mo):
     # Written by scripts/finetune_ledger.py on compute-box. Every number on this page
     # comes from this file; the notebook only arranges it.
-    LEDGER = json.loads((mo.notebook_dir() / "finetune_ledger.json").read_text())
+    def read_ledger():
+        """A file beside the notebook when run locally, and a URL beside the page in a WebAssembly export."""
+        location = mo.notebook_location() / "public" / "finetune_ledger.json"
+        try:
+            return json.loads(location.read_text())
+        except (AttributeError, OSError):
+            from pyodide.http import open_url
+
+            return json.loads(open_url(str(location)).read())
+
+    LEDGER = read_ledger()
     RUNS = sorted(LEDGER["runs"], key=lambda run: run["sessions"][0]["opened_at"])
     return LEDGER, RUNS
 
@@ -390,6 +400,159 @@ def _(mo, title_block):
 
 
 @app.cell
+def _(percent):
+    # What each held-out benchmark measures. Reward is on its own 0 to 1 scale; the rest are shares.
+    METRICS = {
+        "cleared": "Cleared every fixable problem",
+        "accepted": "Answer accepted by the checker",
+        "rules_pass": "Broke no hard rule",
+        "reward": "Mean reward",
+    }
+
+    def value_text(value, metric):
+        return f"{value:.3f}" if metric == "reward" else percent(value)
+
+    def change_text(delta, metric):
+        return f"{delta:+.3f}" if metric == "reward" else f"{delta * 100:+.1f} pts"
+
+    def change_css(delta):
+        if delta > 0.0005:
+            return "delta-up"
+        return "delta-down" if delta < -0.0005 else "delta-flat"
+
+    def stage_changes(run, metric):
+        """Each stage's score next to the change from the stage before it."""
+        stages, previous = [], None
+        for entry in run["evaluations"]:
+            value = entry[metric]
+            delta = None if previous is None else value - previous
+            stages.append({"label": entry["label"], "value": value, "delta": delta, "samples": entry["samples"]})
+            previous = value
+        return stages
+
+    return METRICS, change_css, change_text, stage_changes, value_text
+
+
+@app.cell
+def _(change_css, change_text, escape, stage_changes, svg, text, value_text):
+    LADDER_WIDTH, LADDER_HEIGHT, LADDER_PAD = 320, 150, 30
+
+    def ladder_points(stages):
+        step = (LADDER_WIDTH - 2 * LADDER_PAD) / max(len(stages) - 1, 1)
+        span = LADDER_HEIGHT - 2 * LADDER_PAD
+        return [(LADDER_PAD + index * step, LADDER_HEIGHT - LADDER_PAD - stage["value"] * span)
+                for index, stage in enumerate(stages)]
+
+    def ladder_marks(stages, points, metric):
+        marks = []
+        for stage, (x, y) in zip(stages, points):
+            css = "dot-base" if stage["delta"] is None else f"dot-stage {change_css(stage['delta'])}"
+            marks.append(f'<circle class="{css}" cx="{x:.1f}" cy="{y:.1f}" r="6"/>')
+            marks.append(text(x, y - 14, value_text(stage["value"], metric), "label-figure", "middle"))
+            marks.append(text(x, LADDER_HEIGHT - 8, stage["label"].replace("After ", ""), "label-small", "middle"))
+        return marks
+
+    def stage_ladder(run, metric):
+        stages = stage_changes(run, metric)
+        points = ladder_points(stages)
+        path = " ".join(f"{'M' if index == 0 else 'L'} {x:.1f} {y:.1f}" for index, (x, y) in enumerate(points))
+        body = (
+            f'<line class="axis" x1="{LADDER_PAD - 14}" x2="{LADDER_WIDTH - LADDER_PAD + 14}" '
+            f'y1="{LADDER_HEIGHT - LADDER_PAD}" y2="{LADDER_HEIGHT - LADDER_PAD}"/>'
+            f'<path class="ladder-line" d="{path}"/>' + "".join(ladder_marks(stages, points, metric))
+        )
+        return svg(LADDER_WIDTH, LADDER_HEIGHT, f"{run['title']}: {metric} after each training stage",
+                   ", ".join(f"{stage['label']} {value_text(stage['value'], metric)}" for stage in stages),
+                   body, scrolls=False)
+
+    def change_chips(run, metric):
+        chips = [
+            f'<span class="delta {change_css(stage["delta"])}">{escape(stage["label"])}: '
+            f'<span class="figure">{change_text(stage["delta"], metric)}</span></span>'
+            for stage in stage_changes(run, metric) if stage["delta"] is not None
+        ]
+        return f'<div class="deltas">{"".join(chips)}</div>'
+
+    def benchmark_card(run, metric):
+        return (
+            f'<div class="sheet sheet-plain bench-card"><span class="panel-title">{escape(run["title"])}</span>'
+            f'{stage_ladder(run, metric)}{change_chips(run, metric)}</div>'
+        )
+
+    def benchmark_grid(runs, metric):
+        cards = "".join(benchmark_card(run, metric) for run in runs if len(run["evaluations"]) > 1)
+        return f'<div class="bench-grid">{cards}</div>'
+
+    return (benchmark_grid,)
+
+
+@app.cell
+def _(mo):
+    mo.Html(
+        '<div class="story section"><h2>Benchmarks after each training stage</h2>'
+        "<p>Each card is one run, graded on its own held-out rooms before training, after SFT and after RL. "
+        "The chips under it are the change each stage made. Pick a benchmark and marimo re-runs only the cell "
+        "that draws the cards.</p></div>"
+    )
+    return
+
+
+@app.cell
+def _(METRICS, mo):
+    metric_picker = mo.ui.radio(
+        options={label: key for key, label in METRICS.items()},
+        value=METRICS["cleared"],
+        inline=True,
+        label="Benchmark",
+    )
+    mo.Html(f'<div class="story picker-row">{metric_picker}</div>')
+    return (metric_picker,)
+
+
+@app.cell
+def _(RUNS, benchmark_grid, metric_picker, mo):
+    mo.Html(f'<div class="story">{benchmark_grid(RUNS, metric_picker.value)}</div>')
+    return
+
+
+@app.cell
+def _(RUNS, stage_changes):
+    def benchmark_rows(runs):
+        rows = []
+        for run in runs:
+            cleared = stage_changes(run, "cleared")
+            for entry, step in zip(run["evaluations"], cleared):
+                rows.append({
+                    "Run": run["title"],
+                    "Stage": entry["label"],
+                    "Answers graded": entry["samples"],
+                    "Cleared %": round(entry["cleared"] * 100, 1),
+                    "Change in cleared, pts": None if step["delta"] is None else round(step["delta"] * 100, 1),
+                    "Accepted %": round(entry["accepted"] * 100, 1),
+                    "Broke no hard rule %": round(entry["rules_pass"] * 100, 1),
+                    "Mean reward": round(entry["reward"], 3),
+                })
+        return rows
+
+    BENCHMARK_ROWS = benchmark_rows(RUNS)
+    return (BENCHMARK_ROWS,)
+
+
+@app.cell
+def _(BENCHMARK_ROWS, mo):
+    benchmark_table = mo.ui.table(
+        BENCHMARK_ROWS,
+        selection=None,
+        page_size=len(BENCHMARK_ROWS),
+        show_column_summaries=False,
+        show_data_types=False,
+        label="Every graded checkpoint. Sort or search any column.",
+    )
+    mo.Html(f'<div class="story bench-table">{benchmark_table}</div>')
+    return (benchmark_table,)
+
+
+@app.cell
 def _(clock, day, escape, millions, percent, started, whole):
     def funnel_rows(run):
         funnel = run.get("funnel")
@@ -688,7 +851,7 @@ def _(LEDGER, clock, day, mo, pacific):
       {clock(_collected)} Pacific time. Spend is the trainer's own pessimistic estimate, which bills every prompt
       token uncached; Fireworks does not report a billed total per run.</p>
       <p>Refresh the numbers with <code>scripts/finetune_ledger.py</code>, then export with
-      <code>marimo export html notebooks/finetune_story.py --no-include-code -o finetune_story.html</code>.</p>
+      <code>marimo export html-wasm notebooks/finetune_story.py -o finetune_story --mode run</code>.</p>
     </div>
     """)
     return

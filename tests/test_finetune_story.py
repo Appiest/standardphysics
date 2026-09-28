@@ -1,7 +1,7 @@
 """The fine-tuning story notebook runs, and every figure it shows adds up from the ledger.
 
 `notebooks/finetune_story.py` is exported to a static page for demos, so a figure
-that drifts from `notebooks/finetune_ledger.json` would be shown to people as fact.
+that drifts from `notebooks/public/finetune_ledger.json` would be shown to people as fact.
 These tests run every cell and check the totals against the ledger directly.
 """
 
@@ -16,7 +16,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK = ROOT / "notebooks" / "finetune_story.py"
-LEDGER = json.loads((ROOT / "notebooks" / "finetune_ledger.json").read_text())
+LEDGER = json.loads((ROOT / "notebooks" / "public" / "finetune_ledger.json").read_text())
 
 
 def load(path: Path, name: str):

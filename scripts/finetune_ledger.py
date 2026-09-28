@@ -5,7 +5,7 @@ only what the runs wrote: progress files, RL metric logs, dataset reports and th
 Fireworks model list. Every number in the ledger names the file it came from.
 
     ssh compute-box 'cd ~/sp-finetune && set -a && . ./fireworks.env && set +a && \\
-        venv/bin/python -' < scripts/finetune_ledger.py > notebooks/finetune_ledger.json
+        venv/bin/python -' < scripts/finetune_ledger.py > notebooks/public/finetune_ledger.json
 """
 
 from __future__ import annotations
