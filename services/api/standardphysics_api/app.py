@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated
 
+import anyio
 from fastapi import FastAPI, Header, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -72,7 +73,7 @@ from .errors import ApiProblem
 from .evidence import evidence_status_for, maybe_queue_semantic, record_closure
 from .labels import mark_counter, mark_observation, review_outlet, unmark_counter
 from .layout import check_layout, save_layout
-from .lidar_mesh import MAX_LIDAR_MESH_BYTES, InvalidLidarMesh, validate_lidar_mesh
+from .lidar_mesh import MAX_LIDAR_MESH_BYTES, InvalidLidarMesh, validate_lidar_mesh_file
 from .loop_run import run as run_loop_on
 from .loop_run import stream as stream_loop_on
 from .model_loop import loop_info, stream_model_loop
@@ -428,16 +429,12 @@ class StagedCheck:
     message: str
 
 
-def _lidar_mesh_file(path: pathlib.Path) -> object:
-    return validate_lidar_mesh(path.read_bytes())
-
-
 def _photo_manifest_file(path: pathlib.Path) -> object:
     return validate_manifest(path.read_bytes())
 
 
 STAGED_CHECKS = {
-    "lidar_mesh": StagedCheck(MAX_LIDAR_MESH_BYTES, _lidar_mesh_file, InvalidLidarMesh, "invalid lidar mesh"),
+    "lidar_mesh": StagedCheck(MAX_LIDAR_MESH_BYTES, validate_lidar_mesh_file, InvalidLidarMesh, "invalid lidar mesh"),
     "photo_manifest": StagedCheck(MAX_METADATA_BYTES, _photo_manifest_file, ValueError, "invalid photo manifest"),
     "room_usdz": StagedCheck(MAX_ARCHIVE_BYTES, validate_room_usdz, InvalidUsdz, "invalid usdz archive"),
 }
@@ -445,14 +442,19 @@ STAGED_CHECKS = {
 compared from the staged file's length, so an oversized one is never read."""
 
 
-def _validate_staged(staged: StagedUpload, kind: str) -> None:
+async def _validate_staged(staged: StagedUpload, kind: str, validations: anyio.CapacityLimiter) -> None:
+    """Check the staged file on a worker thread, no more at once than `validations` allows.
+
+    A mesh check reads hundreds of megabytes. On the event loop it would stop
+    every other request, /health included, until it finished.
+    """
     check = STAGED_CHECKS.get(kind)
     if check is None:
         return
     if staged.bytes > check.max_bytes:
         raise ApiProblem(413, f"{kind} is larger than {check.max_bytes} bytes")
     try:
-        check.validate(staged.temp_path)
+        await anyio.to_thread.run_sync(check.validate, staged.temp_path, limiter=validations)
     except check.invalid:
         raise ApiProblem(400, check.message) from None
 
@@ -506,6 +508,8 @@ def _install_upload_routes(
     budgets: Budgets,
     reservations: UploadReservations,
 ) -> None:
+    validations = anyio.CapacityLimiter(settings.max_concurrent_validations)
+
     @app.put("/api/scans/{scan_id}/artifacts/{artifact_id}", response_model=Artifact, status_code=201)
     async def upload_artifact(
         scan_id: uuid.UUID,
@@ -518,7 +522,7 @@ def _install_upload_routes(
         with _reserve_or_refuse_early(database, admission, artifact_id, request) as reservation:
             staged = await _stage_upload(store, scan_id, artifact_id, request, reservation)
             try:
-                _validate_staged(staged, x_artifact_kind)
+                await _validate_staged(staged, x_artifact_kind, validations)
                 status, artifact = _accept_staged(
                     database, admission, artifact_id, x_artifact_kind, x_checksum_sha256, staged
                 )
