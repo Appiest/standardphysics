@@ -2,7 +2,7 @@ import type { SceneGraph, SceneNode, Vec3 } from "@/types/contracts";
 import { formatInches } from "./findings";
 import { metersToInches } from "./units";
 
-export type FoundGroupId = "service" | "seating" | "safety" | "other";
+export type FoundGroupId = "service" | "seating" | "access" | "safety" | "other";
 
 /** Every piece of one kind in one group, such as the shop's 23 chairs. */
 export type FoundRow = {
@@ -19,11 +19,12 @@ export type FoundGroup = { id: FoundGroupId; title: string; rows: FoundRow[] };
 /** One found piece as the 3D view draws it. */
 export type FoundMark = { nodeId: string; rowId: string; name: string; topInches: number | null };
 
-const GROUP_ORDER: FoundGroupId[] = ["service", "seating", "safety", "other"];
+const GROUP_ORDER: FoundGroupId[] = ["service", "seating", "access", "safety", "other"];
 
 const GROUP_TITLES: Record<FoundGroupId, string> = {
   service: "Counters and payment",
   seating: "Tables and seating",
+  access: "Ramps and steps",
   safety: "Safety",
   other: "Everything else",
 };
@@ -31,12 +32,21 @@ const GROUP_TITLES: Record<FoundGroupId, string> = {
 /** Checked in order, so an extinguisher cabinet on a counter still reads as safety. */
 const GROUP_WORDS: [FoundGroupId, string[]][] = [
   ["safety", ["fire extinguisher", "extinguisher", "first aid", "defibrillator", "aed", "exit sign", "fire alarm"]],
-  ["service", ["counter", "register", "payment terminal", "card terminal", "card reader", "kiosk", "order sign", "menu board"]],
+  ["access", ["ramp", "landing", "handrail", "hand rail", "railing", "step", "steps", "stairs", "threshold"]],
+  ["service", [
+    "counter", "register", "payment terminal", "card terminal", "card reader", "kiosk", "order sign", "menu board",
+    "touchscreen", "touch screen", "ordering machine", "order screen", "self checkout", "cash drawer", "cashier drawer",
+    "cash box", "tip screen", "pickup", "pick-up", "handoff", "hand-off", "to-go shelf", "condiment", "self-serve",
+    "napkin dispenser", "straw dispenser", "lid dispenser", "drink dispenser",
+  ]],
   ["seating", ["chair", "bench", "stool", "table", "sofa", "couch", "booth", "seat"]],
 ];
 
-/** Kinds the ADA checks measure by height: counter tops, reach to a terminal, table surfaces. */
-const HEIGHT_WORDS = ["counter", "register", "payment terminal", "card terminal", "card reader", "kiosk", "table", "extinguisher", "first aid", "dispenser"];
+/** Kinds the ADA checks measure by height: counter tops, reach to a terminal or dispenser, table surfaces, a ramp's rise and its rails. */
+const HEIGHT_WORDS = [
+  "counter", "register", "payment terminal", "card terminal", "card reader", "kiosk", "table", "extinguisher", "first aid", "dispenser",
+  "touchscreen", "touch screen", "ordering machine", "order screen", "tip screen", "condiment", "self-serve", "pickup", "handrail", "railing", "ramp",
+];
 
 /** Things set down on a counter for the day, which the owner never needs listed. */
 const LOOSE_ITEMS = ["cup", "cups", "bag", "box", "drip tray", "metal container"];
