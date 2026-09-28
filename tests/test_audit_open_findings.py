@@ -234,15 +234,15 @@ def test_a31_a_render_comes_from_the_newest_revision(tmp_path):
 def test_a35_a_save_that_loses_the_race_is_refused(tmp_path, monkeypatch):
     with _api_client(tmp_path, seed_sample_shop=True) as client:
         scan_id = _sample_shop_id(client)
-        checked = layout._candidate
+        checked = layout.plan_candidate
 
-        def another_save_lands_first(base, moves):
-            monkeypatch.setattr(layout, "_candidate", checked)
+        def another_save_lands_first(base, moves, construction=False):
+            monkeypatch.setattr(layout, "plan_candidate", checked)
             other = SaveLayoutRequest.model_validate({"base_revision": 0, "moves": [_slide("case_west", -0.05)]})
             layout.save_layout(client.app.state.database, client.app.state.worker, uuid.UUID(scan_id), other)
-            return checked(base, moves)
+            return checked(base, moves, construction)
 
-        monkeypatch.setattr(layout, "_candidate", another_save_lands_first)
+        monkeypatch.setattr(layout, "plan_candidate", another_save_lands_first)
         mine = {"base_revision": 0, "moves": [_slide("case_east", 0.127)]}
         assert client.post(f"/api/scans/{scan_id}/revisions", json=mine).status_code == 409
 
