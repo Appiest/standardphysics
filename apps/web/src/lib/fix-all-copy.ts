@@ -2,7 +2,7 @@ import type { ModelLoopProgress } from "@/lib/model-loop-progress";
 import type { ModelLoopEvent } from "@/types/contracts";
 
 export function idleDetail(label: string): string {
-  return `${label} tries moves that pass every check, one problem at a time. Nothing changes until you keep it.`;
+  return `${label} works through the whole room, choosing only moves that pass every check. Nothing changes until you keep it.`;
 }
 
 export function workingDetail(label: string): string {

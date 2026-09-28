@@ -3,7 +3,7 @@
 import { ArrowLeft } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ComponentProps, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useProposalReview } from "@/components/proposal/useProposalReview";
 import { useArrangement } from "@/components/workspace/useArrangement";
 import { canBeCounter } from "@/lib/counter";
@@ -23,7 +23,7 @@ import { SavePrompt } from "./SavePrompt";
 import { SharePanel } from "./SharePanel";
 import { StepHeading } from "./StepHeading";
 import { StillToCheck } from "./StillToCheck";
-import { FixAll } from "./FixAll";
+import { FixAll, useModelLabel } from "./FixAll";
 import { ToolsPanel } from "./ToolsPanel";
 import { guessCounter, useOwnerModel } from "./useOwnerModel";
 import { usePathEditor } from "./usePathEditor";
@@ -169,6 +169,11 @@ function pieceLabel(scene: SceneGraph, nodeId: string | null): string | null {
   return scene.nodes.find((node) => node.id === nodeId)?.label ?? null;
 }
 
+/** The whole-room fix when a layout model is set up; null sends the owner to the one-at-a-time checklist instead. */
+function fixRoomCard(label: string | null, card: Omit<ComponentProps<typeof FixAll>, "label">): ReactNode {
+  return label ? <FixAll key={card.revision} {...card} label={label} /> : null;
+}
+
 function currentPanel(journey: Journey, counterSkipped: boolean, tool: Tool | null, readOnly: boolean): Panel | Tool {
   if (readOnly) return "results";
   if (tool) return tool;
@@ -186,6 +191,7 @@ function OwnerShop(props: ShopProps) {
   const [fixingHere, setFixingHere] = useState(false);
   const [planFinding, setPlanFinding] = useState<Finding | null>(null);
   const review = useProposalReview(scan.id, scene.revision, scan.owner_wishes);
+  const modelLabel = useModelLabel();
   const save = useSaveAsk(guest);
   const statuses = useStatuses(scan.id, guest, save.ask);
   const path = usePathEditor(scan.id, props.suggestedPath, props.defaultPlaces);
@@ -246,6 +252,8 @@ function OwnerShop(props: ShopProps) {
     setTool(null);
   };
 
+  const fixRoom = fixRoomCard(modelLabel, { scanId: scan.id, revision: scene.revision, onOpen: openFixedLayout, onOneAtATime: () => setFixingHere(true) });
+
   const content: Record<Panel | Tool, () => ReactNode> = {
     waiting: () => <WaitingPanel journey={journey} />,
     failed: () => <WaitingPanel journey={journey} />,
@@ -270,11 +278,11 @@ function OwnerShop(props: ShopProps) {
         footer={props.footer}
         stillToCheck={<StillToCheck scanId={scan.id} questions={readOnly ? [] : groups.questions} requests={props.requests} />}
         pending={groups.questions.length}
+        fixRoom={fixRoom}
         actions={{ onShow: (finding) => setSelected(finding.id === selected?.id ? null : finding), onStatus: statuses.set, onPlan: planFor }}
       >
         {!readOnly && <SharePanel scanId={scan.id} shopName={scan.name} onShared={save.ask} />}
-        {!readOnly && journey.tools_unlocked && <ToolsPanel scanId={scan.id} inApp={inApp()} onPlan={startPlanning} onWheelchair={startWheelchair}
-          lead={<FixAll key={scene.revision} scanId={scan.id} revision={scene.revision} onOpen={openFixedLayout} />} />}
+        {!readOnly && journey.tools_unlocked && <ToolsPanel scanId={scan.id} inApp={inApp()} onPlan={startPlanning} onWheelchair={startWheelchair} />}
       </ResultsPanel>
     ),
   };

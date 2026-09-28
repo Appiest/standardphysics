@@ -17,7 +17,7 @@ const RESULTS_TIP = "sp_results_tip";
  * it counts what to fix; after, each card carries its status and the header
  * counts what's done.
  */
-export function ResultsPanel({ rows, scene, selectedId, fixing, saving, actions, onStartFixing, readOnly, footer, stillToCheck, pending, children }: {
+export function ResultsPanel({ rows, scene, selectedId, fixing, saving, actions, onStartFixing, readOnly, footer, stillToCheck, pending, fixRoom, children }: {
   rows: Row[];
   scene: SceneGraph | null;
   selectedId: string | null;
@@ -31,6 +31,8 @@ export function ResultsPanel({ rows, scene, selectedId, fixing, saving, actions,
   stillToCheck?: ReactNode;
   /** How many of those there are, so a shop with none to fix isn't called clear while some wait. */
   pending: number;
+  /** The whole-room fix, shown above the list when a layout model is set up; it replaces the "Start fixing" bar. */
+  fixRoom?: ReactNode;
   children?: ReactNode;
 }) {
   const [tipSeen, markTipSeen] = useSeenOnce(RESULTS_TIP);
@@ -39,10 +41,12 @@ export function ResultsPanel({ rows, scene, selectedId, fixing, saving, actions,
     onShow: (finding) => { markTipSeen(); actions.onShow(finding); },
     onStatus: (finding, status) => { markTipSeen(); actions.onStatus(finding, status); },
   }), [actions, markTipSeen]);
+  const offerFix = offersFix(rows, fixing, readOnly);
   return (
     <div className="flex min-h-full flex-col gap-6">
       {fixing ? <Progress rows={rows} /> : <Count count={rows.length} pending={pending} />}
       {rows.length > 0 && !tipSeen && <FirstResultsTip onDismiss={markTipSeen} />}
+      {offerFix && fixRoom}
       <ul className="flex flex-col gap-4">
         {rows.map(({ finding, status }) => (
           <li key={finding.id}>
@@ -54,13 +58,18 @@ export function ResultsPanel({ rows, scene, selectedId, fixing, saving, actions,
       {stillToCheck}
       {footer}
       {children}
-      {!fixing && !readOnly && rows.length > 0 && (
+      {offerFix && !fixRoom && (
         <ActionBar>
           <Button variant="primary" className="justify-center" onClick={onStartFixing}>Start fixing</Button>
         </ActionBar>
       )}
     </div>
   );
+}
+
+/** Whether the owner can still start fixing: there is something to fix and they haven't started. */
+function offersFix(rows: Row[], fixing: boolean, readOnly: boolean): boolean {
+  return !fixing && !readOnly && rows.length > 0;
 }
 
 /** One heading that says what it counts. The number carries the red, and nothing else does. */

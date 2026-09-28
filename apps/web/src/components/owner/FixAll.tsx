@@ -23,6 +23,7 @@ import { easeDrawn, easeSweep } from "@/lib/motion";
 import type { ModelLoopEvent, NodeMove } from "@/types/contracts";
 
 type Props = { scanId: string; revision: number; onOpen: (moves: NodeMove[]) => void };
+type CardProps = Props & { label: string; onOneAtATime?: () => void };
 
 const UNABLE_TO_START = "Unable to start. Check your connection, then try again.";
 const SNAP = { type: "spring", duration: 0.3, bounce: 0 } as const;
@@ -33,7 +34,7 @@ const ICON_IN = { opacity: 0, scale: 0.25, filter: "blur(4px)" };
 const ICON_SHOWN = { opacity: 1, scale: 1, filter: "blur(0px)" };
 
 /** The model's label when one is set up to run the loop; null while asking or when none is. */
-function useModelLabel(): string | null {
+export function useModelLabel(): string | null {
   const [label, setLabel] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
@@ -83,13 +84,16 @@ function useModelLoop(scanId: string, revision: number) {
   return { progress, start, stop };
 }
 
-function Idle({ label, onStart }: { label: string; onStart: () => void }) {
+function Idle({ label, onStart, onOneAtATime }: { label: string; onStart: () => void; onOneAtATime?: () => void }) {
   return (
     <motion.div className="flex flex-col items-start gap-3" exit={{ opacity: 0, transition: { duration: 0.15 } }}>
-      <motion.button type="button" className={buttonClassName("primary")} onClick={onStart} whileTap={{ scale: 0.96 }}>
-        <MagicWand size={18} weight="bold" aria-hidden />
-        Fix all layout problems
-      </motion.button>
+      <div className="flex flex-wrap items-center gap-3">
+        <motion.button type="button" className={buttonClassName("primary")} onClick={onStart} whileTap={{ scale: 0.96 }}>
+          <MagicWand size={18} weight="bold" aria-hidden />
+          Fix room
+        </motion.button>
+        {onOneAtATime && <Button variant="quiet" onClick={onOneAtATime}>Fix one at a time</Button>}
+      </div>
       <p className="text-pretty text-sm text-ink-muted">{idleDetail(label)}</p>
     </motion.div>
   );
@@ -273,7 +277,8 @@ function Run({ progress, label, onOpen, onStart, onStop }: EndingProps & { label
   );
 }
 
-function FixAllCard({ scanId, revision, onOpen, label }: Props & { label: string }) {
+/** One press asks the layout model to work through every open problem, turn by turn, and shows each move land. */
+export function FixAll({ scanId, revision, onOpen, label, onOneAtATime }: CardProps) {
   const { progress, start, stop } = useModelLoop(scanId, revision);
   const [content, height] = useContentHeight();
   const [growing, setGrowing] = useState(false);
@@ -282,21 +287,15 @@ function FixAllCard({ scanId, revision, onOpen, label }: Props & { label: string
       <p className="sr-only" role="status">{fixAllAnnouncement(progress)}</p>
       <motion.article initial={false} animate={{ height: height ?? "auto" }} transition={GROW}
         onAnimationStart={() => setGrowing(true)} onAnimationComplete={() => setGrowing(false)}
-        aria-label="Fix all layout problems" className={`rounded-2xl bg-sheet shadow-float ${growing ? "[clip-path:inset(-4rem_-4rem_0_-4rem_round_0_0_1rem_1rem)]" : ""}`}>
+        aria-label="Fix room" className={`rounded-2xl bg-sheet shadow-float ${growing ? "[clip-path:inset(-4rem_-4rem_0_-4rem_round_0_0_1rem_1rem)]" : ""}`}>
         <div ref={content} className="p-4">
           <AnimatePresence mode="wait" initial={false}>
             {progress.phase === "idle"
-              ? <Idle key="idle" label={label} onStart={start} />
+              ? <Idle key="idle" label={label} onStart={start} onOneAtATime={onOneAtATime} />
               : <Run key="run" progress={progress} label={label} onOpen={onOpen} onStart={start} onStop={stop} />}
           </AnimatePresence>
         </div>
       </motion.article>
     </MotionConfig>
   );
-}
-
-/** One press asks the layout model to work through every open problem, turn by turn, and shows each move land. */
-export function FixAll(props: Props) {
-  const label = useModelLabel();
-  return label ? <FixAllCard {...props} label={label} /> : null;
 }
