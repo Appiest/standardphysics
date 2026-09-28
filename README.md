@@ -1,7 +1,6 @@
 # Standard Physics
 
 [![CI](https://github.com/Imhaohao/standardphysics/actions/workflows/ci.yml/badge.svg)](https://github.com/Imhaohao/standardphysics/actions/workflows/ci.yml)
-[![Web and contracts](https://github.com/Imhaohao/standardphysics/actions/workflows/web.yml/badge.svg)](https://github.com/Imhaohao/standardphysics/actions/workflows/web.yml)
 [![iOS app](https://github.com/Imhaohao/standardphysics/actions/workflows/ios.yml/badge.svg)](https://github.com/Imhaohao/standardphysics/actions/workflows/ios.yml)
 
 A shop owner walks their store with an iPhone. Standard Physics turns the LiDAR scan into a measured 3D model, checks every aisle, doorway and counter against the ADA standards, and shows each problem on the model with the measurement and the rule it breaks. When the fix is moving furniture, it proposes a layout that works with what the shop already owns.
