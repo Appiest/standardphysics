@@ -94,7 +94,9 @@ class Settings:
     seed_owner_email: str = "demo@standardphysics.app"
     """The account the sample shop belongs to, when SP_SEED_SAMPLE_SHOP is on."""
     seed_owner_password: str = ""
-    """Set by SP_SEED_OWNER_PASSWORD, or generated at startup and logged.
+    """Set by SP_SEED_OWNER_PASSWORD, or generated at startup. It is used, and
+    logged, only when the demo account does not exist yet; an existing account
+    keeps the password it was created with.
 
     Generating it means the repository carries no password that works against
     every deployment of this server.
