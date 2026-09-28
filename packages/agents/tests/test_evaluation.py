@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 from standardphysics_agents.evaluation import (
@@ -18,10 +19,13 @@ from standardphysics_agents.evaluation.scorers import (
     CaseOutcome,
     finding_precision,
     finding_recall,
+    loop_trajectory_ok,
     measurement_error_in,
     router_action_match,
+    trajectory_ok,
 )
 from standardphysics_agents.router import LocalPolicyRouter, Rejected, state_for
+from standardphysics_agents.router.state import REPEATED_ACTION
 from standardphysics_fixtures.shop import node_id
 
 EXPECTED_SCORERS = {
@@ -229,116 +233,236 @@ class TestRetrievableResults:
         saved = json.loads(save(evaluation, tmp_path / "e.json").read_text())
         assert saved["lower_is_better"] == ["measurement_error_in"]
 
-    def test_publishing_without_an_account_is_not_an_error(self, evaluation):
-        from standardphysics_agents.evaluation.runner import publish_to_weave
-
-        assert publish_to_weave(evaluation) is None
-
     def test_a_run_that_did_not_publish_says_so(self, evaluation):
-        assert evaluation.dataset_url is None
+        assert evaluation.evaluation_url is None
 
-    def test_the_saved_record_says_where_the_rows_went(self, evaluation, tmp_path):
+    def test_the_saved_record_says_where_the_evaluation_went(self, evaluation, tmp_path):
         saved = json.loads(save(evaluation, tmp_path / "e.json").read_text())
-        assert "dataset_url" in saved
+        assert "evaluation_url" in saved
 
 
-class FakeRef:
-    """What `weave.publish` hands back: a ref, with no URL on it."""
+class FakePrediction:
+    def __init__(self, inputs, output) -> None:
+        self.inputs, self.output = inputs, output
+        self.scores: dict[str, float] = {}
+        self.finished = False
 
-    entity = "acme"
-    project = "physics"
-    name = "standardphysics-1.0.0"
-    digest = "vDIGEST"
+    def log_score(self, scorer, score):
+        assert not self.finished, "Weave refuses a score after finish"
+        self.scores[scorer] = score
+
+    def finish(self):
+        self.finished = True
 
 
-class FakeUrls:
-    @staticmethod
-    def object_version_path(entity, project, name, digest) -> str:
-        return f"https://wandb.ai/{entity}/{project}/weave/objects/{name}/versions/{digest}"
+class FakeEvaluationLogger:
+    ui_url = "https://wandb.ai/acme/physics/weave/calls/evaluation"
 
+    def __init__(self, **config) -> None:
+        self.config = config
+        self.predictions: list[FakePrediction] = []
+        self.summary: dict | None = None
 
-class FakeTrace:
-    urls = FakeUrls
+    def log_prediction(self, inputs, output=None):
+        prediction = FakePrediction(inputs, output)
+        self.predictions.append(prediction)
+        return prediction
+
+    def log_summary(self, summary):
+        self.summary = summary
 
 
 class FakeWeave:
-    """Enough of the publish surface, including a third party refusing."""
+    """Enough of `weave.EvaluationLogger`, including a third party refusing."""
 
     def __init__(self, failure: Exception | None = None) -> None:
         self.failure = failure
-        self.datasets: list[dict] = []
+        self.loggers: list[FakeEvaluationLogger] = []
 
-    def Dataset(self, name, rows):  # noqa: N802 - matches weave.Dataset
-        return {"name": name, "rows": rows}
-
-    def publish(self, dataset):
+    def EvaluationLogger(self, **config):  # noqa: N802 - matches weave.EvaluationLogger
         if self.failure is not None:
             raise self.failure
-        self.datasets.append(dataset)
-        return FakeRef()
+        logger = FakeEvaluationLogger(**config)
+        self.loggers.append(logger)
+        return logger
 
 
 @pytest.fixture
 def weave(monkeypatch):
     import sys
 
+    from standardphysics_agents.evaluation import runner
+
     fake = FakeWeave()
     monkeypatch.setitem(sys.modules, "weave", fake)
-    monkeypatch.setitem(sys.modules, "weave.trace", FakeTrace)
+    monkeypatch.setattr(runner, "is_live", lambda: True)
     return fake
 
 
-class TestWhereTheRowsLanded:
-    """`weave.publish` returns a ref with no URL attribute on it, so the URL
-    comes from Weave's own path builder. Reading an attribute that is not there
-    reported no link on every successful publish."""
+def _one_case(pack, ledger, pipeline, **options):
+    return evaluate(
+        measure=pipeline, rules=pack, ledger=ledger,
+        cases=[by_id("aisle_31")], run_fixes=False, **options,
+    )
 
-    def test_publishing_reports_the_object_url(self, evaluation, weave):
-        from standardphysics_agents.evaluation.runner import publish_to_weave
 
-        published = publish_to_weave(evaluation)
-        assert published == (
-            "https://wandb.ai/acme/physics/weave/objects/standardphysics-1.0.0/versions/vDIGEST"
-        )
+class TestTheEvaluationInWeave:
+    """One eval per run, labelled with the router, so two routers compare."""
 
-    def test_the_dataset_is_named_for_the_rule_pack(self, evaluation, weave):
-        from standardphysics_agents.evaluation.runner import publish_to_weave
+    def test_it_is_labelled_with_the_router_that_answered(self, pack, ledger, pipeline, weave):
+        _one_case(pack, ledger, pipeline)
+        assert weave.loggers[0].config == {
+            "name": "standardphysics-loop",
+            "model": "local_policy",
+            "dataset": "standardphysics-cases",
+        }
 
-        publish_to_weave(evaluation)
-        assert weave.datasets[0]["name"] == f"standardphysics-{evaluation.rulepack_version}"
+    def test_a_version_names_it_instead(self, pack, ledger, pipeline, weave):
+        _one_case(pack, ledger, pipeline, version="typesafe-last-search")
+        assert weave.loggers[0].config["model"] == "typesafe-last-search"
 
-    def test_every_case_is_a_row(self, evaluation, weave):
-        from standardphysics_agents.evaluation.runner import publish_to_weave
+    def test_every_case_is_one_finished_prediction(self, pack, ledger, pipeline, weave):
+        result = _one_case(pack, ledger, pipeline)
+        predictions = weave.loggers[0].predictions
+        assert [p.inputs for p in predictions] == [{"case": "aisle_31"}]
+        assert predictions[0].output == result.rows()[0]["action"]
+        assert all(p.finished for p in predictions)
 
-        publish_to_weave(evaluation)
-        assert len(weave.datasets[0]["rows"]) == len(evaluation.outcomes)
+    def test_every_score_the_case_has_is_logged(self, pack, ledger, pipeline, weave):
+        result = _one_case(pack, ledger, pipeline)
+        expected = {
+            name: value for name, value in result.per_case["aisle_31"].items()
+            if value is not None
+        }
+        assert weave.loggers[0].predictions[0].scores == expected
 
-    def test_a_refused_publish_still_returns_nothing(self, evaluation, monkeypatch):
+    def test_the_summary_is_the_means(self, pack, ledger, pipeline, weave):
+        result = _one_case(pack, ledger, pipeline)
+        assert weave.loggers[0].summary == result.scores
+
+    def test_the_run_says_where_it_landed(self, pack, ledger, pipeline, weave):
+        assert _one_case(pack, ledger, pipeline).evaluation_url == FakeEvaluationLogger.ui_url
+
+    def test_a_run_told_not_to_publish_does_not(self, pack, ledger, pipeline, weave):
+        result = _one_case(pack, ledger, pipeline, publish=False)
+        assert result.evaluation_url is None
+        assert weave.loggers == []
+
+    def test_a_refused_logger_still_returns_the_run(self, pack, ledger, pipeline, weave, monkeypatch):
         import sys
 
-        from standardphysics_agents.evaluation.runner import publish_to_weave
-
         monkeypatch.setitem(sys.modules, "weave", FakeWeave(failure=ValueError("no")))
-        monkeypatch.setitem(sys.modules, "weave.trace", FakeTrace)
-        assert publish_to_weave(evaluation) is None
+        result = _one_case(pack, ledger, pipeline)
+        assert result.completed
+        assert result.evaluation_url is None
 
-    def test_a_published_run_carries_the_url(self, pack, ledger, pipeline, weave, monkeypatch):
-        from standardphysics_agents.evaluation import runner
+    def test_the_command_line_picks_the_router_and_the_label(self):
+        from standardphysics_agents.cli import build_parser
 
-        monkeypatch.setattr(runner, "is_live", lambda: True)
-        result = runner.evaluate(
-            measure=pipeline, rules=pack, ledger=ledger,
-            cases=[by_id("aisle_31")], run_fixes=False, publish=True,
+        args = build_parser().parse_args(["evaluate", "--router", "local", "--version", "v2"])
+        assert (args.router, args.version) == ("local", "v2")
+
+    def test_the_command_line_defaults_to_the_local_policy(self):
+        from standardphysics_agents.cli import build_parser
+
+        assert build_parser().parse_args(["evaluate"]).router == "local"
+
+
+KEPT_WITH_A_PROBLEM_LEFT = SimpleNamespace(accepted=True, problems_after=1)
+KEPT_WITH_NOTHING_LEFT = SimpleNamespace(accepted=True, problems_after=0)
+
+
+def _step(action, layout, *, gate=None, rejected=None, findings=(), targets=()):
+    decision = (
+        SimpleNamespace(action=action, target_finding_ids=list(targets)) if action else None
+    )
+    return SimpleNamespace(
+        decision=decision,
+        rejected=rejected,
+        assessment=SimpleNamespace(graph_hash=layout, findings=list(findings)),
+        result=SimpleNamespace(gate=gate),
+    )
+
+
+class TestTheTrajectory:
+    """A control-flow score: what the loop did with its passes, not what it measured."""
+
+    def test_fix_then_escalate_twice_wastes_a_pass(self, pack):
+        steps = [
+            _step("FIX", "before", gate=KEPT_WITH_A_PROBLEM_LEFT),
+            _step("ESCALATE", "after"),
+            _step("ESCALATE", "after"),
+        ]
+        assert loop_trajectory_ok(steps, pack) == 0.0
+
+    def test_fix_then_one_escalation_then_done_is_right(self, pack):
+        steps = [
+            _step("FIX", "before", gate=KEPT_WITH_A_PROBLEM_LEFT),
+            _step("ESCALATE", "after"),
+            _step("DONE", "after"),
+        ]
+        assert loop_trajectory_ok(steps, pack) == 1.0
+
+    def test_a_repeat_the_loop_refused_is_still_waste(self, pack):
+        steps = [
+            _step("FIX", "before", gate=KEPT_WITH_A_PROBLEM_LEFT),
+            _step("ESCALATE", "after"),
+            _step(None, "after", rejected=REPEATED_ACTION),
+        ]
+        assert loop_trajectory_ok(steps, pack) == 0.0
+
+    def test_asking_and_escalating_once_each_is_right(self, pack):
+        steps = [
+            _step("FIX", "before", gate=KEPT_WITH_A_PROBLEM_LEFT),
+            _step("ASK_OWNER", "after"),
+            _step("ESCALATE", "after"),
+            _step("DONE", "after"),
+        ]
+        assert loop_trajectory_ok(steps, pack) == 1.0
+
+    def test_stopping_with_a_problem_left_and_nobody_told_is_wrong(self, pack):
+        steps = [_step("FIX", "before", gate=KEPT_WITH_A_PROBLEM_LEFT), _step("DONE", "after")]
+        assert loop_trajectory_ok(steps, pack) == 0.0
+
+    def test_stopping_with_nothing_left_is_right(self, pack):
+        steps = [_step("FIX", "before", gate=KEPT_WITH_NOTHING_LEFT), _step("DONE", "after")]
+        assert loop_trajectory_ok(steps, pack) == 1.0
+
+    def test_a_fix_aimed_at_counter_height_is_wrong(self, pack):
+        counter = SimpleNamespace(id="counter", check_id="service_counter_height")
+        steps = [
+            _step("FIX", "before", gate=KEPT_WITH_A_PROBLEM_LEFT, findings=[counter], targets=["counter"]),
+            _step("ESCALATE", "after"),
+        ]
+        assert loop_trajectory_ok(steps, pack) == 0.0
+
+    def test_a_run_with_no_kept_fix_has_nothing_to_say(self, pack):
+        steps = [_step("ASK_OWNER", "before"), _step("DONE", "before")]
+        assert loop_trajectory_ok(steps, pack) is None
+
+    def test_a_case_that_asks_again_scores_zero(self):
+        outcome = SimpleNamespace(
+            case=SimpleNamespace(actions_taken=("ASK_OWNER",)),
+            decision=SimpleNamespace(action="ASK_OWNER"),
         )
-        assert result.dataset_url.endswith("/objects/standardphysics-1.0.0/versions/vDIGEST")
+        assert trajectory_ok(outcome) == 0.0
 
-    def test_a_run_told_not_to_publish_does_not(self, pack, ledger, pipeline, weave, monkeypatch):
-        from standardphysics_agents.evaluation import runner
-
-        monkeypatch.setattr(runner, "is_live", lambda: True)
-        result = runner.evaluate(
-            measure=pipeline, rules=pack, ledger=ledger,
-            cases=[by_id("aisle_31")], run_fixes=False, publish=False,
+    def test_a_case_that_moves_on_scores_one(self):
+        outcome = SimpleNamespace(
+            case=SimpleNamespace(actions_taken=("ASK_OWNER",)),
+            decision=SimpleNamespace(action="ESCALATE"),
         )
-        assert result.dataset_url is None
-        assert weave.datasets == []
+        assert trajectory_ok(outcome) == 1.0
+
+    def test_a_case_with_no_history_scores_nothing(self):
+        outcome = SimpleNamespace(
+            case=SimpleNamespace(actions_taken=()), decision=SimpleNamespace(action="FIX")
+        )
+        assert trajectory_ok(outcome) is None
+
+    def test_it_is_a_share_not_an_error(self):
+        assert "trajectory_ok" in SCORERS
+        assert "trajectory_ok" not in LOWER_IS_BETTER
+
+    def test_the_local_policy_never_repeats_itself_on_the_dataset(self, evaluation):
+        assert evaluation.score("trajectory_ok") == 1.0

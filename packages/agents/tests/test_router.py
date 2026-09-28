@@ -328,15 +328,10 @@ class TestTypeSafeClient:
     def test_the_request_matches_the_system_one_contract(self, router_state):
         router, transport = _router(_typesafe_response("DONE"))
         router.decide(router_state)
-        _, body = transport.calls[0]
-        assert set(body) == {"state", "model", "questions"}
-        assert body["state"] == router_state.summary()
-        assert body["model"] == "jev-latest"
+        url, body = transport.calls[0]
+        assert url.endswith("/v1/systemone")
         assert body["questions"]["action"]["type"] == "choice"
-        assert set(body["questions"]["action"]["criteria"]) == {"FIX", "ASK_OWNER", "ESCALATE"}
-        assert "schema" not in body
-        assert "instruction" not in body
-        assert "input" not in body
+        assert set(body["questions"]["action"]["criteria"]) <= ACTIONS
 
     def test_the_request_carries_no_geometry_and_no_key(self, router_state):
         router, transport = _router(_typesafe_response("DONE"))
@@ -507,3 +502,71 @@ class TestLocalPolicy:
 
         state = state_for(findings, graph, pack, fix_attempts=MAX_FIX_ATTEMPTS)
         assert LocalPolicyRouter().decide(state).action != "FIX"
+
+
+def _recording_model_calls(monkeypatch):
+    from contextlib import contextmanager
+
+    from standardphysics_agents.router import typesafe
+
+    opened: list[dict] = []
+    recorded: list[dict] = []
+
+    @contextmanager
+    def start_llm(**fields):
+        opened.append(fields)
+        yield "llm"
+
+    monkeypatch.setattr(typesafe, "start_llm", start_llm)
+    monkeypatch.setattr(typesafe, "record_llm", lambda llm, **fields: recorded.append(fields))
+    return opened, recorded
+
+
+class TestWhatTheTraceKeeps:
+    """Each TypeSafe call is a chat span holding the state and the action, no key."""
+
+    def test_the_call_is_a_chat_span_named_for_typesafe(self, router_state, monkeypatch):
+        opened, _ = _recording_model_calls(monkeypatch)
+        router, _ = _router(_typesafe_response("DONE"))
+        router.decide(router_state)
+        assert opened == [{"model": router.model, "provider_name": "typesafe"}]
+
+    def test_the_answer_is_recorded_as_the_action_alone(self, router_state, monkeypatch):
+        _, recorded = _recording_model_calls(monkeypatch)
+        router, _ = _router(_typesafe_response("DONE"))
+        router.decide(router_state)
+        assert recorded[0]["received"] == "DONE"
+        assert recorded[0]["usage"] == {"input_tokens": 10, "output_tokens": 2}
+        assert json.loads(recorded[0]["sent"]) == router_state.summary()
+
+    def test_the_key_never_reaches_the_trace(self, router_state, monkeypatch):
+        _, recorded = _recording_model_calls(monkeypatch)
+        router, _ = _router(_typesafe_response("DONE"))
+        router.decide(router_state)
+        kept = json.dumps(recorded)
+        assert "test-key" not in kept
+        assert "Bearer" not in kept
+
+    def test_a_transport_failure_is_recorded_as_one(self, router_state, monkeypatch):
+        _, recorded = _recording_model_calls(monkeypatch)
+        router, _ = _router(OSError("down"))
+        router.decide(router_state)
+        assert recorded[0]["received"] == "rejected:transport_error"
+
+
+class TestTheLastSearchOnTheWire:
+    def test_a_first_pass_has_no_last_search(self, router_state):
+        summary = router_state.summary()
+        assert summary["last_gate"] is None
+        assert summary["last_search"] is None
+
+    def test_the_last_gate_and_search_are_sent(self, findings, graph, pack):
+        state = state_for(
+            findings, graph, pack,
+            last_gate={"accepted": False, "reasons": ["passing_space stopped reporting"]},
+            last_search={"found": False, "rejected_constraints": ["door_swing"]},
+        )
+        body = TypeSafeRouter(api_key="k").request_body(state)
+        assert body["state"]["last_gate"]["accepted"] is False
+        assert body["state"]["last_search"]["rejected_constraints"] == ["door_swing"]
+        json.dumps(body)

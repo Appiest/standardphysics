@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowCounterClockwise, CircleNotch, Path } from "@phosphor-icons/react";
+import { ActivitySpinner } from "@/components/ui/ActivitySpinner";
 import { Button } from "@/components/ui/Button";
 import type { RouteState } from "./useRoute";
 
@@ -17,7 +18,7 @@ export function RoutePanel({ route }: { route: RouteState }) {
           <li key={`${stop.name}-${index}`}>{stop.name}</li>
         ))}
       </ol>
-      {route.problem && <p className="text-problem">{route.problem}</p>}
+      {route.problem && <ActivitySpinner />}
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" onClick={route.confirm} disabled={!ready || route.saving} className="disabled:opacity-40">
           {route.saving ? <CircleNotch size={18} className="animate-spin" aria-hidden /> : <Path size={18} weight="bold" aria-hidden />}

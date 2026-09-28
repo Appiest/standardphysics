@@ -177,14 +177,52 @@ loop reads as one trace tree. The API server calls `init_tracing()` at startup
 and logs the project URL, so an upload through the web app traces itself. A key
 Weave rejects logs a warning and leaves the server running untraced.
 
+A run of the loop also shows up in Weave's Agents tab as `standardphysics-loop`:
+one conversation per run, one turn per pass, a tool span for `assess`,
+`propose_fix`, `gate` and each other branch, and a chat span for each TypeSafe
+and Astra call. Spans hold counts and verdicts, never the scene graph or a key.
+Weave's automatic model-client patching is off, so no call is recorded twice.
+
 `evaluate` writes per-case results to `runs/evaluation.json` either way, so a
-run can always be looked at again.
+run can always be looked at again. With Weave configured it also logs one eval
+per run, labelled with the router that answered:
+
+    standardphysics-agents evaluate --router local
+    standardphysics-agents evaluate --router typesafe --version typesafe-last-search
+
+`loop` ends by printing `trajectory_ok` for the run: whether every pass after the
+kept rearrangement handed something new to a person, or repeated work.
+
+## The outer loop
+
+    standardphysics-agents evolve --generations 3
+
+The review loop is the inner loop: measure, TypeSafe picks an action, the gate
+keeps a layout only if it measures better. `evolve` is the loop around it,
+built the way self-evolving agents are described (Fang et al., 2025): an agent,
+an environment and an optimizer closing a feedback loop.
+
+1. Score TypeSafe on the labelled cases. Every case goes into
+   `runs/experience.jsonl`, the memory.
+2. Take the cases where it chose wrong or repeated work. Astra reads them and
+   the most similar past failures, and writes one lesson about which action to
+   choose and when. With no Astra, a labelled local rule writes one.
+3. Score a playbook holding that lesson on the failing cases plus four it
+   already passes. Keep the lesson only if `router_action_match` and
+   `trajectory_ok` rise and nothing falls. Each trial is its own eval in Weave.
+4. Repeat with the kept playbook until nothing fails or nothing new is left to
+   try. `runs/playbook.json` is what the API's loop then reads.
+
+A lesson can only change which action TypeSafe picks. One that mentions
+thresholds, inches or unlocking furniture is refused before it is tried, and
+the measurements, the rule pack and `accepts()` stay the fixed ground truth it
+is scored against.
 
 ## Evaluations in Weave
 
     standardphysics-agents weave-eval
 
-The same 39 cases and the same seven scorers, run through `weave.Evaluation` so
+The same 39 cases and the same eight scorers, run through `weave.Evaluation` so
 the Evals tab holds them: a mean per scorer, the per-case table behind each
 mean, and a side by side of the configurations in
 `evaluation/weave_eval.py:DEFAULT_SETUPS`. Each configuration changes one part

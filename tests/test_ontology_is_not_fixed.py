@@ -24,7 +24,7 @@ ONTOLOGY_LITERAL = re.compile(
     r'^(?:NodeKind|Relation|QueryKind|Dimension|LabelSource)\s*(?::\s*\w+\s*)?=\s*Literal\[', re.M
 )
 
-BRANCHES_BASELINE = 45
+BRANCHES_BASELINE = 47
 """Places that ask what kind of thing something is. Target: nothing above the
 interpretation layer asks, because a name is for showing a person.
 
@@ -95,6 +95,13 @@ predicate would retire them together.
 Audit 2026-09-28, merging fix/sign-in-api-port into unified: 44 rose to 45.
 api/furniture.py 1 picks the scanned objects furniture refinement may
 replace with a model, the same furniture-not-structure question as above.
+
+Audit 2026-09-28, merging combined into unified: 45 rose to 47. Its wall tests
+in fix/composition.py and fix/furnishing.py now read walls through
+reads_as_wall, and roles.is_seating keeps reading the label and scan category
+alone; the two left ask whether a node is a piece of furniture:
+pipeline/ingest.py sleeping_places (a bed is an object) and layout_repair.py
+(only objects are carried along).
 """
 
 LITERALS_BASELINE = 0

@@ -363,7 +363,7 @@ def _footprints_meet(a: SceneNode, b: SceneNode) -> bool:
     return touching(collision_shape(a, half), collision_shape(b, half))
 
 
-def _overlapping(a: SceneNode, b: SceneNode) -> bool:
+def overlapping(a: SceneNode, b: SceneNode) -> bool:
     return _footprints_meet(a, b) and not _one_above_the_other(a, b)
 
 
@@ -393,7 +393,7 @@ class _Scene:
         """
         if node.id in self.on_surfaces and other.id in self.on_surfaces:
             return _footprints_meet(node, other)
-        return _overlapping(node, other)
+        return overlapping(node, other)
 
 
 @per_layout

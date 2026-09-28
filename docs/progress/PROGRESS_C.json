@@ -14,6 +14,8 @@
     "assess(): one pass producing an Assessment plus what it could not answer",
     "findings_for(graph, scenario): the entrypoint Lane D's assess stage calls",
     "TypeSafe router: closed action set, schema generated from the contract, fail-closed validation of malformed, contradictory and truncated output",
+    "TypeSafe posts System One Choice to /v1/systemone; /v1/structured stays available",
+    "layout screen: hundreds of legal slides on the typed graph, same checker as the loop",
     "labelled local policy for when TypeSafe is unavailable",
     "fix agent: bounded search over slides and quarter turns, hard constraints from plan section 10, one tested relaxation when it runs out",
     "a sealed route is a shortfall of the whole requirement, not an unknown, and widening is not offered where there is no gap to widen",

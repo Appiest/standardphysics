@@ -12,21 +12,21 @@
     "GLB export with node IDs as glTF names",
     "USDZ to GLB conversion through RoomPlan's mapping file",
     "ADA 403.5.2 180 degree turn rule",
-    "per-finding renders for the report"
+    "per-finding renders for the report",
+    "Astra reconstruct: OpenRouter label/clean with local shop fallback"
   ],
   "in_progress": "verifying textures/camera.py projection and orientation; writing the tests it has none of",
   "blocked_on": null,
   "ready_for_others": [
+    "standardphysics_pipeline.reconstruct labels a long wall-side storage as Ordering counter",
     "standardphysics_pipeline.PipelineMeasurements implements MeasurementProvider",
     "standardphysics_pipeline.turn_detail for ADA 403.5.2",
     "standardphysics_pipeline.width_locus / region_locus / path_locus",
     "standardphysics_pipeline.blender.export_glb and render_finding",
-    "standardphysics_pipeline.blender.usdz_to_glb for real scans",
     "packages/fixtures/.../data/shop.glb for Lane D's viewer"
   ],
   "needs_human": [
-    "OPENROUTER_API_KEY in .env, zero data retention on, credit limit set",
-    "One real room.json from Lane A: see docs/handoffs/B-to-A.md",
+    "OPENROUTER_API_KEY in .env for live Astra; local heuristics run without it",
     "Tape-measure one real doorway once a scan lands",
     "Person C to confirm BLOCKING_HEIGHT against ADA 2010 303"
   ]

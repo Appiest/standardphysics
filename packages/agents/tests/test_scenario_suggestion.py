@@ -87,8 +87,9 @@ def test_a_tiny_room_with_only_an_outlet_suggests_without_crashing():
         scan_id=node_id("tiny_outlet_scan"), revision=0, nodes=[*nodes, outlet]
     )
     scenario = suggest_scenario(graph)
-    assert len(scenario.stops) == 5
+    assert [stop.name for stop in scenario.stops] == ["Entrance", "Middle of the room", "Exit"], (
+        "a room with no counter, bed or table gets no counter either"
+    )
     positions = [stop.position for stop in scenario.stops]
     assert positions[0] == positions[-1], "entrance and exit are the same doorway"
-    middle = {(round(p.x, 3), round(p.y, 3)) for p in positions[1:-1]}
-    assert len(middle) == 3, "counter, pickup and seat each got their own spot"
+    assert positions[1] != positions[0], "the middle of the room is its own spot"

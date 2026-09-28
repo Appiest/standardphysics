@@ -1,3 +1,14 @@
+# B to C: Astra now labels before you measure
+
+`reconstruct` runs on ingest. A long storage box against a wall becomes
+"Ordering counter" and immovable. Chairs and tables stay movable. Sizes do
+not change. Your `service_counters` role list already matches that label.
+
+`standardphysics-agents screen --samples 256` tries many legal slides on the
+typed graph. TypeSafe still picks the action; the screen is the 3D search.
+
+---
+
 # B to C: leg 1 was never a finding, and I argued the wrong way twice
 
 ## I was wrong about leg 1

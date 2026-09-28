@@ -27,7 +27,7 @@ class FakeWeave:
         self.failure = failure
         self.projects: list[str] = []
 
-    def init(self, project: str) -> None:
+    def init(self, project: str, settings: dict | None = None) -> None:
         if self.failure is not None:
             raise self.failure
         self.projects.append(project)
@@ -94,7 +94,7 @@ RECORDING_WEAVE = textwrap.dedent("""
         with open(os.environ["SP_WEAVE_CALLS"], "a") as calls:
             calls.write(json.dumps({"pid": os.getpid(), **call}) + "\\n")
 
-    def init(project):
+    def init(project, settings=None):
         _record(call="init", project=project)
 
     def finish():

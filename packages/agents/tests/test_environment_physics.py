@@ -388,3 +388,30 @@ def test_only_floor_placement_problems_count_as_astra_work():
     assert all(item["movable_labels"] for item in evidence["actionable_rule_problems"])
     assert evidence["rule_problem_count"] >= evidence["actionable_rule_problem_count"]
     assert _rule_problem_evidence(graph, None, FixtureMeasurements(), load_pack(), preview_ledger())["actionable_rule_problems"] == []
+
+
+def test_a_bedroom_is_screened_from_the_bed_and_never_sent_to_a_cashier():
+    from pathlib import Path
+
+    import standardphysics_fixtures
+    from standardphysics_contracts import Scenario, Stop, Vec3
+    from standardphysics_pipeline import PipelineMeasurements, parse_room_json, reconstruct
+
+    room = Path(standardphysics_fixtures.__file__).parent / "data/real/apple_bedroom3.room.json"
+    graph = reconstruct(parse_room_json(json.loads(room.read_text())))
+    bed = next(node for node in graph.nodes if node.raw_category == "bed")
+    door = next(node for node in graph.nodes if node.kind == "door")
+    scenario = Scenario(
+        name="Get around the room",
+        stops=[
+            Stop(name="Entrance", position=Vec3(x=door.transform.position.x, y=door.transform.position.y, z=0.0)),
+            Stop(name="Bedside", position=Vec3(x=bed.transform.position.x, y=bed.transform.position.y, z=0.0)),
+        ],
+    )
+
+    result = analyze_environment_physics(graph, scenario, PipelineMeasurements())
+
+    assert result.cashiers_found == 0
+    assert not any(route.purpose == "seat_to_cashier" for route in result.routes)
+    assert any(route.origin_node_id == bed.id for route in result.routes)
+    assert not any("cashier" in item.lower() for item in result.limitations)

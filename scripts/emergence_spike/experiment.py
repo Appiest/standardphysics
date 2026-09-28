@@ -86,7 +86,7 @@ def main():
     total_in = total_out = 0
     for question, tag in QUESTIONS:
         text = ""
-        failure = None
+        failure: Exception | None = None
         try:
             for attempt in range(2):
                 try:

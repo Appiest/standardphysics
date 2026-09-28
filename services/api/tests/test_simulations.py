@@ -120,7 +120,7 @@ def test_accessibility_loop_waits_for_repair_then_retests_full_candidate_batch(
     )
     monkeypatch.setattr("standardphysics_api.simulations.run_workflow_batch", run_batch)
     monkeypatch.setattr(
-        "standardphysics_api.simulations.run_adaptive_redesign",
+        "standardphysics_api.simulations.run_layout_repair",
         lambda *args, **kwargs: AdaptiveRedesignResult(
             graph=candidate, rounds=(astra_round,), astra_calls=1
         ),
@@ -130,6 +130,14 @@ def test_accessibility_loop_waits_for_repair_then_retests_full_candidate_batch(
     )
     monkeypatch.setattr(
         "standardphysics_api.simulations.route_trial_evidence", lambda *args: {"trials": 1_000}
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.seating_broken",
+        lambda *args, **kwargs: False,
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.prefer_layout",
+        lambda base, candidates: candidates[0],
     )
     rule_counts = iter([2, 0])
     monkeypatch.setattr(
@@ -191,7 +199,7 @@ def test_accessibility_loop_never_converges_while_an_ada_problem_remains(
         "standardphysics_api.simulations.run_workflow_batch", lambda *args, **kwargs: batch
     )
     monkeypatch.setattr(
-        "standardphysics_api.simulations.run_adaptive_redesign",
+        "standardphysics_api.simulations.run_layout_repair",
         lambda *args, **kwargs: AdaptiveRedesignResult(
             graph=None, rounds=(rejected_round,), astra_calls=0
         ),
@@ -201,6 +209,14 @@ def test_accessibility_loop_never_converges_while_an_ada_problem_remains(
     )
     monkeypatch.setattr(
         "standardphysics_api.simulations.route_trial_evidence", lambda *args: {}
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.seating_broken",
+        lambda *args, **kwargs: False,
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.prefer_layout",
+        lambda base, candidates: candidates[0],
     )
     monkeypatch.setattr(
         "standardphysics_api.simulations._ada_rule_violation_count",
@@ -234,6 +250,170 @@ def test_accessibility_loop_never_converges_while_an_ada_problem_remains(
     assert result.ada_rule_violations == 1
     assert result.converged is False
     assert "no_actionable_furniture_failure" in result.stop_reason
+
+
+def test_accessibility_loop_tries_deterministic_repair_before_astra(monkeypatch):
+    graph = build_graph()
+    scenario = build_scenario()
+    pack = load_pack()
+    ledger = preview_ledger()
+    moved_id = next(node.id for node in graph.nodes if node.movable)
+    repaired = graph.model_copy(update={
+        "revision": graph.revision + 1,
+        "nodes": [
+            node.model_copy(update={
+                "transform": node.transform.model_copy(update={
+                    "m": [
+                        value + (0.1 if index == 3 else 0)
+                        for index, value in enumerate(node.transform.m)
+                    ]
+                })
+            }) if node.id == moved_id else node
+            for node in graph.nodes
+        ],
+    })
+    failing_batch = SimpleNamespace(violating_trials=4, recommended_graph=graph)
+    clean_batch = SimpleNamespace(violating_trials=0, recommended_graph=repaired)
+    batches = iter([failing_batch, clean_batch])
+    repair_calls = []
+
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.run_workflow_batch",
+        lambda current, **kwargs: next(batches),
+    )
+
+    def repair(*args, **kwargs):
+        repair_calls.append(kwargs.get("starting_graph") or args[0])
+        return AdaptiveRedesignResult(
+            graph=repaired,
+            rounds=(
+                AdaptiveRoundResult(
+                    round=1,
+                    base_graph_hash=graph_hash(graph),
+                    astra_model=None,
+                    accepted=True,
+                    reasons=["deterministic_seating_arrangement"],
+                ),
+            ),
+            astra_calls=0,
+        )
+
+    monkeypatch.setattr("standardphysics_api.simulations.run_layout_repair", repair)
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.simulation_result", lambda *args: object()
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.route_trial_evidence", lambda *args: {}
+    )
+    rule_counts = iter([2, 0])
+    monkeypatch.setattr(
+        "standardphysics_api.simulations._ada_rule_violation_count",
+        lambda *args, **kwargs: next(rule_counts),
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.seating_broken",
+        lambda *args, **kwargs: False,
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.prefer_layout",
+        lambda base, candidates: candidates[0],
+    )
+    request = SimulationRequest(
+        base_revision=graph.revision,
+        samples=10,
+        max_workers=1,
+        router="typesafe",
+        refine_with_astra=True,
+        typesafe_call_limit=50_000,
+        astra_rounds=4,
+    )
+
+    result = _run_accessibility_loop(
+        graph,
+        scenario,
+        workflows=[object()],
+        profiles=[object()],
+        request=request,
+        measure_factory=lambda: object(),
+        router_factory=lambda: object(),
+        rules=pack,
+        ledger=ledger,
+        mesh=None,
+        budget=TypeSafeCallBudget(50_000),
+        on_progress=None,
+    )
+
+    assert repair_calls == [graph]
+    assert result.converged is True
+    assert result.astra_calls == 0
+    assert result.adaptive_rounds[0].reasons == ["deterministic_seating_arrangement"]
+
+
+def test_accessibility_loop_does_not_converge_when_chairs_are_stranded(monkeypatch):
+    graph = build_graph()
+    rules = load_pack()
+    ledger = preview_ledger()
+    batch = SimpleNamespace(violating_trials=0, recommended_graph=graph)
+    rejected_round = AdaptiveRoundResult(
+        round=1,
+        base_graph_hash=graph_hash(graph),
+        accepted=False,
+        reasons=["stranded_seating"],
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.run_workflow_batch", lambda *args, **kwargs: batch
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.run_layout_repair",
+        lambda *args, **kwargs: AdaptiveRedesignResult(
+            graph=None, rounds=(rejected_round,), astra_calls=0
+        ),
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.simulation_result", lambda *args: object()
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.route_trial_evidence", lambda *args: {}
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations._ada_rule_violation_count",
+        lambda *args, **kwargs: 0,
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.seating_broken",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "standardphysics_api.simulations.prefer_layout",
+        lambda base, candidates: candidates[0],
+    )
+    request = SimulationRequest(
+        base_revision=graph.revision,
+        samples=10,
+        max_workers=1,
+        router="typesafe",
+        refine_with_astra=True,
+        typesafe_call_limit=50_000,
+        astra_rounds=1,
+    )
+
+    result = _run_accessibility_loop(
+        graph,
+        build_scenario(),
+        workflows=[object()],
+        profiles=[object()],
+        request=request,
+        measure_factory=lambda: object(),
+        router_factory=lambda: object(),
+        rules=rules,
+        ledger=ledger,
+        mesh=None,
+        budget=TypeSafeCallBudget(50_000),
+        on_progress=None,
+    )
+
+    assert result.converged is False
+    assert "stranded" in (result.stop_reason or "").lower()
 
 
 def test_live_preflight_rejects_missing_key_before_queuing(make_client, monkeypatch):

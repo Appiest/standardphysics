@@ -1,3 +1,19 @@
+# B to D: Astra rebuilds labels; show the object graph
+
+`Stages.label` is now `reconstruct`. Ingest returns an object-separated graph
+with shop labels (Ordering counter, Chair, Display case). Dimensions are
+unchanged. Display geometry prefers `export_glb` from that graph so every mesh
+name is a SceneNode ID. The raw LiDAR JSON is evidence, not the thing to grab.
+
+The viewer should keep boxes/GLB pickable when a lidar-mesh artifact exists.
+A faded underlay is fine; replacing the shop model with the raw scan is what
+made furniture unclickable.
+
+Live Astra needs `OPENROUTER_API_KEY`. Without it the same patches come from
+the local heuristics.
+
+---
+
 # B to D: the 0.0 in turn is fixed, and the plist already was
 
 ## The 0.0 inch finding

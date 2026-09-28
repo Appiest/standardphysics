@@ -1,20 +1,27 @@
-"""A suggested customer route for a scan that has none.
+"""A suggested route for a scan that has none.
 
 RoomPlan names walls, doors, tables and storage, but nothing tells us where a
-customer orders or sits. This proposes one stop of each kind from what the scan
-does contain, on open floor with room to stand, and the owner moves the markers
+person orders, sleeps or sits. This proposes stops that fit the kind of room
+the scan is, on open floor with room to stand, and the owner moves the markers
 before any path is checked. A suggestion is never assessed on its own.
+
+A shop gets the ordering route. A home or dorm room gets the bed and the desk,
+and a general room gets a seat or the middle of the floor. Nothing gets a
+counter the scan does not contain.
 """
 
 from __future__ import annotations
 
 import math
+from typing import Callable
 
 import numpy as np
 from scipy import ndimage
 from standardphysics_contracts import Scenario, SceneGraph, SceneNode, Stop, Vec3, stands_upright
-from standardphysics_pipeline import build_grid, footprint
+from standardphysics_pipeline import build_grid, footprint, sleeping_places
 from standardphysics_pipeline.footprints import rotation_about_z
+
+from standardphysics_agents.checks.roles import RoomKind, room_kind
 
 STANDING_ROOM = 0.45
 """Metres of clear floor around a stop, about half a wheelchair's turning space."""
@@ -25,6 +32,15 @@ APART = 1.0
 INSET = 0.8
 """How far a stop sits inside the room from a wall or door."""
 
+ROUTE_NAMES: dict[RoomKind, str] = {
+    "service": "Order a drink",
+    "home": "Get around the room",
+    "general": "Walk through the room",
+}
+
+Bounds = tuple[float, float, float, float]
+Point = tuple[float, float]
+
 
 def outline_points(graph: SceneGraph) -> list[tuple[float, float]]:
     """The room's walls on the floor, or everything when no wall is thin enough to read as one."""
@@ -32,7 +48,7 @@ def outline_points(graph: SceneGraph) -> list[tuple[float, float]]:
     return walls or [point for node in graph.nodes for point in footprint(node)]
 
 
-def _room_bounds(graph: SceneGraph) -> tuple[float, float, float, float]:
+def _room_bounds(graph: SceneGraph) -> Bounds:
     points = outline_points(graph)
     xs, ys = [p[0] for p in points], [p[1] for p in points]
     return min(xs), min(ys), max(xs), max(ys)
@@ -63,11 +79,11 @@ def _inside_hull(hull: list[tuple[float, float]], xs: np.ndarray, ys: np.ndarray
     return inside
 
 
-def _centre(bounds: tuple[float, float, float, float]) -> tuple[float, float]:
+def _centre(bounds: Bounds) -> Point:
     return (bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2
 
 
-def _toward(origin: tuple[float, float], target: tuple[float, float], distance: float) -> tuple[float, float]:
+def _toward(origin: Point, target: Point, distance: float) -> Point:
     dx, dy = target[0] - origin[0], target[1] - origin[1]
     length = math.hypot(dx, dy) or 1.0
     return origin[0] + dx / length * distance, origin[1] + dy / length * distance
@@ -77,7 +93,7 @@ def _largest(nodes: list[SceneNode]) -> SceneNode | None:
     return max(nodes, key=lambda node: node.dimensions.x * node.dimensions.y, default=None)
 
 
-def _nearest(nodes: list[SceneNode], point: tuple[float, float]) -> SceneNode | None:
+def _nearest(nodes: list[SceneNode], point: Point) -> SceneNode | None:
     def distance(node: SceneNode) -> float:
         p = node.transform.position
         return math.hypot(p.x - point[0], p.y - point[1])
@@ -85,7 +101,7 @@ def _nearest(nodes: list[SceneNode], point: tuple[float, float]) -> SceneNode | 
     return min(nodes, key=distance, default=None)
 
 
-def _beside(node: SceneNode, toward: tuple[float, float]) -> tuple[float, float]:
+def _beside(node: SceneNode, toward: Point) -> Point:
     """Half a metre out from the face of the node that looks toward a point.
 
     A node exactly at the reference point has no direction toward it, and a
@@ -112,6 +128,10 @@ def _beside(node: SceneNode, toward: tuple[float, float]) -> tuple[float, float]
     return _toward((p.x, p.y), toward, min(exits) + 0.5)
 
 
+def _tables(graph: SceneGraph) -> list[SceneNode]:
+    return [node for node in graph.nodes if node.raw_category == "table"]
+
+
 class _OpenFloor:
     """Snaps a point to the closest cell inside the room with standing room."""
 
@@ -127,7 +147,7 @@ class _OpenFloor:
         self.roomy = inside & (clearance >= STANDING_ROOM)
         self.open = inside & (clearance > 0)
 
-    def snap(self, point: tuple[float, float], taken: list[Vec3]) -> Vec3:
+    def snap(self, point: Point, taken: list[Vec3]) -> Vec3:
         """The nearest cell with standing room, clear of the stops already placed."""
         distance = np.hypot(self.xs - point[0], self.ys - point[1])
         cost = np.where(self.roomy, distance, np.where(self.open, distance + 1.0, np.inf))
@@ -140,47 +160,81 @@ class _OpenFloor:
         return Vec3(x=float(self.xs[row, col]), y=float(self.ys[row, col]), z=0.0)
 
 
-def _entrance(graph: SceneGraph, bounds, centre) -> tuple[tuple[float, float], SceneNode | None]:
-    door = _largest([node for node in graph.nodes if node.kind in ("door", "opening")])
-    if door is not None:
-        p = door.transform.position
-        return _toward((p.x, p.y), centre, INSET), door
-    return (centre[0], bounds[1] + INSET), None
+class _Room:
+    """One room being given stops, each placed clear of the ones before it."""
+
+    def __init__(self, graph: SceneGraph):
+        self.graph = graph
+        self.bounds = _room_bounds(graph)
+        self.centre = _centre(self.bounds)
+        self.floor = _OpenFloor(graph)
+        self.placed: list[Vec3] = []
+
+    def stop(self, name: str, at: Point, anchor: SceneNode | None) -> Stop:
+        position = self.floor.snap(at, self.placed)
+        self.placed.append(position)
+        return Stop(name=name, position=position, anchor_node_id=anchor.id if anchor else None)
 
 
-def _counter(graph: SceneGraph, bounds, centre) -> tuple[tuple[float, float], SceneNode | None]:
-    named = [node for node in graph.nodes if "counter" in node.label.lower()]
+def _entrance(room: _Room) -> Stop:
+    door = _largest([node for node in room.graph.nodes if node.kind in ("door", "opening")])
+    if door is None:
+        return room.stop("Entrance", (room.centre[0], room.bounds[1] + INSET), None)
+    p = door.transform.position
+    return room.stop("Entrance", _toward((p.x, p.y), room.centre, INSET), door)
+
+
+def _counter(room: _Room) -> tuple[Point, SceneNode | None]:
+    named = [node for node in room.graph.nodes if "counter" in node.label.lower()]
     counter = _largest(named)
     if counter is not None:
-        return _beside(counter, centre), counter
-    return (centre[0], bounds[3] - INSET), None
+        return _beside(counter, room.centre), counter
+    return (room.centre[0], room.bounds[3] - INSET), None
+
+
+def _service_stops(room: _Room) -> list[Stop]:
+    counter_at, counter = _counter(room)
+    table = _nearest(_tables(room.graph), room.centre)
+    seat_at = _beside(table, room.centre) if table else (room.bounds[0] + INSET, room.centre[1])
+    return [
+        room.stop("Counter", counter_at, counter),
+        room.stop("Pickup", (counter_at[0] + 1.0, counter_at[1]), counter),
+        room.stop("Seat", seat_at, table),
+    ]
+
+
+def _home_stops(room: _Room) -> list[Stop]:
+    bed = _largest(sleeping_places(room.graph))
+    if bed is None:
+        return _general_stops(room)
+    stops = [room.stop("Bedside", _beside(bed, room.centre), bed)]
+    desk = _nearest(_tables(room.graph), room.centre)
+    if desk is not None:
+        stops.append(room.stop("Desk", _beside(desk, room.centre), desk))
+    return stops
+
+
+def _general_stops(room: _Room) -> list[Stop]:
+    table = _nearest(_tables(room.graph), room.centre)
+    if table is None:
+        return [room.stop("Middle of the room", room.centre, None)]
+    return [room.stop("Seat", _beside(table, room.centre), table)]
+
+
+STOPS: dict[RoomKind, Callable[[_Room], list[Stop]]] = {
+    "service": _service_stops,
+    "home": _home_stops,
+    "general": _general_stops,
+}
 
 
 def suggest_scenario(graph: SceneGraph) -> Scenario:
-    bounds = _room_bounds(graph)
-    centre = _centre(bounds)
-    floor = _OpenFloor(graph)
-    entrance, door = _entrance(graph, bounds, centre)
-    counter_at, counter = _counter(graph, bounds, centre)
-    table = _nearest([node for node in graph.nodes if node.raw_category == "table"], centre)
-    seat_at = _beside(table, centre) if table else (bounds[0] + INSET, centre[1])
-    pickup_at = (counter_at[0] + 1.0, counter_at[1])
-
-    placed: list[Vec3] = []
-
-    def stop(name: str, at: tuple[float, float], anchor: SceneNode | None) -> Stop:
-        position = floor.snap(at, placed)
-        placed.append(position)
-        return Stop(name=name, position=position, anchor_node_id=anchor.id if anchor else None)
-
-    stops = [
-        stop("Entrance", entrance, door),
-        stop("Counter", counter_at, counter),
-        stop("Pickup", pickup_at, counter),
-        stop("Seat", seat_at, table),
-    ]
-    exit_stop = stops[0].model_copy(update={"name": "Exit"})
-    return Scenario(name="Order a drink", stops=[*stops, exit_stop])
+    kind = room_kind(graph)
+    room = _Room(graph)
+    entrance = _entrance(room)
+    stops = [entrance, *STOPS[kind](room)]
+    exit_stop = entrance.model_copy(update={"name": "Exit"})
+    return Scenario(name=ROUTE_NAMES[kind], stops=[*stops, exit_stop])
 
 
 DESTINATIONS: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = {
@@ -219,22 +273,13 @@ def _destination(
 
 def suggest_path(graph: SceneGraph, destinations: list[str]) -> Scenario:
     """In the front door, to the counter, to each place the owner picked, and out again."""
-    bounds = _room_bounds(graph)
-    centre = _centre(bounds)
-    floor = _OpenFloor(graph)
-    entrance, door = _entrance(graph, bounds, centre)
-    counter_at, counter = _counter(graph, bounds, centre)
-    corners = _far_corners(bounds, entrance)
-    placed: list[Vec3] = []
-
-    def stop(name: str, at: tuple[float, float], anchor: SceneNode | None) -> Stop:
-        position = floor.snap(at, placed)
-        placed.append(position)
-        return Stop(name=name, position=position, anchor_node_id=anchor.id if anchor else None)
-
-    stops = [stop("Entrance", entrance, door), stop("Counter", counter_at, counter)]
+    room = _Room(graph)
+    entrance = _entrance(room)
+    counter_at, counter = _counter(room)
+    corners = _far_corners(room.bounds, (entrance.position.x, entrance.position.y))
+    stops = [entrance, room.stop("Counter", counter_at, counter)]
     for index, destination in enumerate(destinations):
-        name, at, anchor = _destination(graph, destination, centre, counter_at, corners[index % len(corners)])
-        stops.append(stop(name, at, anchor))
-    exit_stop = stops[0].model_copy(update={"name": "Exit"})
+        name, at, anchor = _destination(graph, destination, room.centre, counter_at, corners[index % len(corners)])
+        stops.append(room.stop(name, at, anchor))
+    exit_stop = entrance.model_copy(update={"name": "Exit"})
     return Scenario(name="Customer path", stops=[*stops, exit_stop])

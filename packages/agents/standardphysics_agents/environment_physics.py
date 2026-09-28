@@ -29,7 +29,9 @@ from standardphysics_contracts import (
     to_inches,
     to_meters,
 )
+from standardphysics_pipeline import sleeping_places
 
+from .checks.roles import room_kind
 from .evaluation.scan_space import world_triangles
 
 ONE_INCH_METERS = to_meters(1.0)
@@ -115,7 +117,7 @@ def analyze_environment_physics(
         limitations.append(mesh_limitation)
     if not counts["exits"]:
         limitations.append("No exit or entrance candidate was identified in the scan labels.")
-    if not counts["cashiers"]:
+    if not counts["cashiers"] and room_kind(graph) == "service":
         limitations.append("No cashier, register, or service-counter candidate was identified.")
     return EnvironmentPhysicsResult(
         resolution_inches=1.0,
@@ -309,12 +311,14 @@ def _environment_routes(
 ) -> tuple[list[PhysicsRoute], dict[str, int], list[PhysicsObservation]]:
     exits = _nodes(graph, EXIT_TERMS, kinds={"door", "opening"})
     seats = _nodes(graph, SEAT_TERMS, kinds={"object"})
-    cashiers = _nodes(graph, CASHIER_TERMS, kinds={"object"})
+    beds = sleeping_places(graph)
+    cashiers = _cashiers(graph, scenario) if room_kind(graph) == "service" else []
     exits = _with_scenario_anchors(graph, scenario, exits, {"exit", "entrance", "way out"})
-    cashiers = _with_scenario_anchors(graph, scenario, cashiers, {"cashier", "counter", "register"})
     targets = _customer_route_nodes(graph, scenario)
     exit_ids = {node.id for node in exits}
-    seat_ids = {node.id for node in seats}
+    # Beds are evacuation origins the same way seats are, so a dorm is screened
+    # from the bed even though nothing there is a seat.
+    seat_ids = {node.id for node in (*seats, *beds)}
     cashier_ids = {node.id for node in cashiers}
     route_pair_count = len(targets) * (len(targets) - 1)
     if route_pair_count > MAX_ROUTE_PAIRS:
@@ -411,6 +415,13 @@ def _customer_route_nodes(
         for node in graph.nodes
         if node.kind in CUSTOMER_ROUTE_KINDS or node.id in anchored_ids
     ]
+
+
+def _cashiers(graph: SceneGraph, scenario: Scenario) -> list[SceneNode]:
+    """Where people pay or order. Only asked of a room with a counter or register,
+    so a dorm or an office is never sent to a cashier it does not have."""
+    found = _nodes(graph, CASHIER_TERMS, kinds={"object"})
+    return _with_scenario_anchors(graph, scenario, found, {"cashier", "counter", "register"})
 
 
 def _nodes(graph: SceneGraph, terms: frozenset[str], *, kinds: set[str]) -> list[SceneNode]:
