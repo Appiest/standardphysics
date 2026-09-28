@@ -418,7 +418,10 @@ tenacity==9.1.4
 tomlkit==0.15.1
     # via marimo
 trimesh==5.1.0
-    # via standardphysics-pipeline
+    # via
+    #   -c requirements.lock
+    #   standardphysics-api
+    #   standardphysics-pipeline
 truststore==0.10.4 ; sys_platform != 'emscripten'
     # via
     #   -c requirements.lock

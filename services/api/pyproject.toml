@@ -13,6 +13,7 @@ dependencies = [
   "cryptography==50.0.1",
   "httpx[http2]==0.28.1",
   "uvicorn==0.52.4",
+  "trimesh==5.1.0",
   "standardphysics-contracts",
   "standardphysics-fixtures",
   "standardphysics-pipeline",
