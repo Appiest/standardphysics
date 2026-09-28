@@ -31,12 +31,13 @@ export type FoundObjects = {
   frameShift: number;
 };
 
-function useFocus(scene: SceneGraph, groups: FoundGroup[], selectedRowId: string | null): Vec3 | null {
-  return useMemo(() => {
-    const row = groups.flatMap((group) => group.rows).find((candidate) => candidate.id === selectedRowId);
+/** Where the camera faces for a row, or nothing when the row is too spread out to frame. */
+function useFocusOf(scene: SceneGraph, groups: FoundGroup[]): (rowId: string) => Vec3 | null {
+  return useCallback((rowId) => {
+    const row = groups.flatMap((group) => group.rows).find((candidate) => candidate.id === rowId);
     if (!row || row.nodeIds.length > MOST_PIECES_TO_FLY_TO) return null;
     return rowCenter(scene, row);
-  }, [scene, groups, selectedRowId]);
+  }, [scene, groups]);
 }
 
 function subscribeToWidth(onChange: () => void) {
@@ -63,22 +64,38 @@ export function foundInModel(found: FoundObjects, shown: boolean): InModel {
   return shown ? { found: found.handles, foundFocus: found.focus, frameShift: found.frameShift } : { found: null, foundFocus: null, frameShift: 0 };
 }
 
-function useSelection(rowOfNode: Map<string, string>, onPick: () => void) {
-  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+/**
+ * While a layout is tried, only the rows the owner points at are drawn, so every
+ * other piece stays free to grab. The legend isn't over the model then, so nothing shifts.
+ */
+export function pointedInModel(found: FoundObjects): InModel {
+  const pointed = new Set([found.hoveredRowId, found.selectedRowId]);
+  const marks = found.handles.marks.filter((mark) => pointed.has(mark.rowId));
+  return { found: { ...found.handles, marks }, foundFocus: found.focus, frameShift: 0 };
+}
+
+type Selection = { rowId: string; focus: Vec3 | null };
+
+/**
+ * The camera's target is fixed when the row is picked, so dragging one of its
+ * pieces in a tried layout doesn't pull the camera along behind it.
+ */
+function useSelection(rowOfNode: Map<string, string>, focusOf: (rowId: string) => Vec3 | null, onPick: () => void) {
+  const [selection, setSelection] = useState<Selection | null>(null);
   const pickNode = useCallback((nodeId: string) => {
     const rowId = rowOfNode.get(nodeId);
     if (rowId) {
-      setSelectedRowId(rowId);
+      setSelection({ rowId, focus: focusOf(rowId) });
       onPick();
     }
     return rowId !== undefined;
-  }, [rowOfNode, onPick]);
+  }, [rowOfNode, focusOf, onPick]);
   const toggleRow = useCallback((rowId: string) => {
     onPick();
-    setSelectedRowId((current) => (current === rowId ? null : rowId));
-  }, [onPick]);
-  const clear = useCallback(() => setSelectedRowId(null), []);
-  return { selectedRowId, pickNode, toggleRow, clear };
+    setSelection((current) => (current?.rowId === rowId ? null : { rowId, focus: focusOf(rowId) }));
+  }, [focusOf, onPick]);
+  const clear = useCallback(() => setSelection(null), []);
+  return { selectedRowId: selection?.rowId ?? null, focus: selection?.focus ?? null, pickNode, toggleRow, clear };
 }
 
 function useHover(rowOfNode: Map<string, string>) {
@@ -105,7 +122,7 @@ export function useFoundObjects(scene: SceneGraph, onPick: () => void): FoundObj
   const marks = useMemo(() => foundMarks(scene, groups), [scene, groups]);
   const rowOfNode = useMemo(() => new Map(marks.map((mark) => [mark.nodeId, mark.rowId])), [marks]);
   const hover = useHover(rowOfNode);
-  const selection = useSelection(rowOfNode, onPick);
+  const selection = useSelection(rowOfNode, useFocusOf(scene, groups), onPick);
   const [legendOpen, setLegendOpen] = useState(true);
   const legendCovers = useWideScreen() && legendOpen && groups.length > 0;
 
@@ -117,7 +134,6 @@ export function useFoundObjects(scene: SceneGraph, onPick: () => void): FoundObj
 
   return {
     groups, handles, hoveredRowId: hover.hoveredRowId, hoverRow: hover.hoverRow, ...selection,
-    focus: useFocus(scene, groups, selection.selectedRowId),
     legendOpen, setLegendOpen, frameShift: legendCovers ? LEGEND_INSET_PX / 2 : 0,
   };
 }

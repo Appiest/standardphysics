@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { foundInModel, showsFound, type FoundObjects } from "@/components/owner/useFoundObjects";
+import { foundInModel, pointedInModel, showsFound, type FoundObjects } from "@/components/owner/useFoundObjects";
 import type { SceneGraph, SceneNode } from "@/types/contracts";
 import { foldedSummary, foundGroups, foundMarks, heightRange, rowCenter, rowLabel, type FoundRow } from "./found-objects";
 
@@ -95,6 +95,13 @@ describe("foundMarks", () => {
       ["counter-side", "34.3 in"],
     ]);
   });
+
+  it("carries each piece's size for the label of the one picked", () => {
+    const front = foundMarks(scene, foundGroups(scene)).find((mark) => mark.nodeId === "counter-front");
+    expect(front?.size.wideInches).toBeCloseTo(67.34, 1);
+    expect(front?.size.deepInches).toBeCloseTo(29.29, 1);
+    expect(front?.size.tallInches).toBeCloseTo(35.71, 1);
+  });
 });
 
 describe("row wording", () => {
@@ -135,5 +142,14 @@ describe("where the found pieces show", () => {
   it("hands the model nothing, and no shift, on a step that hides them", () => {
     expect(foundInModel(found, false)).toEqual({ found: null, foundFocus: null, frameShift: 0 });
     expect(foundInModel(found, true).frameShift).toBe(168);
+  });
+
+  it("draws only the rows pointed at while a layout is tried, and still flies to the picked one", () => {
+    const marks = [{ nodeId: "a", rowId: "picked" }, { nodeId: "b", rowId: "hovered" }, { nodeId: "c", rowId: "other" }];
+    const trying = { ...found, hoveredRowId: "hovered", selectedRowId: "picked", handles: { marks } } as unknown as FoundObjects;
+    const inModel = pointedInModel(trying);
+    expect(inModel.found?.marks.map((mark) => mark.nodeId)).toEqual(["a", "b"]);
+    expect(inModel.foundFocus).toEqual({ x: 1, y: 2, z: 0 });
+    expect(inModel.frameShift).toBe(0);
   });
 });
