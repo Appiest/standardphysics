@@ -4,6 +4,8 @@ How to run, change, test and deploy each part of the system. The [README](../REA
 
 ## Start here
 
+The team built the first version in four lanes, each with its own document under `docs/lanes/`, and several AI coding agents still follow that split. The lane documents and `docs/handoffs/` record how the work was divided and what each lane promised the others. For what the system does today, the code, the [README](../README.md) and [`DEPLOY.md`](DEPLOY.md) are the current sources.
+
 | You are | Read |
 |---|---|
 | Any agent, before your first commit | [`docs/AGENT_PROTOCOL.md`](AGENT_PROTOCOL.md) |

@@ -51,7 +51,7 @@ You need Python 3.11+ and Node 20.9+.
 
 ```bash
 ./start.sh                          # installs into .venv and apps/web, runs the API on :8787 and the web on :3000
-SP_SEED_SAMPLE_SHOP=1 ./start.sh    # same, with a sample shop and a demo account printed to the log
+SP_SEED_SAMPLE_SHOP=1 ./start.sh    # same, with a sample shop; the log says where the demo account's password is
 docker compose up --build           # the production image, API and web as two containers
 ```
 
@@ -59,7 +59,8 @@ The checks CI runs:
 
 ```bash
 .venv/bin/python -m ruff check .
-.venv/bin/python -m pytest
+.venv/bin/python -m pytest                     # every package, the scripts and the tools
+.venv/bin/python -m pytest services/api/tests   # the API, run on its own because its test helpers share names with the agents'
 cd apps/web && npm run lint && npm run typecheck && npm run test
 ```
 

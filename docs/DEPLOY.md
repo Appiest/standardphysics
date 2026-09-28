@@ -349,7 +349,7 @@ looks like this:
 | Disk free | Under 15% or 5 GB free on the scans volume, or on the backup destination. Uploads and bakes write there, and SQLite fails every write once it is full. | `df -h /mnt/standardphysics-scans`, or the `space:` line of `doctor.sh` | No |
 | Failed backup | The unit failed, or the newest snapshot is more than 26 hours old. `backup.sh` exits 2 when a file the live database lists is missing, and 75 when another backup was already running. | `systemctl is-failed standardphysics-backup.service`, `./restore.sh` with no arguments lists the snapshots | No |
 | Failed deploy | `scripts/deploy.sh` exits non-zero: 75 means jobs were in flight, 69 means the queue could not be read, anything else means the pull, build or restart failed. After a deploy, the `commit` in `/health/details` should match the last line of `/var/log/standardphysics-deploys.log`, which only records deploys that got as far as the restart. | the script's exit code, `/health/details` | The commit only |
-| Tracing off | Only when `WANDB_PROJECT` is set on purpose and traces stop arriving. `tracing_status()` in `standardphysics_agents.tracing` reports whether traces are sent and why not. | the API log's `weave tracing is off` warning | Not yet wired in |
+| Tracing off | Only when `WANDB_PROJECT` is set on purpose and traces stop arriving. `tracing` in `/health/details` says whether tracing started and, when it did not, why. It reports that the client started, not that each trace arrived. | `/health/details`, the API log's `weave tracing is off` warning | Yes |
 
 A cron job on the Droplet that curls `/health/details` and runs `df` every
 few minutes, posting to a webhook when a row trips, covers the first four.
