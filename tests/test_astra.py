@@ -241,7 +241,7 @@ def test_an_explicit_openrouter_base_url_keeps_openrouters_own_fields(monkeypatc
     assert "reasoning_effort" not in body
 
 
-def test_an_unusable_answer_costs_one_model_call_and_falls_back_to_local_labels():
+def test_an_unusable_answer_tries_only_the_default_model_and_falls_back_to_local_labels():
     graph = parse_room_json(shop_payload())
     attempted_models = []
 
@@ -251,8 +251,10 @@ def test_an_unusable_answer_costs_one_model_call_and_falls_back_to_local_labels(
 
     result = reconstruct_result(graph, transport=transport)
 
+    # The first invalid batch cancels batches not yet started, so how many ran depends on thread timing.
+    batch_count = len(range(0, len(graph.contents()), astra.RECONSTRUCTION_BATCH_SIZE))
     assert set(attempted_models) == {astra.DEFAULT_MODEL}
-    assert len(attempted_models) == len(range(0, len(graph.contents()), astra.RECONSTRUCTION_BATCH_SIZE))
+    assert 1 <= len(attempted_models) <= batch_count
     assert result.source == "roomplan"
 
 
