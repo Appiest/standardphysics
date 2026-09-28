@@ -8,6 +8,7 @@ The team built the first version in four lanes, each with its own document under
 
 | You are | Read |
 |---|---|
+| Anyone, before branching or merging | [`AGENTS.md`](../AGENTS.md), which is the one place the branch workflow is written down |
 | Any agent, before your first commit | [`docs/AGENT_PROTOCOL.md`](AGENT_PROTOCOL.md) |
 | Anyone, for what we're building | [`docs/PLAN.md`](PLAN.md) |
 | Lane A, capture | [`docs/lanes/LANE_A.md`](lanes/LANE_A.md) |
