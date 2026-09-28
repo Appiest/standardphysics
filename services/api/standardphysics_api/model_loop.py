@@ -140,7 +140,7 @@ class ModelLoop:
         menu = without_wall_shifts(build_menu(self.current, self.checker, stated=self.stated, limits=limits))
         self.menu = menu
         if not menu.options:
-            self.stop = "The menu has no move left for what remains."
+            self.stop = "Nothing we can move or build clears what is left, so it stays on your list."
             return None
         return menu_messages(self.current, self.checker, menu, self.last)
 
@@ -154,7 +154,7 @@ class ModelLoop:
             self.moves = _combined(self.moves, added)
             self.built_ins |= {move.node_id for move in edits.fixture_moves}
         else:
-            self.stop = "The model chose nothing it could use."
+            self.stop = "The model did not pick a change that helps, so it stopped here."
         open_problems = self.open_problems()
         self.last = {**resolution.as_dict(), "fixable_left": len(open_problems)}
         picked = [menu.picked_in_owner_words(number) for number in resolution.applied]

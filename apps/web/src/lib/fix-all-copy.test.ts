@@ -40,12 +40,12 @@ describe("fix all copy", () => {
   });
 
   it("says how many were fixed and why it stopped when the run falls short", () => {
-    const partial = event({ kind: "finished", fixable_left: 2, moves: [move], message: "The menu has no move left for what remains." });
+    const partial = event({ kind: "finished", fixable_left: 2, moves: [move], message: "Nothing we can move or build clears what is left, so it stays on your list." });
     expect(finishedHeadline(partial, 3)).toBe("Fixed 1 of 3 problems");
-    expect(finishedDetail(partial, false)).toBe("1 piece moves. The menu has no move left for what remains.");
-    const none = event({ kind: "finished", fixable_left: 3, message: "The model chose nothing it could use." });
+    expect(finishedDetail(partial, false)).toBe("1 piece moves. Nothing we can move or build clears what is left, so it stays on your list.");
+    const none = event({ kind: "finished", fixable_left: 3, message: "The model did not pick a change that helps, so it stopped here." });
     expect(finishedHeadline(none, 3)).toBe("No furniture move fixed a problem");
-    expect(finishedDetail(none, false)).toBe("The layout stays as it is. The model chose nothing it could use.");
+    expect(finishedDetail(none, false)).toBe("The layout stays as it is. The model did not pick a change that helps, so it stopped here.");
   });
 
   it("words the turn in progress as a count and a clock", () => {
