@@ -1654,6 +1654,7 @@ export interface SceneNode {
   appearance?: DisplayAppearance | null;
   attachment?: SurfaceAttachment | null;
   dimensions: Vec3;
+  group?: string | null;
   id: string;
   kind: string;
   label: string;

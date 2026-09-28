@@ -17,7 +17,7 @@ from fastapi import FastAPI, Header, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from PIL import Image as PILImage
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 from standardphysics_agents import init_tracing, project_url, shutdown_tracing, tracing_status
 from standardphysics_agents.scenario_suggestion import DESTINATIONS
 from standardphysics_contracts import (
@@ -73,7 +73,15 @@ from .coverage import parse_coverage
 from .db import Database
 from .errors import ApiProblem
 from .evidence import evidence_status_for, maybe_queue_semantic, record_closure
-from .labels import mark_counter, mark_observation, review_outlet, unmark_counter
+from .labels import (
+    edit_object,
+    mark_counter,
+    mark_observation,
+    remove_object,
+    restore_object,
+    review_outlet,
+    unmark_counter,
+)
 from .layout import check_layout, save_layout
 from .lidar_mesh import MAX_LIDAR_MESH_BYTES, InvalidLidarMesh, validate_lidar_mesh_file
 from .live_walk import frame_pose, read_during_walk
@@ -698,6 +706,23 @@ class ReviewOutletRequest(BaseModel):
     status: str
 
 
+OwnerWord = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
+
+
+class EditObjectRequest(BaseModel):
+    """What the owner changed about a found piece: its name, the group it is listed under, or both."""
+
+    model_config = ConfigDict(extra="forbid")
+    label: OwnerWord | None = None
+    group: OwnerWord | None = None
+
+    @model_validator(mode="after")
+    def changes_something(self) -> EditObjectRequest:
+        if self.label is None and self.group is None:
+            raise ValueError("say a new name or a group")
+        return self
+
+
 def _install_label_routes(app: FastAPI, database: Database, store: ArtifactStore, worker: Worker) -> None:
     counter_path = "/api/scans/{scan_id}/revisions/{base_revision}/counters/{node_id}"
 
@@ -708,6 +733,24 @@ def _install_label_routes(app: FastAPI, database: Database, store: ArtifactStore
     @app.delete(counter_path, response_model=SceneGraph, status_code=201)
     def unmark_as_counter(scan_id: uuid.UUID, base_revision: int, node_id: uuid.UUID) -> SceneGraph:
         return unmark_counter(database, worker, scan_id, base_revision, node_id)
+
+    object_path = "/api/scans/{scan_id}/revisions/{base_revision}/objects/{node_id}"
+
+    @app.put(object_path, response_model=SceneGraph, status_code=201)
+    def change_found_object(
+        scan_id: uuid.UUID, base_revision: int, node_id: uuid.UUID, body: EditObjectRequest
+    ) -> SceneGraph:
+        return edit_object(database, worker, scan_id, base_revision, node_id, body.label, body.group)
+
+    @app.delete(object_path, response_model=SceneGraph, status_code=201)
+    def remove_found_object(scan_id: uuid.UUID, base_revision: int, node_id: uuid.UUID) -> SceneGraph:
+        return remove_object(database, worker, scan_id, base_revision, node_id)
+
+    @app.put(f"{object_path}/restore", response_model=SceneGraph, status_code=201)
+    def restore_found_object(
+        scan_id: uuid.UUID, base_revision: int, node_id: uuid.UUID, from_revision: int
+    ) -> SceneGraph:
+        return restore_object(database, worker, scan_id, base_revision, node_id, from_revision)
 
     outlet_review_path = "/api/scans/{scan_id}/revisions/{base_revision}/outlets/{node_id}/review"
 

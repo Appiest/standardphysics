@@ -44,6 +44,20 @@ export const walkingRoute = (scanId: string, scenario: Scenario) =>
 export const markCounter = (scanId: string, baseRevision: number, nodeId: string) =>
   send<SceneGraph>(`/api/scans/${scanId}/revisions/${baseRevision}/counters/${nodeId}`, json("PUT"));
 
+const objectUrl = (scanId: string, baseRevision: number, nodeId: string) =>
+  `/api/scans/${scanId}/revisions/${baseRevision}/objects/${nodeId}`;
+
+export type ObjectEdit = { label?: string; group?: string };
+
+export const editObject = (scanId: string, baseRevision: number, nodeId: string, edit: ObjectEdit) =>
+  send<SceneGraph>(objectUrl(scanId, baseRevision, nodeId), json("PUT", edit));
+
+export const removeObject = (scanId: string, baseRevision: number, nodeId: string) =>
+  send<SceneGraph>(objectUrl(scanId, baseRevision, nodeId), { method: "DELETE" });
+
+export const restoreObject = (scanId: string, baseRevision: number, nodeId: string, fromRevision: number) =>
+  send<SceneGraph>(`${objectUrl(scanId, baseRevision, nodeId)}/restore?from_revision=${fromRevision}`, json("PUT"));
+
 export const shareReport = (scanId: string) => send<ShareLink>(`/api/scans/${scanId}/shares`, json("POST"));
 
 export const stopSharing = (scanId: string) => send<void>(`/api/scans/${scanId}/shares`, { method: "DELETE" });

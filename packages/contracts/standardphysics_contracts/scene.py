@@ -231,6 +231,12 @@ class SceneNode(BaseModel):
     reconstruction: DisplayReconstruction | None = Field(default=None, exclude_if=lambda value: value is None)
     attachment: SurfaceAttachment | None = Field(default=None, exclude_if=lambda value: value is None)
     top_surface: SurfaceHeight | None = Field(default=None, exclude_if=lambda value: value is None)
+    group: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    """Which part of the owner's list of found pieces they filed this under.
+
+    Null means the owner never chose, and the list files it by its name. An open
+    word rather than a fixed set, for the same reason `labeled_by` is one.
+    """
     measured_position: Vec3 | None = Field(default=None, exclude_if=lambda value: value is None)
     """Where the scan found this piece, kept once a rearrangement has moved it.
 

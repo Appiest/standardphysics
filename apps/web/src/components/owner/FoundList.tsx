@@ -5,6 +5,7 @@ import { type ComponentType, useId, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
 import { foldedSummary, type FoundGroup, type FoundGroupId, type FoundRow, heightRange, rowLabel } from "@/lib/found-objects";
+import { type PieceEditing, RemovedNotice, RowEditor } from "./FoundPieceEditor";
 import type { FoundObjects } from "./useFoundObjects";
 
 type IconType = ComponentType<{ size?: number; weight?: "regular" | "bold"; className?: string; "aria-hidden"?: boolean }>;
@@ -20,6 +21,8 @@ const GROUP_ICONS: Record<FoundGroupId, IconType> = {
 type ListProps = Pick<FoundObjects, "groups" | "hoveredRowId" | "selectedRowId" | "hoverRow" | "toggleRow"> & {
   /** Pieces moved in the layout being tried, counted on their row. */
   movedIds?: Set<string>;
+  /** How the owner renames, regroups or removes a piece; absent where the list is only for reading. */
+  editing?: PieceEditing | null;
 };
 type LegendProps = ListProps & Pick<FoundObjects, "legendOpen" | "setLegendOpen">;
 
@@ -73,11 +76,15 @@ function GroupSection({ group, list }: { group: FoundGroup; list: ListProps }) {
         {group.title}
       </h3>
       <ul className="flex flex-col">
-        {group.rows.map((row) => (
-          <li key={row.id}>
-            <RowButton row={row} hovered={row.id === list.hoveredRowId} selected={row.id === list.selectedRowId} moved={movedIn(row, list.movedIds)} onHover={list.hoverRow} onToggle={list.toggleRow} />
-          </li>
-        ))}
+        {group.rows.map((row) => {
+          const selected = row.id === list.selectedRowId;
+          return (
+            <li key={row.id}>
+              <RowButton row={row} hovered={row.id === list.hoveredRowId} selected={selected} moved={movedIn(row, list.movedIds)} onHover={list.hoverRow} onToggle={list.toggleRow} />
+              {selected && list.editing && <RowEditor row={row} editing={list.editing} />}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
@@ -105,6 +112,7 @@ function OtherGroup({ group, list }: { group: FoundGroup; list: ListProps }) {
 function Groups({ list }: { list: ListProps }) {
   return (
     <>
+      {list.editing && <RemovedNotice edits={list.editing.edits} />}
       {list.groups.map((group) => group.id === "other"
         ? <OtherGroup key={group.id} group={group} list={list} />
         : <GroupSection key={group.id} group={group} list={list} />)}

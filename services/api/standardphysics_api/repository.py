@@ -177,8 +177,8 @@ def marked_for_deletion(connection: sqlite3.Connection, scan_id: uuid.UUID) -> b
 
 CHILD_TABLES = (
     "owner_requests", "checklist_items", "share_links", "layout_plans",
-    "texture_builds", "simulations", "rearrangements", "assessments", "evidence_bundles", "scenarios",
-    "revisions", "job_attempts", "jobs", "artifacts",
+    "texture_builds", "simulations", "rearrangement_teacher_events", "rearrangements", "label_corrections",
+    "assessments", "evidence_bundles", "scenarios", "revisions", "job_attempts", "jobs", "artifacts",
 )
 """Everything that references a scan, deepest first.
 

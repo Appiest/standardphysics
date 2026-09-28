@@ -27,6 +27,7 @@ import { stillToCheckCount, stillToCheckItems } from "@/lib/still-to-check";
 import { FixAll, useModelLabel } from "./FixAll";
 import { ToolsPanel } from "./ToolsPanel";
 import { FoundLegend, FoundSection } from "./FoundList";
+import { usePieceEditing } from "./useFoundEdits";
 import { LayoutStage } from "./LayoutStage";
 import { type TryLayout, useTryLayout } from "./useTryLayout";
 import { type FoundObjects, foundInModel, pointedInModel, showsFound, useFoundObjects } from "./useFoundObjects";
@@ -273,6 +274,7 @@ function OwnerShop(props: ShopProps) {
   const panel = currentPanel(journey, counterSkipped, tools.tool, readOnly);
   const letGoOfFinding = useCallback(() => setSelected(null), []);
   const { trying, found, trial, scanned } = useTrying(panel, arrangement, scene, assessment, letGoOfFinding);
+  const editing = usePieceEditing(found, scan.id, scene.revision, { readOnly, trying });
   const foundShown = showsFound(panel);
   const pickNode = useNodePicker(panel, scene, foundShown, found.pickNode, setCounter);
   const setup = useOwnerModel(
@@ -357,13 +359,13 @@ function OwnerShop(props: ShopProps) {
       <OwnerModel scene={scene} glbUrl={props.glbUrl} scanGlbUrl={props.scanGlbUrl ?? null} setup={setup} lightweight={props.embedded} />
       {panel === "wheelchair" && <DrivingPad />}
       {trying && <LayoutStage arrangement={arrangement} scanned={scene} trial={trial} pointedIds={new Set([...pointedNodes(found), ...proposed.ids])} staff={setup.staff} />}
-      <FoundLegend list={found} shown={foundShown} />
+      <FoundLegend list={{ ...found, editing }} shown={foundShown} />
     </>
   );
   return (
     <Frame shopName={scan.name} embedded={props.embedded} end={shopEnd(props)} model={model} size={modelSize(panel)} step={panel}>
       {content[panel]()}
-      <FoundSection list={foundList(found, trial, trying)} shown={foundShown || trying} everywhere={trying} />
+      <FoundSection list={{ ...foundList(found, trial, trying), editing }} shown={foundShown || trying} everywhere={trying} />
       <SavePrompt open={save.open} inApp={props.embedded} onClose={save.close} />
     </Frame>
   );
