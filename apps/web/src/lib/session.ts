@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { Session } from "@/types/contracts";
 import { API_ORIGIN } from "./api-origin";
+import { fetchApi } from "./api-fetch";
 
 export const SESSION_COOKIE = "sp_session";
 
@@ -16,7 +17,7 @@ export function isTeam(session: Session): boolean {
 export async function currentSession(): Promise<Session | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  const response = await fetch(`${API_ORIGIN}/api/auth/session`, {
+  const response = await fetchApi(`${API_ORIGIN}/api/auth/session`, {
     cache: "no-store",
     headers: { cookie: `${SESSION_COOKIE}=${token}` },
   });

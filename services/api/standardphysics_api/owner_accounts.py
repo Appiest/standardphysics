@@ -71,9 +71,7 @@ def install_account_routes(app: FastAPI, database: Database, apple_audiences: fr
         current = resolve_owner(database, request)
         if current is not None:
             return session_of(database, current)
-        address = client_address(request)
-        guests.check(address)
-        guests.record(address)
+        guests.admit(client_address(request))
         with database.transaction() as connection:
             owner = accounts.create_guest(connection)
             token = accounts.open_session(connection, owner.id, accounts.GUEST_SESSION_LIFETIME)

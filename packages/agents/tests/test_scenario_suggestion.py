@@ -3,9 +3,8 @@ point, and a tiny room that only holds an outlet."""
 
 import uuid
 
+from standardphysics_agents.scenario_suggestion import suggest_scenario
 from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3
-
-from standardphysics_api.scenario import suggest_scenario
 
 NAMESPACE = uuid.UUID("6f1d2f9a-0d3f-4a1e-9b2c-7ef00a0a0002")
 

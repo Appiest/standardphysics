@@ -22,6 +22,19 @@ start_web() {
   exec node_modules/.bin/next start -p "${PORT:-3000}"
 }
 
+# Next is ready in a fraction of a second and the API takes several, so a web
+# process started alongside it proxied the first requests to a closed port and
+# answered them with a 500. Waits for the API's own /health, and gives up if
+# the API exits or stays silent for SP_API_READY_SECONDS.
+wait_for_api() {
+  local api_pid="$1" deadline=$((SECONDS + ${SP_API_READY_SECONDS:-120}))
+  until node -e "fetch('http://127.0.0.1:$API_PORT/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; do
+    kill -0 "$api_pid" 2>/dev/null || { echo "the API exited before it answered /health" >&2; return 1; }
+    [ "$SECONDS" -lt "$deadline" ] || { echo "the API did not answer /health in time" >&2; return 1; }
+    sleep 1
+  done
+}
+
 case "$ROLE" in
   api) start_api ;;
   web) start_web ;;
@@ -31,6 +44,7 @@ case "$ROLE" in
     # A web process that outlives a dead API serves errors to every visitor, so
     # the container goes down with whichever half stops first.
     trap 'kill -TERM "$api_pid" 2>/dev/null || true' TERM INT
+    wait_for_api "$api_pid" || { kill -TERM "$api_pid" 2>/dev/null || true; exit 1; }
     cd /app/apps/web
     SP_API_ORIGIN="http://127.0.0.1:$API_PORT" node_modules/.bin/next start -p "${PORT:-3000}" &
     web_pid=$!

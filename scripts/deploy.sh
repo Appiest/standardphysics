@@ -7,6 +7,19 @@
 # doctor.sh, streaming everything back. Set SP_DEPLOY_HOST in your shell if the
 # box moves.
 #
+# The image is tagged with the commit it was built from, and each deploy adds
+# a line to /var/log/standardphysics-deploys.log on the box, so the commit to
+# roll back to is written down. docs/DEPLOY.md has the rollback. A box left on
+# an older commit by a rollback goes back to master here before it pulls.
+#
+# It refuses to deploy while the API has jobs queued or running. The restart
+# throws away whatever a bake has done so far, so it waits for the queue to
+# empty unless SP_DEPLOY_FORCE=1 says to go anyway. A queue it cannot read is a
+# refusal too, not an empty queue: a stopped or wedged API is exactly when
+# nobody knows what it was doing. The image is built before the queue is read,
+# so the build's minutes are not part of the window in which a new upload can
+# start a job that the restart then kills. docs/DEPLOY.md says what is left.
+#
 # It refuses to deploy behind your own work. The Droplet pulls master from
 # GitHub, so a commit still sitting on this laptop is not going anywhere, and
 # a deploy that silently ships the previous commit is worse than one that
@@ -16,6 +29,16 @@ set -euo pipefail
 HOST="${SP_DEPLOY_HOST:-root@api.standardphysics.app}"
 DIR="${SP_DEPLOY_DIR:-/root/standardphysics}"
 LOCK="${SP_DEPLOY_LOCK:-/var/lock/standardphysics-deploy}"
+HISTORY="${SP_DEPLOY_HISTORY:-/var/log/standardphysics-deploys.log}"
+FORCE="${SP_DEPLOY_FORCE:-}"
+
+# Read the way the Droplet's own tools read the queue: the API container's
+# Python opening the database it holds, read-only, so this cannot take a lock
+# a job needs. The image has no sqlite3 command.
+IN_FLIGHT_QUERY="import sqlite3
+database = sqlite3.connect('file:/data/standardphysics.sqlite3?mode=ro', uri=True)
+query = \"SELECT COUNT(*) FROM jobs WHERE state IN ('queued', 'running')\"
+print(database.execute(query).fetchone()[0])"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 say() { printf '\n== %s\n' "$1"; }
@@ -73,9 +96,25 @@ if ! flock -n 9; then
   exit 75
 fi
 cd '$DIR'
+git checkout --quiet master
 git pull --ff-only
+export GIT_SHA=\$(git rev-parse HEAD)
 cd deploy/digitalocean
-docker compose up -d --build
+docker compose build
+in_flight=\$(docker compose exec -T api /opt/venv/bin/python -c $(printf %q "$IN_FLIGHT_QUERY") 2>/dev/null) || in_flight=unknown
+if [ '$FORCE' != 1 ] && ! [[ \"\$in_flight\" =~ ^[0-9]+\$ ]]; then
+  echo 'I could not read the job queue from the API container, so I cannot tell what a restart would interrupt.' >&2
+  echo 'Check it with docker compose ps and ./doctor.sh, or run with SP_DEPLOY_FORCE=1 to deploy anyway.' >&2
+  exit 69
+fi
+if [ '$FORCE' != 1 ] && [ \"\$in_flight\" -gt 0 ]; then
+  echo \"The API has \$in_flight job(s) queued or running, and a deploy restarts it.\" >&2
+  echo 'Wait for them to finish and run this again, which reuses the image just built,' >&2
+  echo 'or run with SP_DEPLOY_FORCE=1 to interrupt them.' >&2
+  exit 75
+fi
+docker compose up -d
+echo \"\$(date -u +%Y-%m-%dT%H:%M:%SZ) \$GIT_SHA\" >> '$HISTORY'
 ./doctor.sh"
 }
 

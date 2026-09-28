@@ -1,0 +1,10 @@
+# What CI and ./start.sh run: the image's packages plus the test, notebook and
+# offline reconstruction extras. The constraint keeps every version the two
+# locks share identical, so CI tests the exact versions the image ships.
+-c requirements.lock
+-r requirements.in
+-e ./tools/loopforge
+-e ./packages/pipeline[reconstruction]
+-e ./packages/agents[observability,notebook]
+-e ./services/api[test]
+pytest

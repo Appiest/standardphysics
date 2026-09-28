@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "loopforge"
+version = "0.1.0"
+description = "A traceable, self-improving agent loop for hackathon submissions."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+observability = ["weave>=0.51"]
+
+[project.scripts]
+loopforge = "loopforge.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/loopforge"]

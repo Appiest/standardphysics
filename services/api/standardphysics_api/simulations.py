@@ -21,6 +21,7 @@ from standardphysics_agents.evaluation.scan_tasks import choose_task, propose_ta
 from standardphysics_agents.mesh_collision import MeshCollisionIndex
 from standardphysics_agents.precedents import directives_for_space
 from standardphysics_agents.router import LocalPolicyRouter, TypeSafeRouter
+from standardphysics_agents.scenario_suggestion import suggest_scenario
 from standardphysics_agents.simulation_report import simulation_result
 from standardphysics_agents.workflows import (
     DEFAULT_PROFILES,
@@ -45,7 +46,6 @@ from standardphysics_pipeline import PipelineMeasurements
 
 from . import repository as repo
 from .errors import ApiProblem
-from .scenario import suggest_scenario
 
 SIMULATE = "simulate"
 
@@ -300,7 +300,18 @@ def _run_accessibility_loop(
     )
 
 
-def run_simulation(database, store, stages, scan_id: UUID, revision: int) -> None:
+def _no_checkpoint() -> None:
+    return None
+
+
+def run_simulation(
+    database, store, stages, scan_id: UUID, revision: int, checkpoint: Callable[[], None] = _no_checkpoint
+) -> None:
+    """Run one queued simulation and save its result.
+
+    `checkpoint` is called between redesign rounds and before each long step
+    that follows them, and raises to stop a run that has passed its deadline.
+    """
     with database.connect() as connection:
         row = connection.execute(
             "SELECT * FROM simulations WHERE scan_id=? AND revision=?",
@@ -344,6 +355,7 @@ def run_simulation(database, store, stages, scan_id: UUID, revision: int) -> Non
     )
 
     def publish_candidate(cycle: int, candidate: SceneGraph) -> None:
+        checkpoint()
         with database.transaction() as connection:
             connection.execute(
                 "UPDATE simulations SET completed=0, cycle=?, candidate_graph_json=?"
@@ -411,6 +423,7 @@ def run_simulation(database, store, stages, scan_id: UUID, revision: int) -> Non
 
     exhaustive_count = 0
     exhaustive_outcomes: dict[str, int] = {}
+    checkpoint()
     if request.exhaustive_evaluations:
         campaign_budget = TypeSafeCallBudget(campaign_reserve)
         campaign_path = (
@@ -476,6 +489,7 @@ def run_simulation(database, store, stages, scan_id: UUID, revision: int) -> Non
             "limitations": limitations,
         }
     )
+    checkpoint()
     with database.transaction() as connection:
         connection.execute(
             "UPDATE simulations SET result_json=?, completed=?"

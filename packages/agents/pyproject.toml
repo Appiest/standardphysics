@@ -9,6 +9,7 @@ description = "Rules, checks, the router, the fix agent and the evaluation gate.
 requires-python = ">=3.11"
 dependencies = [
   "standardphysics-contracts",
+  "standardphysics-fixtures",
   "standardphysics-pipeline",
   "pydantic>=2.7",
   "openai>=1.40",

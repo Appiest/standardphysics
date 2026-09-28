@@ -71,11 +71,13 @@ install_into_venv() {
 
 install_python() {
   local stamp=".venv/.installed" wanted
-  wanted="$(hash_files "$0" pyproject.toml packages/*/pyproject.toml services/api/pyproject.toml)"
+  wanted="$(hash_files "$0" requirements-dev.lock pyproject.toml packages/*/pyproject.toml services/api/pyproject.toml tools/loopforge/pyproject.toml)"
   [ -x .venv/bin/python ] || { echo "Creating .venv"; "$(find_python)" -m venv .venv; }
   [ "$(cat "$stamp" 2>/dev/null)" = "$wanted" ] && return
   echo "Installing Python packages"
-  install_into_venv -e . -e packages/contracts -e packages/fixtures -e packages/pipeline \
+  # The same pinned versions CI tests; scripts/lock_python.sh regenerates them.
+  install_into_venv -r requirements-dev.lock
+  install_into_venv --no-deps -e tools/loopforge -e packages/contracts -e packages/fixtures -e packages/pipeline \
     -e "packages/agents[observability,notebook]" -e "services/api[test]"
   echo "$wanted" >"$stamp"
 }

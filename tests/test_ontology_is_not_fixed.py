@@ -38,7 +38,7 @@ Raising this baseline is only ever an audit, never a shortcut. The last audit
   a named predicate like `lies_flat` (checks/roles.py, checks/walls.py,
   workflows.py 2, pipeline/astra.py 3, pipeline/ingest.py,
   discovery/surface_attach.py, discovery/semantic_corrections.py 2,
-  api/scenario.py). This is the backlog for lowering the count.
+  agents/scenario_suggestion.py). This is the backlog for lowering the count.
 - 5 target-class labels the pilot scope must name (api/labels.py,
   api/scope_manifest.py 4).
 - 9 presentation kinds in api/architecture_export.py, which draws walls,

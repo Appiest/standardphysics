@@ -5,7 +5,9 @@
 #
 # It installs Docker, mounts the Block Storage volume, gives the box swap so a
 # 4 GB Droplet can build the workspace, and closes every port but SSH and the
-# two Caddy needs. Running it twice changes nothing the second time.
+# two Caddy needs. It also installs a nightly backup timer, left off until .env
+# names somewhere to send the backups. Running it twice changes nothing the
+# second time.
 #
 # It never formats a disk that already holds a filesystem. A volume carrying
 # last month's scans is not a blank disk, and the check below is the only
@@ -19,6 +21,8 @@ DEVICE="/dev/disk/by-id/scsi-0DO_Volume_${VOLUME_NAME}"
 MOUNT_POINT="/mnt/${VOLUME_NAME}"
 SWAPFILE="/swapfile"
 SWAP_SIZE_MB=2048
+HERE="$(cd "$(dirname "$0")" && pwd)"
+BACKUP_UNIT=standardphysics-backup
 
 log() { printf '\n== %s\n' "$1"; }
 
@@ -115,6 +119,53 @@ enable_unattended_upgrades() {
   dpkg-reconfigure -f noninteractive unattended-upgrades
 }
 
+backup_destination_configured() {
+  [ -f "$HERE/.env" ] && grep -Eq '^SP_BACKUP_DEST=.+' "$HERE/.env"
+}
+
+# The timer is installed every time and only switched on once .env names a
+# destination, because a backup with nowhere to go fails every night and a
+# failing unit nobody asked for teaches people to ignore failing units.
+#
+# 10:30 UTC is half past two or three in the morning in California, depending
+# on daylight saving, when nobody is scanning a shop. Persistent catches up on a night the box was off, and the idle I/O
+# class lets a bake or an upload go first.
+install_backup_timer() {
+  log "Installing the nightly backup timer"
+  apt-get install -y -qq rsync
+  cat > "/etc/systemd/system/$BACKUP_UNIT.service" <<UNIT
+[Unit]
+Description=Back up the Standard Physics database and scans
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=$HERE/backup.sh
+Nice=10
+IOSchedulingClass=idle
+UNIT
+  cat > "/etc/systemd/system/$BACKUP_UNIT.timer" <<UNIT
+[Unit]
+Description=Back up Standard Physics every night
+
+[Timer]
+OnCalendar=*-*-* 10:30:00 UTC
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl daemon-reload
+  if backup_destination_configured; then
+    systemctl enable --now "$BACKUP_UNIT.timer"
+    log "Backups run nightly to the SP_BACKUP_DEST in .env"
+  else
+    log "Backups are off until SP_BACKUP_DEST is set in .env"
+  fi
+}
+
 main() {
   require_root
   install_docker
@@ -123,6 +174,7 @@ main() {
   close_ports
   use_bbr
   enable_unattended_upgrades
+  install_backup_timer
 
   cat <<NEXT
 
@@ -134,8 +186,10 @@ Done. What is left:
        cd standardphysics/deploy/digitalocean
        cp env.example .env
        \$EDITOR .env          # the domains, SCANS_PATH=$MOUNT_POINT, the keys
-  3. docker compose up -d --build
+  3. GIT_SHA=\$(git rev-parse HEAD) docker compose up -d --build
   4. curl https://<your api domain>/health
+  5. Set SP_BACKUP_DEST in .env, then turn on the nightly backup:
+       systemctl enable --now $BACKUP_UNIT.timer
 
 NEXT
 }

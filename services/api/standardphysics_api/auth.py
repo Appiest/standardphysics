@@ -12,9 +12,8 @@ header, because a native upload has no cookie jar worth keeping.
 from __future__ import annotations
 
 import re
-import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI, Request, Response
@@ -27,6 +26,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from . import accounts
 from . import repository as repo
 from .accounts import EmailAlreadyRegistered, Owner, WeakPassword
+from .attempt_limiter import AttemptLimiter
 from .db import Database
 from .errors import ApiProblem
 from .store import ArtifactStore
@@ -41,7 +41,12 @@ Owners don't see them (docs/UX.md, owner tools and team tools), and nobody does 
 is granted the team role (see `team`)."""
 
 SIGN_IN_ATTEMPTS = 10
+"""Wrong passwords one account may take in a window, from any number of networks."""
+SIGN_IN_ATTEMPTS_PER_ADDRESS = 30
+"""Sign-ins one network may try in a window, across every email, so rotating
+made-up emails from one address is slowed as much as guessing one password."""
 SIGN_IN_WINDOW_SECONDS = 300
+SIGN_IN_THROTTLED = "Too many sign-in attempts. Wait a few minutes and try again."
 SIGN_UPS_PER_ADDRESS = 10
 SIGN_UP_WINDOW_SECONDS = 3600
 
@@ -55,33 +60,6 @@ class SignUpRequest(BaseModel):
 class SignInRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=1024)
-
-
-@dataclass
-class AttemptLimiter:
-    """Slows password guessing within this process.
-
-    One API process owns one database (see `worker`), so a per-process counter
-    covers the whole deployment. It is memory only: a restart forgives.
-    """
-
-    limit: int = SIGN_IN_ATTEMPTS
-    window: int = SIGN_IN_WINDOW_SECONDS
-    message: str = "Too many sign-in attempts. Wait a few minutes and try again."
-    attempts: dict[str, list[float]] = field(default_factory=dict)
-
-    def check(self, key: str) -> None:
-        now = time.monotonic()
-        recent = [at for at in self.attempts.get(key, []) if now - at < self.window]
-        self.attempts[key] = recent
-        if len(recent) >= self.limit:
-            raise ApiProblem(429, self.message)
-
-    def record(self, key: str) -> None:
-        self.attempts.setdefault(key, []).append(time.monotonic())
-
-    def forget(self, key: str) -> None:
-        self.attempts.pop(key, None)
 
 
 def token_from(request: Request) -> str | None:
@@ -151,7 +129,6 @@ def client_address(request: Request) -> str:
 
 
 def install_auth(app: FastAPI, database: Database, store: ArtifactStore) -> None:
-    limiter = AttemptLimiter()
 
     class RequireOwner(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
@@ -171,7 +148,7 @@ def install_auth(app: FastAPI, database: Database, store: ArtifactStore) -> None
             return await call_next(request)
 
     app.add_middleware(RequireOwner)
-    _install_auth_routes(app, database, store, limiter)
+    _install_auth_routes(app, database, store)
 
 
 def _team_only(request: Request, owner: Owner) -> bool:
@@ -234,15 +211,39 @@ def _register(database: Database, body: SignUpRequest) -> Owner:
             raise ApiProblem(400, f"Use at least {accounts.MIN_PASSWORD_LENGTH} characters.") from None
 
 
-def _authenticate(database: Database, body: SignInRequest, limiter: AttemptLimiter) -> Owner:
-    key = accounts.normalize_email(body.email)
-    limiter.check(key)
+@dataclass(frozen=True)
+class SignInLimits:
+    """Per account and per network, both counted before any scrypt work is done."""
+
+    accounts: AttemptLimiter
+    addresses: AttemptLimiter
+
+    @classmethod
+    def standard(cls) -> SignInLimits:
+        def limiter(limit: int) -> AttemptLimiter:
+            return AttemptLimiter(limit=limit, window=SIGN_IN_WINDOW_SECONDS, message=SIGN_IN_THROTTLED)
+
+        return cls(accounts=limiter(SIGN_IN_ATTEMPTS), addresses=limiter(SIGN_IN_ATTEMPTS_PER_ADDRESS))
+
+    def admit(self, email: str, address: str) -> None:
+        """The network is charged first, so rotating emails from one address never reaches an account's count."""
+        self.addresses.admit(address)
+        self.accounts.admit(email)
+
+    def signed_in(self, email: str, address: str) -> None:
+        """A right password is not a guess: clear the account and give the network its attempt back."""
+        self.accounts.forget(email)
+        self.addresses.refund(address)
+
+
+def _authenticate(database: Database, body: SignInRequest, address: str, limits: SignInLimits) -> Owner:
+    email = accounts.normalize_email(body.email)
+    limits.admit(email, address)
     with database.connect() as connection:
         owner = accounts.authenticate(connection, body.email, body.password)
     if owner is None:
-        limiter.record(key)
         raise ApiProblem(401, "That email and password do not match. If you have not made an account yet, create one.")
-    limiter.forget(key)
+    limits.signed_in(email, address)
     return owner
 
 
@@ -291,16 +292,15 @@ def _erase_owner(database: Database, owner: Owner) -> list[uuid.UUID]:
     return scan_ids
 
 
-def _install_auth_routes(app: FastAPI, database: Database, store: ArtifactStore, limiter: AttemptLimiter) -> None:
+def _install_auth_routes(app: FastAPI, database: Database, store: ArtifactStore) -> None:
+    sign_ins = SignInLimits.standard()
     sign_ups = AttemptLimiter(limit=SIGN_UPS_PER_ADDRESS, window=SIGN_UP_WINDOW_SECONDS,
                               message="Too many new accounts from this network. Try again in an hour.")
 
     @app.post("/api/auth/sign-up", status_code=201, response_model=Session)
     def sign_up(body: SignUpRequest, request: Request, response: Response) -> Session:
         """A new account, or a guest keeping theirs. A handful an hour per network."""
-        address = client_address(request)
-        sign_ups.check(address)
-        sign_ups.record(address)
+        sign_ups.admit(client_address(request))
         current = resolve_owner(database, request)
         if current is not None and current.guest:
             saved = save_guest(database, current, body.email, body.password, body.shop_name)
@@ -311,7 +311,7 @@ def _install_auth_routes(app: FastAPI, database: Database, store: ArtifactStore,
 
     @app.post("/api/auth/sign-in", response_model=Session)
     def sign_in(body: SignInRequest, request: Request, response: Response) -> Session:
-        owner = _authenticate(database, body, limiter)
+        owner = _authenticate(database, body, client_address(request), sign_ins)
         take_guest_shops(database, request, owner)
         owner, token = _open(database, owner)
         set_session_cookie(response, request, token)

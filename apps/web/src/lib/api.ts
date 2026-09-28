@@ -3,6 +3,7 @@ import type { Assessment, Checklist, EvidenceStatus, Journey, JourneyList, Repor
 import type { RoomGroup } from "./room-groups";
 import type { CapturedSplats } from "./captured-splats";
 import { API_ORIGIN } from "./api-origin";
+import { fetchApi, SLOW_DEADLINE_MS } from "./api-fetch";
 
 export class NotReady extends Error {}
 export class NotSignedIn extends Error {}
@@ -18,17 +19,17 @@ async function sessionHeader(): Promise<HeadersInit> {
   return token ? { cookie: `${SESSION_COOKIE}=${token}` } : {};
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_ORIGIN}${path}`, { cache: "no-store", headers: await sessionHeader() });
+async function getJson<T>(path: string, deadlineMs?: number): Promise<T> {
+  const response = await fetchApi(`${API_ORIGIN}${path}`, { cache: "no-store", headers: await sessionHeader(), deadlineMs });
   if (response.status === 401) throw new NotSignedIn(path);
   if (response.status === 404) throw new NotReady(path);
   if (!response.ok) throw new Error(`${path} answered ${response.status}`);
   return (await response.json()) as T;
 }
 
-async function getOptional<T>(path: string): Promise<T | null> {
+async function getOptional<T>(path: string, deadlineMs?: number): Promise<T | null> {
   try {
-    return await getJson<T>(path);
+    return await getJson<T>(path, deadlineMs);
   } catch (error) {
     if (error instanceof NotReady) return null;
     throw error;
@@ -47,7 +48,7 @@ export const sceneGlbUrl = (scanId: string, revision?: number) => `/api/scans/${
 
 /** Whether the exported model is there yet, without pulling it down. */
 export const headSceneGlb = async (scanId: string, revision?: number) =>
-  fetch(`${API_ORIGIN}${sceneGlbUrl(scanId, revision)}`, {
+  fetchApi(`${API_ORIGIN}${sceneGlbUrl(scanId, revision)}`, {
     method: "HEAD",
     cache: "no-store",
     headers: await sessionHeader(),
@@ -72,7 +73,7 @@ export const getJourney = (scanId: string) => getOptional<Journey>(`/api/scans/$
 export const listJourneys = async () => (await getJson<JourneyList>("/api/journeys")).journeys;
 export const getRequests = async (scanId: string) => (await getOptional<ShopRequests>(`/api/scans/${scanId}/requests`))?.requests ?? [];
 export const getPathSuggestion = (scanId: string, places: string[]) =>
-  getOptional<Scenario>(`/api/scans/${scanId}/scenario/suggestion?destinations=${encodeURIComponent(places.join(","))}`);
+  getOptional<Scenario>(`/api/scans/${scanId}/scenario/suggestion?destinations=${encodeURIComponent(places.join(","))}`, SLOW_DEADLINE_MS);
 /** A report behind a share link, or the example shop behind the token "example". No sign-in needed. */
 export const getSharedReport = (token: string) => getOptional<Report>(`/api/shared/${encodeURIComponent(token)}`);
 
