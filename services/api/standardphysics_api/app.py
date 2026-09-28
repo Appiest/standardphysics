@@ -110,12 +110,22 @@ def _start_tracing(settings: Settings) -> None:
 
 
 def _seed_demo_account(database: Database, store: ArtifactStore, settings: Settings) -> None:
-    """Put the sample shop behind a real account, and say how to sign in as it."""
-    seed_sample_shop(database, store, settings.seed_owner_email, settings.seed_owner_password)
+    """Put the sample shop behind a real account, and say how to sign in as it.
+
+    The password is only named on the run that created the account. On later
+    runs `seed_owner_password` may be freshly generated and would not match."""
+    created_owner = seed_sample_shop(database, store, settings.seed_owner_email, settings.seed_owner_password)
+    if created_owner:
+        log.warning(
+            "sample shop seeded. Sign in as %s with password %s",
+            settings.seed_owner_email,
+            settings.seed_owner_password,
+        )
+        return
     log.warning(
-        "sample shop seeded. Sign in as %s with password %s",
+        "sample shop seeded. The demo account %s already exists; sign in with the password from the run "
+        "that created it (SP_SEED_OWNER_PASSWORD at the time, or the one logged then)",
         settings.seed_owner_email,
-        settings.seed_owner_password,
     )
 
 
