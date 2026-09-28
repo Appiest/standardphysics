@@ -385,6 +385,22 @@ MIGRATIONS: tuple[Migration, ...] = (
             scale_down_after REAL
         )""",
     ),
+    _creates(
+        42,
+        "create_label_corrections",
+        ("label_corrections", "label_corrections_by_scan"),
+        """CREATE TABLE IF NOT EXISTS label_corrections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scan_id TEXT NOT NULL REFERENCES scans(id),
+            revision INTEGER NOT NULL,
+            node_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            before_json TEXT NOT NULL,
+            after_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""",
+        "CREATE INDEX IF NOT EXISTS label_corrections_by_scan ON label_corrections(scan_id)",
+    ),
 )
 """Every schema change, oldest first. Add a change as the next version at the end.
 

@@ -32,6 +32,9 @@ const GROUP_TITLES: Record<FoundGroupId, string> = {
   other: "Everything else",
 };
 
+/** The groups in the order the list shows them, for the owner to file a piece under. */
+export const FOUND_GROUPS = GROUP_ORDER.map((id) => ({ id, title: GROUP_TITLES[id] }));
+
 /** Checked in order, so an extinguisher cabinet on a counter still reads as safety. */
 const GROUP_WORDS: [FoundGroupId, string[]][] = [
   ["safety", ["fire extinguisher", "extinguisher", "first aid", "defibrillator", "aed", "exit sign", "fire alarm"]],
@@ -81,7 +84,15 @@ function describedBy(node: SceneNode): string {
   return `${normalName(node.label)} ${normalName(node.raw_category)}`;
 }
 
+const FOUND_GROUP_IDS = new Set<string>(GROUP_ORDER);
+
+function isFoundGroupId(value: string | null | undefined): value is FoundGroupId {
+  return value != null && FOUND_GROUP_IDS.has(value);
+}
+
+/** Where the owner filed the piece, if they did, and otherwise where its name puts it. */
 export function groupOf(node: SceneNode): FoundGroupId {
+  if (isFoundGroupId(node.group)) return node.group;
   const described = describedBy(node);
   return GROUP_WORDS.find(([, words]) => mentionsAny(described, words))?.[0] ?? "other";
 }
@@ -221,9 +232,36 @@ export function heightRange(topInches: number[]): string | null {
 }
 
 /** The middle of a row's pieces on the floor plan, at their average height, for the camera to face. */
-export function rowCenter(scene: SceneGraph, row: FoundRow): Vec3 | null {
+export function rowCenter(scene: SceneGraph, row: Pick<FoundRow, "nodeIds">): Vec3 | null {
   const members = scene.nodes.filter((node) => row.nodeIds.includes(node.id));
   if (members.length === 0) return null;
   const mean = (pick: (node: SceneNode) => number) => members.reduce((sum, node) => sum + pick(node), 0) / members.length;
   return { x: mean((node) => node.transform.m[3]), y: mean((node) => node.transform.m[7]), z: mean((node) => node.transform.m[11]) };
+}
+
+/** "Chair 3" for one of a row's pieces, or just "Card reader" when it is the only one. */
+export function pieceName(row: FoundRow, nodeId: string): string {
+  if (row.nodeIds.length === 1) return row.name;
+  return `${row.name} ${row.nodeIds.indexOf(nodeId) + 1}`;
+}
+
+/** Names to suggest when the owner renames a piece: what this shop already has, then the kinds the list knows. */
+export function suggestedNames(groups: FoundGroup[]): string[] {
+  const inShop = groups.flatMap((group) => group.rows.map((row) => row.name));
+  const known = GROUP_WORDS.flatMap(([, words]) => words).map(sentenceCase);
+  return [...new Set([...inShop, ...known])];
+}
+
+export type PieceDraft = { name: string; group: FoundGroupId };
+
+/**
+ * What saving the owner's draft should send: only what differs from the row the piece is listed under.
+ * A name that reads the same once spacing and case are set aside is no change. Null when nothing changed.
+ */
+export function draftChanges(row: FoundRow, draft: PieceDraft): { label?: string; group?: string } | null {
+  const name = draft.name.trim();
+  const renamed = name !== "" && normalName(name) !== normalName(row.name);
+  const regrouped = draft.group !== row.group;
+  if (!renamed && !regrouped) return null;
+  return { ...(renamed ? { label: name } : {}), ...(regrouped ? { group: draft.group } : {}) };
 }

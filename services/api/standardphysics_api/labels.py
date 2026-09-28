@@ -30,6 +30,7 @@ from . import repository as repo
 from .budgets import admit_new_job
 from .db import Database
 from .errors import ApiProblem
+from .label_corrections import Correction, record_correction
 from .layout import STALE_LAYOUT
 from .worker import ASSESS, Worker
 
@@ -72,13 +73,7 @@ def review_outlet(
 
     nodes = [_update(node) for node in base.nodes]
     saved = base.model_copy(update={"nodes": nodes, "revision": base_revision + 1})
-    with database.transaction() as connection:
-        if repo.latest_revision_number(connection, scan_id) != base_revision:
-            raise ApiProblem(409, STALE_LAYOUT)
-        admit_new_job(connection, worker.settings.max_queued_jobs)
-        repo.save_revision(connection, saved, source="owner", base_revision=base_revision)
-        repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
-    worker.wake()
+    _save_owner_revision(database, worker, saved, base_revision)
     return saved
 
 
@@ -138,13 +133,7 @@ def mark_observation(
             "revision": base_revision + 1,
         })
 
-    with database.transaction() as connection:
-        if repo.latest_revision_number(connection, scan_id) != base_revision:
-            raise ApiProblem(409, STALE_LAYOUT)
-        admit_new_job(connection, worker.settings.max_queued_jobs)
-        repo.save_revision(connection, saved, source="owner", base_revision=base_revision)
-        repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
-    worker.wake()
+    _save_owner_revision(database, worker, saved, base_revision)
     return saved
 
 
@@ -195,6 +184,94 @@ def _manual_crop(body: ManualMarkRequest, actor_email: str, image_url: str | Non
 
 
 
+def edit_object(
+    database: Database, worker: Worker, scan_id: uuid.UUID, base_revision: int, node_id: uuid.UUID,
+    label: str | None, group: str | None,
+) -> SceneGraph:
+    """The owner renames a found piece or files it under another group, and the shop is checked again."""
+    base = _base_graph(database, scan_id, base_revision)
+    target = _object_node(base, node_id)
+    edited = _with_owner_names(target, label, group)
+    if edited == target:
+        return base
+    saved = _revised(base, base_revision, [edited if node.id == target.id else node for node in base.nodes])
+    _save_owner_revision(database, worker, saved, base_revision, Correction("edited", target, edited))
+    return saved
+
+
+def remove_object(
+    database: Database, worker: Worker, scan_id: uuid.UUID, base_revision: int, node_id: uuid.UUID
+) -> SceneGraph:
+    """The owner says the scan saw something that isn't there; anything resting on it now rests on nothing."""
+    base = _base_graph(database, scan_id, base_revision)
+    target = _object_node(base, node_id)
+    nodes = [_detached_from(node, target.id) for node in base.nodes if node.id != target.id]
+    saved = _revised(base, base_revision, nodes)
+    _save_owner_revision(database, worker, saved, base_revision, Correction("removed", target, None))
+    return saved
+
+
+def restore_object(
+    database: Database, worker: Worker, scan_id: uuid.UUID, base_revision: int, node_id: uuid.UUID,
+    from_revision: int,
+) -> SceneGraph:
+    """Undo a removal: the piece comes back as it was in `from_revision`, with what rested on it."""
+    base = _base_graph(database, scan_id, base_revision)
+    if any(node.id == node_id for node in base.nodes):
+        raise ApiProblem(409, "that piece is already there")
+    earlier = _base_graph(database, scan_id, from_revision)
+    returning = _object_node(earlier, node_id)
+    rested_on_it = {node.id: node for node in earlier.nodes if node.parent_id == node_id}
+    nodes = [_reattached(node, rested_on_it.get(node.id)) for node in base.nodes]
+    saved = _revised(base, base_revision, [*nodes, _parent_kept_if_present(returning, base)])
+    _save_owner_revision(database, worker, saved, base_revision, Correction("restored", None, returning))
+    return saved
+
+
+def _with_owner_names(node: SceneNode, label: str | None, group: str | None) -> SceneNode:
+    update: dict[str, object] = {}
+    if label is not None and label != node.label:
+        update |= {"label": label, "labeled_by": "owner"}
+    if group is not None and group != node.group:
+        update["group"] = group
+    return node.model_copy(update=update) if update else node
+
+
+def _detached_from(node: SceneNode, parent_id: uuid.UUID) -> SceneNode:
+    return node.model_copy(update={"parent_id": None, "relation": None}) if node.parent_id == parent_id else node
+
+
+def _reattached(node: SceneNode, as_it_was: SceneNode | None) -> SceneNode:
+    if as_it_was is None or node.parent_id is not None:
+        return node
+    return node.model_copy(update={"parent_id": as_it_was.parent_id, "relation": as_it_was.relation})
+
+
+def _parent_kept_if_present(node: SceneNode, graph: SceneGraph) -> SceneNode:
+    present = node.parent_id is None or any(other.id == node.parent_id for other in graph.nodes)
+    return node if present else _detached_from(node, node.parent_id)
+
+
+def _revised(base: SceneGraph, base_revision: int, nodes: list[SceneNode]) -> SceneGraph:
+    return base.model_copy(update={"nodes": nodes, "revision": base_revision + 1})
+
+
+def _save_owner_revision(
+    database: Database, worker: Worker, saved: SceneGraph, base_revision: int, correction: Correction | None = None
+) -> None:
+    """Save the owner's revision on top of `base_revision`, refusing if someone saved since, and check it again."""
+    scan_id = saved.scan_id
+    with database.transaction() as connection:
+        if repo.latest_revision_number(connection, scan_id) != base_revision:
+            raise ApiProblem(409, STALE_LAYOUT)
+        admit_new_job(connection, worker.settings.max_queued_jobs)
+        repo.save_revision(connection, saved, source="owner", base_revision=base_revision)
+        if correction is not None:
+            record_correction(connection, scan_id, base_revision, correction)
+        repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
+    worker.wake()
+
+
 def _as_counter(node: SceneNode) -> SceneNode:
     return node.model_copy(update={"label": SERVICE_COUNTER_LABEL, "labeled_by": "owner", "movable": False})
 
@@ -206,15 +283,8 @@ def _as_scanned(node: SceneNode) -> SceneNode:
 def _relabel(database, worker, scan_id, base_revision, node_id, change) -> SceneGraph:
     base = _base_graph(database, scan_id, base_revision)
     target = _object_node(base, node_id)
-    nodes = [change(node) if node.id == target.id else node for node in base.nodes]
-    saved = base.model_copy(update={"nodes": nodes, "revision": base_revision + 1})
-    with database.transaction() as connection:
-        if repo.latest_revision_number(connection, scan_id) != base_revision:
-            raise ApiProblem(409, STALE_LAYOUT)
-        admit_new_job(connection, worker.settings.max_queued_jobs)
-        repo.save_revision(connection, saved, source="owner", base_revision=base_revision)
-        repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
-    worker.wake()
+    saved = _revised(base, base_revision, [change(node) if node.id == target.id else node for node in base.nodes])
+    _save_owner_revision(database, worker, saved, base_revision)
     return saved
 
 
@@ -234,5 +304,5 @@ def _object_node(graph: SceneGraph, node_id: uuid.UUID) -> SceneNode:
     except KeyError:
         raise ApiProblem(404, "no such object") from None
     if bounds_the_room(node):
-        raise ApiProblem(400, "only furniture and fixtures can be a counter")
+        raise ApiProblem(400, "only furniture and fixtures can be changed")
     return node

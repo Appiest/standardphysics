@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { foundInModel, pointedInModel, showsFound, type FoundObjects } from "@/components/owner/useFoundObjects";
 import type { SceneGraph, SceneNode } from "@/types/contracts";
-import { foldedSummary, foundGroups, foundMarks, heightRange, rowCenter, rowLabel, type FoundRow } from "./found-objects";
+import {
+  draftChanges,
+  foldedSummary,
+  foundGroups,
+  foundMarks,
+  FOUND_GROUPS,
+  groupOf,
+  heightRange,
+  pieceName,
+  rowCenter,
+  rowLabel,
+  suggestedNames,
+  type FoundRow,
+} from "./found-objects";
 
 type Piece = Pick<SceneNode, "id" | "kind" | "label" | "raw_category"> & { dimensions: [number, number, number]; m: SceneNode["transform"]["m"] };
 
@@ -62,6 +75,25 @@ describe("foundGroups", () => {
     const marked = { ...scene, nodes: [...scene.nodes, { ...node(SHARE_TEA[2]), id: "marked", label: "service counter", labeled_by: "owner" }] };
     const names = foundGroups(marked)[0].rows.map((row) => row.name);
     expect(names).toContain("Service counter");
+  });
+
+  it("files a piece the owner filed under a group, not the group its name would suggest", () => {
+    const chairInSafety = { ...node(SHARE_TEA[4]), id: "chair-safety", group: "safety" };
+    const withGroup = { ...scene, nodes: [...scene.nodes, chairInSafety] };
+    const safetyGroup = foundGroups(withGroup).find((group) => group.id === "safety");
+    expect(safetyGroup?.rows.flatMap((row) => row.nodeIds)).toContain("chair-safety");
+  });
+});
+
+describe("groupOf", () => {
+  it("lets the owner's group win over what the name would otherwise suggest", () => {
+    const chairInSafety = { ...node(SHARE_TEA[4]), group: "safety" };
+    expect(groupOf(chairInSafety)).toBe("safety");
+  });
+
+  it("falls back to the name when the group is not one of the known ones", () => {
+    const chairInKitchen = { ...node(SHARE_TEA[4]), group: "kitchen" };
+    expect(groupOf(chairInKitchen)).toBe("seating");
   });
 });
 
@@ -128,6 +160,81 @@ describe("rowCenter", () => {
     const center = rowCenter(scene, counters);
     expect(center?.x).toBeCloseTo((-3.1997 + -4.3785) / 2);
     expect(center?.y).toBeCloseTo((5.0475 + 2.7585) / 2);
+  });
+
+  it("works from just a list of node ids, without the rest of a row", () => {
+    const center = rowCenter(scene, { nodeIds: ["chair"] });
+    expect(center?.x).toBeCloseTo(-0.0923);
+    expect(center?.y).toBeCloseTo(0.8868);
+  });
+});
+
+describe("FOUND_GROUPS", () => {
+  it("lists every group's id and title, in the order the list shows them", () => {
+    expect(FOUND_GROUPS).toEqual([
+      { id: "service", title: "Counters and payment" },
+      { id: "seating", title: "Tables and seating" },
+      { id: "access", title: "Ramps and steps" },
+      { id: "safety", title: "Safety" },
+      { id: "other", title: "Everything else" },
+    ]);
+  });
+});
+
+describe("pieceName", () => {
+  it("is just the row's name when it is the only piece", () => {
+    const row: FoundRow = { id: "service:Card reader", group: "service", name: "Card reader", nodeIds: ["terminal-1"], topInches: [] };
+    expect(pieceName(row, "terminal-1")).toBe("Card reader");
+  });
+
+  it("numbers a piece by its place in a row with several", () => {
+    const row: FoundRow = { id: "seating:Chair", group: "seating", name: "Chair", nodeIds: ["a", "b", "c"], topInches: [] };
+    expect(pieceName(row, "c")).toBe("Chair 3");
+  });
+});
+
+describe("suggestedNames", () => {
+  it("puts what's already in the shop first, then the list's own kind words, with no name repeated", () => {
+    const names = suggestedNames(foundGroups(scene));
+    expect(names.slice(0, 5)).toEqual(["Counter", "Payment terminal", "Chair", "Table", "Fire extinguisher"]);
+    expect(names.filter((name) => name === "Fire extinguisher")).toHaveLength(1);
+    expect(names).toContain("Ramp");
+  });
+});
+
+describe("draftChanges", () => {
+  const row: FoundRow = { id: "seating:Chair", group: "seating", name: "Chair", nodeIds: ["a"], topInches: [] };
+
+  it("is null when nothing changed", () => {
+    expect(draftChanges(row, { name: "Chair", group: "seating" })).toBeNull();
+  });
+
+  it("is null when the name only differs in case or spacing", () => {
+    expect(draftChanges(row, { name: "  Chair  ", group: "seating" })).toBeNull();
+    expect(draftChanges(row, { name: "CHAIR", group: "seating" })).toBeNull();
+  });
+
+  it("treats underscores as equivalent to spaces when comparing names", () => {
+    const shelfRow: FoundRow = { id: "other:Wall shelf", group: "other", name: "Wall shelf", nodeIds: ["s"], topInches: [] };
+    expect(draftChanges(shelfRow, { name: "Wall_shelf", group: "other" })).toBeNull();
+  });
+
+  it("gives a label when the trimmed name genuinely changed", () => {
+    expect(draftChanges(row, { name: "Stool", group: "seating" })).toEqual({ label: "Stool" });
+  });
+
+  it("gives a group when only the group changed", () => {
+    expect(draftChanges(row, { name: "Chair", group: "safety" })).toEqual({ group: "safety" });
+  });
+
+  it("gives both when the name and the group both changed", () => {
+    expect(draftChanges(row, { name: "Stool", group: "safety" })).toEqual({ label: "Stool", group: "safety" });
+  });
+
+  it("treats a blank or whitespace-only name as no rename", () => {
+    expect(draftChanges(row, { name: "", group: "seating" })).toBeNull();
+    expect(draftChanges(row, { name: "   ", group: "seating" })).toBeNull();
+    expect(draftChanges(row, { name: "   ", group: "safety" })).toEqual({ group: "safety" });
   });
 });
 

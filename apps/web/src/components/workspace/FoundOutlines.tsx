@@ -15,6 +15,7 @@ export type FoundHandles = {
   marks: FoundMark[];
   hoveredRowId: string | null;
   selectedRowId: string | null;
+  selectedNodeId: string | null;
   hoveredNodeId: string | null;
   onHoverNode: (nodeId: string | null) => void;
   onPickNode: (nodeId: string) => void;
@@ -34,10 +35,17 @@ const LOOKS: Record<MarkState, { fillOpacity: number | null; edgeColor: string; 
   selected: { fillOpacity: 0.16, edgeColor: MODEL.accent, edgeOpacity: 1, lineWidth: 2.5, inFront: true },
 };
 
+/** A picked piece stands out from the rest of its row, which stays lit around it. */
 function stateOf(mark: FoundMark, handles: FoundHandles): MarkState {
+  if (handles.selectedNodeId) return pieceState(mark, handles);
   if (mark.rowId === handles.selectedRowId) return "selected";
   if (mark.rowId === handles.hoveredRowId) return "hovered";
   return "idle";
+}
+
+function pieceState(mark: FoundMark, handles: FoundHandles): MarkState {
+  if (mark.nodeId === handles.selectedNodeId) return "selected";
+  return mark.rowId === handles.selectedRowId || mark.rowId === handles.hoveredRowId ? "hovered" : "idle";
 }
 
 function rowSizes(marks: FoundMark[]): Map<string, number> {
@@ -139,7 +147,8 @@ function Outlines({ scene, handles }: { scene: SceneGraph; handles: FoundHandles
     <group>
       {placed.map(({ mark, node, matrix }) => {
         const state = stateOf(mark, handles);
-        const labelled = isLabelled(state, sizes.get(mark.rowId) ?? 0, handles.hoveredNodeId === mark.nodeId);
+        const pointedAt = handles.hoveredNodeId === mark.nodeId || handles.selectedNodeId === mark.nodeId;
+        const labelled = isLabelled(state, sizes.get(mark.rowId) ?? 0, pointedAt);
         return <FoundBox key={mark.nodeId} mark={mark} node={node} matrix={matrix} state={state} labelled={labelled} onHoverNode={handles.onHoverNode} onPickNode={handles.onPickNode} />;
       })}
     </group>

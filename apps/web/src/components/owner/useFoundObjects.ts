@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import type { FoundHandles } from "@/components/workspace/FoundOutlines";
-import { type FoundGroup, foundGroups, foundMarks, rowCenter } from "@/lib/found-objects";
+import { type FoundGroup, type FoundRow, foundGroups, foundMarks, rowCenter } from "@/lib/found-objects";
 import type { SceneGraph, Vec3 } from "@/types/contracts";
 
 /** Past this many pieces the camera stays on the whole shop; flying to the middle of 24 chairs shows none of them. */
@@ -18,6 +18,8 @@ export type FoundObjects = {
   handles: FoundHandles;
   hoveredRowId: string | null;
   selectedRowId: string | null;
+  /** The one piece picked, from its row or by tapping it in the model; null while a row of several is open. */
+  selectedNodeId: string | null;
   /** Where the camera should look, when the owner picked a row it can frame. */
   focus: Vec3 | null;
   hoverRow: (rowId: string | null) => void;
@@ -31,12 +33,26 @@ export type FoundObjects = {
   frameShift: number;
 };
 
-/** Where the camera faces for a row, or nothing when the row is too spread out to frame. */
-function useFocusOf(scene: SceneGraph, groups: FoundGroup[]): (rowId: string) => Vec3 | null {
-  return useCallback((rowId) => {
-    const row = groups.flatMap((group) => group.rows).find((candidate) => candidate.id === rowId);
-    if (!row || row.nodeIds.length > MOST_PIECES_TO_FLY_TO) return null;
-    return rowCenter(scene, row);
+type Framing = {
+  /** The camera's target for a row, or nothing when the row is too spread out to frame. */
+  ofRow: (rowId: string) => Vec3 | null;
+  ofPiece: (nodeId: string) => Vec3 | null;
+  /** The piece a row stands for when it has only one. */
+  onlyPiece: (rowId: string) => string | null;
+};
+
+function useFraming(scene: SceneGraph, groups: FoundGroup[]): Framing {
+  return useMemo(() => {
+    const rows = new Map<string, FoundRow>(groups.flatMap((group) => group.rows.map((row) => [row.id, row])));
+    const ofRow = (rowId: string) => {
+      const row = rows.get(rowId);
+      return !row || row.nodeIds.length > MOST_PIECES_TO_FLY_TO ? null : rowCenter(scene, row);
+    };
+    const onlyPiece = (rowId: string) => {
+      const nodeIds = rows.get(rowId)?.nodeIds ?? [];
+      return nodeIds.length === 1 ? nodeIds[0] : null;
+    };
+    return { ofRow, ofPiece: (nodeId: string) => rowCenter(scene, { nodeIds: [nodeId] }), onlyPiece };
   }, [scene, groups]);
 }
 
@@ -74,28 +90,36 @@ export function pointedInModel(found: FoundObjects): InModel {
   return { found: { ...found.handles, marks }, foundFocus: found.focus, frameShift: 0 };
 }
 
-type Selection = { rowId: string; focus: Vec3 | null };
+type Selection = { rowId: string; nodeId: string | null; focus: Vec3 | null };
 
 /**
- * The camera's target is fixed when the row is picked, so dragging one of its
- * pieces in a tried layout doesn't pull the camera along behind it.
+ * The camera's target is fixed when the row or piece is picked, so dragging one
+ * of its pieces in a tried layout doesn't pull the camera along behind it. A
+ * picked piece keeps its selection when renaming files it under another row.
  */
-function useSelection(rowOfNode: Map<string, string>, focusOf: (rowId: string) => Vec3 | null, onPick: () => void) {
+function useSelection(rowOfNode: Map<string, string>, framing: Framing, onPick: () => void) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const pickNode = useCallback((nodeId: string) => {
     const rowId = rowOfNode.get(nodeId);
     if (rowId) {
-      setSelection({ rowId, focus: focusOf(rowId) });
+      setSelection({ rowId, nodeId, focus: framing.ofPiece(nodeId) });
       onPick();
     }
     return rowId !== undefined;
-  }, [rowOfNode, focusOf, onPick]);
+  }, [rowOfNode, framing, onPick]);
   const toggleRow = useCallback((rowId: string) => {
     onPick();
-    setSelection((current) => (current?.rowId === rowId ? null : { rowId, focus: focusOf(rowId) }));
-  }, [focusOf, onPick]);
+    setSelection((current) => (current?.rowId === rowId ? null : { rowId, nodeId: framing.onlyPiece(rowId), focus: framing.ofRow(rowId) }));
+  }, [framing, onPick]);
   const clear = useCallback(() => setSelection(null), []);
-  return { selectedRowId: selection?.rowId ?? null, focus: selection?.focus ?? null, pickNode, toggleRow, clear };
+  return { ...selected(selection, rowOfNode), pickNode, toggleRow, clear };
+}
+
+/** The row follows the picked piece, so renaming it into another row keeps it open. */
+function selected(selection: Selection | null, rowOfNode: Map<string, string>) {
+  if (!selection) return { selectedRowId: null, selectedNodeId: null, focus: null };
+  const movedTo = selection.nodeId ? rowOfNode.get(selection.nodeId) : undefined;
+  return { selectedRowId: movedTo ?? selection.rowId, selectedNodeId: selection.nodeId, focus: selection.focus };
 }
 
 function useHover(rowOfNode: Map<string, string>) {
@@ -122,15 +146,15 @@ export function useFoundObjects(scene: SceneGraph, onPick: () => void): FoundObj
   const marks = useMemo(() => foundMarks(scene, groups), [scene, groups]);
   const rowOfNode = useMemo(() => new Map(marks.map((mark) => [mark.nodeId, mark.rowId])), [marks]);
   const hover = useHover(rowOfNode);
-  const selection = useSelection(rowOfNode, useFocusOf(scene, groups), onPick);
+  const selection = useSelection(rowOfNode, useFraming(scene, groups), onPick);
   const [legendOpen, setLegendOpen] = useState(true);
   const legendCovers = useWideScreen() && legendOpen && groups.length > 0;
 
   const { pickNode } = selection;
   const handles = useMemo<FoundHandles>(() => ({
-    marks, hoveredRowId: hover.hoveredRowId, selectedRowId: selection.selectedRowId, hoveredNodeId: hover.hoveredNodeId,
-    onHoverNode: hover.hoverNode, onPickNode: (nodeId) => { pickNode(nodeId); },
-  }), [marks, hover.hoveredRowId, selection.selectedRowId, hover.hoveredNodeId, hover.hoverNode, pickNode]);
+    marks, hoveredRowId: hover.hoveredRowId, selectedRowId: selection.selectedRowId, selectedNodeId: selection.selectedNodeId,
+    hoveredNodeId: hover.hoveredNodeId, onHoverNode: hover.hoverNode, onPickNode: (nodeId) => { pickNode(nodeId); },
+  }), [marks, hover.hoveredRowId, selection.selectedRowId, selection.selectedNodeId, hover.hoveredNodeId, hover.hoverNode, pickNode]);
 
   return {
     groups, handles, hoveredRowId: hover.hoveredRowId, hoverRow: hover.hoverRow, ...selection,
