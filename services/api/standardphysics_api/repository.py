@@ -9,7 +9,6 @@ import uuid
 from datetime import UTC, datetime
 
 from standardphysics_agents.checks_version import checks_version
-
 from standardphysics_contracts import (
     GEOMETRY_REQUIRED_ARTIFACT_KINDS,
     SEMANTIC_REQUIRED_ARTIFACT_KINDS,

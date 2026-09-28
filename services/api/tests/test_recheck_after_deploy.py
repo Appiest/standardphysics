@@ -1,7 +1,8 @@
 """A deploy that changes what decides a result checks every shop again, and leaves current results alone."""
 
-from conftest import drain
 from standardphysics_agents.checks_version import checks_version
+
+from conftest import drain
 from standardphysics_api.worker import ASSESS
 
 
