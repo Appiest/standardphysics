@@ -153,8 +153,15 @@ def _cleared_sentence(finding: Finding, rule: RuleSpec) -> str:
             f"{COMPARISON_WORDS[rule.comparison]} {_whole_or_tenth(rule.threshold)} in.")
 
 
-def _improved_sentence(finding: Finding, rule: RuleSpec, after_inches: float | None) -> str:
-    return (f"Improved: {finding.title} (ADA {rule.citation.section}), from "
+def _moved_toward_passing(rule: RuleSpec, before: float | None, after: float | None) -> bool:
+    """Up is better for an at-least rule and down for an at-most one; no clear space counts as zero."""
+    before_inches, after_inches = before or 0.0, after or 0.0
+    return after_inches > before_inches if rule.comparison == "at_least" else after_inches < before_inches
+
+
+def _changed_sentence(finding: Finding, rule: RuleSpec, after_inches: float | None) -> str:
+    verdict = "Improved" if _moved_toward_passing(rule, finding.measured_inches, after_inches) else "Got worse"
+    return (f"{verdict}: {finding.title} (ADA {rule.citation.section}), from "
             f"{_measured_phrase(finding.measured_inches)} to {_measured_phrase(after_inches)}; "
             f"the standard asks for {COMPARISON_WORDS[rule.comparison]} {_whole_or_tenth(rule.threshold)} in.")
 
@@ -165,7 +172,7 @@ def _fixed_sentence(finding: Finding, rule: RuleSpec, after_problems: dict) -> s
         return _cleared_sentence(finding, rule)
     if _measured_phrase(still_there.measured_inches) == _measured_phrase(finding.measured_inches):
         return None
-    return _improved_sentence(finding, rule, still_there.measured_inches)
+    return _changed_sentence(finding, rule, still_there.measured_inches)
 
 
 def _fixed_sentences(checker: Assessor, before: SceneGraph, after: SceneGraph) -> list[str]:
