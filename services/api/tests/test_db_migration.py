@@ -220,6 +220,10 @@ def _every_version() -> list[int]:
     return list(range(1, MIGRATIONS[-1].version + 1))
 
 
+PREVIOUS_RELEASE_VERSION = 34
+"""The newest migration previous_release_db.py already builds. Later ones run on its databases."""
+
+
 def _seed_production_rows(path: pathlib.Path) -> None:
     connection = sqlite3.connect(path)
     connection.executescript(
@@ -246,7 +250,7 @@ def _production_rows(path: pathlib.Path) -> dict[str, list[tuple]]:
     return {table: _read(path, sql) for table, sql in PRODUCTION_ROWS.items()}
 
 
-def test_a_fresh_database_runs_every_migration_to_the_previous_release_schema(tmp_path):
+def test_a_fresh_database_runs_every_migration_to_the_shape_an_upgraded_one_reaches(tmp_path):
     from previous_release_db import open_as_previous_release
 
     from standardphysics_api.db import Database
@@ -255,6 +259,7 @@ def test_a_fresh_database_runs_every_migration_to_the_previous_release_schema(tm
     previous = tmp_path / "previous.sqlite3"
     Database(fresh)
     open_as_previous_release(previous)
+    Database(previous)
 
     recorded = _recorded(fresh)
     assert [version for version, _, _ in recorded] == _every_version()
@@ -262,21 +267,22 @@ def test_a_fresh_database_runs_every_migration_to_the_previous_release_schema(tm
     assert _shape(fresh) == _shape(previous)
 
 
-def test_the_previous_release_database_records_every_version_once_without_running_any(tmp_path):
+def test_the_previous_release_database_detects_what_it_has_and_runs_only_what_came_after(tmp_path):
     from previous_release_db import open_as_previous_release
 
     from standardphysics_api.db import Database
 
     path = tmp_path / "standardphysics.sqlite3"
+    fresh = tmp_path / "fresh.sqlite3"
     open_as_previous_release(path)
-    shape_before = _shape(path)
 
     Database(path)
+    Database(fresh)
 
     recorded = _recorded(path)
     assert [version for version, _, _ in recorded] == _every_version()
-    assert all(detected == 1 for _, _, detected in recorded)
-    assert _shape(path) == shape_before
+    assert all(detected == (version <= PREVIOUS_RELEASE_VERSION) for version, _, detected in recorded)
+    assert _shape(path) == _shape(fresh)
 
 
 def test_the_production_shape_keeps_its_rows_through_the_upgrade(tmp_path):
