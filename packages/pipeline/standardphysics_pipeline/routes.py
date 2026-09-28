@@ -96,12 +96,13 @@ def _nearest(walkable: np.ndarray, cell: tuple[int, int]):
 
 
 def _stands_indoors(grid: Grid, cell: tuple[int, int]) -> bool:
-    """Whether a stop is on the scanned floor rather than the ground outside."""
-    return (
-        grid.indoors is not None
-        and grid.contains(*cell)
-        and bool(grid.indoors[cell])
-    )
+    """Whether a stop is on the scanned floor rather than the ground outside.
+
+    Asked of the whole floor, not only the part inside the walls: a stop left
+    behind a wall is still a stop in the shop, and `_nearest` draws it in.
+    """
+    floor = grid.on_floor if grid.on_floor is not None else grid.indoors
+    return floor is not None and grid.contains(*cell) and bool(floor[cell])
 
 
 @dataclass(frozen=True)
