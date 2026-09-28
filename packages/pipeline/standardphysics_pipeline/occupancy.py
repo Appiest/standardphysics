@@ -36,6 +36,10 @@ anything taller. Toe clearance describes space beneath an element; it does not
 make a solid object on the floor passable.
 """
 
+UNCLAIMED_SURFACE = "lidar_candidate"
+"""The category of a box drawn around scanned faces nothing has claimed. It bounds a surface, which can run along
+a whole wall and ceiling, so it says where something was seen, not how much floor anything takes up."""
+
 PASSABLE_KINDS = {"floor", "window", "opening", "door"}
 """Doors and openings are how you get through a wall, not obstacles."""
 
@@ -174,9 +178,10 @@ def blocks_floor(node: SceneNode) -> bool:
     has a low top and blocks nothing either.
 
     A node that measured nothing blocks nothing: it says where something was
-    seen, not how much floor it takes up.
+    seen, not how much floor it takes up. Neither does a box around unclaimed
+    faces: on a real Share Tea scan one ran 10 by 9.6 m and closed every route.
     """
-    if node.kind in PASSABLE_KINDS or measured_nothing(node):
+    if node.kind in PASSABLE_KINDS or measured_nothing(node) or node.raw_category == UNCLAIMED_SURFACE:
         return False
     centre = node.transform.position.z
     top = centre + node.dimensions.z / 2
