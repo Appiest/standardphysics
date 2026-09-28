@@ -251,8 +251,11 @@ def test_an_unusable_answer_costs_one_model_call_and_falls_back_to_local_labels(
 
     result = reconstruct_result(graph, transport=transport)
 
+    batch_count = len(range(0, len(graph.contents()), astra.RECONSTRUCTION_BATCH_SIZE))
+    assert batch_count > 1
     assert set(attempted_models) == {astra.DEFAULT_MODEL}
-    assert len(attempted_models) == len(range(0, len(graph.contents()), astra.RECONSTRUCTION_BATCH_SIZE))
+    # The first invalid batch cancels batches no worker has started yet, so fewer calls than batches is correct.
+    assert 1 <= len(attempted_models) <= batch_count
     assert result.source == "roomplan"
 
 
