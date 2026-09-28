@@ -4,6 +4,7 @@ import { Cube, SquaresFour } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/Button";
 import type { Arrangement } from "@/components/workspace/useArrangement";
+import type { StaffHandles } from "@/lib/staff-areas";
 import type { SceneGraph } from "@/types/contracts";
 import { LayoutPlan } from "./LayoutPlan";
 import type { LayoutView, TryLayout } from "./useTryLayout";
@@ -18,12 +19,14 @@ const VIEWS: { id: LayoutView; words: string; Icon: typeof Cube }[] = [
  * same moved layout, so switching views shows the same pieces where they were
  * left; the model stays mounted under the plan so switching is instant.
  */
-export function LayoutStage({ arrangement, scanned, trial, pointedIds }: {
+export function LayoutStage({ arrangement, scanned, trial, pointedIds, staff }: {
   arrangement: Arrangement;
   scanned: SceneGraph;
   trial: TryLayout;
   /** Pieces the owner is pointing at in the found list. */
   pointedIds: Set<string>;
+  /** The staff-only floor, shared with the 3D view so a change in one shows in the other. */
+  staff: StaffHandles | null;
 }) {
   const { drag, drop } = arrangement;
   const handlers = useMemo(() => ({
@@ -34,16 +37,16 @@ export function LayoutStage({ arrangement, scanned, trial, pointedIds }: {
   return (
     <>
       {trial.view === "plan" && (
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 z-30">
           <LayoutPlan
             shown={arrangement.shown} scanned={scanned}
             activeId={arrangement.activeId} blockedIds={arrangement.blockedIds} pointedIds={pointedIds} movedIds={trial.movedIds}
             problems={trial.drawn.problems} cleared={trial.drawn.cleared}
-            onFixedTap={trial.onFixedTap} onKey={trial.onKey} {...handlers}
+            onFixedTap={trial.onFixedTap} onKey={trial.onKey} staff={staff} {...handlers}
           />
         </div>
       )}
-      <div role="group" aria-label="How to show the shop" className="absolute right-3 top-3 flex gap-1 rounded-xl bg-sheet/95 p-1 shadow-float">
+      <div role="group" aria-label="How to show the shop" className="absolute right-3 top-3 z-30 flex gap-1 rounded-xl bg-sheet/95 p-1 shadow-float">
         {VIEWS.map(({ id, words, Icon }) => (
           <Button key={id} aria-pressed={trial.view === id} className="aria-pressed:bg-ink aria-pressed:text-paper" onClick={() => trial.setView(id)}>
             <Icon size={16} weight="bold" aria-hidden />

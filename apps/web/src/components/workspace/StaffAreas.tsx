@@ -1,25 +1,18 @@
 "use client";
 
-import { Html, Line } from "@react-three/drei";
+import { Html, Line, useCursor } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useMemo, useRef, useState } from "react";
 import { Color, Plane, Vector3 } from "three";
-import { CORNERS, type Corner, cornerPoint, outline } from "@/lib/staff-areas";
+import { CORNERS, type Corner, cornerPoint, isOpen, outline, type StaffHandles } from "@/lib/staff-areas";
 import type { StaffArea } from "@/types/contracts";
 import { MODEL } from "./palette";
+
+export type { StaffHandles };
 
 const FLOOR = new Plane(new Vector3(0, 1, 0), 0);
 const LIFT = 0.015;
 const HANDLE_RADIUS = 0.16;
-
-export type StaffHandles = {
-  areas: StaffArea[];
-  editable: boolean;
-  onGrab: () => void;
-  onMove: (index: number, dx: number, dy: number) => void;
-  onResize: (index: number, corner: Corner, to: { x: number; y: number }) => void;
-  onDrop: () => void;
-};
 
 type FloorPoint = { x: number; y: number };
 type Drag = (from: FloorPoint, to: FloorPoint) => void;
@@ -84,8 +77,26 @@ function CornerHandle({ area, corner, index, handles }: { area: StaffArea; corne
   );
 }
 
+/** A closed area takes a tap to open, so a drag that starts on it still turns the camera. */
+function useChooseOnTap(handles: StaffHandles, index: number, open: boolean) {
+  const [hovered, setHovered] = useState(false);
+  const choosable = handles.editable && !open;
+  useCursor(choosable && hovered);
+  if (!choosable) return {};
+  return {
+    onClick(event: ThreeEvent<MouseEvent>) {
+      event.stopPropagation();
+      handles.onChoose(index);
+    },
+    onPointerOver: () => setHovered(true),
+    onPointerOut: () => setHovered(false),
+  };
+}
+
 function Area({ area, index, handles }: { area: StaffArea; index: number; handles: StaffHandles }) {
+  const open = isOpen(handles, index);
   const drag = useFloorDrag(handles, (from, to) => handles.onMove(index, to.x - from.x, to.y - from.y));
+  const tap = useChooseOnTap(handles, index, open);
   const [uniforms] = useState(() => ({ uColor: { value: new Color(MODEL.ink) } }));
   const edge = useMemo(() => {
     const corners = outline(area).map(({ x, y }) => [x, LIFT, -y] as [number, number, number]);
@@ -97,16 +108,16 @@ function Area({ area, index, handles }: { area: StaffArea; index: number; handle
         position={[area.centre.x, LIFT, -area.centre.y]}
         rotation={[-Math.PI / 2, 0, (area.rotation_z_degrees * Math.PI) / 180]}
         renderOrder={1}
-        {...drag}
+        {...(open ? drag : tap)}
       >
         <planeGeometry args={[area.width, area.depth]} />
         <shaderMaterial vertexShader={vertexShader} fragmentShader={fragmentShader} uniforms={uniforms} transparent depthWrite={false} />
       </mesh>
-      <Line points={edge} color={MODEL.ink} lineWidth={2} dashed dashSize={0.2} gapSize={0.12} depthTest={false} renderOrder={2} />
-      <Html position={[area.centre.x, 0.3, -area.centre.y]} center style={{ pointerEvents: "none" }}>
+      <Line points={edge} color={MODEL.ink} lineWidth={open ? 3 : 2} dashed={!open} dashSize={0.2} gapSize={0.12} depthTest={false} renderOrder={2} />
+      <Html position={[area.centre.x, 0.3, -area.centre.y]} center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }}>
         <span className="block whitespace-nowrap rounded-md bg-ink px-2 py-1 text-sm font-semibold text-paper shadow-md">Staff only</span>
       </Html>
-      {handles.editable && CORNERS.map((corner) => (
+      {open && CORNERS.map((corner) => (
         <CornerHandle key={`${corner.alongSign}${corner.acrossSign}`} area={area} corner={corner} index={index} handles={handles} />
       ))}
     </group>

@@ -1,5 +1,18 @@
 import type { StaffArea } from "@/types/contracts";
 
+/** The staff-only areas as a view draws them, and what the owner can do to them there. */
+export type StaffHandles = {
+  areas: StaffArea[];
+  editable: boolean;
+  /** The area whose corners show and which drags; "all" keeps every area open. */
+  chosen: number | "all" | null;
+  onChoose: (index: number | null) => void;
+  onGrab: () => void;
+  onMove: (index: number, dx: number, dy: number) => void;
+  onResize: (index: number, corner: Corner, to: { x: number; y: number }) => void;
+  onDrop: () => void;
+};
+
 /** Which corner a handle sits on, as signs along the area's own width and depth. */
 export type Corner = { alongSign: 1 | -1; acrossSign: 1 | -1 };
 
@@ -62,4 +75,9 @@ export function resizeArea(area: StaffArea, corner: Corner, to: { x: number; y: 
 
 export function newArea(centre: { x: number; y: number }): StaffArea {
   return { name: "Staff area", centre: { x: centre.x, y: centre.y, z: 0 }, ...NEW_AREA, rotation_z_degrees: 0 };
+}
+
+/** Whether an area shows its corners and drags, rather than waiting for a tap. */
+export function isOpen(handles: StaffHandles, index: number) {
+  return handles.editable && (handles.chosen === "all" || handles.chosen === index);
 }

@@ -4,7 +4,9 @@ import { Lock } from "@phosphor-icons/react";
 import { type KeyboardEvent, type PointerEvent, useId, useMemo, useRef } from "react";
 import { drawnNodes, footprint, planBounds } from "@/components/FloorPlan";
 import { displayName, floorHeight, isListed } from "@/lib/found-objects";
+import type { StaffHandles } from "@/lib/staff-areas";
 import type { Finding, SceneGraph, SceneNode, Vec3 } from "@/types/contracts";
+import { STAFF_AREA_ATTRIBUTE, StaffPlanAreas } from "./StaffPlanAreas";
 import { type PlanDragHandlers, usePlanDrag } from "./usePlanDrag";
 
 /** Pieces smaller than this are hard to catch with a thumb, so their grab area grows to it. */
@@ -23,6 +25,8 @@ type PlanProps = PieceState & PlanDragHandlers & {
   cleared: Finding[];
   onFixedTap: (nodeId: string) => void;
   onKey: (nodeId: string, event: KeyboardEvent) => void;
+  /** The staff-only floor, drawn under the furniture. */
+  staff: StaffHandles | null;
 };
 
 type Role = "movable" | "fixed" | "backdrop";
@@ -58,14 +62,18 @@ export function LayoutPlan(props: PlanProps) {
   const view = useMemo(() => viewBoxOf(props.scanned), [props.scanned]);
   const floor = useMemo(() => floorHeight(props.scanned), [props.scanned]);
   const nodes = useMemo(() => [...drawnNodes(props.shown)].sort((a, b) => layerOf(a, floor) - layerOf(b, floor)), [props.shown, floor]);
+  const floors = nodes.filter((node) => node.kind === "floor");
+  const above = nodes.filter((node) => node.kind !== "floor");
   return (
-    <svg ref={svgRef} viewBox={view} className="size-full touch-none select-none bg-paper" role="group" aria-label="Your shop from above. Drag a piece to move it, or focus one and use the arrow keys.">
+    <svg ref={svgRef} viewBox={view} onPointerDown={(event) => closeStaffUnlessOnIt(props.staff, event.target)} className="size-full touch-none select-none bg-paper" role="group" aria-label="Your shop from above. Drag a piece to move it, or focus one and use the arrow keys.">
       <defs>
         <pattern id={hatchId} width={0.08} height={0.08} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <line x1="0" y1="0" x2="0" y2="0.08" stroke="var(--color-ink)" strokeWidth={0.015} strokeOpacity={0.5} />
         </pattern>
       </defs>
-      {nodes.map((node) => {
+      {floors.map((node) => <Backdrop key={node.id} node={node} />)}
+      {props.staff && <StaffPlanAreas handles={props.staff} svgRef={svgRef} />}
+      {above.map((node) => {
         const role = roleOf(node, floor);
         if (role === "backdrop") return <Backdrop key={node.id} node={node} />;
         if (role === "fixed") return <FixedPiece key={node.id} node={node} hatch={`url(#${hatchId})`} onTap={props.onFixedTap} />;
@@ -75,6 +83,12 @@ export function LayoutPlan(props: PlanProps) {
       {props.problems.map((finding) => <Dimension key={finding.id} finding={finding} tone="problem" />)}
     </svg>
   );
+}
+
+/** A tap anywhere on the plan but a staff area closes the open one, as a tap off it does in 3D. */
+function closeStaffUnlessOnIt(staff: StaffHandles | null, target: EventTarget) {
+  if (!staff || staff.chosen === null || staff.chosen === "all") return;
+  if (!(target instanceof Element) || !target.closest(`[${STAFF_AREA_ATTRIBUTE}]`)) staff.onChoose(null);
 }
 
 function viewBoxOf(scene: SceneGraph): string {
