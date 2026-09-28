@@ -10,8 +10,9 @@ shifts are not, because the owner's plan cannot show a moved wall. Nothing is
 saved: the stream ends with every move the loop made, for the owner to open
 in the plan and keep or not.
 
-A preview, like the single proposal: the menu uses the training checker, which
-treats scan geometry marked "needs another look" as measured.
+The loop works on what the owner's report shows: an answer resting on scan
+geometry marked "needs another look" stays a question here too, so the loop
+never chases something the owner sees as still to check.
 
 A loop holds one of the owner's `ModelSlots` from the moment it is admitted
 until its stream ends, and may spend at most MODEL_LOOP_TURNS calls' worth of
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import logging
 import time
 import uuid
 from collections.abc import Callable, Iterator
@@ -51,11 +53,14 @@ from .model_chooser import ModelChooser, ModelReplyError, ModelSlots, without_wa
 from .proposals import fix_inputs, owner_wishes_of, space_typology_of
 from .stages import Stages
 
+log = logging.getLogger(__name__)
+
 MODEL_LOOP_TURNS = 5
 LOOP_MENU_SECONDS = 40.0
 """Longer than a single proposal's menu: built-in slides are guessed last, and on Share Tea the whole menu,
 built-ins included, took 31 s. The card shows a turn clock, so the owner sees the wait."""
 LOOP_ENVIRONMENT = "SP_LOOP_"
+UNEXPECTED_FAILURE = "Something went wrong on our side while fixing the room. Nothing was changed. Try again."
 clock: Callable[[], float] = time.monotonic
 
 
@@ -135,7 +140,7 @@ class ModelLoop:
         menu = without_wall_shifts(build_menu(self.current, self.checker, stated=self.stated, limits=limits))
         self.menu = menu
         if not menu.options:
-            self.stop = "The menu has no move left for what remains."
+            self.stop = "Nothing we can move or build clears what is left, so it stays on your list."
             return None
         return menu_messages(self.current, self.checker, menu, self.last)
 
@@ -149,7 +154,7 @@ class ModelLoop:
             self.moves = _combined(self.moves, added)
             self.built_ins |= {move.node_id for move in edits.fixture_moves}
         else:
-            self.stop = "The model chose nothing it could use."
+            self.stop = "The model did not pick a change that helps, so it stopped here."
         open_problems = self.open_problems()
         self.last = {**resolution.as_dict(), "fixable_left": len(open_problems)}
         picked = [menu.picked_in_owner_words(number) for number in resolution.applied]
@@ -185,11 +190,18 @@ def _plan(graph: SceneGraph, moves: list[NodeMove]) -> Plan | str:
     return Plan(start.model_copy(update={"revision": graph.revision}), carried, fixtures)
 
 
+def _proposed(loop: ModelLoop, plan: Plan) -> list[uuid.UUID]:
+    """The pieces whose move differs from the plan the loop started with."""
+    started = {move.node_id: move for move in plan.moves}
+    return [node_id for node_id, move in loop.moves.items() if started.get(node_id) != move]
+
+
 def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: ModelChooser, typology,
             wishes) -> Iterator[ModelLoopEvent]:
     """Turns until the room is clear, the menu runs dry, the model picks nothing, or the turns or time run out."""
     with stages.locked():
-        loop = ModelLoop(plan.start, stages.menu_checker(plan.start, scenario, typology, scope="fittings"),
+        checker = stages.menu_checker(plan.start, scenario, typology, scope="fittings", trust_unsure_geometry=False)
+        loop = ModelLoop(plan.start, checker,
                          stated_book(plan.start, list(wishes)), moves={move.node_id: move for move in plan.moves},
                          built_ins=set(plan.built_ins))
         open_problems = loop.open_problems()
@@ -216,7 +228,7 @@ def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: Mo
         left = loop.fixable_left()
     explanation = stages.explain(graph, loop.current, scenario, wishes) if loop.moves else None
     yield ModelLoopEvent(kind="finished", moves=list(loop.moves.values()), built_ins=sorted(loop.built_ins, key=str),
-                         explanation=explanation, fixable_left=left,
+                         proposed=_proposed(loop, plan), explanation=explanation, fixable_left=left,
                          message=loop.stop or f"Stopped after {MODEL_LOOP_TURNS} turns.")
 
 
@@ -237,6 +249,9 @@ def _streamed(events: Iterator[ModelLoopEvent], chooser: ModelChooser, release: 
         yield from (_line(event) for event in events)
     except (OSError, ModelReplyError) as error:
         yield _line(ModelLoopEvent(kind="failed", message=_failure(chooser, error)))
+    except Exception:
+        log.exception("the model loop stopped on an unexpected error")
+        yield _line(ModelLoopEvent(kind="failed", message=UNEXPECTED_FAILURE))
     finally:
         release()
 

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ModelLoopEvent, NodeMove } from "@/types/contracts";
-import { finishedDetail, finishedHeadline, idleDetail, isAllCleared, namedProblems, problemsLeft, turnClock, turnInProgress, turnLines, turnTitle } from "./fix-all-copy";
+import { finishedDetail, finishedHeadline, idleDetail, isAllCleared, namedProblems, problemsLeft, showMovesLabel, turnClock, turnInProgress, turnLines, turnTitle } from "./fix-all-copy";
 import { NOT_STARTED } from "./model-loop-progress";
 
 const move: NodeMove = { node_id: "a", delta_translation: { x: 0.3, y: 0, z: 0 }, delta_rotation_z_degrees: 0 };
 
 function event(fields: Partial<ModelLoopEvent>): ModelLoopEvent {
-  return { kind: "turn", turn: null, picked: [], why: "", fixable_left: null, working_on: [], turns_at_most: null, construction: [], built_ins: [], moves: [], explanation: null, message: "", ...fields };
+  return { kind: "turn", turn: null, picked: [], why: "", fixable_left: null, working_on: [], turns_at_most: null, construction: [], built_ins: [], proposed: [], moves: [], explanation: null, message: "", ...fields };
 }
 
 describe("fix all copy", () => {
@@ -40,12 +40,12 @@ describe("fix all copy", () => {
   });
 
   it("says how many were fixed and why it stopped when the run falls short", () => {
-    const partial = event({ kind: "finished", fixable_left: 2, moves: [move], message: "The menu has no move left for what remains." });
+    const partial = event({ kind: "finished", fixable_left: 2, moves: [move], proposed: [move.node_id], message: "Nothing we can move or build clears what is left, so it stays on your list." });
     expect(finishedHeadline(partial, 3)).toBe("Fixed 1 of 3 problems");
-    expect(finishedDetail(partial, false)).toBe("1 piece moves. The menu has no move left for what remains.");
-    const none = event({ kind: "finished", fixable_left: 3, message: "The model chose nothing it could use." });
+    expect(finishedDetail(partial, false)).toBe("1 piece moves. Nothing we can move or build clears what is left, so it stays on your list.");
+    const none = event({ kind: "finished", fixable_left: 3, message: "The model did not pick a change that helps, so it stopped here." });
     expect(finishedHeadline(none, 3)).toBe("No furniture move fixed a problem");
-    expect(finishedDetail(none, false)).toBe("The layout stays as it is. The model chose nothing it could use.");
+    expect(finishedDetail(none, false)).toBe("The layout stays as it is. The model did not pick a change that helps, so it stopped here.");
   });
 
   it("words the turn in progress as a count and a clock", () => {
@@ -61,9 +61,21 @@ describe("fix all copy", () => {
   });
 
   it("says when a built-in moves, because a contractor has to do it", () => {
-    const one = event({ kind: "finished", moves: [move], built_ins: ["a"], fixable_left: 0 });
+    const one = event({ kind: "finished", moves: [move], built_ins: ["a"], proposed: ["a"], fixable_left: 0 });
     expect(finishedDetail(one, true)).toBe("1 built-in piece moves. A contractor has to move it.");
-    const mixed = event({ kind: "finished", moves: [move, { ...move, node_id: "b" }, { ...move, node_id: "c" }], built_ins: ["c"], fixable_left: 0 });
+    const mixed = event({ kind: "finished", moves: [move, { ...move, node_id: "b" }, { ...move, node_id: "c" }], built_ins: ["c"], proposed: ["a", "b", "c"], fixable_left: 0 });
     expect(finishedDetail(mixed, true)).toBe("3 pieces move. One is built in, so a contractor has to move it.");
+  });
+
+  it("counts only what the run proposes, not the owner's own moves it started from", () => {
+    const planOnly = event({ kind: "finished", moves: [move, { ...move, node_id: "b" }], fixable_left: 3, message: "Nothing we can move or build clears what is left, so it stays on your list." });
+    expect(finishedDetail(planOnly, false)).toBe("The layout stays as it is. Nothing we can move or build clears what is left, so it stays on your list.");
+    const oneMore = event({ kind: "finished", moves: [move, { ...move, node_id: "b" }], proposed: ["b"], fixable_left: 0 });
+    expect(finishedDetail(oneMore, true)).toBe("1 piece moves.");
+  });
+
+  it("counts the moves the show button puts on the plan", () => {
+    expect(showMovesLabel(1)).toBe("Show this move on the plan");
+    expect(showMovesLabel(3)).toBe("Show these 3 moves on the plan");
   });
 });

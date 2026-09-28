@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, CheckCircle } from "@phosphor-icons/react";
+import { Camera, CaretDown, CheckCircle, Question, Ruler } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { type ChangeEvent, type FormEvent, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -43,6 +43,53 @@ export function RequestList({ scanId, requests }: { scanId: string; requests: Ow
       ))}
     </ul>
   );
+}
+
+/**
+ * The same requests as a short menu: one row each, opened one at a time to answer,
+ * for requests the owner may send whenever suits them.
+ */
+export function RequestMenu({ scanId, requests }: { scanId: string; requests: OwnerRequest[] }) {
+  const group = useId();
+  return (
+    <ul className="flex flex-col divide-y divide-rule overflow-hidden rounded-2xl bg-sheet shadow-float">
+      {requests.map((request) => (
+        <li key={request.id}>
+          <RequestRow scanId={scanId} request={request} group={group} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const KIND_ICONS = { number: Ruler, photo: Camera, yes_no: Question, another_look: Camera } as const;
+
+function RequestRow({ scanId, request, group }: { scanId: string; request: OwnerRequest; group: string }) {
+  const action = useRequestAction(scanId);
+  const Icon = KIND_ICONS[request.kind];
+  return (
+    <details name={group} className="group/request">
+      <summary className="pressable-wide flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-ink/[0.03] [&::-webkit-details-marker]:hidden">
+        <Icon size={20} className="shrink-0 text-ink-muted" aria-hidden />
+        <span className="min-w-0 flex-1 text-pretty font-medium leading-snug">{request.title}</span>
+        <RowState request={request} />
+        <CaretDown size={16} weight="bold" className="shrink-0 text-ink-faint transition-transform duration-150 group-open/request:rotate-180" aria-hidden />
+      </summary>
+      <div className="flex flex-col gap-3 px-4 pb-4 ps-12">
+        {request.kind !== "yes_no" && <p className="text-pretty text-sm text-ink-muted">{request.detail}</p>}
+        <Answer request={request} action={action} />
+        {action.problem && <p role="alert" className="text-sm text-problem">{action.problem}</p>}
+      </div>
+    </details>
+  );
+}
+
+function RowState({ request }: { request: OwnerRequest }) {
+  if (request.status === "answered" || request.status === "checked") {
+    return <CheckCircle size={20} weight="fill" className="shrink-0 text-pass" aria-label="Sent" />;
+  }
+  if (request.status === "skipped") return <span className="shrink-0 text-sm text-ink-faint">Skipped</span>;
+  return null;
 }
 
 function RequestCard({ scanId, request }: { scanId: string; request: OwnerRequest }) {
