@@ -29,10 +29,9 @@ import { ToolsPanel } from "./ToolsPanel";
 import { FoundLegend, FoundSection } from "./FoundList";
 import { LayoutStage } from "./LayoutStage";
 import { type TryLayout, useTryLayout } from "./useTryLayout";
-import { type FoundObjects, foundInModel, pointedInModel, showsFound, useFoundObjects } from "./useFoundObjects";
+import { type FoundObjects, foundInModel, showsFound, useFoundObjects } from "./useFoundObjects";
 import { guessCounter, useOwnerModel } from "./useOwnerModel";
 import { usePathEditor } from "./usePathEditor";
-import { type StaffAdjuster, useStaffAdjuster } from "./useStaffAdjuster";
 import { WaitingPanel } from "./WaitingPanel";
 import { DeleteScanButton } from "@/components/workspace/DeleteScanButton";
 import { DrivingPad, WheelchairPanel } from "./WheelchairPanel";
@@ -248,7 +247,6 @@ function OwnerShop(props: ShopProps) {
   const save = useSaveAsk(guest);
   const statuses = useStatuses(scan.id, guest, save.ask);
   const path = usePathEditor(scan.id, props.suggestedPath, props.defaultPlaces);
-  const staff = useStaffAdjuster(scan.id, props.scenario);
   const arrangement = useArrangement(scan.id, scene, savePlan);
   const groups = useMemo(() => groupFindings(assessment?.findings ?? []), [assessment]);
   const problems = groups.problems;
@@ -263,7 +261,7 @@ function OwnerShop(props: ShopProps) {
     {
       panel: modelPanel(panel), scene, selected, counter,
       path: panel === "path" ? path : null, arrangement: panel === "plan" ? arrangement : null, wheelchair: panel === "wheelchair",
-      scenario: props.scenario, staff: staffToChange(staff, panel, readOnly), walkedLegs: tools.walkedLegs, ...foundForModel(found, trying, foundShown),
+      scenario: props.scenario, walkedLegs: tools.walkedLegs, ...foundInModel(found, foundShown),
     },
     pickNode,
     () => { setSelected(null); found.clear(); },
@@ -364,16 +362,6 @@ function pointedNodes(found: FoundObjects): Set<string> {
   const rowId = found.hoveredRowId ?? found.selectedRowId;
   const row = found.groups.flatMap((group) => group.rows).find((candidate) => candidate.id === rowId);
   return new Set(row?.nodeIds ?? []);
-}
-
-/** The staff-only floor stays put on a shop the owner can only read, and while they drive through it. */
-function staffToChange(staff: StaffAdjuster, panel: Panel | Tool, readOnly: boolean): StaffAdjuster | null {
-  return readOnly || panel === "wheelchair" ? null : staff;
-}
-
-/** The found pieces the model draws: only the pointed-at ones while a layout is tried, all of them on the steps that list them. */
-function foundForModel(found: FoundObjects, trying: boolean, shown: boolean) {
-  return trying ? pointedInModel(found) : foundInModel(found, shown);
 }
 
 /** The found list, counting moved pieces on each row while a layout is tried. */
