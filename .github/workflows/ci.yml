@@ -21,10 +21,10 @@ jobs:
       - run: python -m pip install ruff==0.16.7
       - run: python -m ruff check .
       - run: python -m ruff check --config services/api/pyproject.toml services/api/
-      - name: Type-check contracts and the API
+      - name: Type-check contracts, pipeline, agents and the API
         run: |
           python -m pip install mypy==2.3.1
-          python -m mypy packages/contracts/standardphysics_contracts services/api/standardphysics_api
+          python -m mypy
       - run: python -m pytest
       - run: python -m pytest services/api/tests -q
 

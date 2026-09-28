@@ -26,10 +26,12 @@ known-first-party = ["standardphysics_api", "conftest"]
 max-complexity = 10
 
 [tool.mypy]
-# CI checks the contracts package and the API service. The pipeline and agents
-# packages are imported for their types but not yet held to the checker, so
-# errors inside them stay silent until they get their own pass.
-files = ["packages/contracts/standardphysics_contracts", "services/api/standardphysics_api"]
+files = [
+    "packages/contracts/standardphysics_contracts",
+    "packages/pipeline/standardphysics_pipeline",
+    "packages/agents/standardphysics_agents",
+    "services/api/standardphysics_api",
+]
 mypy_path = "packages/contracts:packages/pipeline:packages/agents:packages/fixtures:services/api"
 plugins = ["pydantic.mypy"]
 check_untyped_defs = true
@@ -37,13 +39,73 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 
 [[tool.mypy.overrides]]
-module = ["standardphysics_pipeline.*", "standardphysics_agents.*", "standardphysics_fixtures.*"]
+module = ["standardphysics_fixtures.*"]
 follow_imports = "silent"
 
 [[tool.mypy.overrides]]
 # scipy ships no inline types, and scipy-stubs would be one more pin to keep in step.
 module = ["scipy.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Blender's own modules exist only inside Blender's bundled Python, where the
+# scripts under standardphysics_pipeline/blender_scripts run.
+module = ["bpy", "bpy.*", "bpy_extras.*", "bmesh", "bmesh.*", "mathutils", "mathutils.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Blender runs its scripts from their own folder, so they import build_glb as a
+# top-level sibling. That file is checked under its package name instead.
+module = ["build_glb"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Optional or untyped extras: torch backs the splat experiments, numba and
+# fast_simplification speed up texturing, imageio_ffmpeg encodes evaluation
+# videos, and trimesh loads scan meshes. None ships types CI can check against.
+module = ["torch", "torch.*", "numba", "fast_simplification", "imageio_ffmpeg", "trimesh", "trimesh.*"]
+ignore_missing_imports = true
+
+# Discovery, build_glb and object_shapes are being rewritten on another branch,
+# so their type fixes land with that work instead of conflicting with it. Each
+# stays checked with only the codes it still trips turned off.
+
+[[tool.mypy.overrides]]
+# map_crop_point_to_sensor returns an (x, y) pair but is annotated as a triple.
+module = ["standardphysics_pipeline.discovery.detect"]
+disable_error_code = ["arg-type", "return-value"]
+
+[[tool.mypy.overrides]]
+# Boxes built with tuple(...) lose their length, and attachments read without
+# narrowing the Optional first.
+module = ["standardphysics_pipeline.discovery.reconcile"]
+disable_error_code = ["arg-type", "union-attr"]
+
+[[tool.mypy.overrides]]
+# CarvedBox dimensions built with tuple(...) lose their length.
+module = ["standardphysics_pipeline.discovery.carve"]
+disable_error_code = ["arg-type"]
+
+[[tool.mypy.overrides]]
+# max() keyed by dict.get, whose overloads mypy cannot pick a key type from.
+module = ["standardphysics_pipeline.discovery.surface_attach"]
+disable_error_code = ["arg-type"]
+
+[[tool.mypy.overrides]]
+# An attachment read without narrowing the Optional, and an ignore that is no
+# longer needed.
+module = ["standardphysics_pipeline.discovery.semantic_corrections"]
+disable_error_code = ["union-attr", "unused-ignore"]
+
+[[tool.mypy.overrides]]
+# Optional names passed to dict.get, and a colour built with tuple(...).
+module = ["standardphysics_pipeline.blender_scripts.build_glb"]
+disable_error_code = ["arg-type", "return-value"]
+
+[[tool.mypy.overrides]]
+# capture_to_room passed on without narrowing the Optional.
+module = ["standardphysics_pipeline.object_shapes"]
+disable_error_code = ["arg-type"]
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
