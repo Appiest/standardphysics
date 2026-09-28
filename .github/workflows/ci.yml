@@ -31,6 +31,12 @@ jobs:
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # packages: write lets a master push publish the image it just tested.
+    # Pull requests from forks get a read-only token whatever this says, and
+    # the publishing steps below only run on master anyway.
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -42,6 +48,7 @@ jobs:
           context: .
           load: true
           tags: standardphysics:ci
+          build-args: GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       # Accounts, then a real RoomPlan bedroom through the worker, the
@@ -54,3 +61,17 @@ jobs:
       # script fails if any of them skip for want of it.
       - run: scripts/test_blender_in_image.sh standardphysics:ci
         timeout-minutes: 12
+      # A master commit that passed both is pushed exactly as tested, and
+      # scripts/deploy.sh pulls it by commit instead of rebuilding on the
+      # Droplet. The owner is lowercased because registry names must be.
+      - name: Publish the tested image to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/standardphysics:$GITHUB_SHA"
+          echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker tag standardphysics:ci "$image"
+          docker push --quiet "$image"
+          digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$image")"
+          echo "Published \`$image\` as \`$digest\`" >> "$GITHUB_STEP_SUMMARY"

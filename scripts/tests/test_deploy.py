@@ -17,6 +17,8 @@ import pytest
 REPO = pathlib.Path(__file__).resolve().parents[2]
 DEPLOY = REPO / "scripts/deploy.sh"
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
+PUBLISHED = f"ghcr.io/imhaohao/standardphysics:{COMMIT}"
+DIGEST = "ghcr.io/imhaohao/standardphysics@sha256:" + "f" * 64
 
 STAND_INS = {
     "ssh": 'exec bash -c "${@: -1}"\n',
@@ -29,6 +31,8 @@ case "$1" in
 esac
 """,
     "docker": """echo "docker $* GIT_SHA=${GIT_SHA:-}" >> "$STAND_IN_LOG"
+[ "$1" = pull ] && [ -z "${FAKE_PUBLISHED:-}" ] && exit 1
+[ "$1" = image ] && echo "$FAKE_DIGEST"
 if [ "$2" = exec ]; then
   printf '%s' "${@: -1}" > "$STAND_IN_QUERY"
   [ -n "${FAKE_IN_FLIGHT_FAILS:-}" ] && exit 1
@@ -62,6 +66,7 @@ def deploy(box: pathlib.Path, in_flight: int = 0, **environment: str) -> subproc
         "STAND_IN_QUERY": str(box / "query.py"),
         "FAKE_COMMIT": COMMIT,
         "FAKE_IN_FLIGHT": str(in_flight),
+        "FAKE_DIGEST": DIGEST,
         "SP_DEPLOY_DIR": str(box / "standardphysics"),
         "SP_DEPLOY_LOCK": str(box / "deploy.lock"),
         "SP_DEPLOY_HISTORY": str(box / "deploys.log"),
@@ -141,3 +146,31 @@ def test_forcing_a_deploy_goes_ahead_when_the_queue_cannot_be_read(box):
     result = deploy(box, FAKE_IN_FLIGHT_FAILS="1", SP_DEPLOY_FORCE="1")
     assert result.returncode == 0, result.stderr
     assert len(compose_up(box)) == 1
+
+
+def test_the_image_ci_tested_is_pulled_and_tagged_instead_of_rebuilt(box):
+    result = deploy(box, FAKE_PUBLISHED="1")
+    assert result.returncode == 0, result.stderr
+    docker = [line.removesuffix(f" GIT_SHA={COMMIT}") for line in calls(box) if line.startswith("docker")]
+    assert f"docker pull --quiet {PUBLISHED}" in docker
+    assert f"docker tag {PUBLISHED} standardphysics:{COMMIT}" in docker
+    assert not any(line.startswith("docker compose build") for line in docker)
+
+
+def test_a_promoted_deploy_writes_down_the_digest_it_started(box):
+    assert deploy(box, FAKE_PUBLISHED="1").returncode == 0
+    assert (box / "deploys.log").read_text().split()[1:] == [COMMIT, DIGEST]
+
+
+def test_a_commit_ci_has_not_published_is_built_on_the_box(box):
+    result = deploy(box)
+    assert result.returncode == 0, result.stderr
+    assert any(line.startswith("docker compose build") for line in calls(box))
+    assert (box / "deploys.log").read_text().split()[1:] == [COMMIT, "built-on-droplet"]
+
+
+def test_asking_for_a_build_never_pulls(box):
+    result = deploy(box, FAKE_PUBLISHED="1", SP_DEPLOY_BUILD="1")
+    assert result.returncode == 0, result.stderr
+    assert not any(line.startswith("docker pull") for line in calls(box))
+    assert any(line.startswith("docker compose build") for line in calls(box))

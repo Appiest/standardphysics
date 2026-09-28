@@ -129,8 +129,8 @@ From your own machine, which is the usual way:
 scripts/deploy.sh
 ```
 
-It pulls master on the Droplet, rebuilds, and runs `doctor.sh`, streaming the
-lot back. Only one deploy runs at a time: a second is refused rather than
+It pulls master on the Droplet, fetches the image CI tested for that commit
+(or builds one, below), and runs `doctor.sh`, streaming the lot back. Only one deploy runs at a time: a second is refused rather than
 queued, because two of them racing to recreate a container leave the name
 taken, the stack half torn down and the site answering 502. It stops if you have commits master does not, because the Droplet
 pulls from GitHub and a deploy that quietly ships the previous commit is worse
@@ -148,13 +148,52 @@ anyway in either case:
 SP_DEPLOY_FORCE=1 scripts/deploy.sh
 ```
 
-The order on the box is pull, build, read the queue, restart. The build takes
-minutes and the old API keeps serving through it, so the queue is read after
-the build and immediately before `docker compose up -d` swaps the containers.
-A refused deploy leaves the new image built, and running the script again
-once the queue drains reuses it from the cache. The build also moves the
-`standardphysics:latest` tag to the new image, so a bare `docker compose up -d`
-typed on the box without `GIT_SHA` would start it.
+The order on the box is pull, fetch or build the image, read the queue,
+restart. A build takes minutes and the old API keeps serving through it, so
+the queue is read after the image is ready and immediately before
+`docker compose up -d` swaps the containers. A refused deploy leaves the new
+image on the box, and running the script again once the queue drains reuses
+it. Fetching or building also moves the `standardphysics:latest` tag to the
+new image, so a bare `docker compose up -d` typed on the box without `GIT_SHA`
+would start it.
+
+### The image CI tested
+
+The `image` job in `.github/workflows/ci.yml` builds the image, runs
+`scripts/smoke_image.sh` and the Blender regressions in it, and on a push to
+master pushes that same image to GitHub's registry as
+`ghcr.io/imhaohao/standardphysics:<sha>`. The job summary on the Actions run
+records the digest it was pushed as. `scripts/deploy.sh` pulls that tag and
+retags it `standardphysics:<sha>` on the box, so what serves traffic is the
+exact image that passed CI, and the Droplet spends no time or memory building.
+
+The script builds on the box instead when the pull fails, which happens when
+CI has not finished with the commit yet or the Droplet cannot read the
+package. `SP_DEPLOY_BUILD=1` asks for a build outright. `SP_DEPLOY_IMAGE`
+points it at another registry repository.
+
+**A person has to do this once, by hand.** GHCR packages start out private,
+and until the Droplet can read this one every deploy falls back to building
+on the box. Pick one:
+
+- Make the package public: on GitHub, open the repository's Packages,
+  choose `standardphysics`, then Package settings, and set its visibility to
+  public. It holds nothing secret (the image is built from this public
+  repository and carries no credentials), and nothing else is needed.
+- Keep it private and log the Droplet in with a token that can only read
+  packages: create a fine-grained or classic token with just `read:packages`,
+  then on the box run
+  `echo <token> | docker login ghcr.io -u <github-user> --password-stdin`.
+  The login is saved in `/root/.docker/config.json` and outlives reboots;
+  a token that expires sends deploys back to building on the box.
+
+Either way, check it from the Droplet with
+`docker pull ghcr.io/imhaohao/standardphysics:<a master sha>`.
+
+The base image is pinned by digest in the `Dockerfile` (`NODE_IMAGE`), so a
+build on the box starts from the same bytes as CI's. Debian packages and the
+Blender download are installed at build time; Blender is checked against its
+published sha256, and the apt packages follow bookworm's security updates.
 
 A window remains. An upload that finalises between the queue read and the
 moment the old container stops, about a second, queues a job the check did
@@ -166,9 +205,10 @@ job that started in that second. Closing it completely needs the worker to
 stop claiming jobs while a maintenance flag is set, which lives in
 `worker.py` and has not been built.
 
-Each deploy appends the time and the commit to
-`/var/log/standardphysics-deploys.log` on the Droplet. That file is the list of
-commits you can roll back to.
+Each deploy appends the time, the commit and where its image came from to
+`/var/log/standardphysics-deploys.log` on the Droplet. The last field is the
+registry digest that was pulled, or `built-on-droplet`. That file is the list
+of commits you can roll back to.
 
 On the Droplet itself it is the commands the script runs:
 
@@ -176,7 +216,9 @@ On the Droplet itself it is the commands the script runs:
 git checkout master
 git pull
 export GIT_SHA=$(git rev-parse HEAD)
-docker compose build
+docker pull ghcr.io/imhaohao/standardphysics:$GIT_SHA \
+  && docker tag ghcr.io/imhaohao/standardphysics:$GIT_SHA standardphysics:$GIT_SHA \
+  || docker compose build
 # count the unfinished jobs, as above, and stop here if there are any
 docker compose up -d
 ```
@@ -199,8 +241,13 @@ curl -s https://api.standardphysics.app/health/details   # "commit" is now <sha>
 
 Leave `--build` off. With it, compose rebuilds from the checked-out source,
 which gives the same result far more slowly. Without it, compose finds
-`standardphysics:<sha>` and starts it. If that image has been pruned, the
-command builds it from the checked-out commit instead.
+`standardphysics:<sha>` and starts it. If that image has been pruned, pull
+it back first with
+`docker pull ghcr.io/imhaohao/standardphysics:<sha>` and
+`docker tag ghcr.io/imhaohao/standardphysics:<sha> standardphysics:<sha>`;
+otherwise the command builds it from the checked-out commit instead. When the
+deploy log recorded a digest, pulling `ghcr.io/imhaohao/standardphysics@<digest>`
+gets exactly that image even if the tag were ever moved.
 
 The checkout also rolls back `docker-compose.yml` and `Caddyfile` to that
 commit, which is what you want: the image and the configuration it was

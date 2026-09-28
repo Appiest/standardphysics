@@ -6,8 +6,14 @@
 # renders on request, not a bundle of static files. Debian bookworm ships
 # Python 3.11, which is what the packages ask for, so one base image carries
 # both runtimes rather than copying binaries between images.
+#
+# The base is pinned by digest as well as named by tag, so a rebuild months
+# from now starts from the same bytes CI tested rather than whatever the tag
+# has moved to. The digest is the multi-platform index; move it on purpose,
+# with `docker buildx imagetools inspect node:22-bookworm-slim`.
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
 
-FROM node:22-bookworm-slim AS web
+FROM ${NODE_IMAGE} AS web
 WORKDIR /app/apps/web
 COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci --no-audit --no-fund --loglevel=error
@@ -27,7 +33,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 
-FROM node:22-bookworm-slim AS runtime
+FROM ${NODE_IMAGE} AS runtime
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 python3-venv libgl1 libglib2.0-0 \

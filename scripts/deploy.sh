@@ -3,21 +3,30 @@
 #
 #   scripts/deploy.sh
 #
-# One command instead of a session: it pulls on the box, rebuilds, and runs
-# doctor.sh, streaming everything back. Set SP_DEPLOY_HOST in your shell if the
-# box moves.
+# One command instead of a session: it pulls on the box, fetches or builds the
+# image, and runs doctor.sh, streaming everything back. Set SP_DEPLOY_HOST in
+# your shell if the box moves.
 #
-# The image is tagged with the commit it was built from, and each deploy adds
-# a line to /var/log/standardphysics-deploys.log on the box, so the commit to
-# roll back to is written down. docs/DEPLOY.md has the rollback. A box left on
-# an older commit by a rollback goes back to master here before it pulls.
+# The image it starts is the one CI tested. The image job in ci.yml pushes each
+# master commit that passed the smoke test to GHCR as
+# ghcr.io/imhaohao/standardphysics:<sha>, and this pulls that tag. When the
+# commit has no published image yet (CI still running, or the package not yet
+# readable by the box), or SP_DEPLOY_BUILD=1 asks for it, the box builds the
+# image itself, as it did before CI published anything. SP_DEPLOY_IMAGE points
+# at another registry repository.
+#
+# Either way the image is tagged standardphysics:<sha>, and each deploy adds a
+# line to /var/log/standardphysics-deploys.log on the box with the commit and
+# the registry digest it started, or built-on-droplet, so what to roll back to
+# is written down. docs/DEPLOY.md has the rollback. A box left on an older
+# commit by a rollback goes back to master here before it pulls.
 #
 # It refuses to deploy while the API has jobs queued or running. The restart
 # throws away whatever a bake has done so far, so it waits for the queue to
 # empty unless SP_DEPLOY_FORCE=1 says to go anyway. A queue it cannot read is a
 # refusal too, not an empty queue: a stopped or wedged API is exactly when
-# nobody knows what it was doing. The image is built before the queue is read,
-# so the build's minutes are not part of the window in which a new upload can
+# nobody knows what it was doing. The image is pulled or built before the
+# queue is read, so the build's minutes are not part of the window in which a new upload can
 # start a job that the restart then kills. docs/DEPLOY.md says what is left.
 #
 # It refuses to deploy behind your own work. The Droplet pulls master from
@@ -31,6 +40,8 @@ DIR="${SP_DEPLOY_DIR:-/root/standardphysics}"
 LOCK="${SP_DEPLOY_LOCK:-/var/lock/standardphysics-deploy}"
 HISTORY="${SP_DEPLOY_HISTORY:-/var/log/standardphysics-deploys.log}"
 FORCE="${SP_DEPLOY_FORCE:-}"
+BUILD="${SP_DEPLOY_BUILD:-}"
+IMAGE="${SP_DEPLOY_IMAGE:-ghcr.io/imhaohao/standardphysics}"
 
 # Read the way the Droplet's own tools read the queue: the API container's
 # Python opening the database it holds, read-only, so this cannot take a lock
@@ -100,7 +111,16 @@ git checkout --quiet master
 git pull --ff-only
 export GIT_SHA=\$(git rev-parse HEAD)
 cd deploy/digitalocean
-docker compose build
+published='$IMAGE':\$GIT_SHA
+if [ '$BUILD' != 1 ] && docker pull --quiet \"\$published\"; then
+  docker tag \"\$published\" standardphysics:\$GIT_SHA
+  docker tag \"\$published\" standardphysics:latest
+  origin=\$(docker image inspect --format '{{index .RepoDigests 0}}' \"\$published\")
+else
+  echo \"Could not pull \$published, because CI has not published it yet or the box cannot read the package, so building it here.\"
+  docker compose build
+  origin=built-on-droplet
+fi
 in_flight=\$(docker compose exec -T api /opt/venv/bin/python -c $(printf %q "$IN_FLIGHT_QUERY") 2>/dev/null) || in_flight=unknown
 if [ '$FORCE' != 1 ] && ! [[ \"\$in_flight\" =~ ^[0-9]+\$ ]]; then
   echo 'I could not read the job queue from the API container, so I cannot tell what a restart would interrupt.' >&2
@@ -109,12 +129,12 @@ if [ '$FORCE' != 1 ] && ! [[ \"\$in_flight\" =~ ^[0-9]+\$ ]]; then
 fi
 if [ '$FORCE' != 1 ] && [ \"\$in_flight\" -gt 0 ]; then
   echo \"The API has \$in_flight job(s) queued or running, and a deploy restarts it.\" >&2
-  echo 'Wait for them to finish and run this again, which reuses the image just built,' >&2
+  echo 'Wait for them to finish and run this again, which reuses the image it just fetched,' >&2
   echo 'or run with SP_DEPLOY_FORCE=1 to interrupt them.' >&2
   exit 75
 fi
 docker compose up -d
-echo \"\$(date -u +%Y-%m-%dT%H:%M:%SZ) \$GIT_SHA\" >> '$HISTORY'
+echo \"\$(date -u +%Y-%m-%dT%H:%M:%SZ) \$GIT_SHA \$origin\" >> '$HISTORY'
 ./doctor.sh"
 }
 

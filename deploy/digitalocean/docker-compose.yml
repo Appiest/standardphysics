@@ -11,11 +11,15 @@
 # own disk, so the disk can be resized or the Droplet rebuilt without losing
 # a shop. SCANS_PATH is where the volume is mounted; setup.sh sets it.
 #
-# Each build is tagged with the commit it came from, standardphysics:<sha>,
-# as well as :latest. GIT_SHA picks the tag: scripts/deploy.sh sets it from
-# `git rev-parse HEAD`, and a rollback is `git checkout <sha>` and
-# `GIT_SHA=<sha> docker compose up -d`, which finds that tag already built and
-# starts it without a rebuild. Without GIT_SHA it falls back to :latest.
+# The image is standardphysics:<sha>, the commit it came from, as well as
+# :latest. scripts/deploy.sh fills that tag by pulling the image CI tested,
+# ghcr.io/imhaohao/standardphysics:<sha>, and tagging it under this local name,
+# so this file never names a registry and runs the same whether the image was
+# pulled or built. The build section below is the fallback for a commit CI has
+# not published, or for SP_DEPLOY_BUILD=1. GIT_SHA picks the tag: deploy.sh
+# sets it from `git rev-parse HEAD`, and a rollback is `git checkout <sha>` and
+# `GIT_SHA=<sha> docker compose up -d`, which finds that tag already on the box
+# and starts it without a rebuild. Without GIT_SHA it falls back to :latest.
 #
 # Memory and CPU limits are sized for a 2 vCPU, 4 GB Droplet, whose kernel
 # keeps a little of the 4 GB for itself, with the 2 GB of swap setup.sh adds
