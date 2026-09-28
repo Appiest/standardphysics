@@ -10,7 +10,7 @@ const eslintConfig = defineConfig([
       complexity: ["error", { max: 8 }],
     },
   },
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "src/types/contracts.ts"]),
+  globalIgnores([".next/**", ".notebooks/**", "out/**", "build/**", "next-env.d.ts", "src/types/contracts.ts"]),
 ]);
 
 export default eslintConfig;

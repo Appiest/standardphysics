@@ -116,12 +116,17 @@ def _start_tracing(settings: Settings) -> None:
 
 
 def _seed_demo_account(database: Database, store: ArtifactStore, settings: Settings) -> None:
-    """Put the sample shop behind a real account, and say where its password is."""
-    seed_sample_shop(database, store, settings.seed_owner_email, settings.seed_owner_password)
+    """Put the sample shop behind a real account, and say where its password is.
+
+    Only the run that creates the account knows its password. A later run's
+    `seed_owner_password` may be freshly generated and was never stored, so it
+    is neither named nor written over the file the first run left."""
+    created_owner = seed_sample_shop(database, store, settings.seed_owner_email, settings.seed_owner_password)
+    whereabouts = _demo_password_whereabouts(settings) if created_owner else _existing_password_whereabouts(settings)
     log.warning(
         "sample shop seeded. Sign in as %s with the password %s",
         settings.seed_owner_email,
-        _demo_password_whereabouts(settings),
+        whereabouts,
     )
 
 
@@ -133,6 +138,11 @@ def _demo_password_whereabouts(settings: Settings) -> str:
     path.chmod(0o600)
     path.write_text(settings.seed_owner_password + "\n")
     return f"written to {path}"
+
+
+def _existing_password_whereabouts(settings: Settings) -> str:
+    path = settings.data_dir / DEMO_PASSWORD_FILE
+    return f"it was created with: SP_SEED_OWNER_PASSWORD as it was then, or the one in {path}"
 
 
 def _problem_response(exc: ApiProblem) -> JSONResponse:
