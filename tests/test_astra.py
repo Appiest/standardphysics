@@ -518,6 +518,17 @@ def test_reconstruction_wall_deadline_does_not_wait_for_stalled_workers(monkeypa
     assert result.source == "roomplan"
 
 
+def test_a_stool_tucked_under_a_counter_needs_another_look_but_the_counter_does_not():
+    counter = element("table", dims=(2.9, 1.1, 0.72), at=(0.0, 0.55, 0.0))
+    stool = element("chair", dims=(0.44, 1.04, 0.49), at=(0.5, 0.52, 0.05))
+    graph = parse_room_json({"objects": [counter, stool]})
+
+    rebuilt = reconstruct(graph)
+
+    assert rebuilt.by_id(uuid.UUID(stool["identifier"])).quality == "needs_another_look"
+    assert rebuilt.by_id(uuid.UUID(counter["identifier"])).quality == "measured"
+
+
 def test_a_counter_with_chairs_pulled_up_to_it_stays_measured():
     counter = element("table", dims=(2.9, 1.13, 0.7), at=(0.0, 0.56, 0.0))
     chair = element("chair", dims=(0.48, 0.87, 0.55), at=(0.0, 0.43, 0.55))

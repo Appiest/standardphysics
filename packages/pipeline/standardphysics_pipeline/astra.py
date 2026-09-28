@@ -315,7 +315,9 @@ def _looks_like_counter(node: SceneNode, walls: list[SceneNode]) -> bool:
 
 
 def _shares_footprint(own: list[tuple[float, float]], other: list[tuple[float, float]]) -> bool:
-    return max(covered_fraction(own, other), covered_fraction(other, own)) >= SHARED_FOOTPRINT
+    """Whether most of this box's own floor lies inside the other's. A stool tucked under a counter shares its
+    footprint; the counter, with most of its floor clear, does not."""
+    return covered_fraction(own, other) >= SHARED_FOOTPRINT
 
 
 def _local_quality(node: SceneNode, objects: list[SceneNode]) -> QualityName:
