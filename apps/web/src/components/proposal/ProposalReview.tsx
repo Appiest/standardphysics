@@ -9,7 +9,7 @@ import type { ProposalReviewState } from "./useProposalReview";
 
 type Relook = (result: ProposalResult) => void;
 
-function Explanation({ explanation }: { explanation: ProposalExplanation }) {
+export function Explanation({ explanation }: { explanation: ProposalExplanation }) {
   return (
     <div className="flex flex-col gap-2 text-sm">
       {explanation.fixed.map((line) => <p key={line}>{line}</p>)}

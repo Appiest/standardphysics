@@ -11,7 +11,7 @@ import { groupFindings } from "@/lib/findings";
 import { inApp, listenToApp, tellApp } from "@/lib/native-bridge";
 import { markStatus, savePlan, walkingRoute } from "@/lib/owner-client";
 import { type ChecklistStatus, checklistRows, type Destination, followUps, isFixing, type Panel, panelFor, pieceToTry, requestsForStep } from "@/lib/owner-journey";
-import type { Assessment, Checklist, Finding, Journey, OwnerRequest, ProposalResult, Scan, Scenario, SceneGraph, Vec3 } from "@/types/contracts";
+import type { Assessment, Checklist, Finding, Journey, NodeMove, OwnerRequest, ProposalResult, Scan, Scenario, SceneGraph, Vec3 } from "@/types/contracts";
 import { CounterStep } from "./CounterStep";
 import { OwnerModel } from "./OwnerModel";
 import { PathStep } from "./PathStep";
@@ -23,6 +23,7 @@ import { SavePrompt } from "./SavePrompt";
 import { SharePanel } from "./SharePanel";
 import { StepHeading } from "./StepHeading";
 import { StillToCheck } from "./StillToCheck";
+import { FixAll } from "./FixAll";
 import { ToolsPanel } from "./ToolsPanel";
 import { guessCounter, useOwnerModel } from "./useOwnerModel";
 import { usePathEditor } from "./usePathEditor";
@@ -233,6 +234,11 @@ function OwnerShop(props: ShopProps) {
     setPlanFinding(finding);
     review.propose(finding.id, showProposal);
   };
+  const openFixedLayout = (moves: NodeMove[]) => {
+    setTool("plan");
+    setSelected(null);
+    arrangement.load(moves);
+  };
   const leavePlan = () => {
     arrangement.reset();
     review.clear();
@@ -267,7 +273,8 @@ function OwnerShop(props: ShopProps) {
         actions={{ onShow: (finding) => setSelected(finding.id === selected?.id ? null : finding), onStatus: statuses.set, onPlan: planFor }}
       >
         {!readOnly && <SharePanel scanId={scan.id} shopName={scan.name} onShared={save.ask} />}
-        {!readOnly && journey.tools_unlocked && <ToolsPanel scanId={scan.id} inApp={inApp()} onPlan={startPlanning} onWheelchair={startWheelchair} />}
+        {!readOnly && journey.tools_unlocked && <ToolsPanel scanId={scan.id} inApp={inApp()} onPlan={startPlanning} onWheelchair={startWheelchair}
+          lead={<FixAll key={scene.revision} scanId={scan.id} revision={scene.revision} onOpen={openFixedLayout} />} />}
       </ResultsPanel>
     ),
   };
