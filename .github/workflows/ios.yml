@@ -2,6 +2,8 @@ name: iOS app
 
 # OwnerAPI.swift mirrors packages/contracts by hand, and the tests bundle the
 # two RoomPlan fixtures below, so either changing can break this build.
+# LiveOwnerFlowTests walks datasets/phone/test1 through a real API started from
+# services/api, so a change to the API or its pinned dependencies can too.
 on:
   push:
     paths:
@@ -9,6 +11,10 @@ on:
       - "packages/contracts/**"
       - "packages/fixtures/standardphysics_fixtures/data/real/apple_bedroom3.room.json"
       - "packages/fixtures/standardphysics_fixtures/data/real/apple_livingroom.room.json"
+      - "services/api/**"
+      - "requirements.lock"
+      - "requirements-dev.lock"
+      - "datasets/phone/test1/**"
       - ".github/workflows/ios.yml"
   pull_request:
     paths:
@@ -16,6 +22,10 @@ on:
       - "packages/contracts/**"
       - "packages/fixtures/standardphysics_fixtures/data/real/apple_bedroom3.room.json"
       - "packages/fixtures/standardphysics_fixtures/data/real/apple_livingroom.room.json"
+      - "services/api/**"
+      - "requirements.lock"
+      - "requirements-dev.lock"
+      - "datasets/phone/test1/**"
       - ".github/workflows/ios.yml"
   workflow_dispatch:
 
@@ -27,6 +37,7 @@ env:
   DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
   XCODEGEN_VERSION: 2.45.3
   SIMULATOR: platform=iOS Simulator,name=iPhone 17,OS=latest
+  LIVE_API: http://127.0.0.1:8798
 
 jobs:
   simulator:
@@ -47,6 +58,9 @@ jobs:
           unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
           "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
           git diff --exit-code -- .
+      # Ad hoc signing rather than none: an unsigned simulator build has no
+      # Keychain access, so SessionStore could never keep a token and the live
+      # owner flow would fail at its first sign-in.
       - name: Build the app and tests
         run: >
           xcodebuild build-for-testing
@@ -54,8 +68,37 @@ jobs:
           -scheme StandardPhysics
           -destination "$SIMULATOR"
           -derivedDataPath build/DerivedData
-          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGN_IDENTITY=-
+          CODE_SIGN_STYLE=Manual
+          DEVELOPMENT_TEAM=
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+      - name: Install the API from the pinned lock
+        working-directory: ${{ github.workspace }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.lock
+          python -m pip install --no-deps -e tools/loopforge -e packages/contracts -e packages/fixtures -e packages/pipeline -e packages/agents -e services/api
+      # A fresh, empty data directory each run, so the live tests only ever
+      # see the guest accounts and shops they make themselves.
+      - name: Start a throwaway API for the live tests
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/live-api-data"
+          SP_DATA_DIR="$RUNNER_TEMP/live-api-data" SP_API_HOST=127.0.0.1 SP_API_PORT=8798 \
+            nohup python -m standardphysics_api > "$RUNNER_TEMP/live-api.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/live-api.pid"
+          curl -fsS --retry 60 --retry-delay 1 --retry-all-errors "$LIVE_API/health"
+      # xcodebuild hands TEST_RUNNER_ variables to the test process with the
+      # prefix removed, which is how SP_LIVE_API reaches LiveOwnerFlowTests.
+      # LiveReportPDFTests still skips: it needs a report link on a running web.
       - name: Run StandardPhysicsTests
+        shell: bash
+        env:
+          TEST_RUNNER_SP_LIVE_API: ${{ env.LIVE_API }}
         run: >
           xcodebuild test-without-building
           -project StandardPhysics.xcodeproj
@@ -63,9 +106,16 @@ jobs:
           -destination "$SIMULATOR"
           -derivedDataPath build/DerivedData
           -resultBundlePath build/StandardPhysicsTests.xcresult
-          CODE_SIGNING_ALLOWED=NO
+          | tee "$RUNNER_TEMP/tests.log"
+      - name: Fail if the live owner flow skipped
+        run: grep -q "LiveOwnerFlowTests testAGuestWalksAnswersSavesAndKeepsTheShop\]' passed" "$RUNNER_TEMP/tests.log"
+      - name: Stop the API
+        if: always()
+        run: kill "$(cat "$RUNNER_TEMP/live-api.pid")" 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: StandardPhysicsTests.xcresult
-          path: apps/ios/build/StandardPhysicsTests.xcresult
+          path: |
+            apps/ios/build/StandardPhysicsTests.xcresult
+            ${{ runner.temp }}/live-api.log
