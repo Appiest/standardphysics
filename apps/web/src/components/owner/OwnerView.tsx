@@ -29,7 +29,7 @@ import { ToolsPanel } from "./ToolsPanel";
 import { FoundLegend, FoundSection } from "./FoundList";
 import { LayoutStage } from "./LayoutStage";
 import { type TryLayout, useTryLayout } from "./useTryLayout";
-import { type FoundObjects, foundInModel, showsFound, useFoundObjects } from "./useFoundObjects";
+import { type FoundObjects, foundInModel, pointedInModel, showsFound, useFoundObjects } from "./useFoundObjects";
 import { guessCounter, useOwnerModel } from "./useOwnerModel";
 import { usePathEditor } from "./usePathEditor";
 import { WaitingPanel } from "./WaitingPanel";
@@ -261,7 +261,7 @@ function OwnerShop(props: ShopProps) {
     {
       panel: modelPanel(panel), scene, selected, counter,
       path: panel === "path" ? path : null, arrangement: panel === "plan" ? arrangement : null, wheelchair: panel === "wheelchair",
-      scenario: props.scenario, walkedLegs: tools.walkedLegs, ...foundInModel(found, foundShown),
+      scenario: props.scenario, walkedLegs: tools.walkedLegs, ...foundForModel(found, trying, foundShown),
     },
     pickNode,
     () => { setSelected(null); found.clear(); },
@@ -362,6 +362,11 @@ function pointedNodes(found: FoundObjects): Set<string> {
   const rowId = found.hoveredRowId ?? found.selectedRowId;
   const row = found.groups.flatMap((group) => group.rows).find((candidate) => candidate.id === rowId);
   return new Set(row?.nodeIds ?? []);
+}
+
+/** The found pieces the model draws: only the pointed-at ones while a layout is tried, all of them on the steps that list them. */
+function foundForModel(found: FoundObjects, trying: boolean, shown: boolean) {
+  return trying ? pointedInModel(found) : foundInModel(found, shown);
 }
 
 /** The found list, counting moved pieces on each row while a layout is tried. */
