@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+<title id="title">Post-training outcomes on held-out room-layout variants</title>
+<desc id="desc">Four model checkpoints are compared on 260 attempts each: hard-rule pass rate, accepted-fix rate, and per-attempt share that cleared every fixable finding. Hard-rule pass rises after training, while acceptance and complete-clear rates do not improve.</desc>
+<rect width="1200" height="650" fill="#f6f5f1"/>
+<text x="56" y="66" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="30" font-weight="700">Post-training outcomes</text>
+<text x="56" y="101" fill="#5d5e61" font-family="Arial,sans-serif" font-size="17">65 held-out layout variants × 4 attempts per checkpoint (260 attempts each)</text>
+
+<line x1="105" y1="485.0" x2="1105" y2="485.0" stroke="#d8d5cd" stroke-width="1"/>
+<text x="89" y="491.0" text-anchor="end" fill="#5d5e61" font-family="Arial,sans-serif" font-size="15">0%</text>
+<line x1="105" y1="402.5" x2="1105" y2="402.5" stroke="#d8d5cd" stroke-width="1"/>
+<text x="89" y="408.5" text-anchor="end" fill="#5d5e61" font-family="Arial,sans-serif" font-size="15">20%</text>
+<line x1="105" y1="320.0" x2="1105" y2="320.0" stroke="#d8d5cd" stroke-width="1"/>
+<text x="89" y="326.0" text-anchor="end" fill="#5d5e61" font-family="Arial,sans-serif" font-size="15">40%</text>
+<line x1="105" y1="237.5" x2="1105" y2="237.5" stroke="#d8d5cd" stroke-width="1"/>
+<text x="89" y="243.5" text-anchor="end" fill="#5d5e61" font-family="Arial,sans-serif" font-size="15">60%</text>
+<line x1="105" y1="155.0" x2="1105" y2="155.0" stroke="#d8d5cd" stroke-width="1"/>
+<text x="89" y="161.0" text-anchor="end" fill="#5d5e61" font-family="Arial,sans-serif" font-size="15">80%</text>
+<text x="260" y="519" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="17" font-weight="600">Hard rule pass</text>
+<rect x="160" y="310.5" width="34" height="174.5" rx="3" fill="#657a9d"/>
+<text x="177.0" y="302.5" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="12">42.3</text>
+<rect x="211" y="199.4" width="34" height="285.6" rx="3" fill="#2f5e9e"/>
+<text x="228.0" y="191.4" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="12">69.2</text>
+<rect x="262" y="188.3" width="34" height="296.7" rx="3" fill="#bd6b42"/>
+<text x="279.0" y="180.3" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="12">71.9</text>
+<rect x="313" y="191.5" width="34" height="293.5" rx="3" fill="#c8372d"/>
+<text x="330.0" y="183.5" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="12">71.2</text>
+<text x="570" y="519" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="17" font-weight="600">Gate acceptance</text>
+<rect x="470" y="400.9" width="34" height="84.1" rx="3" fill="#657a9d"/>
+<text x="487.0" y="392.9" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="12">20.4</text>
+<rect x="521" y="354.9" width="34" height="130.1" rx="3" fill="#2f5e9e"/>
+<text x="538.0" y="346.9" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="12">31.5</text>
+<rect x="572" y="364.4" width="34" height="120.6" rx="3" fill="#bd6b42"/>
+<text x="589.0" y="356.4" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="12">29.2</text>
+<rect x="623" y="369.2" width="34" height="115.8" rx="3" fill="#c8372d"/>
+<text x="640.0" y="361.2" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="12">28.1</text>
+<text x="880" y="519" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="17" font-weight="600">All fixable clear</text>
+<text x="880" y="542" text-anchor="middle" fill="#5d5e61" font-family="Arial,sans-serif" font-size="13">per attempt</text>
+<rect x="780" y="424.7" width="34" height="60.3" rx="3" fill="#657a9d"/>
+<text x="797.0" y="416.7" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="12">14.6</text>
+<rect x="831" y="439.0" width="34" height="46.0" rx="3" fill="#2f5e9e"/>
+<text x="848.0" y="431.0" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="12">11.2</text>
+<rect x="882" y="456.5" width="34" height="28.5" rx="3" fill="#bd6b42"/>
+<text x="899.0" y="448.5" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="12">6.9</text>
+<rect x="933" y="464.4" width="34" height="20.6" rx="3" fill="#c8372d"/>
+<text x="950.0" y="456.4" text-anchor="middle" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="12">5.0</text>
+<line x1="105" y1="485" x2="1105" y2="485" stroke="#7d7d78"/>
+<rect x="120" y="541" width="16" height="16" rx="2" fill="#657a9d"/>
+<text x="145" y="555" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="15">Base</text>
+<rect x="370" y="541" width="16" height="16" rx="2" fill="#2f5e9e"/>
+<text x="395" y="555" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="15">Run 1 RL</text>
+<rect x="620" y="541" width="16" height="16" rx="2" fill="#bd6b42"/>
+<text x="645" y="555" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="15">Run 2 SFT</text>
+<rect x="870" y="541" width="16" height="16" rx="2" fill="#c8372d"/>
+<text x="895" y="555" fill="#1b1c1e" font-family="Arial,sans-serif" font-size="15">Run 2 RL</text>
+<text x="56" y="610" fill="#5d5e61" font-family="Arial,sans-serif" font-size="14">Gate acceptance is stricter than passing hard constraints. Complete-clear is not the same as proposing an accepted move.</text>
+<text x="56" y="633" fill="#5d5e61" font-family="Arial,sans-serif" font-size="13">Source: runs/finetune/synthetic/results.json; values are attempt-level unless noted. This is model evaluation, not physical ADA certification.</text>
+</svg>
