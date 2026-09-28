@@ -17,7 +17,7 @@ def test_the_example_settings_production_copies_never_name_gpt_6_astra():
 
 def test_labelling_defaults_to_open_weights_on_fireworks_and_every_other_call_to_opus():
     assert labelling.DEFAULT_MODEL == "accounts/fireworks/models/deepseek-v4p1-flash"
-    assert labelling.FALLBACK_MODEL == "accounts/fireworks/models/kimi-k3"
+    assert not hasattr(labelling, "FALLBACK_MODEL")
     assert agent_models.DEFAULT_MODEL == "anthropic/claude-opus-5.5"
 
 
