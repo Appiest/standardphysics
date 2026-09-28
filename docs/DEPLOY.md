@@ -492,9 +492,10 @@ CAPTURE_WORKSPACE_BASE_URL: https://standardphysics.app
 ```
 
 The connection screen stays in the app for development, and an owner never has
-to open it. `AppEnvironment` prefers anything already saved in `UserDefaults`,
-so a phone that was pointed at a laptop keeps pointing there until someone
-clears it.
+to open it. `AppEnvironment` uses the compiled address whenever the build
+carries one, and falls back to an address saved in `UserDefaults` only when
+it does not, so a shipped build always talks to production however the phone
+was pointed before.
 
 ## Cost
 

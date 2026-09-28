@@ -112,7 +112,9 @@ scripts/deploy.sh
 ```
 
 From this repository on your own machine. It pulls master on the Droplet,
-rebuilds and reports; [`docs/DEPLOY.md`](DEPLOY.md) has the rest.
+pulls the image CI tested for that commit, restarts, and checks the result;
+it builds on the Droplet only with `SP_DEPLOY_BUILD=1`.
+[`docs/DEPLOY.md`](DEPLOY.md) has the rest.
 
 ### Pointing the app at your own machine
 
