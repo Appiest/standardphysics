@@ -3,7 +3,8 @@ import type { Scenario } from "@/types/contracts";
 export type StopMarker = { key: string; label: string; stopIndexes: number[]; x: number; y: number; labelTier: number };
 
 const SAME_SPOT_METERS = 0.05;
-const CROWDED_METERS = 1.2;
+/** Labels are about two metres wide on screen when the whole shop is in view, so stops closer than this collide. */
+const CROWDED_METERS = 2.5;
 
 /** One marker per spot, so an entrance that is also the exit is dragged as one. */
 export function stopMarkers(scenario: Scenario): StopMarker[] {
