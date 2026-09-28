@@ -10,7 +10,6 @@ import urllib.request
 import numpy as np
 from scipy.io import wavfile
 from scipy.signal import resample_poly
-
 from sound import RATE, envelope, filtered, noise, seconds, sweep_sine, write
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"}

@@ -1,7 +1,6 @@
 """Extra one-shots for batch A's meme reels, built on the synth helpers in sound.py and written to public/sound/a-*.wav."""
 
 import numpy as np
-
 from sound import OUT, envelope, filtered, noise, seconds, write
 
 

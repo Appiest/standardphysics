@@ -59,7 +59,8 @@ def _rims(triangles: np.ndarray) -> list[list[int]]:
     for start in following:
         if start in visited:
             continue
-        rim, current = [], start
+        rim: list[int] = []
+        current = start
         while current not in visited and current in following and len(rim) <= MAX_RIM_VERTICES:
             visited.add(current)
             rim.append(current)

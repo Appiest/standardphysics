@@ -64,6 +64,7 @@ def lower_surface_moves(graph: SceneGraph, finding: Finding) -> list[SurfaceMove
     """Slides that set each too-high movable item the finding names down on a low enough surface, nearest first."""
     if not _too_high(finding):
         return []
+    assert finding.locus is not None and finding.required_inches is not None
     floor_z = floor_height(graph)
     ceiling = floor_z + to_meters(finding.required_inches)
     nodes = {node.id: node for node in graph.nodes}

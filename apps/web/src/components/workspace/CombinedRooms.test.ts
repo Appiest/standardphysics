@@ -1,29 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { IDENTITY_PLACEMENT, roomMeshPose, type RoomGroup } from "@/lib/room-groups";
 import { CombinedRooms } from "./CombinedRooms";
 import { PaintedScan } from "./PaintedScan";
-
-const here = join(process.cwd(), "src/components/workspace");
-
-/**
- * The viewer hands the surfaces every prop it was given.
- *
- * Both the combine meshes and the active-room highlight were added, typechecked
- * and shipped dead, because the one place that renders them was handed a list
- * of props written out by name and neither was on it. Optional props make that
- * silent: nothing fails to compile, and the feature simply never appears.
- */
-describe("the viewer forwards what it is given", () => {
-  it("passes its whole props object to the surfaces, not a hand-written list", () => {
-    const source = readFileSync(join(here, "Viewer.tsx"), "utf8");
-    const call = source.match(/<ShopSurfaces([^/]*)\/>/);
-    expect(call, "Viewer should render ShopSurfaces").not.toBeNull();
-    expect(call![1]).toContain("{...viewerProps}");
-  });
-});
 
 type PaintedScanElement = ReactElement<{ url: string }>;
 

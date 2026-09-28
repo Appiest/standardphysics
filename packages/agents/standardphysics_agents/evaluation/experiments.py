@@ -330,6 +330,7 @@ def log_experiments(
     if blocker(project, entity) is not None:
         return []
     where = target(project, entity)
+    assert where is not None
     module = _import_wandb()
     urls = []
     for experiment in experiments:

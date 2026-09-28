@@ -40,6 +40,7 @@ from standardphysics_pipeline.textures.stages import StepProgress, listening, ti
 from standardphysics_pipeline.textures.surface_materials import materials_digest
 
 from . import repository as repo
+from .budgets import admit_new_job
 from .errors import ApiProblem
 
 log = logging.getLogger(__name__)
@@ -247,7 +248,7 @@ def bake_inputs(database, store, scan_id, revision=None):
     return bake, inputs
 
 
-def queue_texture(database, store, worker, scan_id, revision=None, *, retry=False):
+def queue_texture(database, store, worker, scan_id, revision=None, *, retry=False, max_queued_jobs=None):
     with database.transaction() as connection:
         status, bake, inputs, key = _status(connection, store, scan_id, revision)
         settled = status.state in ("queued", "running", "complete")
@@ -261,6 +262,7 @@ def queue_texture(database, store, worker, scan_id, revision=None, *, retry=Fals
         row = connection.execute(
             "SELECT id FROM texture_builds WHERE scan_id=? AND build_key=?", (str(scan_id), key)
         ).fetchone()
+        admit_new_job(connection, max_queued_jobs)
         repo.queue_job_again(connection, scan_id, TEXTURE, row["id"])
     worker.wake()
     return texture_status(database, store, scan_id, revision)
@@ -578,7 +580,9 @@ def install_texture_routes(app: FastAPI, database, store, worker):
 
     @app.post("/api/scans/{scan_id}/textures", response_model=TextureStatus, status_code=202)
     def start(scan_id: uuid.UUID, body: TextureRequest):
-        return queue_texture(database, store, worker, scan_id, body.revision, retry=True)
+        return queue_texture(
+            database, store, worker, scan_id, body.revision, retry=True, max_queued_jobs=worker.settings.max_queued_jobs
+        )
 
     @app.head("/api/scans/{scan_id}/textures/{build_key}/{filename}")
     @app.get("/api/scans/{scan_id}/textures/{build_key}/{filename}")

@@ -2,7 +2,6 @@
 
 import json
 import math
-from pathlib import Path
 
 import pytest
 from standardphysics_agents.fix import relocation_violations, violations
@@ -23,14 +22,14 @@ from standardphysics_agents.training.menu import (
     resolve,
     resolve_choice,
 )
-from standardphysics_contracts import Scenario, SceneGraph
 from standardphysics_pipeline import PipelineMeasurements
+
+from conftest import captured_room
 
 
 @pytest.fixture(scope="module")
 def room():
-    data = json.loads((Path(__file__).parent / "fixtures/placement-room.json").read_text())
-    return SceneGraph.model_validate(data["graph"]), Scenario.model_validate(data["scenario"])
+    return captured_room()
 
 
 @pytest.fixture(scope="module")

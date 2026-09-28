@@ -42,7 +42,8 @@ def built_in_set_moves(graph: SceneGraph, finding: Finding, fixtures: set[UUID])
     A named built-in already carried in an earlier one's run is not slid again as a run of its own.
     """
     named = [node for node in graph.nodes if node.id in fixtures and finding.locus and node.id in finding.locus.node_ids]
-    found, carried = [], set()
+    found: list[Candidate] = []
+    carried: set[UUID] = set()
     for node in named:
         if node.id in carried:
             continue

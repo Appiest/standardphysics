@@ -53,6 +53,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from standardphysics_contracts import Finding, NodeMove, SceneGraph, SceneNode, to_inches, to_meters
 from standardphysics_pipeline.footprints import rotation_about_z
 
+from ..assess import Pass
 from ..evaluation.gate import accepts
 from ..fix import CandidateRejection, candidates, combine_rejections, pinch_from, room_heading, snap_moves
 from ..fix.budget import out_of_time
@@ -161,7 +162,9 @@ class Menu:
 
     def picked_in_owner_words(self, number: int) -> str:
         """An option's wording for the owner, without the problem it was offered for or its construction tag."""
-        return self.in_owner_words(_CONSTRUCTION_TAG.sub("", _FOR_PROBLEM.sub("", self.option(number).wording)))
+        option = self.option(number)
+        assert option is not None
+        return self.in_owner_words(_CONSTRUCTION_TAG.sub("", _FOR_PROBLEM.sub("", option.wording)))
 
 
 @dataclass(frozen=True)
@@ -479,7 +482,7 @@ class _Measurer:
 
     room: SceneGraph
     checker: TrainingChecker
-    before: object
+    before: Pass
     labels: dict[UUID, str]
     veto: CandidateRejection | None = None
     wishes: list[tuple[str, Wish]] = field(default_factory=list)
@@ -635,6 +638,7 @@ def resolve_choice(room: SceneGraph, menu: Menu, choice: MenuChoice) -> Resoluti
         if reason:
             resolution.dropped.append({"option": number, "reason": reason})
             continue
+        assert option is not None
         applied = _combined(applied, option.edits)
         resolution.applied.append(number)
     resolution.completion = edits_json(applied)

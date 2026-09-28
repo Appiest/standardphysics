@@ -16,11 +16,13 @@ buffer and never turned, so the intrinsics describe it as stored; rotating for a
 human to look at is a display concern and must not reach this maths.
 """
 
+import json
+
 import numpy as np
 import pytest
 from standardphysics_contracts import PoseRecord
 from standardphysics_pipeline.coords import capture_to_room
-from standardphysics_pipeline.textures.camera import CameraMetadataError, camera_from_pose
+from standardphysics_pipeline.textures.camera import CameraMetadataError, camera_from_pose, load_cameras
 
 FX = FY = 1000.0
 CX, CY = 960.0, 720.0
@@ -144,3 +146,20 @@ def test_a_version_one_record_is_refused():
     )
     with pytest.raises(CameraMetadataError):
         camera_from_pose(old, capture_to_room(0.0))
+
+
+def test_a_scan_with_no_room_frame_is_refused_as_camera_metadata(tmp_path):
+    """Discovery and texturing catch CameraMetadataError to report a scan they
+    cannot use. A graph without capture_to_room has to reach them the same way
+    rather than as an AttributeError from deep in the projection."""
+    poses = tmp_path / "poses.json"
+    poses.write_text(json.dumps([pose().model_dump(mode="json")]))
+    with pytest.raises(CameraMetadataError):
+        load_cameras(poses, ["frame-0000"], None)
+
+
+def test_one_pose_with_no_room_frame_is_refused_as_camera_metadata():
+    """Astra's crop search skips a pose that raises CameraMetadataError and keeps
+    looking. An AttributeError escaped that search and the labelling call with it."""
+    with pytest.raises(CameraMetadataError):
+        camera_from_pose(pose(), None)

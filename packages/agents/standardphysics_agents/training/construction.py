@@ -21,6 +21,7 @@ filter pins cannot be moved at all.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
@@ -240,5 +241,5 @@ def build(graph: SceneGraph, shifts: list[WallShift], fixtures: list[FixtureMove
     return fit(move_fixtures(shift_walls(graph, shifts), fixtures), list(heights), list(replacements), list(sections))
 
 
-def construction_inches(shifts: list[WallShift], fixtures: list[FixtureMove] = ()) -> float:
+def construction_inches(shifts: list[WallShift], fixtures: Sequence[FixtureMove] = ()) -> float:
     return round(sum(shift.inches for shift in shifts) + sum(move.inches for move in fixtures), 2)

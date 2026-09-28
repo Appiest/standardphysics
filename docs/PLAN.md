@@ -221,7 +221,6 @@ Every key lives in a gitignored `.env` on the API server, listed in `.env.exampl
 | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Astra and every other model call |
 | `WANDB_API_KEY`, `WANDB_ENTITY`, `WANDB_PROJECT` | Weave tracing and evaluation; ARIA uses the same team project |
 | `TYPESAFE_API_KEY` | The router |
-| `APP_SESSION_SECRET` | Signing app sessions and upload tokens, generated locally |
 | `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_STOREFRONT_PRIVATE_TOKEN` | The stretch catalog, only if it gets built |
 
 A key that shows up in chat, an issue, a log or a commit counts as leaked. Rotate it before using it.

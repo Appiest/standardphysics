@@ -110,7 +110,7 @@ def vertex_normals(vertices: np.ndarray, triangles: np.ndarray) -> np.ndarray:
 def _weights_from(
     camera: PhotoCamera,
     vertices: np.ndarray,
-    normals: np.ndarray,
+    normals: np.ndarray | PickedRows,
     buffer: np.ndarray,
     mask: np.ndarray | None = None,
     slope_aware: bool = False,

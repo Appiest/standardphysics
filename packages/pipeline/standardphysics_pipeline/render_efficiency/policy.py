@@ -266,8 +266,10 @@ def _collect_pellets(
 
     uncovered_base, base_cov_reason = _coverage_of(baseline)
     uncovered_cand, cand_cov_reason = _coverage_of(candidate)
-    coverage_block = None if uncovered_base is not None and uncovered_cand is not None else (base_cov_reason or cand_cov_reason)
-    coverage_delta = (uncovered_cand - uncovered_base) if coverage_block is None else None
+    coverage_block: str | None = base_cov_reason or cand_cov_reason
+    coverage_delta: float | None = None
+    if uncovered_base is not None and uncovered_cand is not None:
+        coverage_block, coverage_delta = None, uncovered_cand - uncovered_base
 
     frame_base, frame_base_reason = _frame_eligibility(baseline)
     frame_cand, frame_cand_reason = _frame_eligibility(candidate)
@@ -443,6 +445,7 @@ def evaluate(
     min_roi_delta = min(roi_deltas) if roi_deltas else 0.0
     frame_base, _ = _frame_eligibility(baseline)
     frame_cand, _ = _frame_eligibility(candidate)
+    assert frame_base is not None and frame_cand is not None
     return _adjudicate(
         policy, baseline, candidate, cand_agg, base_agg,
         min_roi_delta, frame_base, frame_cand, gate_results,

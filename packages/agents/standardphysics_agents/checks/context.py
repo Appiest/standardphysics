@@ -46,7 +46,8 @@ class CheckContext:
 
     def labels_by_movability(self, node_ids) -> tuple[list[str], list[str]]:
         """(what can be moved, what cannot), so a fix only asks for the possible."""
-        movable, fixed = [], []
+        movable: list[str] = []
+        fixed: list[str] = []
         for node_id in node_ids:
             (movable if self.movable(node_id) else fixed).append(self.label(node_id))
         return movable, fixed

@@ -6,6 +6,9 @@ path: every scan route is checked against a signed-in stranger, because a guard
 that covers most of the surface covers none of it.
 """
 
+import sqlite3
+import threading
+import time
 import uuid
 
 import pytest
@@ -159,6 +162,29 @@ def test_the_scan_list_holds_only_your_own_shops(client, stranger):
     assert [s["id"] for s in stranger.get("/api/scans").json()["scans"]] == [theirs]
 
 
+def _other_spellings(scan_id: str) -> list[str]:
+    """Every way uuid.UUID parses the same scan that is not the canonical hyphenated form."""
+    hexes = uuid.UUID(scan_id).hex
+    return [hexes, hexes.upper(), "{" + scan_id + "}", "urn:uuid:" + scan_id]
+
+
+def test_another_spelling_of_someone_elses_scan_id_is_still_not_theirs(client, stranger):
+    """The guard matched only the 36-character form while the routes parse any UUID, so a hyphenless id walked past it."""
+    theirs = create_scan(client)
+    for spelling in _other_spellings(theirs):
+        assert stranger.get(f"/api/scans/{spelling}").status_code == 404, spelling
+        assert stranger.get(f"/api/scans/{spelling}/journey").status_code == 404, spelling
+        assert stranger.delete(f"/api/scans/{spelling}").status_code == 404, spelling
+    assert client.get(f"/api/scans/{theirs}").status_code == 200
+
+
+def test_another_spelling_of_a_scan_id_does_not_open_a_team_tool(client):
+    mine = create_scan(client)
+    for spelling in _other_spellings(mine):
+        response = client.post(f"/api/scans/{spelling}/rebuild")
+        assert response.status_code in (403, 404), (spelling, response.status_code)
+
+
 def test_a_missing_scan_is_not_found_rather_than_forbidden(client):
     assert client.get(f"/api/scans/{uuid.uuid4()}").status_code == 404
 
@@ -208,3 +234,32 @@ def test_one_network_cannot_make_endless_accounts(make_client):
             }).status_code)
     assert codes[:10] == [201] * 10
     assert codes[10] == 429
+
+
+LOCK_HELD_SECONDS = 3.0
+
+
+def _hold_the_write_lock(database_path) -> sqlite3.Connection:
+    """Another writer mid-transaction, released after LOCK_HELD_SECONDS whatever the test is doing."""
+    writer = sqlite3.connect(database_path, isolation_level=None, check_same_thread=False)
+    writer.execute("BEGIN IMMEDIATE")
+    threading.Timer(LOCK_HELD_SECONDS, writer.rollback).start()
+    return writer
+
+
+def test_a_guard_waiting_on_a_locked_database_does_not_hold_up_health(client):
+    scan_id = create_scan(client)
+    database = client.app.state.database
+    with database.transaction() as connection:
+        connection.execute("UPDATE scans SET last_opened_at = NULL WHERE id = ?", (scan_id,))
+    writer = _hold_the_write_lock(database.path)
+    opening = threading.Thread(target=client.get, args=(f"/api/scans/{scan_id}",))
+    opening.start()
+    time.sleep(0.3)
+    started = time.monotonic()
+    health = client.get("/health")
+    waited = time.monotonic() - started
+    opening.join()
+    writer.close()
+    assert health.status_code == 200
+    assert waited < LOCK_HELD_SECONDS / 2

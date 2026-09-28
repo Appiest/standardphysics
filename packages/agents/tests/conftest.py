@@ -12,6 +12,9 @@ writes the shipped one.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 from standardphysics_agents import VerificationLedger, load_pack
 from standardphysics_contracts import Mat4, Scenario, SceneGraph, SceneNode, Stop, Vec3, to_meters
@@ -110,3 +113,15 @@ def corner_cafe():
         ],
     )
     return graph, scenario
+
+
+def captured_room() -> tuple[SceneGraph, Scenario]:
+    """The captured placement room, with its dead-end stop taken as a restroom so 304.3 applies there.
+
+    A turning space is only required in a room whose own section calls for one,
+    and the capture's dead end is a seat, which none does.
+    """
+    data = json.loads((Path(__file__).parent / "fixtures/placement-room.json").read_text())
+    scenario = Scenario.model_validate(data["scenario"])
+    stops = [stop.model_copy(update={"name": "Restroom"}) if stop.name == "Seat" else stop for stop in scenario.stops]
+    return SceneGraph.model_validate(data["graph"]), scenario.model_copy(update={"stops": stops})

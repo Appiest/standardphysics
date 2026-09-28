@@ -3,15 +3,21 @@
 docs/UX.md has the table of routes. Everything under /api/scans is guarded by
 the ownership middleware in auth.py. The journey list and the team's photo
 reviews live outside that prefix, so each checks the caller itself.
+
+An answer photo is admitted like an artifact upload (see `budgets`): it holds
+an upload reservation while it streams, the disk floor and the owner's byte
+budget are checked before and after, and it is staged to a file rather than
+held in memory.
 """
 
 from __future__ import annotations
 
-import os
+import contextlib
 import sqlite3
 import uuid
 from dataclasses import dataclass
 
+import anyio
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from standardphysics_contracts import (
@@ -35,14 +41,16 @@ from . import checklist as checklists
 from . import owner_requests as asks
 from . import repository as repo
 from .answered_findings import apply_answers
-from .auth import signed_in, team_member
+from .auth import owner_of, signed_in, team_member
+from .budgets import Budgets, InFlight, PhotoAdmission, Reservation, UploadReservations
 from .db import Database
 from .errors import ApiProblem
 from .funnel import funnel
 from .journey import ShopState, journey
 from .notifications import Push
+from .receive_deadlines import BodyTooSlow
 from .stages import Stages
-from .store import ArtifactStore
+from .store import ArtifactStore, ArtifactTooLarge, StagedUpload
 
 SERVICE_COUNTER = "service counter"
 MEDIA_TYPES = {"jpg": "image/jpeg", "png": "image/png"}
@@ -99,24 +107,58 @@ def _photo_path(store: ArtifactStore, scan_id: uuid.UUID, request_id: str, exten
     return store.scan_dir(scan_id) / "requests" / f"{request_id}.{extension}"
 
 
-async def _read_photo(request: Request) -> bytes:
-    chunks, size = [], 0
-    async for chunk in request.stream():
-        size += len(chunk)
-        if size > asks.MAX_PHOTO_BYTES:
-            raise ApiProblem(413, "That photo is too large. Send one under 15 MB.")
-        chunks.append(chunk)
-    return b"".join(chunks)
+PHOTO_TOO_LARGE = "That photo is too large. Send one under 15 MB."
 
 
-def _save_photo(store: ArtifactStore, scan_id: uuid.UUID, request_id: str, body: bytes) -> str:
-    extension = asks.photo_extension(body[:8])
-    path = _photo_path(store, scan_id, request_id, extension)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    staged = path.with_suffix(".upload")
-    staged.write_bytes(body)
-    os.replace(staged, path)
-    return path.name
+def _reserve_photo(
+    database: Database, admission: PhotoAdmission, request: Request
+) -> contextlib.AbstractContextManager[Reservation]:
+    """Refuse a photo that could not fit before reading it, and otherwise hold room for it while it streams.
+
+    A photo sent without a length is reserved at the largest size a photo may have.
+    """
+    declared = request.headers.get("content-length", "")
+    declared_bytes = int(declared) if declared.isdigit() else asks.MAX_PHOTO_BYTES
+    if declared_bytes > asks.MAX_PHOTO_BYTES:
+        raise ApiProblem(413, PHOTO_TOO_LARGE)
+
+    def refuse_a_doomed_photo(in_flight: InFlight) -> None:
+        with database.connect() as connection:
+            admission.before_reading(connection, declared_bytes, in_flight)
+
+    return admission.reservations.hold(admission.owner.id, declared_bytes, refuse_a_doomed_photo)
+
+
+async def _stage_photo(
+    store: ArtifactStore, scan_id: uuid.UUID, request: Request, reservation: Reservation
+) -> StagedUpload:
+    try:
+        return await store.stage(scan_id, reservation.counted(request.stream()), reservation.declared_bytes)
+    except ArtifactTooLarge:
+        raise ApiProblem(413, PHOTO_TOO_LARGE) from None
+    except BodyTooSlow as slow:
+        raise ApiProblem(408, f"The photo stopped arriving: {slow}. Send it again.") from None
+
+
+def _keep_photo(
+    database: Database, admission: PhotoAdmission, scan_id: uuid.UUID, found: OwnerRequest, staged: StagedUpload
+) -> None:
+    """Move a staged photo into place and record it, or refuse it. The caller discards whatever is still staged."""
+    with staged.temp_path.open("rb") as head:
+        extension = asks.photo_extension(head.read(8))
+    path = _photo_path(admission.store, scan_id, found.id, extension)
+    with database.transaction() as connection:
+        admission.before_storing(connection, staged.bytes)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        admission.store.commit(staged, path)
+        _drop_other_photos(admission.store, scan_id, found.id, extension)
+        asks.record_photo(connection, scan_id, found, path.name)
+
+
+def _drop_other_photos(store: ArtifactStore, scan_id: uuid.UUID, request_id: str, kept: str) -> None:
+    """A request keeps one photo, so a PNG sent after a JPEG is the one shown, and the only one stored."""
+    for extension in MEDIA_TYPES.keys() - {kept}:
+        _photo_path(store, scan_id, request_id, extension).unlink(missing_ok=True)
 
 
 def _photo_response(store: ArtifactStore, scan_id: uuid.UUID, request: OwnerRequest) -> FileResponse:
@@ -127,13 +169,23 @@ def _photo_response(store: ArtifactStore, scan_id: uuid.UUID, request: OwnerRequ
     raise ApiProblem(404, "no photo")
 
 
-def install_owner_routes(app: FastAPI, database: Database, store: ArtifactStore, stages: Stages) -> None:
-    _install_request_routes(app, database, store, stages)
+@dataclass(frozen=True)
+class PhotoLimits:
+    budgets: Budgets
+    reservations: UploadReservations
+
+
+def install_owner_routes(
+    app: FastAPI, database: Database, store: ArtifactStore, stages: Stages, photo_limits: PhotoLimits
+) -> None:
+    _install_request_routes(app, database, store, stages, photo_limits)
     _install_progress_routes(app, database, stages)
     _install_review_routes(app, database, store, stages)
 
 
-def _install_request_routes(app: FastAPI, database: Database, store: ArtifactStore, stages: Stages) -> None:
+def _install_request_routes(
+    app: FastAPI, database: Database, store: ArtifactStore, stages: Stages, photo_limits: PhotoLimits
+) -> None:
     def one(scan_id: uuid.UUID, request_id: str) -> OwnerRequest:
         with database.connect() as connection:
             return asks.find(load_shop(connection, stages, scan_id).requests, request_id)
@@ -152,12 +204,15 @@ def _install_request_routes(app: FastAPI, database: Database, store: ArtifactSto
 
     @app.put("/api/scans/{scan_id}/requests/{request_id}/photo", response_model=OwnerRequest)
     async def photo(scan_id: uuid.UUID, request_id: str, request: Request) -> OwnerRequest:
-        found = one(scan_id, request_id)
-        body = await _read_photo(request)
-        name = _save_photo(store, scan_id, found.id, body)
-        with database.transaction() as connection:
-            asks.record_photo(connection, scan_id, found, name)
-        return one(scan_id, request_id)
+        found = await anyio.to_thread.run_sync(one, scan_id, request_id)
+        admission = PhotoAdmission(photo_limits.budgets, store, owner_of(request), photo_limits.reservations)
+        with _reserve_photo(database, admission, request) as reservation:
+            staged = await _stage_photo(store, scan_id, request, reservation)
+            try:
+                await anyio.to_thread.run_sync(_keep_photo, database, admission, scan_id, found, staged)
+            finally:
+                store.discard(staged)
+        return await anyio.to_thread.run_sync(one, scan_id, request_id)
 
     @app.post("/api/scans/{scan_id}/requests/{request_id}/skip", response_model=OwnerRequest)
     def skip(scan_id: uuid.UUID, request_id: str) -> OwnerRequest:

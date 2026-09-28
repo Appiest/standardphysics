@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from standardphysics_agents.fix.budget import deadline_in
 from standardphysics_agents.training.checker import TrainingChecker
 from standardphysics_agents.training.edits import TrainingEdits, apply_edits, node_moves, parse_edits
-from standardphysics_agents.training.menu import MenuLimits, build_menu, menu_messages, resolve
+from standardphysics_agents.training.menu import Menu, MenuLimits, build_menu, menu_messages, resolve
 from standardphysics_agents.training.owner import WishBook, stated_book
 from standardphysics_contracts import (
     Finding,
@@ -94,15 +94,21 @@ class ModelLoop:
     start: SceneGraph
     checker: TrainingChecker
     stated: WishBook
-    current: SceneGraph | None = None
+    current: SceneGraph = field(init=False)
     moves: dict = field(default_factory=dict)
     last: dict | None = None
-    menu: object = None
+    menu: Menu | None = None
     stop: str = ""
     built_ins: set = field(default_factory=set)
 
     def __post_init__(self) -> None:
-        self.current = self.current or self.start
+        self.current = self.start
+
+    def offered(self) -> Menu:
+        """The menu the last prompt showed; a reply only means something against it."""
+        if self.menu is None:
+            raise RuntimeError("a reply arrived before any menu was offered")
+        return self.menu
 
     def open_problems(self) -> list[Finding]:
         return self.checker.fixable_problems(self.checker.assess(self.current))
@@ -116,17 +122,19 @@ class ModelLoop:
             self.stop = "Every problem furniture can fix is fixed."
             return None
         limits = MenuLimits(deadline=deadline_in(LOOP_MENU_SECONDS))
-        self.menu = without_wall_shifts(build_menu(self.current, self.checker, stated=self.stated, limits=limits))
-        if not self.menu.options:
+        menu = without_wall_shifts(build_menu(self.current, self.checker, stated=self.stated, limits=limits))
+        self.menu = menu
+        if not menu.options:
             self.stop = "The menu has no move left for what remains."
             return None
-        return menu_messages(self.current, self.checker, self.menu, self.last)
+        return menu_messages(self.current, self.checker, menu, self.last)
 
     def take(self, turn: int, reply: str) -> ModelLoopEvent:
-        resolution = resolve(reply, self.current, self.menu, self.checker.pinned)
+        menu = self.offered()
+        resolution = resolve(reply, self.current, menu, self.checker.pinned)
         edits = parse_edits(resolution.completion)
         added = _all_moves(edits) if edits else []
-        if added:
+        if edits is not None and added:
             self.current = apply_edits(self.current, edits)
             self.moves = _combined(self.moves, added)
             self.built_ins |= {move.node_id for move in edits.fixture_moves}
@@ -134,11 +142,11 @@ class ModelLoop:
             self.stop = "The model chose nothing it could use."
         open_problems = self.open_problems()
         self.last = {**resolution.as_dict(), "fixable_left": len(open_problems)}
-        picked = [self.menu.picked_in_owner_words(number) for number in resolution.applied]
-        construction = [self.menu.picked_in_owner_words(number) for number in resolution.applied
-                        if self.menu.option(number).edits.fixture_moves]
+        picked = [menu.picked_in_owner_words(number) for number in resolution.applied]
+        construction = [menu.picked_in_owner_words(number) for number in resolution.applied
+                        if (option := menu.option(number)) is not None and option.edits.fixture_moves]
         return ModelLoopEvent(kind="turn", turn=turn, picked=picked, construction=construction,
-                              why=self.menu.in_owner_words(resolution.why),
+                              why=menu.in_owner_words(resolution.why),
                               fixable_left=len(open_problems), working_on=_titles(open_problems))
 
 

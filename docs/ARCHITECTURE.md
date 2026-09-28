@@ -255,6 +255,11 @@ which is the assumption this whole design exists to remove, so passing against
 one proves nothing. The fixture boba shop and the hand-built rooms in
 `tests/test_primitives.py` and `tests/test_scene_tree.py` are synthetic and go.
 
+This rule is for the proof of the reasoning layer described here. The 39-case
+rule-pack evaluation in the README is older and narrower: it checks that the
+ADA checks and the fixer reach known answers on variants of the fixture shop,
+and the README says it does not measure accuracy on real scans.
+
 This has a cost worth stating plainly: the two scans in `datasets/phone` are a
 room of tables and chairs with nothing stacked, so more real scans are a
 dependency, not a nicety. Somewhere cluttered, somewhere with things resting on

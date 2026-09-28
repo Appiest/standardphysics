@@ -6,7 +6,7 @@ import { DEMO_EMAIL, DEMO_PASSWORD } from "./e2e/demo-account";
 import { DEFAULT_API_PORT } from "./src/lib/api-origin";
 
 /**
- * The owner flow, end to end, against the real API and a production build.
+ * The owner and share-link flows, end to end, against the real API and a production build.
  *
  * Run `npm run build` first: `next start` serves that build, and the build
  * bakes in the API origin from SP_API_PORT, so both must see the same port.

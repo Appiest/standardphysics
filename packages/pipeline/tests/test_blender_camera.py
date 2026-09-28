@@ -1,7 +1,6 @@
 """Numeric projection and an actual Blender/glTF raster test, with no Moffett data."""
 
 import json
-import os
 import subprocess
 from pathlib import Path
 
@@ -9,8 +8,17 @@ import numpy as np
 import pytest
 import standardphysics_pipeline
 from PIL import Image
+from standardphysics_pipeline.check_blender import blender_path
 from standardphysics_pipeline.textures.blender_camera import blender_view
 from standardphysics_pipeline.textures.camera import PhotoCamera
+
+
+def installed_blender() -> Path:
+    """The Blender the pipeline itself would run, or a skip where there is none."""
+    try:
+        return Path(blender_path())
+    except FileNotFoundError:
+        pytest.skip("actual raster verification requires Blender")
 
 
 def example_camera():
@@ -81,9 +89,7 @@ def test_coverage_must_use_material_support_masks_never_rgb_appearance(tmp_path)
     dedicated material-support pass is unambiguous: textured faces are white,
     faces without a source photo are black.
     """
-    blender = Path(os.environ.get("BLENDER_BINARY", "/Applications/Blender.app/Contents/MacOS/Blender"))
-    if not blender.is_file():
-        pytest.skip("actual raster verification requires local Blender")
+    blender = installed_blender()
     trimesh = pytest.importorskip("trimesh")
     camera = example_camera()
     view = blender_view(camera, (80, 0, 560, 480), (500, 500))
@@ -151,9 +157,7 @@ def test_coverage_must_use_material_support_masks_never_rgb_appearance(tmp_path)
 
 
 def test_real_blender_import_and_render_place_markers_at_known_pixels(tmp_path):
-    blender = Path(os.environ.get("BLENDER_BINARY", "/Applications/Blender.app/Contents/MacOS/Blender"))
-    if not blender.is_file():
-        pytest.skip("actual raster verification requires local Blender")
+    blender = installed_blender()
     trimesh = pytest.importorskip("trimesh")
     camera = example_camera()
     view = blender_view(camera, (80, 0, 560, 480), (500, 500))

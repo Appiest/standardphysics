@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from standardphysics_agents.env_file import load_dotenv
 from standardphysics_agents.tracing import ENTITY_ENV, PROJECT_ENV
 
+from .receive_deadlines import ReceiveDeadlines
 from .store import ScanQuota
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -81,6 +82,28 @@ class Settings:
     """The free space kept on the data volume, from SP_MIN_FREE_DISK_BYTES. Below it, new scans and
     uploads are refused with a 507. It is at least one artifact at the largest size allowed, so an
     upload admitted just above the floor can't run the 10 GB volume out of space by itself."""
+    max_owner_uploads: int = 4
+    """How many uploads one account may stream at once, from SP_MAX_OWNER_UPLOADS. The phone sends one
+    artifact at a time, and at most two while optional files follow the core ones; more is refused with a 429."""
+    max_concurrent_uploads: int = 32
+    """How many uploads the whole server streams at once, from SP_MAX_CONCURRENT_UPLOADS; more is refused with a 503."""
+    max_request_body_bytes: int = 1024 * 1024
+    """The largest body any route but the streamed uploads accepts, from SP_MAX_REQUEST_BODY_BYTES. A larger
+    one is refused with a 413 before it is read (see `request_size`). JSON bodies carry moves, answers and
+    ids rather than geometry, which travels as an uploaded artifact."""
+    max_concurrent_validations: int = 1
+    """How many uploaded files are checked at once, from SP_MAX_CONCURRENT_VALIDATIONS; the rest wait their
+    turn. Checking the largest mesh holds a few hundred megabytes, and the API has 3.2 GB for everything."""
+    upload_idle_seconds: int = 120
+    """How long a request body may go without a byte arriving before it is dropped with a 408, from
+    SP_UPLOAD_IDLE_SECONDS. Dropping it releases its upload reservation and deletes what it staged."""
+    upload_total_seconds: int = 2 * 60 * 60
+    """How long any one request body may take to arrive in all, from SP_UPLOAD_TOTAL_SECONDS. The largest
+    artifact allowed, 1 GiB, arrives in about 70 minutes at 2 Mbit/s."""
+    staging_max_age_seconds: int = 3600
+    """How long a staged upload may go unwritten before it counts as abandoned and is deleted, from
+    SP_STAGING_MAX_AGE_SECONDS. A streaming upload writes its file every few milliseconds, so an hour
+    of silence means the request that owned it is gone, usually in a restart."""
     preview_unverified_rules: bool = False
     """Development only. Runs every rule as if a person had verified it, so the
     viewer has findings to draw before the rule pack is reviewed."""
@@ -130,16 +153,28 @@ class Settings:
     fifteen minutes, so three times that only ever stops a bake that has hung.
     SP_BAKE_TIMEOUT_SECONDS changes it.
     """
+    jobs_in_own_process: bool = False
+    """Process, assess, display and simulate jobs run in a process of their own, killed at their kind's deadline.
+
+    A thread can't be stopped from outside, so a stage stuck in a C extension,
+    a network call that never returns or a loop that never ends would hold the
+    worker's thread, and every job queued behind it, for ever. A child process
+    can be killed. Each child imports the stack again, about 120 MB, and the
+    worker runs one such job at a time beside at most one bake. The server
+    turns this on; tests leave it off so their stand-in stages run where they
+    can see them. SP_JOBS_IN_PROCESS=1 turns it back off.
+    """
     process_timeout_seconds: float = 60 * 60
     """How long a process job (ingest, discovery and the first check) may run, from SP_PROCESS_TIMEOUT_SECONDS.
 
-    These four deadlines are for jobs that run on the worker's own thread,
-    where Python can't be interrupted from outside. The job checks its deadline
-    at each stage boundary and fails there once it is past, discarding what the
-    late stage produced; /health/ready reports a job past its deadline as
-    degraded while it is still inside a stage. Each default sits far above what
-    the job's slowest step is allowed on its own: a model request here gives up
-    after two minutes and a Blender run after five.
+    With `jobs_in_own_process` on, as on the server, a job still running at its
+    deadline is killed with everything it started and failed. On the worker's
+    own thread, where Python can't be interrupted from outside, the job checks
+    its deadline at each stage boundary instead and fails there once it is past,
+    discarding what the late stage produced; /health/ready reports a job past
+    its deadline as degraded while it is still inside a stage. Each default sits
+    far above what the job's slowest step is allowed on its own: a model request
+    here gives up after two minutes and a Blender run after five.
     """
     assess_timeout_seconds: float = 20 * 60
     """How long an assess job (the rule check and its model calls) may run, from SP_ASSESS_TIMEOUT_SECONDS."""
@@ -148,8 +183,8 @@ class Settings:
     geometry and once per finding for its still, each run killed after five minutes."""
     simulate_timeout_seconds: float = 4 * 60 * 60
     """How long a simulation may run, from SP_SIMULATE_TIMEOUT_SECONDS. A deep one runs its trials, a
-    thousand by default, once for each of up to nine redesign rounds. The job checks its deadline
-    between rounds, so a run past it stops after the round in progress."""
+    thousand by default, once for each of up to nine redesign rounds. On the worker's own thread the
+    job checks its deadline between rounds, so a run past it stops after the round in progress."""
     team_emails: frozenset[str] = frozenset()
     """The team's emails before the team was a role, from SP_TEAM_EMAILS (comma separated).
 
@@ -201,6 +236,9 @@ class Settings:
     def database_path(self) -> pathlib.Path:
         return self.data_dir / "standardphysics.sqlite3"
 
+    def receive_deadlines(self) -> ReceiveDeadlines:
+        return ReceiveDeadlines(self.upload_idle_seconds, self.upload_total_seconds)
+
     def job_deadline_seconds(self, kind: str) -> float:
         """How long a job of this kind may run. A photo bake's deadline is its kill timeout.
 
@@ -229,6 +267,7 @@ class Settings:
             waitlist_admin_token=os.environ.get("SP_WAITLIST_ADMIN_TOKEN") or None,
             auto_deep_simulation=_flag("SP_AUTO_DEEP_SIMULATION"),
             bake_in_own_process=not _flag("SP_BAKE_IN_PROCESS"),
+            jobs_in_own_process=not _flag("SP_JOBS_IN_PROCESS"),
             bake_timeout_seconds=_bounded_integer("SP_BAKE_TIMEOUT_SECONDS", 45 * 60, 60, 86_400),
             process_timeout_seconds=_bounded_integer("SP_PROCESS_TIMEOUT_SECONDS", 60 * 60, 60, 86_400),
             assess_timeout_seconds=_bounded_integer("SP_ASSESS_TIMEOUT_SECONDS", 20 * 60, 60, 86_400),
@@ -258,6 +297,21 @@ class Settings:
             rearrange_fake_model=_flag("SP_REARRANGE_FAKE_MODEL"),
             fireworks_api_key=os.environ.get("FIREWORKS_API_KEY") or None,
             openrouter_api_key=os.environ.get("OPENROUTER_API_KEY") or None,
+            max_owner_uploads=_bounded_integer("SP_MAX_OWNER_UPLOADS", cls.max_owner_uploads, 1, 1_000),
+            max_concurrent_uploads=_bounded_integer("SP_MAX_CONCURRENT_UPLOADS", cls.max_concurrent_uploads, 1, 10_000),
+            max_request_body_bytes=_bounded_integer(
+                "SP_MAX_REQUEST_BODY_BYTES", cls.max_request_body_bytes, 1024, 64 * 1024 * 1024
+            ),
+            max_concurrent_validations=_bounded_integer(
+                "SP_MAX_CONCURRENT_VALIDATIONS", cls.max_concurrent_validations, 1, 16
+            ),
+            upload_idle_seconds=_bounded_integer("SP_UPLOAD_IDLE_SECONDS", cls.upload_idle_seconds, 1, 86_400),
+            upload_total_seconds=_bounded_integer(
+                "SP_UPLOAD_TOTAL_SECONDS", cls.upload_total_seconds, 1, 7 * 86_400
+            ),
+            staging_max_age_seconds=_bounded_integer(
+                "SP_STAGING_MAX_AGE_SECONDS", cls.staging_max_age_seconds, 60, 7 * 86_400
+            ),
             evidence_settle_seconds=_bounded_integer(
                 "SP_EVIDENCE_SETTLE_SECONDS", 30, 0, 86_400
             ),

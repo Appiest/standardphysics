@@ -9,6 +9,7 @@ from standardphysics_agents.staff_areas import with_staff_areas
 from standardphysics_contracts import RouteLeg, RouteLegs, Scenario
 
 from . import repository as repo
+from .budgets import admit_new_job
 from .db import Database
 from .errors import ApiProblem
 from .stages import Stages
@@ -46,6 +47,7 @@ def confirm(database: Database, worker: Worker, scan_id: uuid.UUID, scenario: Sc
         row = repo.get_revision(connection, scan_id)
         if row is None:
             raise ApiProblem(409, "the shop is still being measured")
+        admit_new_job(connection, worker.settings.max_queued_jobs)
         repo.save_scenario(connection, scan_id, scenario)
         repo.set_state(connection, scan_id, "checking")
         repo.queue_job_again(connection, scan_id, ASSESS, row["revision"])

@@ -74,6 +74,16 @@ def diagnostic_materials():
     return masks, originals, support
 
 
+def eevee_engine():
+    """EEVEE under whichever name this Blender gives it.
+
+    4.2 to 4.x call it BLENDER_EEVEE_NEXT, and both earlier and later versions,
+    5.2.1 among them, call it BLENDER_EEVEE.
+    """
+    available = bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items.keys()
+    return "BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in available else "BLENDER_EEVEE"
+
+
 def main():
     plan_path = Path(sys.argv[sys.argv.index("--")+1])
     plan = json.loads(plan_path.read_text())
@@ -81,7 +91,7 @@ def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=plan["glb"])
     scene = bpy.context.scene
-    scene.render.engine = "BLENDER_EEVEE" if bpy.app.version < (4, 2, 0) else "BLENDER_EEVEE_NEXT"
+    scene.render.engine = eevee_engine()
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGB"
     scene.view_settings.view_transform = "Standard"

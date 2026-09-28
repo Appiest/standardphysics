@@ -17,6 +17,7 @@ Two calibrated quantities matter, and they are different physical things:
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import numpy as np
 
@@ -360,7 +361,7 @@ def calibrate_capped_sampler(
     """
     vertices, triangles = synthetic_calibration_mesh()
     _positive_finite(spacing, "spacing")
-    report = {"model": "capped random mesh sampler", "spacing_m": spacing, "options": []}
+    report: dict[str, Any] = {"model": "capped random mesh sampler", "spacing_m": spacing, "options": []}
     samples = sample_mesh(vertices, triangles, spacing=spacing, seed=seed, max_samples=max_samples)
     points, _, owners, _, _ = samples
     report["sample_count"] = int(len(points))

@@ -13,6 +13,7 @@ feature works in a demo with no key and nobody is misled about which answered.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from standardphysics_contracts import Scenario, SceneGraph, stands_upright
 
@@ -116,7 +117,7 @@ DIRECTION_WORDS: tuple[tuple[str, Direction], ...] = (
 NUMBER = re.compile(r"(\d+(?:\.\d+)?)")
 
 
-def _first(text: str, table) -> object | None:
+def _first(text: str, table) -> Any:
     lowered = text.casefold()
     hits = [(lowered.find(word), value) for word, value in table if word in lowered]
     return min(hits)[1] if hits else None

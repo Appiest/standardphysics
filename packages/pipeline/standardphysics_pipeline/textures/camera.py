@@ -22,6 +22,7 @@ import json
 import pathlib
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
+from typing import TypeVar
 
 import numpy as np
 from pydantic import ValidationError
@@ -29,9 +30,14 @@ from standardphysics_contracts import Mat4, PoseRecord
 
 ARKIT_TO_PIXEL_AXES = np.diag([1.0, -1.0, -1.0, 1.0])
 
+Checked = TypeVar("Checked")
+
 
 class CameraMetadataError(ValueError):
     pass
+
+
+NO_ROOM_FRAME = "the scan has no capture_to_room transform to place its photos with"
 
 
 @dataclass(frozen=True)
@@ -80,25 +86,37 @@ class PhotoCamera:
         return self.fx * local[:, 0] / safe + self.cx, self.fy * local[:, 1] / safe + self.cy, depth
 
 
-def camera_from_pose(pose: PoseRecord, capture_to_room: Mat4) -> PhotoCamera:
+def camera_from_pose(pose: PoseRecord, capture_to_room: Mat4 | None) -> PhotoCamera:
     if not pose.projectable:
         raise CameraMetadataError(f"{pose.frame_id or pose.image} lacks version 2 image metadata")
+    if capture_to_room is None:
+        raise CameraMetadataError(NO_ROOM_FRAME)
     camera_to_arkit = np.array(pose.transform, dtype=np.float64).reshape(4, 4).T
     room_to_arkit = np.linalg.inv(np.array(capture_to_room.m, dtype=np.float64).reshape(4, 4))
     room_to_camera = ARKIT_TO_PIXEL_AXES @ np.linalg.inv(camera_to_arkit) @ room_to_arkit
     k = pose.intrinsics
     calibrated = PhotoCamera(
-        frame_id=pose.frame_id,
+        frame_id=_checked(pose.frame_id),
         room_to_camera=room_to_camera,
         fx=k[0], fy=k[4], cx=k[6], cy=k[7],
-        width=pose.calibration_width, height=pose.calibration_height,
+        width=_checked(pose.calibration_width), height=_checked(pose.calibration_height),
         timestamp=pose.timestamp,
     )
-    return calibrated.resized(pose.image_width, pose.image_height)
+    return calibrated.resized(_checked(pose.image_width), _checked(pose.image_height))
 
 
-def load_cameras(poses_path: pathlib.Path, frame_ids: Iterable[str], capture_to_room: Mat4) -> list[PhotoCamera]:
+def _checked(value: Checked | None) -> Checked:
+    """A pose field `PoseRecord.projectable` has already found present."""
+    assert value is not None
+    return value
+
+
+def load_cameras(
+    poses_path: pathlib.Path, frame_ids: Iterable[str], capture_to_room: Mat4 | None
+) -> list[PhotoCamera]:
     """Cameras for the requested frames, in capture order. Records that cannot be projected are skipped."""
+    if capture_to_room is None:
+        raise CameraMetadataError(NO_ROOM_FRAME)
     wanted = set(frame_ids)
     cameras = [
         camera_from_pose(pose, capture_to_room)

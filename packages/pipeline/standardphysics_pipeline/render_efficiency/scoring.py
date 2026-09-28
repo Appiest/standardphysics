@@ -84,7 +84,7 @@ class GateVerdicts:
     critical_roi: bool
     worst_view: bool
     uncovered: bool
-    frame_p95: bool
+    frame_p95: bool | None
     timing_measured: bool
     footprint_measured: bool
 

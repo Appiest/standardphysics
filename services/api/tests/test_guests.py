@@ -9,7 +9,7 @@ import pytest
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from conftest import OWNER_EMAIL, create_scan, sign_up
+from conftest import OWNER_EMAIL, OWNER_PASSWORD, create_scan, sign_up
 from standardphysics_api import apple_identity
 
 APP = "com.standardphysics.capture"
@@ -152,7 +152,7 @@ def test_apple_finds_the_account_that_already_has_its_email(client, make_client)
 def test_a_token_apple_did_not_issue_for_this_app_is_refused(make_client, token):
     with make_client(sign_in_as_owner=False) as phone:
         refused = phone.post("/api/auth/apple", json={"identity_token": token})
-    assert refused.status_code == 400
+    assert refused.status_code == 401
 
 
 def test_opening_a_shop_pushes_back_when_a_guest_shop_is_deleted(guest):
@@ -181,3 +181,64 @@ def test_one_network_cannot_make_endless_guests(make_client):
             codes.append(phone.post("/api/auth/guest").status_code)
     assert codes[:20] == [201] * 20
     assert codes[20] == 429
+
+
+SQUATTER_DEVICE = "ab" * 32
+
+
+def test_apple_takes_back_an_email_someone_else_registered_first(client, make_client, caplog):
+    """Sign-up never confirms an email, so whoever typed the victim's first holds no proof of it."""
+    squatter = client
+    owner_id = squatter.get("/api/auth/session").json()["owner_id"]
+    assert squatter.put(f"/api/devices/{SQUATTER_DEVICE}", json={}).status_code == 204
+    with make_client(sign_in_as_owner=False) as victim:
+        claimed = victim.post("/api/auth/apple", json={"identity_token": _token(email=OWNER_EMAIL)})
+        assert claimed.status_code == 200
+        assert claimed.json()["owner_id"] == owner_id
+        assert victim.get("/api/auth/session").status_code == 200
+    assert squatter.get("/api/auth/session").status_code == 401
+    squatter.cookies.clear()
+    password = squatter.post("/api/auth/sign-in", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD})
+    assert password.status_code == 401
+    with squatter.app.state.database.connect() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM devices").fetchone()[0] == 0
+    assert any("password" in record.getMessage() and owner_id in record.getMessage() for record in caplog.records)
+
+
+def test_a_password_owner_who_moves_to_apple_keeps_their_shops(client, make_client):
+    scan_id = create_scan(client)
+    with make_client(sign_in_as_owner=False) as phone:
+        phone.post("/api/auth/apple", json={"identity_token": _token(email=OWNER_EMAIL)})
+        assert [scan["id"] for scan in phone.get("/api/scans").json()["scans"]] == [scan_id]
+        again = phone.post("/api/auth/apple", json={"identity_token": _token(email=OWNER_EMAIL)})
+        assert again.status_code == 200
+        assert phone.get(f"/api/scans/{scan_id}").status_code == 200
+
+
+def test_an_email_an_apple_account_holds_cannot_be_signed_up_with_a_password(make_client):
+    held = "held@example.com"
+    with make_client(sign_in_as_owner=False) as apple:
+        assert apple.post("/api/auth/apple", json={"identity_token": _token(email=held)}).status_code == 200
+    with make_client(sign_in_as_owner=False) as other:
+        refused = other.post(
+            "/api/auth/sign-up", json={"email": held, "password": OWNER_PASSWORD, "shop_name": "Mine"}
+        )
+        assert refused.status_code == 409
+        other.post("/api/auth/guest")
+        assert other.post("/api/auth/save", json={"email": held, "password": OWNER_PASSWORD}).status_code == 409
+
+
+def test_an_unverified_apple_email_claims_nothing(client, make_client):
+    owner_id = client.get("/api/auth/session").json()["owner_id"]
+    with make_client(sign_in_as_owner=False) as phone:
+        unverified = _token(email=OWNER_EMAIL, email_verified="false")
+        assert phone.post("/api/auth/apple", json={"identity_token": unverified}).json()["owner_id"] != owner_id
+    assert client.get("/api/auth/session").status_code == 200
+
+
+def test_a_password_left_on_an_account_linked_before_this_fix_stops_working(client, make_client):
+    with client.app.state.database.transaction() as connection:
+        connection.execute("UPDATE owners SET apple_sub = 'apple-linked-earlier' WHERE email = ?", (OWNER_EMAIL,))
+    with make_client(sign_in_as_owner=False) as restarted:
+        signed = restarted.post("/api/auth/sign-in", json={"email": OWNER_EMAIL, "password": OWNER_PASSWORD})
+    assert signed.status_code == 401

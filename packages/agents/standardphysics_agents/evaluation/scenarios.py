@@ -21,7 +21,7 @@ tightest thing on it and the route carries no expected measurement.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 
 from standardphysics_contracts import Finding, Scenario, SceneGraph
 from standardphysics_contracts.rules import Tier
@@ -187,6 +187,11 @@ def run_knobs(knobs: Knobs, configuration: Setup | None = None) -> CaseOutcome:
     )
 
 
+def _with_knob(knobs: Knobs, knob: str, value: float) -> Knobs:
+    changes: dict[str, Any] = {knob: value}
+    return replace(knobs, **changes)
+
+
 def sweep_knob(
     knobs: Knobs,
     knob: str,
@@ -196,7 +201,7 @@ def sweep_knob(
     """The same room at every value of one knob, everything else held still."""
     if knob not in PINS:
         raise KeyError(f"{knob} does not set a dimension a check can answer")
-    moved = [replace(knobs, **{knob: float(value)}) for value in values]
+    moved = [_with_knob(knobs, knob, float(value)) for value in values]
     return [(each, run_knobs(each, configuration)) for each in moved]
 
 

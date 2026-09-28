@@ -9,7 +9,7 @@
 # by the wrong user, which is what it usually is.
 set -uo pipefail
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 
 PASS=0
 FAIL=0
@@ -32,7 +32,7 @@ check_env_file() {
   fi
   ok ".env exists"
 
-  for key in API_DOMAIN APP_DOMAIN SCANS_PATH APP_SESSION_SECRET OPENROUTER_API_KEY; do
+  for key in API_DOMAIN APP_DOMAIN SCANS_PATH OPENROUTER_API_KEY; do
     if [ -z "$(env_value "$key")" ]; then
       bad "$key is empty" "set it in .env"
     else
@@ -142,6 +142,35 @@ check_blender() {
   fi
 }
 
+# The same check deploy.sh waits on after a restart: /health/ready answers 200,
+# /health/details reports the commit checked out here, and the workspace
+# serves its sign-in page. After a rollback the checkout is the rolled-back
+# commit, so the two still agree.
+check_serving() {
+  head_ "Serving"
+  local commit verdict
+  commit="$(git -C ../.. rev-parse HEAD 2>/dev/null)"
+  if verdict="$(docker compose exec -T api /opt/venv/bin/python - "$commit" < check_serving.py 2>&1)"; then
+    ok "$verdict"
+  else
+    bad "$verdict" "docker compose logs --tail 50 api web"
+  fi
+}
+
+check_monitoring() {
+  head_ "Alerts"
+  if [ -z "$(env_value SP_ALERT_WEBHOOK)" ]; then
+    note "off: nobody hears about an outage until SP_ALERT_WEBHOOK is set in .env"
+    return
+  fi
+  if systemctl is-active --quiet standardphysics-monitor.timer 2>/dev/null; then
+    ok "monitor.sh runs every five minutes"
+  else
+    bad "SP_ALERT_WEBHOOK is set but the monitor timer is not running" \
+        "systemctl enable --now standardphysics-monitor.timer"
+  fi
+}
+
 show_recent_errors() {
   head_ "Last words from the API"
   local lines
@@ -160,6 +189,8 @@ main() {
   check_dns
   check_containers
   check_blender
+  check_serving
+  check_monitoring
   show_recent_errors
 
   head_ "Summary"

@@ -249,19 +249,21 @@ def test_menu_answers_on_a_real_room_never_break_a_hard_constraint():
     pack, ledger = load_pack(), VerificationLedger()
     for rule in pack.rules:
         ledger = ledger.record(rule, verified_by="test suite, not a person")
-    checker = TrainingChecker(Scenario.model_validate(saved["scenario"]), rules=pack, ledger=ledger,
+    scenario = Scenario.model_validate(saved["scenario"])
+    restroom = [stop.model_copy(update={"name": "Restroom"}) if stop.name == "Seat" else stop for stop in scenario.stops]
+    checker = TrainingChecker(scenario.model_copy(update={"stops": restroom}), rules=pack, ledger=ledger,
                               measure=PipelineMeasurements())
     room = SceneGraph.model_validate(saved["graph"])
     data = SimpleNamespace(variants={"v": {"window_id": "w", "scan_id": "s"}}, heldout=[{"variant": "v"}],
                            checker=lambda _: checker, graph=lambda _: room)
-    replies = iter(('{"choose":[1,2,3,4,5,6],"why":"all"}', "not json"))
+    replies = iter(("not json", '{"choose":[1,2,3,4,5,6],"why":"all"}'))
     record = evaluator.evaluate_variant(data, data.heldout[0], lambda _: next(replies), "fake-qwen",
                                         max_attempts=2, setup=evaluator.LoopSetup(interface="menu"))
-    first, second = record["attempts"]
-    assert first["verdict"]["hard_constraints_pass"] and first["accepted"]
-    assert first["resolution"]["applied"] and first["menu"]["options"]
-    assert second["resolution"]["interface"] == "unparseable"
-    assert second["verdict"]["reason"] == "no_supported_furniture_move"
+    unparseable, chosen = record["attempts"]
+    assert unparseable["resolution"]["interface"] == "unparseable"
+    assert unparseable["verdict"]["reason"] == "no_supported_furniture_move"
+    assert chosen["verdict"]["hard_constraints_pass"] and chosen["accepted"]
+    assert chosen["resolution"]["applied"] and chosen["menu"]["options"]
 
 
 def test_a_change_the_owner_turns_down_is_put_back_and_their_words_reach_the_next_prompt(monkeypatch):

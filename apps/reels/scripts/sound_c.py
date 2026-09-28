@@ -1,8 +1,7 @@
 """Batch C's sound: beds and one-shots for the quiz, facts, scan, fast one-line and wheelchair reels, written as public/sound/c-*.wav."""
 
 import numpy as np
-
-from sound import RATE, bed, envelope, filtered, loopable, noise, note_hz, pad, place, seconds, write
+from sound import RATE, bed, envelope, filtered, loopable, noise, note_hz, place, seconds, write
 
 
 def chime(notes=(3, 7, 10, 15), gap=0.07):

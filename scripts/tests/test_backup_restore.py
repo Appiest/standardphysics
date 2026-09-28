@@ -229,6 +229,19 @@ def test_a_restore_reports_an_artifact_the_database_lists_without_its_file(tmp_p
     assert "missing file:" in result.stdout and "room.usdz" in result.stdout
 
 
+def test_a_restore_reports_an_artifact_whose_bytes_no_longer_match_its_recorded_hash(tmp_path, volume):
+    backups = Backups(tmp_path, volume)
+    snapshot = backups.back_up()
+    damaged = next((backups.destination / snapshot / "scans").rglob("room.usdz"))
+    damaged.write_bytes(b"PK usdz bytEs")
+
+    result, _ = backups.restore(snapshot)
+    assert result.returncode == 2
+    assert "artifacts:       3 listed, 3 files" in result.stdout
+    assert "corrupt file:" in result.stdout and "room.usdz" in result.stdout
+    assert "missing file" not in result.stdout
+
+
 def test_a_restore_never_writes_over_a_directory_with_files_in_it(tmp_path, volume):
     backups = Backups(tmp_path, volume)
     backups.back_up()
@@ -275,11 +288,16 @@ def test_a_scan_deleted_during_a_backup_is_not_reported_as_lost(tmp_path, volume
     manifest = backups.destination / snapshot / "artifacts-deleted-during-backup.txt"
     assert manifest.read_text().split() == [f"{doomed}/photo-0001.jpg"]
 
-    result, _ = backups.restore(snapshot)
+    result, restored = backups.restore(snapshot)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "artifacts:       4 listed, 3 files" in result.stdout
-    assert f"deleted by its owner while the backup ran: {doomed}/photo-0001.jpg" in result.stdout
+    assert f"removed a scan its owner deleted while the backup ran: {doomed}" in result.stdout
+    assert "scans:           2" in result.stdout
+    assert "artifacts:       3 listed, 3 files" in result.stdout
     assert "missing file" not in result.stdout
+    for table in ("scans", "artifacts"):
+        assert rows(restored / DATABASE_NAME, table) == rows(volume.root / DATABASE_NAME, table)
+    assert not (restored / "scans" / doomed).exists()
+    assert not (restored / "artifacts-deleted-during-backup.txt").exists()
 
 
 def test_a_file_lost_from_under_its_row_fails_the_backup_and_keeps_older_snapshots(tmp_path, volume):

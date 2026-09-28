@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from standardphysics_contracts import Locus
+from standardphysics_contracts.findings import Asks
 
 
 @dataclass(frozen=True)
@@ -45,7 +46,7 @@ class Observation:
     the room itself and the answer is a finding, not a request.
     """
 
-    asks_for: str | None = None
+    asks_for: Asks | None = None
     """Set when the answer needs something a person has to supply.
 
     A door's clear width is measured with the door open 90 degrees, and a scan

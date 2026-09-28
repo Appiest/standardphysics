@@ -27,6 +27,7 @@ from standardphysics_contracts import (
 )
 
 from . import repository as repo
+from .budgets import admit_new_job
 from .db import Database
 from .errors import ApiProblem
 from .rearrangement_base import rearrangement_base
@@ -93,6 +94,7 @@ def save_layout(database: Database, worker: Worker, scan_id: uuid.UUID, body: Sa
             original_suggestion_hash = suggested_hash(connection, scan_id, body.base_revision, body.suggestion_id)
             if original_suggestion_hash is None:
                 raise ApiProblem(409, "that suggestion is no longer available")
+        admit_new_job(connection, worker.settings.max_queued_jobs)
         repo.save_revision(connection, saved, source="owner", base_revision=body.base_revision)
         if body.suggestion_id:
             recorded_hash = graph_hash(saved)

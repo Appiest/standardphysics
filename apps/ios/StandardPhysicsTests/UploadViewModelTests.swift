@@ -465,6 +465,7 @@ final class UploadViewModelTests: XCTestCase {
                 return StubResponse(status: 500, data: Data())
             case "PUT":
                 let artifact = try XCTUnwrap(scan.artifacts.first { path.hasSuffix("/\($0.id)") })
+                if artifact.kind == .frames { Thread.sleep(forTimeInterval: 0.1) }
                 uploadedArtifactIDs.append(artifact.id)
                 return StubResponse(status: 201, data: Data("{}".utf8))
             case "POST" where path.hasSuffix("/complete"):
@@ -477,7 +478,7 @@ final class UploadViewModelTests: XCTestCase {
         let signedInAgain = UploadViewModel(scan: scan, name: "Tea House", client: makeClient(), pollInterval: .milliseconds(5))
         XCTAssertEqual(signedInAgain.state, .uploading)
         signedInAgain.start()
-        try await waitUntil { signedInAgain.state == .ready }
+        try await waitUntil { signedInAgain.state == .ready && signedInAgain.pendingOptionalUploadCount == 0 }
 
         XCTAssertEqual(createCount, 0)
         XCTAssertEqual(signedInAgain.scanID, remoteID)

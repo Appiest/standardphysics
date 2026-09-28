@@ -1,8 +1,7 @@
 """Batch B's extra sound: a warm major-key bed for the wholesome reels and a rubber-stamp thud for ratings."""
 
 import numpy as np
-
-from sound import OUT, RATE, drum_kick, envelope, filtered, hat, note_hz, noise, place, seconds, write
+from sound import OUT, RATE, drum_kick, envelope, filtered, hat, noise, note_hz, place, seconds, write
 
 PROGRESSION = [[-9, -5, -2, 3], [-14, -10, -7, -2], [-12, -9, -5, 0], [-16, -12, -9, -4]]
 BASS = [-33, -38, -36, -40]

@@ -175,6 +175,7 @@ def _as_wish(saved: OwnerWish, graph: SceneGraph) -> Wish | None:
         return None
     if saved.kind == "stays_put":
         return stays_put(node)
+    assert saved.inches is not None
     anchor = _node(graph, saved.anchor_id)
     return None if anchor is None else stays_near(node, anchor, saved.inches * INCH)
 

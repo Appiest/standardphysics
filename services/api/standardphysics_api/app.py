@@ -12,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated
 
+import anyio
 from fastapi import FastAPI, Header, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -66,7 +67,7 @@ from . import repository as repo
 from .approach import evaluate as evaluate_approach
 from .architecture_export import install_architecture_export_routes
 from .auth import install_auth, owner_of
-from .budgets import Budgets, UploadAdmission
+from .budgets import Budgets, InFlight, Reservation, UploadAdmission, UploadReservations, admit_new_job
 from .combine import SaveCombineRequest, rooms_of, save_combine
 from .coverage import parse_coverage
 from .db import Database
@@ -74,21 +75,23 @@ from .errors import ApiProblem
 from .evidence import evidence_status_for, maybe_queue_semantic, record_closure
 from .labels import mark_counter, mark_observation, review_outlet, unmark_counter
 from .layout import check_layout, save_layout
-from .lidar_mesh import MAX_LIDAR_MESH_BYTES, InvalidLidarMesh, validate_lidar_mesh
+from .lidar_mesh import MAX_LIDAR_MESH_BYTES, InvalidLidarMesh, validate_lidar_mesh_file
 from .loop_run import run as run_loop_on
 from .loop_run import stream as stream_loop_on
 from .model_loop import loop_info, stream_model_loop
 from .notifications import notifier_from
-from .owner_accounts import install_account_routes
+from .owner_accounts import install_account_routes, revoke_passwords_left_on_apple_accounts
 from .owner_requests import carry_answers
-from .owner_routes import answered, install_owner_routes
+from .owner_routes import PhotoLimits, answered, install_owner_routes
 from .plans import install_plan_routes
 from .proposals import propose
 from .questions import answer_question
 from .rearrangement import Rearranger, queue_suggestion, suggestion_status
 from .rearrangement_data import record_outcome
+from .receive_deadlines import BodyTooSlow
 from .replays import install_replay_routes
 from .report import build_report
+from .request_size import BoundedRequestBodies
 from .route import confirm, legs, suggestion
 from .route import saved as saved_scenario
 from .seed import seed_sample_shop
@@ -96,7 +99,7 @@ from .settings import Settings
 from .sharing import install_share_routes
 from .simulations import queue_simulation, simulation_status
 from .splats import install_splat_routes
-from .stages import Stages, preview_ledger
+from .stages import Stages, configured_stages
 from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId, ScanQuota, StagedUpload
 from .team import adopt_allowlist
 from .textures import MAX_METADATA_BYTES, install_texture_routes, maybe_queue_texture, validate_manifest
@@ -146,6 +149,12 @@ def _existing_password_whereabouts(settings: Settings) -> str:
     return f"it was created with: SP_SEED_OWNER_PASSWORD as it was then, or the one in {path}"
 
 
+def _sweep_abandoned_staging(store: ArtifactStore, settings: Settings) -> None:
+    removed = store.remove_abandoned_staging(settings.staging_max_age_seconds)
+    if removed:
+        log.info("deleted %d staged upload(s) abandoned before this start", removed)
+
+
 def _problem_response(exc: ApiProblem) -> JSONResponse:
     return JSONResponse(exc.body.model_dump(exclude_none=True), status_code=exc.status, headers=exc.headers)
 
@@ -173,11 +182,12 @@ def create_app(
 ) -> FastAPI:
     settings = settings or Settings.from_environment()
     if stages is None:
-        stages = Stages(ledger_factory=preview_ledger) if settings.preview_unverified_rules else Stages()
+        stages = configured_stages(settings)
     database = Database(settings.database_path)
     adopt_allowlist(database, settings.team_emails)
+    revoke_passwords_left_on_apple_accounts(database)
     quota = ScanQuota(settings.max_scan_artifacts, settings.max_scan_bytes)
-    store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes, quota)
+    store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes, quota, settings.receive_deadlines())
     worker = Worker(database, store, stages, settings, rearranger)
     worker.notifier = notifier_from(settings)
 
@@ -192,6 +202,7 @@ def create_app(
             log.info("cleared %d expired session(s)", expired)
         if settings.seed_sample_shop:
             _seed_demo_account(database, store, settings)
+        _sweep_abandoned_staging(store, settings)
         if run_worker:
             worker.start()
         yield
@@ -211,9 +222,10 @@ def create_app(
         settings.max_owner_scans, settings.max_owner_bytes, settings.max_queued_jobs, settings.min_free_disk_bytes
     )
     _install_scan_routes(app, database, store, budgets)
-    _install_upload_routes(app, database, store, worker, settings, budgets)
+    reservations = UploadReservations(settings.max_owner_uploads, settings.max_concurrent_uploads)
+    _install_upload_routes(app, database, store, worker, settings, budgets, reservations)
     _install_workspace_routes(app, database, store, stages)
-    install_owner_routes(app, database, store, stages)
+    install_owner_routes(app, database, store, stages, PhotoLimits(budgets, reservations))
     _install_combine_routes(app, database, store, worker)
     _install_file_routes(app, database, store)
     _install_layout_routes(app, database, stages, worker)
@@ -234,6 +246,9 @@ def create_app(
     )
 
     _install_health_routes(app, database, worker, settings.git_sha)
+    app.add_middleware(
+        BoundedRequestBodies, max_bytes=settings.max_request_body_bytes, deadlines=settings.receive_deadlines()
+    )
     return app
 
 
@@ -373,15 +388,24 @@ def _accept_staged(
         return 201, artifact
 
 
-def _refuse_a_doomed_upload_early(
+def _reserve_or_refuse_early(
     database: Database, admission: UploadAdmission, artifact_id: str, request: Request
-) -> None:
-    """Say no before reading the body when a new artifact could not fit anyway. A repeat upload still gets its 200."""
+) -> contextlib.AbstractContextManager[Reservation]:
+    """Say no before reading the body when a new artifact could not fit anyway, and otherwise hold
+    room for it while it streams. A repeat upload still gets its 200.
+
+    A body sent without a length is reserved at the largest size an artifact may have.
+    """
     declared = request.headers.get("content-length", "")
-    with database.connect() as connection:
-        _scan_or_404(connection, admission.scan_id)
-        if repo.find_artifact(connection, admission.scan_id, artifact_id) is None:
-            admission.before_reading(connection, int(declared) if declared.isdigit() else 0)
+    declared_bytes = int(declared) if declared.isdigit() else admission.store.max_bytes
+
+    def refuse_a_doomed_upload(in_flight: InFlight) -> None:
+        with database.connect() as connection:
+            _scan_or_404(connection, admission.scan_id)
+            if repo.find_artifact(connection, admission.scan_id, artifact_id) is None:
+                admission.before_reading(connection, declared_bytes, in_flight)
+
+    return admission.reservations.hold(admission.owner.id, declared_bytes, refuse_a_doomed_upload)
 
 
 def _coverage_of(store: ArtifactStore, scan: Scan) -> list[SurfaceCoverage]:
@@ -421,16 +445,12 @@ class StagedCheck:
     message: str
 
 
-def _lidar_mesh_file(path: pathlib.Path) -> object:
-    return validate_lidar_mesh(path.read_bytes())
-
-
 def _photo_manifest_file(path: pathlib.Path) -> object:
     return validate_manifest(path.read_bytes())
 
 
 STAGED_CHECKS = {
-    "lidar_mesh": StagedCheck(MAX_LIDAR_MESH_BYTES, _lidar_mesh_file, InvalidLidarMesh, "invalid lidar mesh"),
+    "lidar_mesh": StagedCheck(MAX_LIDAR_MESH_BYTES, validate_lidar_mesh_file, InvalidLidarMesh, "invalid lidar mesh"),
     "photo_manifest": StagedCheck(MAX_METADATA_BYTES, _photo_manifest_file, ValueError, "invalid photo manifest"),
     "room_usdz": StagedCheck(MAX_ARCHIVE_BYTES, validate_room_usdz, InvalidUsdz, "invalid usdz archive"),
 }
@@ -438,27 +458,36 @@ STAGED_CHECKS = {
 compared from the staged file's length, so an oversized one is never read."""
 
 
-def _validate_staged(staged: StagedUpload, kind: str) -> None:
+async def _validate_staged(staged: StagedUpload, kind: str, validations: anyio.CapacityLimiter) -> None:
+    """Check the staged file on a worker thread, no more at once than `validations` allows.
+
+    A mesh check reads hundreds of megabytes. On the event loop it would stop
+    every other request, /health included, until it finished.
+    """
     check = STAGED_CHECKS.get(kind)
     if check is None:
         return
     if staged.bytes > check.max_bytes:
         raise ApiProblem(413, f"{kind} is larger than {check.max_bytes} bytes")
     try:
-        check.validate(staged.temp_path)
+        await anyio.to_thread.run_sync(check.validate, staged.temp_path, limiter=validations)
     except check.invalid:
         raise ApiProblem(400, check.message) from None
 
 
-async def _stage_upload(store: ArtifactStore, scan_id: uuid.UUID, artifact_id: str, request: Request):
-    """Stage the uploaded bytes, turning the store's refusals into problems."""
+async def _stage_upload(
+    store: ArtifactStore, scan_id: uuid.UUID, artifact_id: str, request: Request, reservation: Reservation
+):
+    """Stage the uploaded bytes, no more than were reserved, turning the store's refusals into problems."""
     try:
         store.artifact_path(scan_id, artifact_id)
-        return await store.stage(scan_id, request.stream())
+        return await store.stage(scan_id, reservation.counted(request.stream()), reservation.declared_bytes)
     except InvalidArtifactId:
         raise ApiProblem(400, "invalid artifact id") from None
     except ArtifactTooLarge:
         raise ApiProblem(413, "artifact too large") from None
+    except BodyTooSlow as slow:
+        raise ApiProblem(408, f"The upload stopped arriving: {slow}. Send it again.") from None
 
 
 def _queue_for_arrival(
@@ -495,7 +524,10 @@ def _install_upload_routes(
     worker: Worker,
     settings: Settings,
     budgets: Budgets,
+    reservations: UploadReservations,
 ) -> None:
+    validations = anyio.CapacityLimiter(settings.max_concurrent_validations)
+
     @app.put("/api/scans/{scan_id}/artifacts/{artifact_id}", response_model=Artifact, status_code=201)
     async def upload_artifact(
         scan_id: uuid.UUID,
@@ -504,16 +536,16 @@ def _install_upload_routes(
         x_checksum_sha256: Annotated[str, Header()],
         x_artifact_kind: Annotated[ArtifactKind, Header()],
     ):
-        admission = UploadAdmission(budgets, store, owner_of(request), scan_id)
-        _refuse_a_doomed_upload_early(database, admission, artifact_id, request)
-        staged = await _stage_upload(store, scan_id, artifact_id, request)
-        try:
-            _validate_staged(staged, x_artifact_kind)
-            status, artifact = _accept_staged(
-                database, admission, artifact_id, x_artifact_kind, x_checksum_sha256, staged
-            )
-        finally:
-            store.discard(staged)
+        admission = UploadAdmission(budgets, store, owner_of(request), scan_id, reservations)
+        with _reserve_or_refuse_early(database, admission, artifact_id, request) as reservation:
+            staged = await _stage_upload(store, scan_id, artifact_id, request, reservation)
+            try:
+                await _validate_staged(staged, x_artifact_kind, validations)
+                status, artifact = _accept_staged(
+                    database, admission, artifact_id, x_artifact_kind, x_checksum_sha256, staged
+                )
+            finally:
+                store.discard(staged)
         if _queue_for_arrival(
             database, store, worker, scan_id, x_artifact_kind, settings.evidence_settle_seconds
         ):
@@ -529,6 +561,7 @@ def _install_upload_routes(
                 explicit = maybe_queue_semantic(
                     connection, current, PROCESS,
                     settle_seconds=settings.evidence_settle_seconds, explicit=True,
+                    max_queued_jobs=budgets.queued_jobs,
                 ) == "queued"
             if explicit:
                 worker.wake()
@@ -721,7 +754,7 @@ def _install_route_routes(app: FastAPI, database: Database, stages: Stages, work
         with database.transaction() as connection:
             _scan_or_404(connection, scan_id)
             repo.set_owner_wishes(connection, scan_id, body.wishes)
-            return repo.get_scan(connection, scan_id)
+            return _scan_or_404(connection, scan_id)
 
     @app.put("/api/scans/{scan_id}/space-type", response_model=Scan)
     def set_space_type(scan_id: uuid.UUID, body: SpaceTypologyRequest) -> Scan:
@@ -891,7 +924,8 @@ def _install_rearrangement_routes(app: FastAPI, database: Database, worker: Work
 def _install_simulation_routes(app: FastAPI, database: Database, stages: Stages, worker: Worker) -> None:
     @app.post("/api/scans/{scan_id}/simulations", response_model=SimulationStatus, status_code=202)
     def start_simulation(scan_id: uuid.UUID, body: SimulationRequest) -> SimulationStatus:
-        return queue_simulation(database, stages, worker, scan_id, body)
+        limit = worker.settings.max_queued_jobs
+        return queue_simulation(database, stages, worker, scan_id, body, max_queued_jobs=limit)
 
     @app.get("/api/scans/{scan_id}/simulations", response_model=SimulationStatus)
     def get_simulation(scan_id: uuid.UUID, revision: int) -> SimulationStatus:
@@ -914,6 +948,7 @@ def _install_simulation_routes(app: FastAPI, database: Database, stages: Stages,
         with database.transaction() as connection:
             if repo.latest_revision_number(connection, scan_id) != base.revision:
                 raise ApiProblem(409, STALE_LAYOUT)
+            admit_new_job(connection, worker.settings.max_queued_jobs)
             repo.save_revision(connection, rebuilt, source="rebuild", base_revision=base.revision)
             repo.enqueue_job(connection, scan_id, ASSESS, rebuilt.revision)
         worker.wake()

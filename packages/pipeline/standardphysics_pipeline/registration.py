@@ -77,12 +77,12 @@ def _fit(source: np.ndarray, target: np.ndarray) -> PlaneAlignment:
         raise AmbiguousRegistration("the correspondences collapse to a point")
     cos_t, sin_t = cos_t / radius, sin_t / radius
     yaw = float(np.arctan2(sin_t, cos_t))
-    errors = []
+    distances = []
     for (x, y), (qx, qy) in zip(source, target):
         px = cos_t * x - sin_t * y + tx
         py = sin_t * x + cos_t * y + ty
-        errors.append(np.hypot(px - qx, py - qy))
-    errors = np.asarray(errors)
+        distances.append(np.hypot(px - qx, py - qy))
+    errors = np.asarray(distances)
     return PlaneAlignment(
         yaw=yaw,
         translation=(float(tx), float(ty)),
@@ -111,11 +111,11 @@ def align_points(
     """
     if len(source) != len(target) or len(source) < 3:
         raise AmbiguousRegistration("at least three correspondences are required")
-    source = np.asarray(source, dtype=float)
-    target = np.asarray(target, dtype=float)
-    if np.ptp(source, axis=0).max() < 1e-9:
+    source_points = np.asarray(source, dtype=float)
+    target_points = np.asarray(target, dtype=float)
+    if np.ptp(source_points, axis=0).max() < 1e-9:
         raise AmbiguousRegistration("the correspondences collapse to a point")
-    result = _fit(source, target)
+    result = _fit(source_points, target_points)
     if result.residual_max > 4 * tolerance:
         raise AmbiguousRegistration(
             f"residual {result.residual_max:.3f} m exceeds 4x the "
@@ -154,11 +154,11 @@ def check_landmarks(
     """
     if not held_out:
         raise AmbiguousRegistration("no held-out landmarks to check")
-    errors = []
+    distances = []
     for source, target in held_out:
         px, py = alignment.apply(source)
-        errors.append(np.hypot(px - target[0], py - target[1]))
-    errors = np.asarray(errors)
+        distances.append(np.hypot(px - target[0], py - target[1]))
+    errors = np.asarray(distances)
     return HeldOutReport(
         count=len(errors),
         residual_rms=float(np.sqrt(np.mean(errors**2))),

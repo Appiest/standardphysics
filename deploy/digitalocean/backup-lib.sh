@@ -1,7 +1,7 @@
 # shellcheck shell=bash
-# Shared by backup.sh and restore.sh: reading settings, and reaching the place
-# the snapshots live, which is either a directory on this machine or a
-# directory on another one over ssh. Sourced, never run.
+# Shared by backup.sh, restore.sh and monitor.sh: reading settings, and
+# reaching the place the snapshots live, which is either a directory on this
+# machine or a directory on another one over ssh. Sourced, never run.
 #
 # SP_BACKUP_DEST decides which. A path is local:
 #

@@ -46,6 +46,7 @@ from standardphysics_contracts.precedents import PrecedentDirective
 from standardphysics_pipeline import PipelineMeasurements
 
 from . import repository as repo
+from .budgets import admit_new_job
 from .errors import ApiProblem
 from .rearrangement_base import rearrangement_base
 
@@ -77,7 +78,11 @@ def _live_ready(stages, request: SimulationRequest) -> None:
         raise ApiProblem(409, "Exhaustive campaigns need human-verified rules; preview rules cannot certify a room")
 
 
-def queue_simulation(database, stages, worker, scan_id: UUID, body: SimulationRequest) -> SimulationStatus:
+def queue_simulation(
+    database, stages, worker, scan_id: UUID, body: SimulationRequest, *, max_queued_jobs: int | None = None
+) -> SimulationStatus:
+    """Queue a simulation of one revision. A person asking passes `max_queued_jobs`, so a full queue
+    refuses them; the worker's own deep simulation after a check does not."""
     _live_ready(stages, body)
     if (body.refine_with_astra or body.exhaustive_evaluations) and not os.environ.get("OPENROUTER_API_KEY"):
         raise ApiProblem(409, "Astra needs OPENROUTER_API_KEY on the server")
@@ -109,6 +114,7 @@ def queue_simulation(database, stages, worker, scan_id: UUID, body: SimulationRe
             (str(scan_id), body.base_revision, body.model_dump_json(), graph.model_dump_json(),
              scenario.model_dump_json(), mesh.id if mesh else None),
         )
+        admit_new_job(connection, max_queued_jobs)
         repo.queue_job_again(connection, scan_id, SIMULATE, body.base_revision)
     worker.wake()
     return simulation_status(database, scan_id, body.base_revision)

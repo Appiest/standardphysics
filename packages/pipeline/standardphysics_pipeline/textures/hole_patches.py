@@ -531,7 +531,8 @@ def top_patches(
     """
     facing_up = normals[:, 2] > FACING
     solids = sorted((node for node in graph.nodes if not bounds_the_room(node)), key=_footprint_area, reverse=True)
-    pieces, placed = [], []
+    pieces: list[tuple[np.ndarray, np.ndarray]] = []
+    placed: list[np.ndarray] = []
     for node in solids:
         plane = _dominant_plane(_facing_up_near_top(node, vertices, facing_up, scanned))
         found = _top_holes(node, plane, scanned, placed) if len(plane) >= 3 else None
