@@ -489,7 +489,9 @@ def test_quiet_late_evidence_settles_by_worker_sweep_across_restart(tmp_path):
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
             status = client.get(f"/api/scans/{scan_id}/evidence").json()
-            if status["semantic_state"] == "complete":
+            # The state reads complete a moment before the job's row settles, and a
+            # slow runner saw the late upload land inside that moment.
+            if status["semantic_state"] == "complete" and status["semantic_job_pending"] is False:
                 break
             time.sleep(0.1)
         first_hash = client.get(f"/api/scans/{scan_id}/evidence").json()["manifest_hash"]
