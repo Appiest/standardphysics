@@ -3,12 +3,14 @@
 import { Canvas } from "@react-three/fiber";
 import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { clipPlanes, zoomRange, type ViewerPose } from "@/lib/camera";
+import { cameraWalls } from "@/lib/camera-walls";
+import { MAX_DISPLAY_WALL_HEIGHT } from "@/lib/display-geometry";
 import type { Focus } from "@/lib/findings";
 import type { NodeTextureCoverage, SceneGraph, SceneNode } from "@/types/contracts";
 import { FindingAnnotation } from "./Annotation";
 import { type FoundHandles, FoundOutlines } from "./FoundOutlines";
 import { CameraRig } from "./CameraRig";
-import { MODEL, outcomeColor, SCAN_CUT_HEIGHT } from "./palette";
+import { MODEL, outcomeColor, SCAN_CUT_HEIGHT, WALL_CUT_HEIGHT } from "./palette";
 import { type ArrangeHandlers, BoxShopModel, GlbShopModel } from "./ShopModel";
 import { LidarShopModel } from "./LidarShopModel";
 import { CombinedRooms } from "./CombinedRooms";
@@ -248,6 +250,12 @@ function Wheelchair({ scene, wheelchairMode, wheelchairProfile, onWheelchairStat
   );
 }
 
+/** How high the walls on screen reach, since the camera may pass over what has been cut away. */
+function visibleWallTop({ cutWalls, materialMode }: Pick<ViewerProps, "cutWalls" | "materialMode">): number {
+  if (!cutWalls || materialMode === "splat") return MAX_DISPLAY_WALL_HEIGHT;
+  return materialMode === "scan" ? SCAN_CUT_HEIGHT : WALL_CUT_HEIGHT;
+}
+
 export default function Viewer(viewerProps: ViewerProps) {
   const {
     scene,
@@ -268,6 +276,8 @@ export default function Viewer(viewerProps: ViewerProps) {
     onWheelchairExit,
   } = viewerProps;
   const tuning = canvasTuning(lightweight, splatAssets);
+  const { cutWalls, materialMode } = viewerProps;
+  const walls = useMemo(() => cameraWalls(scene, visibleWallTop({ cutWalls, materialMode })), [scene, cutWalls, materialMode]);
   return (
     <Canvas
       frameloop={wheelchairMode ? "always" : "demand"}
@@ -285,7 +295,7 @@ export default function Viewer(viewerProps: ViewerProps) {
     >
       <color attach="background" args={BG_COLOR_ARGS} />
       <Lights castShadow={!lightweight} />
-      {!wheelchairMode && <CameraRig pose={pose} locked={dragging} bounds={null} zoom={zoomRange(scene)} frameShift={viewerProps.frameShift} />}
+      {!wheelchairMode && <CameraRig pose={pose} locked={dragging} bounds={null} zoom={zoomRange(scene)} walls={walls} frameShift={viewerProps.frameShift} />}
       <Wheelchair
         scene={scene}
         wheelchairMode={wheelchairMode}
