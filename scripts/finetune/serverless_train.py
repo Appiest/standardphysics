@@ -4,7 +4,7 @@ One pooled serverless session does everything: a baseline evaluation of the
 untrained adapter, LoRA SFT on the search's rearrangements, an evaluation, RL
 with our measured checker as the reward (computed here, in this process), a
 final evaluation, and optional promotion of both adapters to account models. Nothing is
-deployed. Every step records itself in PROGRESS_FINETUNE.json, and a rerun
+deployed. Every step records itself in docs/progress/PROGRESS_FINETUNE.json, and a rerun
 skips what already finished.
 
 Runs inside the cookbook environment (fireworks-ai[training] + fw-ai/cookbook
@@ -407,7 +407,7 @@ def _parser() -> argparse.ArgumentParser:
                         help="add generated multiroom correction rows to SFT; use a fresh run directory")
     parser.add_argument("--data", type=pathlib.Path, required=True)
     parser.add_argument("--run-dir", type=pathlib.Path, required=True)
-    parser.add_argument("--progress", type=pathlib.Path, default=pathlib.Path("PROGRESS_FINETUNE.json"))
+    parser.add_argument("--progress", type=pathlib.Path, default=pathlib.Path("docs/progress/PROGRESS_FINETUNE.json"))
     parser.add_argument("--plan-overrides", type=json.loads, default={})
     parser.add_argument("--max-estimate", type=float, default=None,
                         help="refuse to launch when the pessimistic estimate is above this many dollars")
