@@ -205,7 +205,7 @@ def _anchor(graph: SceneGraph, node: SceneNode, finding: Finding) -> tuple[str, 
         other = min(others, key=lambda o: math.dist(here, (o.transform.position.x, o.transform.position.y)))
         return f"the {other.label}", (other.transform.position.x, other.transform.position.y)
     point = finding.locus.point if finding.locus and finding.locus.point else node.transform.position
-    return f"the {finding.check_id.replace('_', ' ')}", (point.x, point.y)
+    return "the problem spot", (point.x, point.y)
 
 
 def _turn_words(degrees: float) -> str:
