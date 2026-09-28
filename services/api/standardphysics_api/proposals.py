@@ -11,6 +11,7 @@ from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
 from .model_chooser import MENU_SECONDS, SEARCH_AFTER_MENU_SECONDS, ModelChooser
+from .rearrangement_base import rearrangement_base
 from .stages import Stages
 
 
@@ -21,9 +22,10 @@ def fix_inputs(database: Database, scan_id: uuid.UUID, revision: int):
         row = repo.get_revision(connection, scan_id, revision)
         scenario = repo.get_scenario(connection, scan_id)
         assessment = repo.assessment_for_revision(connection, scan_id, revision)
-    if row is None or scenario is None or assessment is None:
-        raise ApiProblem(404, "not ready")
-    return repo.graph_of(row), scenario, assessment
+        if row is None or scenario is None or assessment is None:
+            raise ApiProblem(404, "not ready")
+        graph = rearrangement_base(connection, row)
+    return graph, scenario, assessment
 
 
 def space_typology_of(database: Database, scan_id: uuid.UUID) -> SpaceTypology | None:

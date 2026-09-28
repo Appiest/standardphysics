@@ -22,6 +22,7 @@ const SENTENCE: Record<string, (detail: string) => string> = {
   left_the_floor: (detail) => `The ${lower(detail)} would go past the edge of the room.`,
   moved_too_far: (detail) => `The ${lower(detail)} can move up to 5 feet from where it was scanned.`,
   no_room_to_use: (detail) => `The ${lower(detail)} needs open floor on one side so someone can pull up to it.`,
+  onto_unseen_floor: (detail) => `The ${lower(detail)} can only go on floor the scan covered.`,
 };
 
 export function blockedSentence(blocked: Blocked): string {

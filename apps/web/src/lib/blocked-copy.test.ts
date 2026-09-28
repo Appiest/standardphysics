@@ -25,4 +25,10 @@ describe("blockedSentence", () => {
       "The table needs open floor on one side so someone can pull up to it.",
     );
   });
+
+  it("says the scan never saw that floor", () => {
+    expect(blockedSentence({ node_id: "a", reason: "onto_unseen_floor", detail: "Display case" })).toBe(
+      "The display case can only go on floor the scan covered.",
+    );
+  });
 });

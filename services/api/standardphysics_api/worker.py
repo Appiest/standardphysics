@@ -30,6 +30,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
 from standardphysics_contracts import SimulationRequest
+from standardphysics_pipeline.floor_coverage import with_floor_coverage
 
 from . import evidence, guest_sweep
 from . import repository as repo
@@ -600,6 +601,7 @@ class Worker:
         if not run_discovery:
             outcome = DiscoveryOutcome(deferred_reason=association_failure or association_state)
         self._checkpoint()
+        graph = self._with_floor_coverage(scan_id, graph)
         with self.database.transaction() as connection:
             repo.save_revision(connection, graph, source="ingest")
             if run_discovery:
@@ -619,6 +621,19 @@ class Worker:
                 )
         self._assess(scan_id=scan_id, revision=graph.revision)
         return self._newer_bundle_is_due(scan_id, consumed)
+
+    def _with_floor_coverage(self, scan_id: uuid.UUID, graph):
+        """The ingested graph with the floor its LiDAR mesh saw, measured once here.
+
+        It is stored on revision 0 and named by the mesh artifact's hash. A
+        scan without a readable mesh keeps an empty coverage list, which the
+        rearranging constraints treat as `NO_FLOOR_MAP`.
+        """
+        with self.database.connect() as connection:
+            mesh = repo.artifact_of_kind(connection, scan_id, "lidar_mesh")
+        if mesh is None:
+            return graph
+        return with_floor_coverage(graph, self.store.artifact_path(scan_id, mesh.id), mesh.sha256)
 
     def _mark_consumed_if_due(self, connection, scan_id, consumed) -> None:
         """Mark the bundle this job consumed, and only that bundle, as processed.

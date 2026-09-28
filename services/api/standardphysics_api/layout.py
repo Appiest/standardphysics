@@ -23,6 +23,7 @@ from standardphysics_contracts import (
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
+from .rearrangement_base import rearrangement_base
 from .rearrangement_data import record_outcome, suggested_hash
 from .stages import Stages
 from .worker import ASSESS, Worker
@@ -35,11 +36,12 @@ def _base(database: Database, scan_id: uuid.UUID, base_revision: int):
         if not repo.scan_exists(connection, scan_id):
             raise ApiProblem(404, "no scan")
         row = repo.get_revision(connection, scan_id, base_revision)
+        if row is None:
+            raise ApiProblem(404, "no such revision")
         latest = repo.latest_revision_number(connection, scan_id)
         scenario = repo.get_scenario(connection, scan_id)
-    if row is None:
-        raise ApiProblem(404, "no such revision")
-    return repo.graph_of(row), latest, scenario
+        base = rearrangement_base(connection, row)
+    return base, latest, scenario
 
 
 def _candidate(base: SceneGraph, moves: list[NodeMove]) -> tuple[SceneGraph, list[Blocked]]:

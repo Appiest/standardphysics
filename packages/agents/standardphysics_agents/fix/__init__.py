@@ -7,10 +7,12 @@ from .approach import (
     target_height_inches,
 )
 from .constraints import (
+    NO_FLOOR_MAP,
     Violation,
     collision_shape,
     describe,
     door_keep_clear,
+    floor_map_missing,
     interior_polygon,
     is_allowed,
     on_a_surface,
@@ -46,9 +48,9 @@ from .snap import Snapped, snap_moves
 from .strategies import Candidate, candidates
 
 __all__ = [
-    "CANDIDATE_LIMIT", "Candidate", "CandidateRejection", "FixOutcome", "Pinch", "Relaxation",
+    "CANDIDATE_LIMIT", "Candidate", "CandidateRejection", "FixOutcome", "NO_FLOOR_MAP", "Pinch", "Relaxation",
     "Violation", "apply_moves", "candidates", "collision_shape", "combine_rejections",
-    "describe", "door_keep_clear", "interior_polygon", "is_allowed", "move_node", "on_a_surface",
+    "describe", "door_keep_clear", "floor_map_missing", "interior_polygon", "is_allowed", "move_node", "on_a_surface",
     "pinch_from", "proposal_id", "propose_fix", "relocation_violations", "room_heading", "Snapped", "snap_moves",
     "unlocked", "violations",
     "without",

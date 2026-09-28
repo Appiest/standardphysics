@@ -10,6 +10,7 @@ from standardphysics_contracts import AskAnswer, AskRequest
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
+from .rearrangement_base import rearrangement_base
 from .stages import Stages
 
 
@@ -19,9 +20,9 @@ def answer_question(database: Database, stages: Stages, scan_id: uuid.UUID, body
             raise ApiProblem(404, "no scan")
         row = repo.get_revision(connection, scan_id, body.base_revision)
         scenario = repo.get_scenario(connection, scan_id)
-    if row is None:
-        raise ApiProblem(404, "not ready")
-    graph = repo.graph_of(row)
+        if row is None:
+            raise ApiProblem(404, "not ready")
+        graph = rearrangement_base(connection, row)
     answer = stages.ask(body.text, graph, scenario or suggest_scenario(graph))
     return AskAnswer(
         text=answer.text,
