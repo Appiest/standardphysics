@@ -16,8 +16,11 @@ export type FoundRow = {
 
 export type FoundGroup = { id: FoundGroupId; title: string; rows: FoundRow[] };
 
+/** A piece's box in inches: across, front to back, and floor to top of the box. */
+export type PieceSize = { wideInches: number; deepInches: number; tallInches: number };
+
 /** One found piece as the 3D view draws it. */
-export type FoundMark = { nodeId: string; rowId: string; name: string; topInches: number | null };
+export type FoundMark = { nodeId: string; rowId: string; name: string; topInches: number | null; size: PieceSize };
 
 const GROUP_ORDER: FoundGroupId[] = ["service", "seating", "access", "safety", "other"];
 
@@ -160,6 +163,14 @@ export function foundGroups(scene: SceneGraph): FoundGroup[] {
     .filter((group) => group.rows.length > 0);
 }
 
+function pieceSize(node: SceneNode): PieceSize {
+  return {
+    wideInches: metersToInches(node.dimensions.x),
+    deepInches: metersToInches(node.dimensions.y),
+    tallInches: metersToInches(2 * halfHeight(node)),
+  };
+}
+
 /** One mark per listed piece, each with its own height, for the 3D view. */
 export function foundMarks(scene: SceneGraph, groups: FoundGroup[]): FoundMark[] {
   const floor = floorHeight(scene);
@@ -168,7 +179,7 @@ export function foundMarks(scene: SceneGraph, groups: FoundGroup[]): FoundMark[]
     const node = byId.get(nodeId);
     if (!node) return [];
     const topInches = row.topInches.length > 0 ? metersToInches(topMeters(node, floor)) : null;
-    return [{ nodeId, rowId: row.id, name: row.name, topInches }];
+    return [{ nodeId, rowId: row.id, name: row.name, topInches, size: pieceSize(node) }];
   })));
 }
 
