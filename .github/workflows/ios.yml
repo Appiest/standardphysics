@@ -43,6 +43,7 @@ concurrency:
 env:
   DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
   XCODEGEN_VERSION: 2.45.3
+  XCODEGEN_SHA256: 0c90f4d28ca57335f9fa78cf5bf6dabfe20a232036dabe36de2eef79cb7c0878
   LIVE_API: http://127.0.0.1:8798
   LIVE_WEB: http://127.0.0.1:3398
 
@@ -62,6 +63,7 @@ jobs:
       - name: Fail if the Xcode project is stale against project.yml
         run: |
           curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+          echo "$XCODEGEN_SHA256  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c
           unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
           "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
           git diff --exit-code -- .
@@ -100,7 +102,7 @@ jobs:
       - name: Install the API from the pinned lock
         working-directory: ${{ github.workspace }}
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install pip==26.2.1
           python -m pip install -r requirements-dev.lock
           python -m pip install --no-deps -e tools/loopforge -e packages/contracts -e packages/fixtures -e packages/pipeline -e packages/agents -e services/api
       # A fresh data directory each run, holding only the sample shop, which
