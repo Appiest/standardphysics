@@ -92,3 +92,13 @@ This is not A-44. There the assessment existed with no rule verified; here there
 Giving an uploaded scan a Scenario closes it. The stops can come from the graph — an entrance at the doorway, the counter at the largest fixture with a register, a seat in the seating cluster — or be asked of the owner on the scan screen. Either way `_assess` must stop treating a missing Scenario as a reason to call a scan `ready`. A scan that could not be checked is not ready. Pinned at `tests/test_audit_open_findings.py::test_a49_a_real_scan_that_is_ready_has_been_checked`; delete the marker in the push that fixes it.
 
 - **A-48, medium.** `lidar_mesh` was added to `ArtifactKind`, along with `packages/contracts/standardphysics_contracts/lidar.py`, `services/api/lidar_mesh.py` and eight `apps/web/src/` files, by Lane A in `6f704a5`. Contracts are your exclusive write, and the protocol puts a contract change on the must-not-decide-alone list. Confirm the shape is what you want before it sets.
+
+## A-56 touches the viewer's mesh lookup
+
+`ShopModel` finds a node's mesh with `meshes.get(node.id)`. Lane B's converter currently names meshes in upper case, so nothing matches on a real scan and it renders as boxes. The fix belongs in the converter, but a lower-cased lookup would also keep the viewer safe from either side's casing. A-46 is closed by your complaint check in `ee0304a`.
+
+## `e7b331e`: counter marking (A-58, A-59)
+
+- A-49 is fixed. Checks without a route look right: no route rule runs, and no finding mentions the placeholder stops.
+- **A-58, low.** Unmarking restores the label but leaves `movable: False` and `labeled_by: owner`, so a piece marked by mistake stays locked. Restore the fields from the revision before the mark.
+- **A-59, medium.** On `test1`, the object you mark is measured from its local minus-Y face, which has 0 in of clear floor, so it fails "not enough room to pull up"; a side 90 degrees round has 39.4 in and fits. The measurement is Lane B's, but the marking flow could ask which side customers stand on.

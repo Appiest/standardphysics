@@ -20,7 +20,7 @@ It runs in production today on real scans, from a boba shop to a whole floor of 
 | What a reviewer asks | What is in the repo |
 |---|---|
 | Does it survive failures? | A crash-safe job queue, hard deadlines on every job, bounded retries, admission control on every input, and a test that injects each failure. See [failure modes](#failure-modes-and-what-happens). |
-| Is the code held to a standard? | ruff with a cyclomatic complexity ceiling and mypy across every Python package, strict TypeScript with an ESLint complexity ceiling, and a test that fails the build if a package imports upward. |
+| Is the code held to a standard? | ruff with a cyclomatic complexity ceiling and mypy across the contracts, pipeline, agents and API packages, strict TypeScript with an ESLint complexity ceiling, and a test that fails the build if a package imports upward. |
 | How is the repo built? | Six packages with one-way dependencies, contracts generated from one source of truth, pinned dependencies everywhere, and one CI workflow that gates the release image on every check. |
 | Can it be operated? | Commit-tagged images, deploys that verify the new commit is serving before they record it, one-command rollback, tested backup and restore, alerting, log rotation and resource limits. |
 | Can you see what it does? | W&B Weave traces from the API and from every worker process, a live health endpoint, and a Weave Evaluation of the checks tagged by commit. |
@@ -32,7 +32,7 @@ Each row names what goes wrong, what the system does about it, and the test that
 
 | When this happens | Standard Physics | Proof |
 |---|---|---|
-| The server dies mid-job | Every job left running is queued again at startup; a claimed job always ends settled or back in the queue | [`test_job_lifecycle.py`](services/api/tests/test_job_lifecycle.py), [`test_worker_resilience.py`](services/api/tests/test_worker_resilience.py) |
+| The server dies mid-job | Every job left running is queued again at startup, except a simulation, which is failed so its paid model calls never run twice; a claimed job always ends settled or back in the queue | [`test_job_lifecycle.py`](services/api/tests/test_job_lifecycle.py), [`test_worker_resilience.py`](services/api/tests/test_worker_resilience.py) |
 | A second server starts on the same database | An exclusive lock lets only one process run jobs; the other serves requests and takes over the jobs once the first exits | [`worker_lock.py`](services/api/standardphysics_api/worker_lock.py), [`test_worker_resilience.py`](services/api/tests/test_worker_resilience.py) |
 | A job hangs forever | Every job runs in a child process that is killed, with anything it started, at its deadline; the next job runs | [`test_worker_jobs_in_own_process.py`](services/api/tests/test_worker_jobs_in_own_process.py), [`test_worker_bakes.py`](services/api/tests/test_worker_bakes.py) |
 | The database is locked or broken | Lock contention is retried with backoff for a bounded time; a permanent error stops retrying and marks the worker degraded | [`test_worker_resilience.py`](services/api/tests/test_worker_resilience.py) |
@@ -72,7 +72,7 @@ flowchart LR
   api -- "traces" --> weave
 ```
 
-An upload lands in the artifact store and queues a `process` job. The worker turns the RoomPlan export and the LiDAR mesh into a scene graph, `assess` runs the ADA checks over it, `display` renders the picture beside each finding, and `texture` paints the scan from the photos. The scene graph is versioned: an owner's edit, a rebuild or a re-run of discovery saves a new revision on top of the one it started from, so nothing overwrites what came before.
+An upload lands in the artifact store and queues a `process` job. The worker turns the RoomPlan export and the LiDAR mesh into a scene graph, `assess` runs the ADA checks over it, `display` renders the picture beside each finding, and `texture` paints the scan from the photos. The scene graph is versioned: an owner's edit, a rebuild or a re-run of discovery saves a new revision on top of the one it started from, so an owner's work is never overwritten.
 
 | Path | What it is | Tests |
 |---|---|---|
@@ -92,9 +92,9 @@ The API is one service with one SQLite database, which is the right size for a 2
 
 ## What CI enforces on every push
 
-One workflow, [`ci.yml`](.github/workflows/ci.yml), runs everything below. The release image is published only when all of it passes, and production deploys only published images.
+One workflow, [`ci.yml`](.github/workflows/ci.yml), runs everything below. The release image is published only when all of it passes, security scans included, and production deploys only published images.
 
-- **Python:** ruff (with a complexity ceiling), mypy over every package, and every test suite, installed from [`requirements.lock`](requirements.lock).
+- **Python:** ruff (with a complexity ceiling), mypy over the contracts, pipeline, agents and API packages, and every test suite, installed from [`requirements.lock`](requirements.lock).
 - **Web:** ESLint (with a complexity ceiling), strict TypeScript, unit tests, the production build, and a check that the TypeScript contracts match the Python ones.
 - **Browser:** Playwright against the real API: the owner's report, sharing, deleting a shop, an expired session, an API failure, and a second account refused another owner's shop.
 - **Production image:** built from digest-pinned base images, then made to process a real room end to end, render with Blender, and pass every Blender-dependent test inside the image.

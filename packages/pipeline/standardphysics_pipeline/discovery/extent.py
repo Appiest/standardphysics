@@ -90,7 +90,7 @@ class MeshViews:
     """The mesh before any person was taken out of it, and every photo's view of it."""
 
     points: np.ndarray
-    views: list[tuple[PhotoCamera, list[Detection], np.ndarray | None]]
+    views: Sequence[tuple[PhotoCamera, list[Detection], np.ndarray | None]]
 
     def loose_near(self, objects: list[DiscoveredObject], graph: SceneGraph, people: Sequence[PersonVolume]) -> np.ndarray:
         """The mesh no scanned piece claims round the small objects, less what most photos saw as a person.

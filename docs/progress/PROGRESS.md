@@ -57,6 +57,19 @@ The audit fixes code only in files no lane agent is actively changing. For lanes
 | `20f54d9` D: retry the stage that failed, and never call an unchecked shop a pass | D | Pass with notes | Resolves A-42, A-43 and A-44; older stored assessments lack `rules_checked` |
 | `abb3cf6` D: record before and after, fix suggestions and the lawsuit counter | D | Pass | Progress file matches the code |
 | `a6e14f7` Add the two LiDAR scans captured on the phone app: test1 and ravida | A | Pass with notes | A-47 to A-52; landed on a red `master` it did not cause |
+| `94439b3` C: the ask box takes any question, not two phrasings | C | Pass with notes | Resolves A-41, CI green; A-54, A-55; A-26 still open |
+| `d0947b8` B: keep every mesh identified on a scan off our own phone | B | Pass with notes | A-56, A-57 |
+| `407c94c` D: merge the pitch deck into the web app at /present | D | Pass | Deck facts checked against their sources: 8,667 filings, $4,000, 96% and 42% of 3,611 case reports, the 47 in counter |
+| `ee0304a` D: confirm the lawsuit counter height from the public complaint | D | Pass | Closes A-46 |
+| `1ebff37` B: answer what sealed a route by rasterising without the node | B | Pass | Resolves A-40 |
+| `2913c95` through `279ff84`, about thirty pushes from all four lanes | A-D | Suites pass | Not read line by line. At `b860fec`, 571 tests pass with 7 expected failures, including the mesh tests with Blender |
+| `e7b331e` D: check a scan before its route, and let the owner mark the counter | D | Pass with notes | Resolves A-49; A-58, A-59 |
+| `b39f625` D: say a layout passes only as far as the checks that ran | D | Pass | |
+| `1955734` D: record counter marking, early checks and the phone origin fix | D | Pass | Progress file only |
+| `feb65b4` C: keep running when Weave turns a key away | C | Pass | A rejected key or no network now leaves tracing off with a warning |
+| `eb96dc4` D: the server traces its run to Weave | D | Pass with notes | Authored from Lane C into `services/api`, `start.sh` and `.env.example`, the cross-lane edit A-18 records; tests stand in for the Weave account |
+| `dce5fde` C, D: note the Weave wiring in both progress files | C, D | Pass | Progress files only |
+| `184e423` D: Fix what I can runs Lane C's loop and shows every pass | D | Pass | The loop runs on the search cache, routed by TypeSafe or the labelled local policy; kept moves add up per piece |
 
 `609db3d`, `9028d14`, `b90e570`, `d3f7d95` and `1a06655` change only the plan and lane documents. A-1 covers the lane document errors from `9028d14`.
 
@@ -317,9 +330,11 @@ Low. `fixed in 5dd31f6`. Lane D.
 `fff9e60`'s `Stages.propose` runs Lane C's fix search inside the same lock as `assess`, which the layout check also takes. Measured at `2b0e2b0` on the sample shop with the preview rules: a layout check alone takes 1.49 s, one proposal takes 3.33 s, and a layout check sent 0.3 s after a proposal starts takes 4.21 s. Queued assessments wait behind a proposal the same way. The lock protects Lane B's measurement cache, so giving the fix search its own `PipelineMeasurements` would likely let a drag check run alongside it.
 
 ### A-46 The lawsuit behind the fixture counter is only partly verified
-Low. `open`. Lane D.
+Low. `verified in ee0304a` from the public complaint. Lane D.
 
 `2b0e2b0` sets the fixture counter to 47 in and cites Whitaker v. T Rock Inc., N.D. Cal. No. 5:22-cv-00283, complaint paragraph 12. The case exists: CourtListener lists Whitaker v. T Rock Inc., 22-cv-00283-JST, filed January 14, 2022, over the Happy Lemon shop in San Jose. The 47 in figure, the paragraph number and the `5:` division prefix could not be confirmed from public sources, because the complaint is behind PACER. Search results also describe the plaintiff as a serial ADA filer, including a dismissal reported by CBS San Francisco. Before the pitch names a real business and plaintiff, someone should read the complaint and decide whether this is the example to lead with.
+
+The public complaint settles it. Its header reads Case 5:22-cv-00283-VKD, filed 01/14/22, and paragraph 12 puts the counter about 47 inches above the finish floor after a December 2021 visit, so the figure, the paragraph and the `5:` prefix all hold; the earlier doubt about the prefix came from a search snippet. Paragraph 12 also says the shop had a lowered section and the transaction happened at the higher counter, which matters to how the pitch frames the fix. The deck's other facts in `407c94c` match their sources.
 
 ### A-47 The coverage engine never reaches "done" on a real scan
 High. `open`, partly fixed in `93a720c`. Lane A, and a decision for the people in it.
@@ -400,3 +415,33 @@ Low. `open`. Lane A.
 Low. `open`. Lane A and the humans.
 
 All 14 files in `a6e14f7` land under `datasets/phone/`, which no lane document claims: Lane A owns `apps/ios/**`, B `packages/pipeline/**`, C `packages/agents/**`, D contracts, fixtures, api and web. No handoff, README or lane document says what the tree is or that it is now the canonical place for a real scan. `docs/handoffs/B-to-A.md` had asked for the export at `packages/fixtures/standardphysics_fixtures/data/real/`, where the existing `tests/test_real_ingest.py` parameterisation already looks, so the real-export suite did not pick these up and Lane B wrote fresh cases instead. The commit also carries no lane prefix, which the protocol asks for. This is the Lane A analogue of A-3.
+
+### A-54 Setting the OpenRouter key breaks every model call
+Medium. `open`. Lane C.
+
+`models.py` imports `openai` only when a key is configured, and `packages/agents/pyproject.toml` does not declare `openai`, so a clean install has no such module. `OpenRouter.structured` calls `self.client()` before its `try`, so the import error escapes instead of becoming a `Rejected` the caller falls back from. Reproduced at `94439b3` with a key set and no `openai` installed: `ModuleNotFoundError: No module named 'openai'`. Still true at `279ff84`. The failure appears only once someone sets the key the plan asks for, which is the moment the demo depends on it. Declaring `openai` and moving the client construction inside the `try` would close it.
+
+### A-55 The model calls ask providers not to train, but do not ask for zero retention
+Medium. `open`. Lane C.
+
+`PROVIDER_ROUTING` sends `"data_collection": "deny"`, and the docstring calls that "the per-request half of zero data retention". OpenRouter's provider routing documentation separates the two: `data_collection` controls whether to use providers that may store data, and a distinct `zdr` field restricts routing to zero data retention endpoints. The plan requires zero data retention for scans of the inside of a shop, and `zdr` is not set. Still true at `279ff84`. Adding `"zdr": True` and correcting the docstring would match the requirement.
+
+### A-56 Every real scan's meshes are named in upper case, so the viewer shows boxes
+High. `open`. Lane B, with the viewer lookup in Lane D.
+
+`usdz_to_glb` names each mesh with the identifier from RoomPlan's mapping file, which is upper case. `parse_room_json` gives nodes `str(UUID)`, which is lower case, and the viewer finds a node's mesh with a case-sensitive `meshes.get(node.id)`. Reproduced with Blender at `d0947b8` and again at `279ff84`: `apple_bedroom3` converts with `fully_identified` true, yet 0 of its mesh names match a node id exactly and 11 match ignoring case; `apple_livingroom` 0 and 19; `test1` 0 and 26; `ravida` 0 and 25. No scanned mesh is ever placed, and every real scan renders as boxes. `fully_identified` does not notice because it counts renames, not matches. Pinned in `tests/test_audit_open_findings.py`, skipped where Blender is missing, so CI does not run it.
+
+### A-57 Each phone scan element converts twice, and the copy cannot match its node
+Medium. `open`. Lane B.
+
+A phone export carries each element once as a parametric box and once as a mesh. `d0947b8` maps both to the same identity by stripping Blender's `.001`, but renaming the second object to a name the first already holds makes Blender add `.001` back. Reproduced with Blender at `d0947b8` and `279ff84`: `test1` has 88 names, and all 26 of its nodes appear as both `<id>` and `<id>.001`; `ravida` likewise for 25 nodes. Which of the two a viewer picks up is arbitrary, and the copy can never match a node. Keeping one object per element, or naming the parametric one distinctly, would give each node one mesh. Pinned in `tests/test_audit_open_findings.py`, skipped without Blender.
+
+### A-58 Unmarking a counter leaves the object locked
+Low. `open`. Lane D.
+
+`labels._as_counter` sets `label`, `labeled_by` and `movable: False`; `_as_scanned`, the undo, restores only the label. Reproduced at `1955734` on the sample shop by marking `table_1` and unmarking it: `movable` goes from true to false and stays false, `labeled_by` stays `owner`, and the label comes back as the raw category `table` rather than the scanned `Table`. The owner cannot drag a piece they marked by mistake. Restoring `movable`, `labeled_by` and the label from the revision before the mark would make it an undo.
+
+### A-59 The counter approach is measured on a side no customer may use
+Medium. `open`. Lane B measures it, Lane C and Lane D rely on it.
+
+`counter_approach` places the 30 by 48 in clear floor space in front of the counter's local minus-Y face. On the fixture that face looks into the shop, but a real RoomPlan object's axes say nothing about which side customers stand on, and the owner-marking flow in `e7b331e` has no way to say so either. Reproduced at `1955734` with `test1`'s storage object, 0.49 by 0.52 m, marked as the counter: as scanned the approach measures 45.3 by 0.0 in and fails, and Lane C reports "There's not enough room to pull up to the service counter" at 0.0 in. Turned 90 degrees, the same object has 145.7 by 39.4 in of clear floor, which fits. Measuring every face and using the most open one, or letting the owner say which side is the front, would keep a real scan from failing on the wrong side.

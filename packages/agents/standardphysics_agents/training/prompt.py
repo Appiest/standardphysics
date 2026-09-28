@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Set as AbstractSet
 
 from standardphysics_contracts import Finding, Scenario, SceneGraph, SceneNode, bounds_the_room, to_inches
 from standardphysics_pipeline import footprint, gap_between
@@ -115,7 +116,7 @@ def _door(node: SceneNode) -> dict:
     return {**_placed(node), "keep_clear": _corners(door_keep_clear(node))}
 
 
-def _fixed(node: SceneNode, fixtures: set, on_counters: frozenset) -> dict:
+def _fixed(node: SceneNode, fixtures: AbstractSet, on_counters: AbstractSet) -> dict:
     entry = {"id": str(node.id), **_placed(node)} if node.id in fixtures else _placed(node)
     return {**entry, "on_a_counter": True} if node.id in on_counters else entry
 

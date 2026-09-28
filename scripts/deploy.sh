@@ -121,7 +121,25 @@ git pull --ff-only
 export GIT_SHA=\$(git rev-parse HEAD)
 cd deploy/digitalocean
 published='$IMAGE':\$GIT_SHA
+# A bake or a discovery run holds up to about a gigabyte; building the image
+# beside one on a 4 GB box has killed jobs, and a restart interrupts them, so
+# the queue is read before a local build as well as before the restart.
+refuse_while_busy() {
+  in_flight=\$(docker compose exec -T api /opt/venv/bin/python -c $(printf %q "$IN_FLIGHT_QUERY") 2>/dev/null) || in_flight=unknown
+  if [ '$FORCE' != 1 ] && ! [[ \"\$in_flight\" =~ ^[0-9]+\$ ]]; then
+    echo 'I could not read the job queue from the API container, so I cannot tell what a restart would interrupt.' >&2
+    echo 'Check it with docker compose ps and ./doctor.sh, or run with SP_DEPLOY_FORCE=1 to deploy anyway.' >&2
+    exit 69
+  fi
+  if [ '$FORCE' != 1 ] && [ \"\$in_flight\" -gt 0 ]; then
+    echo \"The API has \$in_flight job(s) queued or running, and a deploy restarts it.\" >&2
+    echo 'Wait for them to finish and run this again, which reuses the image it just fetched,' >&2
+    echo 'or run with SP_DEPLOY_FORCE=1 to interrupt them.' >&2
+    exit 75
+  fi
+}
 if [ '$BUILD' = 1 ]; then
+  refuse_while_busy
   echo \"SP_DEPLOY_BUILD=1: building \$GIT_SHA here. This image is untested; CI has not run its checks against it.\" >&2
   docker compose build
   origin=untested-local-build
@@ -136,18 +154,7 @@ else
   echo 'SP_DEPLOY_BUILD=1 builds it on the box instead, untested.' >&2
   exit 66
 fi
-in_flight=\$(docker compose exec -T api /opt/venv/bin/python -c $(printf %q "$IN_FLIGHT_QUERY") 2>/dev/null) || in_flight=unknown
-if [ '$FORCE' != 1 ] && ! [[ \"\$in_flight\" =~ ^[0-9]+\$ ]]; then
-  echo 'I could not read the job queue from the API container, so I cannot tell what a restart would interrupt.' >&2
-  echo 'Check it with docker compose ps and ./doctor.sh, or run with SP_DEPLOY_FORCE=1 to deploy anyway.' >&2
-  exit 69
-fi
-if [ '$FORCE' != 1 ] && [ \"\$in_flight\" -gt 0 ]; then
-  echo \"The API has \$in_flight job(s) queued or running, and a deploy restarts it.\" >&2
-  echo 'Wait for them to finish and run this again, which reuses the image it just fetched,' >&2
-  echo 'or run with SP_DEPLOY_FORCE=1 to interrupt them.' >&2
-  exit 75
-fi
+refuse_while_busy
 docker compose up -d
 waited=0
 until verdict=\$(docker compose exec -T api /opt/venv/bin/python - \"\$GIT_SHA\" < check_serving.py 2>&1); do

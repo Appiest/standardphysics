@@ -48,6 +48,7 @@ from standardphysics_contracts import (
 )
 
 from . import repository as repo
+from .budgets import admit_new_job
 from .dev_model import nudges_from_prompt
 from .errors import ApiProblem
 from .fireworks import FakeFireworks, FireworksModel, ModelFailed, ModelWarming, RearrangeModel, Sampling
@@ -119,6 +120,12 @@ class Rearranger:
     def available(self) -> bool:
         return self.model is not None
 
+    def required_model(self) -> RearrangeModel:
+        """The model, or ModelFailed(UNAVAILABLE) when none is configured, so the job says why."""
+        if self.model is None:
+            raise ModelFailed(UNAVAILABLE)
+        return self.model
+
     @classmethod
     def from_settings(cls, settings: Settings) -> Rearranger:
         return cls(model=model_from_settings(settings), provider=settings.rearrange_provider,
@@ -175,6 +182,7 @@ def queue_suggestion(database, worker, rearranger: Rearranger, scan_id: uuid.UUI
     with database.transaction() as connection:
         _require_latest(connection, scan_id, body.base_revision)
         if not _active(connection, scan_id, body.base_revision):
+            admit_new_job(connection, worker.settings.max_queued_jobs)
             connection.execute(
                 "INSERT INTO rearrangements (scan_id, revision) VALUES (?, ?) ON CONFLICT(scan_id, revision)"
                 " DO UPDATE SET phase='waiting', phase_reason=NULL, result_json=NULL",
@@ -238,8 +246,7 @@ def _inputs(database, scan_id: uuid.UUID, revision: int) -> Inputs:
 
 def ask_patiently(rearranger: Rearranger, messages: list[dict], on_warming: Callable[[], None]) -> list[str]:
     """Ask, and while the deployment is starting from zero, wait and ask again for up to ten minutes."""
-    model, started, delay = rearranger.model, rearranger.clock(), FIRST_RETRY_SECONDS
-    assert model is not None, "only a configured rearranger is asked"
+    model, started, delay = rearranger.required_model(), rearranger.clock(), FIRST_RETRY_SECONDS
     while True:
         try:
             return model.complete(messages, rearranger.sampling)

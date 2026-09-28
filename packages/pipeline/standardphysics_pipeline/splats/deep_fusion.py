@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from typing import Sequence, overload
 
 import numpy as np
 import torch
@@ -20,6 +20,18 @@ class InverseAug:
 
     Maintains metric Z-up room frame alignment with ARKit camera frames.
     """
+
+    @staticmethod
+    @overload
+    def room_to_camera_points(
+        points: torch.Tensor, camera: PhotoCamera
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]: ...
+
+    @staticmethod
+    @overload
+    def room_to_camera_points(
+        points: np.ndarray, camera: PhotoCamera
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]: ...
 
     @staticmethod
     def room_to_camera_points(

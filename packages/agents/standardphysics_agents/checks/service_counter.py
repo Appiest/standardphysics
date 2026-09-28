@@ -48,9 +48,10 @@ def _portion_for(graph, counter, rule: RuleSpec) -> SceneNode | None:
 def _upper_height(node: SceneNode) -> float:
     if node.top_surface is None:
         return to_inches(node.dimensions.z)
-    if node.top_surface.height_m is None:
+    surface = node.top_surface
+    if surface.height_m is None or surface.uncertainty_m is None:
         return float("inf")
-    return to_inches(node.top_surface.height_m + (node.top_surface.uncertainty_m or 0.0))
+    return to_inches(surface.height_m + surface.uncertainty_m)
 
 
 def _section_under(item: SceneNode, surfaces: list[SceneNode]) -> SceneNode | None:

@@ -38,3 +38,13 @@ All three suites pass. Withholding a partly measured turn also means Lane C's ga
 ## `022004d`: a sealed route names the wrong case (A-40)
 
 On the fixture with `case_east` stretched wall to wall, `route_clear_width` names `case_west` and `case_east`. Removing `case_west` alone leaves the route blocked. `grid.owner` holds one owner per cell, and `case_west` keeps all 2,304 of its cells after the stretch, so `_would_open` frees cells `case_east` still covers. Rebuilding the grid without the node, or tracking every owner of a cell, answers the question the function asks. Pinned as a strict expected failure. Your run lengths check out: 112.8, 0.0, 51.3 and 0.0.
+
+## Scanned meshes never reach the viewer (A-56, A-57)
+
+- **A-56, high.** `usdz_to_glb` names meshes with RoomPlan's upper-case identifiers, while nodes carry lower-case `str(UUID)`. With Blender at `279ff84`, 0 mesh names match a node exactly on all four real rooms, so the viewer places no scanned mesh. Writing the name as `str(uuid.UUID(identifier))` would match the contract. `fully_identified` counts renames, so it stays true while nothing matches.
+- **A-57, medium.** Phone exports import each element twice. Stripping `.001` in `d0947b8` maps both to one identity, and the second rename gets `.001` again: all 26 of `test1`'s nodes appear as `<id>` and `<id>.001`. Keep one object per element.
+- Both are pinned as strict expected failures that skip without Blender. A-40 is fixed in `1ebff37`.
+
+## A-59: the counter approach uses a fixed face
+
+`counter_approach` measures in front of the local minus-Y face. On `test1`'s storage object marked as the counter, that face has 0.0 in of depth, while a face 90 degrees round has 145.7 by 39.4 in. RoomPlan's axes do not say which side customers use, so measuring all four faces and reporting the most open one, or taking the front from the owner, would avoid a false problem on real scans.

@@ -99,6 +99,22 @@ def test_table_height_overlapping_valid_range_stays_a_question():
     assert resolve(observed, load_pack().by_id(observed.rule_id), graph)[0] == "question"
 
 
+def test_a_borderline_height_becomes_a_finding_that_asks_for_a_measurement():
+    counter = _node("Ordering counter", (0, 0, 0.46), (0.8, 0.8, 0.92))
+    counter = counter.model_copy(update={"top_surface": SurfaceHeight(
+        height_m=0.9144, uncertainty_m=0.02, support_area_m2=0.3,
+    )})
+    table = _node("Table", (3, 0, 0.38), (0.8, 0.8, 0.76))
+    table = table.model_copy(update={"top_surface": SurfaceHeight(
+        height_m=0.87, uncertainty_m=0.02, support_area_m2=0.3,
+    )})
+    graph = _graph(counter, table)
+    context = _context(graph)
+    for observed in (service_counter_height(context)[0], dining_surface_height(context)[0]):
+        finding = to_finding(observed, load_pack().by_id(observed.rule_id), graph, graph.scan_id)
+        assert finding.asks == "measurement"
+
+
 def test_a_fixture_cannot_move_even_if_its_movable_flag_is_wrong():
     for label in ("Cash drawer", "POS counter", "Ramp", "Ramp landing"):
         graph = _graph(_node(label, (0, 0, 0.1), (1, 1, 0.2), movable=True))

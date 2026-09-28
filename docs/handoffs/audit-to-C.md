@@ -13,3 +13,9 @@
 ## `022004d` keeps your evaluation red until the label changes (A-41)
 
 Lane B's blocked routes now name their obstacles, so `blocked_but_movable` gets `FIX` and `test_the_router_picks_the_right_action_every_time` scores 0.96875. `B-to-C.md` has the one-line change, `expected_action="FIX"`, and the sentence above it needs rewriting too. Before taking it, note A-40: on a sealed aisle Lane B currently names `case_west`, which cannot clear the aisle by moving, so check that the accepted fix moves `case_east`.
+
+## `94439b3`: two model call findings (A-54, A-55)
+
+- **A-54, medium.** `openai` is not a declared dependency, and `OpenRouter.structured` builds the client before its `try`, so setting `OPENROUTER_API_KEY` on a clean install raises `ModuleNotFoundError` instead of falling back. Declare `openai` and build the client inside the `try`.
+- **A-55, medium.** `data_collection: "deny"` avoids providers that train on data. OpenRouter's separate `zdr` field is what restricts routing to zero data retention endpoints, and the plan asks for zero retention. Add `"zdr": True` and fix the docstring.
+- A-41 is fixed in `94439b3`; CI went green. A-26 still allows 9 mm into a wall at `279ff84`.
