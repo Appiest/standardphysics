@@ -152,7 +152,7 @@ def test_apple_finds_the_account_that_already_has_its_email(client, make_client)
 def test_a_token_apple_did_not_issue_for_this_app_is_refused(make_client, token):
     with make_client(sign_in_as_owner=False) as phone:
         refused = phone.post("/api/auth/apple", json={"identity_token": token})
-    assert refused.status_code == 400
+    assert refused.status_code == 401
 
 
 def test_opening_a_shop_pushes_back_when_a_guest_shop_is_deleted(guest):
