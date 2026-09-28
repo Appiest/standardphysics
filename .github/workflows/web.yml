@@ -1,17 +1,30 @@
 name: Web and contracts
 
+# The browser job runs the real API, which pulls in the pipeline, the agents,
+# the fixtures and the pinned Python lock, so a change to any of them can break
+# the owner flow without touching the web app.
 on:
   push:
     paths:
       - "packages/contracts/**"
+      - "packages/pipeline/**"
+      - "packages/agents/**"
+      - "packages/fixtures/**"
+      - "tools/loopforge/**"
       - "apps/web/**"
       - "services/api/**"
+      - "requirements-dev.lock"
       - ".github/workflows/web.yml"
   pull_request:
     paths:
       - "packages/contracts/**"
+      - "packages/pipeline/**"
+      - "packages/agents/**"
+      - "packages/fixtures/**"
+      - "tools/loopforge/**"
       - "apps/web/**"
       - "services/api/**"
+      - "requirements-dev.lock"
       - ".github/workflows/web.yml"
 
 jobs:

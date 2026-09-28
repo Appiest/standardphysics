@@ -1,15 +1,19 @@
 name: iOS app
 
+# OwnerAPI.swift mirrors packages/contracts by hand, and the tests bundle the
+# two RoomPlan fixtures below, so either changing can break this build.
 on:
   push:
     paths:
       - "apps/ios/**"
+      - "packages/contracts/**"
       - "packages/fixtures/standardphysics_fixtures/data/real/apple_bedroom3.room.json"
       - "packages/fixtures/standardphysics_fixtures/data/real/apple_livingroom.room.json"
       - ".github/workflows/ios.yml"
   pull_request:
     paths:
       - "apps/ios/**"
+      - "packages/contracts/**"
       - "packages/fixtures/standardphysics_fixtures/data/real/apple_bedroom3.room.json"
       - "packages/fixtures/standardphysics_fixtures/data/real/apple_livingroom.room.json"
       - ".github/workflows/ios.yml"
