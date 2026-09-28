@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #e6e6e3;
+  --color-paper-raised: #f3f3f1;
+  --color-paper-sunken: #d9d9d5;
+  --color-ink: #0d0d0c;
+  --color-ink-muted: #5c5c57;
+  --color-ink-faint: #9a9a94;
+  --color-rule: #c6c6c1;
+  --color-tape: #f6be1a;
+  --color-tape-deep: #d99a00;
+  --color-tape-light: #fff4c7;
+  --color-fail: #d9291f;
+  --color-pass: #16784a;
+  --color-night: #0d0d0c;
+
+  --font-display: "Libre Franklin", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Karla", ui-sans-serif, system-ui, sans-serif;
+
+  --text-colossal: 520px;
+  --text-colossal--line-height: 0.8;
+  --text-poster: 300px;
+  --text-poster--line-height: 0.84;
+  --text-amount: 240px;
+  --text-amount--line-height: 1;
+  --text-headline: 112px;
+  --text-headline--line-height: 0.92;
+  --text-title: 88px;
+  --text-title--line-height: 0.98;
+  --text-caption: 64px;
+  --text-caption--line-height: 1.08;
+  --text-label: 46px;
+  --text-label--line-height: 1.15;
+  --text-fineprint: 36px;
+  --text-fineprint--line-height: 1.3;
+
+  --text-shout: 180px;
+  --text-shout--line-height: 0.9;
+
+  --spacing-safe-top: 250px;
+  --spacing-safe-bottom: 420px;
+  --spacing-safe-side: 80px;
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@utility reel-copy {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-wrap: balance;
+}
+
+@utility reel-caption {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+@utility figures {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+@utility tape-glow {
+  text-shadow: 0 0 24px color-mix(in srgb, var(--color-tape) 70%, transparent), 0 0 80px color-mix(in srgb, var(--color-tape) 45%, transparent);
+}
+
+@theme {
+  --text-c-hook: 104px;
+  --text-c-hook--line-height: 0.94;
+}

@@ -1,0 +1,30 @@
+import { useCurrentFrame } from "remotion";
+import { drawn, progress, snap } from "../lib/ease";
+
+const LETTER_S =
+  "M176 237H24Q23 171 48.0 123.0Q73 75 115.5 44.0Q158 13 213.5 -1.5Q269 -16 328 -16Q401 -16 456.5 1.0Q512 18 549.5 48.5Q587 79 606.0 121.0Q625 163 625 212Q625 272 599.5 310.5Q574 349 539.0 372.0Q504 395 468.5 405.5Q433 416 413 420Q346 437 304.5 448.0Q263 459 239.5 470.0Q216 481 208.0 494.0Q200 507 200 528Q200 551 210.0 566.0Q220 581 235.5 591.0Q251 601 270.0 605.0Q289 609 308 609Q337 609 361.5 604.0Q386 599 405.0 587.0Q424 575 435.5 554.0Q447 533 449 501H601Q601 563 577.5 606.5Q554 650 514.0 678.0Q474 706 422.5 718.5Q371 731 315 731Q267 731 219.0 718.0Q171 705 133.0 678.0Q95 651 71.5 610.5Q48 570 48 515Q48 466 66.5 431.5Q85 397 115.0 374.0Q145 351 183.0 336.5Q221 322 261 312Q300 301 338.0 292.0Q376 283 406.0 271.0Q436 259 454.5 241.0Q473 223 473 194Q473 167 459.0 149.5Q445 132 424.0 122.0Q403 112 379.0 108.5Q355 105 334 105Q303 105 274.0 112.5Q245 120 223.5 135.5Q202 151 189.0 176.0Q176 201 176 237Z";
+const LETTER_P =
+  "M226 378V592H348Q375 592 400.0 588.0Q425 584 444.0 572.5Q463 561 474.5 540.0Q486 519 486 485Q486 451 474.5 430.0Q463 409 444.0 397.5Q425 386 400.0 382.0Q375 378 348 378ZM69 714V0H226V256H391Q458 256 505.0 275.5Q552 295 581.5 327.0Q611 359 624.5 400.5Q638 442 638 485Q638 529 624.5 570.0Q611 611 581.5 643.0Q552 675 505.0 694.5Q458 714 391 714Z";
+const ARROW_TOP = "563.78,371.04 616.20,318.62 616.20,361.61 845.86,361.61 845.86,318.62 898.27,371.04 845.86,423.45 845.86,380.46 616.20,380.46 616.20,423.45";
+const ARROW_BOTTOM = "125.73,663.32 178.14,610.90 178.14,653.90 427.31,653.90 427.31,610.90 479.72,663.32 427.31,715.73 427.31,672.74 178.14,672.74 178.14,715.73";
+
+/** The Standard Physics mark: an S and a P, each carrying a dimension line. The lines stretch open as it arrives. */
+export function LogoMark({ at, size }: { at: number; size: number }) {
+  const frame = useCurrentFrame();
+  const block = progress(frame, at, 12, snap);
+  const letters = progress(frame, at + 5, 16, drawn);
+  const arrows = progress(frame, at + 10, 18, drawn);
+  return (
+    <svg viewBox="0 0 1024 1024" width={size} height={size} aria-label="Standard Physics">
+      <rect width="1024" height="1024" className="fill-ink" style={{ transform: `scaleY(${block})`, transformOrigin: "50% 100%" }} />
+      <g className="fill-paper-raised" opacity={letters}>
+        <path transform={`translate(105.14 ${588.42 + (1 - letters) * 80}) scale(0.60892 -0.60892)`} d={LETTER_S} />
+        <path transform={`translate(515.77 ${880.7 + (1 - letters) * 80}) scale(0.60892 -0.60892)`} d={LETTER_P} />
+      </g>
+      <g className="fill-tape">
+        <polygon points={ARROW_TOP} style={{ transform: `scaleX(${arrows})`, transformOrigin: "731px 371px" }} />
+        <polygon points={ARROW_BOTTOM} style={{ transform: `scaleX(${arrows})`, transformOrigin: "302px 663px" }} />
+      </g>
+    </svg>
+  );
+}
