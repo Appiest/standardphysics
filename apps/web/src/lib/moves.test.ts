@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SceneNode } from "@/types/contracts";
-import { applyMoves, candidateMoves, moveNode, withMove } from "./moves";
+import { applyMoves, candidateMoves, METERS_PER_INCH, moveNode, nudgeForKey, withMove } from "./moves";
 
 const table: SceneNode = {
   id: "t", kind: "object", label: "Table", raw_category: "table", quality: "measured", movable: true,
@@ -73,5 +73,23 @@ describe("settling", () => {
   it("leaves floor-standing furniture at its height", () => {
     const loose = { ...scene, nodes: [floor, table] };
     expect(heightOf(applyMoves(loose, withMove({}, "t", 1, 0, 0)), "t")).toBe(0.375);
+  });
+});
+
+describe("nudgeForKey", () => {
+  const press = (key: string, shiftKey = false) => ({ key, shiftKey, preventDefault: () => {} });
+
+  it("slides an inch with an arrow, six with Shift, and turns a step with R", () => {
+    const nudges: number[][] = [];
+    const record = (dx: number, dy: number, degrees: number) => nudges.push([dx, dy, degrees]);
+    expect(nudgeForKey(press("ArrowUp"), record)).toBe(true);
+    nudgeForKey(press("ArrowLeft", true), record);
+    nudgeForKey(press("r"), record);
+    nudgeForKey(press("R", true), record);
+    expect(nudges).toEqual([[0, METERS_PER_INCH, 0], [-6 * METERS_PER_INCH, 0, 0], [0, 0, 15], [0, 0, -15]]);
+  });
+
+  it("leaves every other key alone", () => {
+    expect(nudgeForKey(press("Tab"), () => { throw new Error("moved"); })).toBe(false);
   });
 });

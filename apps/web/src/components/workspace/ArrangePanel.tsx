@@ -39,7 +39,7 @@ export function ArrangePanel({ arrangement, fallbackFindings, scope }: { arrange
     <div className="flex flex-col gap-5">
       <div className="px-3">
         <Status arrangement={arrangement} problems={groups.problems.length} scope={scope} />
-        {arrangement.check?.blocked.map((blocked) => (
+        {[...arrangement.refused, ...(arrangement.check?.blocked ?? [])].map((blocked) => (
           <p key={`${blocked.node_id}-${blocked.reason}`} className="mt-2 flex gap-2 text-problem">
             <span className="mt-2 size-2 shrink-0 rounded-full bg-problem" aria-hidden />
             {blockedSentence(blocked)}
