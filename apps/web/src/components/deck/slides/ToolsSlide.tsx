@@ -7,10 +7,11 @@ import { finetuneTotals, ruleShifts, rulesFell, rulesRose } from "../finetuneLed
 import { FinePrint, MaskedLines } from "../primitives";
 import type { SlideProps } from "../slides";
 import { LineagePanel, RulesLearnedPanel, SolvedPanel } from "./FinetunePanels";
+import { LiveNotebookPanel } from "./LiveNotebookPanel";
 import { MarimoMapPanel, RulesInMarimoPanel } from "./MarimoPanels";
 
-type ToolsPhase = "runs" | "aria" | "marimo" | "rules" | "lineage" | "learned" | "solved" | "map";
-const toolsPhases: ToolsPhase[] = ["runs", "aria", "marimo", "rules", "lineage", "learned", "solved", "map"];
+type ToolsPhase = "runs" | "aria" | "marimo" | "rules" | "lineage" | "learned" | "solved" | "map" | "live";
+const toolsPhases: ToolsPhase[] = ["runs", "aria", "marimo", "rules", "lineage", "learned", "solved", "map", "live"];
 
 type Run = { label: string; cellMillimeters: number | null; candidates: number; weakest: number };
 
@@ -188,6 +189,11 @@ const copy: Record<ToolsPhase, { headline: string[]; detail: string[]; source: s
     detail: ["Solid is built.", "Dashed is next."],
     source: "notebooks/scenario_sweep.py, notebooks/finetune_story.py",
   },
+  live: {
+    headline: ["The real", "notebook runs", "right here."],
+    detail: ["marimo runs its Python", "inside this browser tab."],
+    source: "notebooks/finetune_story.py, served at /team/training",
+  },
 };
 
 const panels: Partial<Record<ToolsPhase, () => React.JSX.Element>> = {
@@ -197,6 +203,7 @@ const panels: Partial<Record<ToolsPhase, () => React.JSX.Element>> = {
   learned: RulesLearnedPanel,
   solved: SolvedPanel,
   map: MarimoMapPanel,
+  live: LiveNotebookPanel,
 };
 
 function ToolsPanel({ phase }: { phase: ToolsPhase }) {

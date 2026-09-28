@@ -4,7 +4,8 @@ import { ArrowLeft, ArrowSquareOut } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { NOTEBOOK_ROOT, NOTEBOOK_URL } from "@/components/team/notebookFiles";
+import { NOTEBOOK_ROOT } from "@/components/team/notebookFiles";
+import { NOTEBOOK_URL } from "@/components/team/notebookUrl";
 import { buttonClassName } from "@/components/ui/Button";
 import { isTeam, requireSession } from "@/lib/session";
 

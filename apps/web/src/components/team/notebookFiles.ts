@@ -3,9 +3,6 @@ import path from "node:path";
 /** Where `npm run notebook:export` writes the WebAssembly build of notebooks/finetune_story.py. Git ignores it. */
 export const NOTEBOOK_ROOT = path.join(process.cwd(), ".notebooks", "finetune-story");
 
-/** The URL the export is served under, behind the team check in its route handler. */
-export const NOTEBOOK_URL = "/team/training/notebook/index.html";
-
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",

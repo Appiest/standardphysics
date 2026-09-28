@@ -37,7 +37,7 @@ export const slides: SlideDefinition[] = [
   { id: "find", shot: "counter", layer: "overStage", Content: FindSlide },
   { id: "fix", shot: "counterFixed", layer: "overStage", Content: FixSlide },
   { id: "loop", shot: "awayAfterFix", layer: "overStage", steps: 4, Content: LoopSlide },
-  { id: "tools", shot: "awayAfterFix", layer: "overStage", steps: 8, Content: ToolsSlide },
+  { id: "tools", shot: "awayAfterFix", layer: "overStage", steps: 9, Content: ToolsSlide },
   { id: "pivot", shot: "awayAfterFix", layer: "overStage", Content: PivotSlide },
   { id: "boomers", shot: "awayAfterFix", layer: "overStage", steps: 2, Content: BoomersSlide },
   { id: "model", shot: "awayAfterFix", layer: "overStage", steps: 2, Content: ModelSlide },
