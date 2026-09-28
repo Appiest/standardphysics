@@ -135,6 +135,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS beta_waitlist (
+    email TEXT PRIMARY KEY,
+    role TEXT NOT NULL CHECK (role IN ('student', 'shop_owner')),
+    created_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS sessions_by_owner ON sessions(owner_id);
 CREATE INDEX IF NOT EXISTS scans_by_owner ON scans(owner_id, created_at DESC);
 CREATE TABLE IF NOT EXISTS assessments (

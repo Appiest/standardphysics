@@ -31,6 +31,9 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
                 What a scan of your shop contains, and how to delete it
               </Link>
             </p>
+            <Link href="/waitlist" className="w-fit bg-ink px-5 py-3 text-base font-medium text-paper transition-colors hover:bg-ink/85">
+              Join the TestFlight waitlist
+            </Link>
           </div>
           <AuthForm initialMode={wantsAnAccount ? "sign-up" : "sign-in"} />
         </div>

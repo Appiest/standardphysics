@@ -106,6 +106,7 @@ class Settings:
     """Traces go to Weave when this is set, and nowhere when it is not. Only
     `from_environment` fills it in, so a server built in a test stays local."""
     weave_entity: str | None = None
+    waitlist_admin_token: str | None = None
     auto_deep_simulation: bool = False
     auto_deep_samples: int = 1000
     auto_deep_typesafe_call_limit: int = 3000
@@ -223,6 +224,7 @@ class Settings:
             seed_owner_password_generated=not os.environ.get("SP_SEED_OWNER_PASSWORD"),
             weave_project=os.environ.get(PROJECT_ENV) or None,
             weave_entity=os.environ.get(ENTITY_ENV) or None,
+            waitlist_admin_token=os.environ.get("SP_WAITLIST_ADMIN_TOKEN") or None,
             auto_deep_simulation=_flag("SP_AUTO_DEEP_SIMULATION"),
             bake_in_own_process=not _flag("SP_BAKE_IN_PROCESS"),
             bake_timeout_seconds=_bounded_integer("SP_BAKE_TIMEOUT_SECONDS", 45 * 60, 60, 86_400),

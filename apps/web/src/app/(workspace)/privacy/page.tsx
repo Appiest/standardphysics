@@ -94,6 +94,14 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
+      <Section heading="TestFlight waitlist">
+        <p>
+          When you join the waitlist, we store your email and whether you are a student or a shop owner.
+          We use your email to send a TestFlight invite when a place is available. Write to {CONTACT} if you
+          want us to remove your waitlist entry.
+        </p>
+      </Section>
+
       <Section heading="What we do not do">
         <p>
           Your scans are not sold or rented. There is no advertising in Standard Physics, no

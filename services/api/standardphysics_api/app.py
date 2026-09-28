@@ -100,6 +100,7 @@ from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId, ScanQuota
 from .team import adopt_allowlist
 from .textures import MAX_METADATA_BYTES, install_texture_routes, maybe_queue_texture, validate_manifest
 from .usdz_validation import MAX_ARCHIVE_BYTES, InvalidUsdz, validate_room_usdz
+from .waitlist import install_waitlist_routes
 from .worker import ASSESS, PROCESS, Worker
 
 PLACES = {*DESTINATIONS, "pickup"}
@@ -193,6 +194,7 @@ def create_app(
     _install_error_handlers(app)
     install_auth(app, database, store)
     install_account_routes(app, database, settings.apple_audiences)
+    install_waitlist_routes(app, database, settings)
     install_architecture_export_routes(app, database)
     budgets = Budgets(
         settings.max_owner_scans, settings.max_owner_bytes, settings.max_queued_jobs, settings.min_free_disk_bytes
