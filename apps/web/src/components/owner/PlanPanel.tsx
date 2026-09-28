@@ -41,7 +41,7 @@ function pieceWords(pieceName: string | null, activeId: string | null): { piece:
 }
 
 /** Try a layout: drag pieces on the plan, watch each check change as they move, and keep the plan without changing the scan. */
-export function PlanPanel({ arrangement, scanned, pieceName, fixedNote, builtIn = false, review, onReset, onDone }: {
+export function PlanPanel({ arrangement, scanned, pieceName, fixedNote, builtIn = false, review, fixPlan, onReset, onDone }: {
   arrangement: Arrangement;
   /** The findings the shop was assessed with, until the scanned layout's own check comes back. */
   scanned: Finding[];
@@ -51,6 +51,8 @@ export function PlanPanel({ arrangement, scanned, pieceName, fixedNote, builtIn 
   builtIn?: boolean;
   /** What a proposed layout changes and a way to say what must stay, when the plan started from one. */
   review?: ReactNode;
+  /** One press to have the layout model fix the plan as it stands. */
+  fixPlan?: ReactNode;
   /** Said when the owner reaches for a piece that is built in. */
   fixedNote: string | null;
   /** Puts every piece back where it was scanned, and drops the suggestion that moved them. */
@@ -64,6 +66,7 @@ export function PlanPanel({ arrangement, scanned, pieceName, fixedNote, builtIn 
     <div className="flex min-h-full flex-col gap-6" data-check-ms={arrangement.latencyMs ?? undefined}>
       <StepHeading title="Try a layout">{planIntro(piece, arrangement.hasMoves)}</StepHeading>
       <PlanScore before={before} left={left} checking={arrangement.checking} moved={arrangement.hasMoves} />
+      {left > 0 && fixPlan}
       {review}
       <Refusals arrangement={arrangement} fixedNote={fixedNote} />
       <Changes changes={changes} moved={arrangement.hasMoves} />

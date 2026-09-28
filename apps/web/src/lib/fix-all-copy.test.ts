@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ModelLoopEvent, NodeMove } from "@/types/contracts";
-import { finishedDetail, finishedHeadline, isAllCleared, namedProblems, problemsLeft, turnClock, turnInProgress, turnLines, turnTitle } from "./fix-all-copy";
+import { finishedDetail, finishedHeadline, idleDetail, isAllCleared, namedProblems, problemsLeft, turnClock, turnInProgress, turnLines, turnTitle } from "./fix-all-copy";
 import { NOT_STARTED } from "./model-loop-progress";
 
 const move: NodeMove = { node_id: "a", delta_translation: { x: 0.3, y: 0, z: 0 }, delta_rotation_z_degrees: 0 };
@@ -10,6 +10,11 @@ function event(fields: Partial<ModelLoopEvent>): ModelLoopEvent {
 }
 
 describe("fix all copy", () => {
+  it("says the loop starts from the owner's plan when it does", () => {
+    expect(idleDetail("Standard Physics")).toContain("whole room");
+    expect(idleDetail("Standard Physics", true)).toContain("starts from your plan");
+  });
+
   it("counts down from the starting problems, then from each turn", () => {
     expect(problemsLeft({ ...NOT_STARTED, startedWith: 3 })).toBe(3);
     expect(problemsLeft({ ...NOT_STARTED, startedWith: 3, turns: [event({ fixable_left: 1 })] })).toBe(1);

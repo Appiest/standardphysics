@@ -241,3 +241,35 @@ def test_the_loop_offers_a_contractor_fix_for_a_counter_too_high_and_clears_it()
             break
     assert any("section" in move for move in picked)
     assert "service_counter_height" not in {problem.check_id for problem in loop.open_problems()}
+
+
+def _events_from_plan(client, scan_id, moves):
+    response = client.post(f"/api/scans/{scan_id}/model-loop/stream", json={"base_revision": 0, "moves": moves})
+    return [json.loads(line) for line in response.text.splitlines() if line.strip()]
+
+
+def _a_chair_move(client, scan_id):
+    scene = client.get(f"/api/scans/{scan_id}/scene").json()
+    chair = next(node for node in scene["nodes"] if node["label"].lower().startswith("chair") and node["movable"])
+    return {"node_id": chair["id"], "delta_translation": {"x": 0.05, "y": 0.0, "z": 0.0}, "delta_rotation_z_degrees": 0.0}
+
+
+def test_the_loop_starts_from_the_owners_plan_and_returns_moves_from_the_saved_shop(make_client, monkeypatch):
+    _configure(monkeypatch, lambda self, messages, seconds=None: json.dumps({"choose": [], "why": "Nothing helps."}))
+    client, scan_id = _sample(make_client)
+    owner_move = _a_chair_move(client, scan_id)
+    events = _events_from_plan(client, scan_id, [owner_move])
+    assert events[0]["kind"] == "started" and events[-1]["kind"] == "finished"
+    finished = {move["node_id"]: move for move in events[-1]["moves"]}
+    assert set(finished) == {owner_move["node_id"]}
+    assert finished[owner_move["node_id"]]["delta_translation"]["x"] == pytest.approx(0.05, abs=1e-6)
+
+
+def test_a_plan_with_a_piece_where_it_cannot_stand_is_refused_before_the_model_is_asked(make_client, monkeypatch):
+    asked = []
+    _configure(monkeypatch, lambda self, messages, seconds=None: asked.append(messages) or _first_option(self, messages))
+    client, scan_id = _sample(make_client)
+    through_the_wall = {**_a_chair_move(client, scan_id), "delta_translation": {"x": 40.0, "y": 0.0, "z": 0.0}}
+    events = _events_from_plan(client, scan_id, [through_the_wall])
+    assert events[-1]["kind"] == "failed" and "plan" in events[-1]["message"].lower()
+    assert not asked

@@ -184,6 +184,15 @@ function fixRoomCard(label: string | null, card: Omit<ComponentProps<typeof FixA
   return label ? <FixAll key={card.revision} {...card} label={label} /> : null;
 }
 
+/** The same loop started from the owner's plan; keyed by the plan so each new arrangement gets a fresh card. */
+function fixPlanCard(label: string | null, card: Omit<ComponentProps<typeof FixAll>, "label">): ReactNode {
+  return label ? <FixAll key={`${card.revision}:${planKey(card.plan ?? [])}`} {...card} label={label} /> : null;
+}
+
+function planKey(plan: NodeMove[]): string {
+  return plan.map((move) => `${move.node_id}:${move.delta_translation.x.toFixed(3)},${move.delta_translation.y.toFixed(3)},${move.delta_rotation_z_degrees.toFixed(1)}`).sort().join("|");
+}
+
 function currentPanel(journey: Journey, counterSkipped: boolean, tool: Tool | null, readOnly: boolean): Panel | Tool {
   if (readOnly) return "results";
   if (tool) return tool;
@@ -310,6 +319,7 @@ function OwnerShop(props: ShopProps) {
         pieceName={pieceLabel(scene, arrangement.activeId) ?? tryPiece?.label ?? null}
         builtIn={isBuiltIn(scene, arrangement.activeId)}
         review={<PlanReview review={review} scene={scene} finding={planFinding} onRelook={showProposal} onPreview={arrangement.setActiveId} />}
+        fixPlan={fixPlanCard(modelLabel, { scanId: scan.id, revision: scene.revision, onOpen: arrangement.load, plan: Object.values(arrangement.moves) })}
         onReset={putEverythingBack} onDone={leavePlan} />
     ),
     wheelchair: () => <WheelchairPanel onDone={() => tools.setTool(null)} />,

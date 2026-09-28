@@ -28,6 +28,7 @@ import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
+from standardphysics_agents.fix import carried_along
 from standardphysics_agents.fix.budget import deadline_in
 from standardphysics_agents.training.checker import TrainingChecker
 from standardphysics_agents.training.edits import TrainingEdits, apply_edits, has_construction, node_moves, parse_edits
@@ -45,6 +46,7 @@ from standardphysics_contracts import (
 )
 
 from .db import Database
+from .layout import plan_candidate
 from .model_chooser import ModelChooser, ModelReplyError, ModelSlots, without_wall_shifts
 from .proposals import fix_inputs, owner_wishes_of, space_typology_of
 from .stages import Stages
@@ -162,12 +164,34 @@ def _in_words(seconds: float) -> str:
     return f"{seconds / 60:g} minutes" if seconds >= 120 and seconds % 60 == 0 else f"{seconds:g} seconds"
 
 
-def _events(stages: Stages, graph: SceneGraph, scenario, chooser: ModelChooser, typology,
+@dataclass(frozen=True)
+class Plan:
+    """Where the loop starts: the saved shop with the owner's unsaved moves, and those moves."""
+
+    start: SceneGraph
+    moves: list[NodeMove]
+    built_ins: set[uuid.UUID]
+
+
+def _plan(graph: SceneGraph, moves: list[NodeMove]) -> Plan | str:
+    """The owner's plan to start from, or why it cannot be a starting point."""
+    if not moves:
+        return Plan(graph, [], set())
+    start, blocked = plan_candidate(graph, moves, construction=True)
+    if blocked:
+        return f"Your plan has something where it can't stand ({blocked[0].detail}). Move it, then try again."
+    carried = carried_along(graph, moves)
+    fixtures = {move.node_id for move in carried if not graph.by_id(move.node_id).movable}
+    return Plan(start.model_copy(update={"revision": graph.revision}), carried, fixtures)
+
+
+def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: ModelChooser, typology,
             wishes) -> Iterator[ModelLoopEvent]:
     """Turns until the room is clear, the menu runs dry, the model picks nothing, or the turns or time run out."""
     with stages.locked():
-        loop = ModelLoop(graph, stages.menu_checker(graph, scenario, typology, scope="fittings"),
-                         stated_book(graph, list(wishes)))
+        loop = ModelLoop(plan.start, stages.menu_checker(plan.start, scenario, typology, scope="fittings"),
+                         stated_book(plan.start, list(wishes)), moves={move.node_id: move for move in plan.moves},
+                         built_ins=set(plan.built_ins))
         open_problems = loop.open_problems()
     yield ModelLoopEvent(kind="started", fixable_left=len(open_problems), working_on=_titles(open_problems),
                          turns_at_most=MODEL_LOOP_TURNS, message=f"{chooser.label} is looking at your shop.")
@@ -231,8 +255,11 @@ def stream_model_loop(
     if chooser is None:
         return iter([_line(ModelLoopEvent(kind="failed", message="No model is set up to run the loop."))])
     graph, scenario, _ = fix_inputs(database, scan_id, body.base_revision)
+    plan = _plan(graph, body.moves)
+    if isinstance(plan, str):
+        return iter([_line(ModelLoopEvent(kind="failed", message=plan))])
     wishes, typology = owner_wishes_of(database, scan_id), space_typology_of(database, scan_id)
     slots.take(owner_id)
-    events = _events(stages, graph, scenario, chooser, typology, wishes)
+    events = _events(stages, graph, plan, scenario, chooser, typology, wishes)
     lines = _streamed(events, chooser, lambda: slots.give_back(owner_id))
     return itertools.chain([next(lines)], lines)

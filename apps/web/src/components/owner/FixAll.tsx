@@ -25,7 +25,13 @@ import { advanceModelLoop, type ModelLoopProgress, NOT_STARTED } from "@/lib/mod
 import { easeDrawn, easeSweep } from "@/lib/motion";
 import type { ModelLoopEvent, NodeMove } from "@/types/contracts";
 
-type Props = { scanId: string; revision: number; onOpen: (moves: NodeMove[]) => void };
+type Props = {
+  scanId: string;
+  revision: number;
+  onOpen: (moves: NodeMove[]) => void;
+  /** The owner's unsaved moves; given, the loop fixes that layout instead of the saved shop. */
+  plan?: NodeMove[];
+};
 type CardProps = Props & { label: string; onOneAtATime?: () => void };
 
 const UNABLE_TO_START = "Unable to start. Check your connection, then try again.";
@@ -61,9 +67,11 @@ function useContentHeight(): [RefObject<HTMLDivElement | null>, number | null] {
   return [ref, height];
 }
 
-function useModelLoop(scanId: string, revision: number) {
+function useModelLoop(scanId: string, revision: number, plan: NodeMove[] | undefined) {
   const [progress, dispatch] = useReducer(advanceModelLoop, NOT_STARTED);
   const connection = useRef<AbortController | null>(null);
+  const latestPlan = useRef(plan);
+  useEffect(() => { latestPlan.current = plan; }, [plan]);
   useEffect(() => () => connection.current?.abort(), []);
 
   async function start() {
@@ -71,7 +79,7 @@ function useModelLoop(scanId: string, revision: number) {
     connection.current = controller;
     dispatch({ kind: "start" });
     try {
-      await streamModelLoop(scanId, revision, dispatch, controller.signal);
+      await streamModelLoop(scanId, revision, dispatch, controller.signal, latestPlan.current ?? []);
       dispatch({ kind: "closed" });
     } catch (reason) {
       if (controller.signal.aborted) return;
@@ -87,17 +95,19 @@ function useModelLoop(scanId: string, revision: number) {
   return { progress, start, stop };
 }
 
-function Idle({ label, onStart, onOneAtATime }: { label: string; onStart: () => void; onOneAtATime?: () => void }) {
+type IdleProps = { label: string; fromPlan: boolean; onStart: () => void; onOneAtATime?: () => void };
+
+function Idle({ label, fromPlan, onStart, onOneAtATime }: IdleProps) {
   return (
     <motion.div className="flex flex-col items-start gap-3" exit={{ opacity: 0, transition: { duration: 0.15 } }}>
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="primary" onClick={onStart}>
           <MagicWand size={18} weight="bold" aria-hidden />
-          Fix room
+          {fromPlan ? "Fix this layout" : "Fix room"}
         </Button>
         {onOneAtATime && <Button variant="quiet" onClick={onOneAtATime}>Fix one at a time</Button>}
       </div>
-      <p className="text-pretty text-sm text-ink-muted">{idleDetail(label)}</p>
+      <p className="text-pretty text-sm text-ink-muted">{idleDetail(label, fromPlan)}</p>
     </motion.div>
   );
 }
@@ -319,8 +329,9 @@ function Run({ progress, label, onOpen, onStart, onStop }: EndingProps & { label
 }
 
 /** One press asks the layout model to work through every open problem, turn by turn, and shows each move land. */
-export function FixAll({ scanId, revision, onOpen, label, onOneAtATime }: CardProps) {
-  const { progress, start, stop } = useModelLoop(scanId, revision);
+export function FixAll({ scanId, revision, onOpen, label, onOneAtATime, plan }: CardProps) {
+  const { progress, start, stop } = useModelLoop(scanId, revision, plan);
+  const fromPlan = plan !== undefined;
   const [content, height] = useContentHeight();
   const [growing, setGrowing] = useState(false);
   return (
@@ -328,11 +339,11 @@ export function FixAll({ scanId, revision, onOpen, label, onOneAtATime }: CardPr
       <p className="sr-only" role="status">{fixAllAnnouncement(progress)}</p>
       <motion.article initial={false} animate={{ height: height ?? "auto" }} transition={GROW}
         onAnimationStart={() => setGrowing(true)} onAnimationComplete={() => setGrowing(false)}
-        aria-label="Fix room" className={`rounded-2xl bg-sheet shadow-float ${growing ? "[clip-path:inset(-4rem_-4rem_0_-4rem_round_0_0_1rem_1rem)]" : ""}`}>
+        aria-label={fromPlan ? "Fix this layout" : "Fix room"} className={`rounded-2xl bg-sheet shadow-float ${growing ? "[clip-path:inset(-4rem_-4rem_0_-4rem_round_0_0_1rem_1rem)]" : ""}`}>
         <div ref={content} className="p-4">
           <AnimatePresence mode="wait" initial={false}>
             {progress.phase === "idle"
-              ? <Idle key="idle" label={label} onStart={start} onOneAtATime={onOneAtATime} />
+              ? <Idle key="idle" label={label} fromPlan={fromPlan} onStart={start} onOneAtATime={onOneAtATime} />
               : <Run key="run" progress={progress} label={label} onOpen={onOpen} onStart={start} onStop={stop} />}
           </AnimatePresence>
         </div>
