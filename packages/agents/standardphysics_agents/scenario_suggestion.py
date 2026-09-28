@@ -143,6 +143,8 @@ class _OpenFloor:
         xs = self.grid.origin_x + (cols + 0.5) * self.grid.cell_size
         ys = self.grid.origin_y + (rows + 0.5) * self.grid.cell_size
         inside = _inside_hull(_convex_hull(outline_points(graph)), xs, ys)
+        if self.grid.indoors is not None:
+            inside &= self.grid.indoors
         self.xs, self.ys = xs, ys
         self.roomy = inside & (clearance >= STANDING_ROOM)
         self.open = inside & (clearance > 0)

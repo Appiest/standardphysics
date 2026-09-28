@@ -297,6 +297,41 @@ def test_a_gap_in_the_walls_does_not_send_the_route_outside(shop):
     assert all(contains_point(polygon, (step.x, step.y), 0.05) for step in path)
 
 
+def _floor_past_the_walls(graph, overhang=0.3):
+    """Grow the floor past every wall, the way RoomPlan's floor rectangle runs past a shop's walls."""
+    floor = graph.by_id(node_id("floor"))
+    floor.dimensions.x += 2 * overhang
+    floor.dimensions.y += 2 * overhang
+
+
+def test_floor_behind_a_wall_is_outside_the_room(shop):
+    graph, _, _ = shop
+    _floor_past_the_walls(graph)
+    grid = build_grid(graph)
+    east_wall = graph.by_id(node_id("wall_east")).transform.position.x
+    assert not grid.indoors[grid.to_cell(east_wall + 0.2, 0.0)]
+    assert grid.indoors[grid.to_cell(east_wall - 0.2, 0.0)]
+
+
+def test_a_stop_behind_a_wall_is_reached_inside_not_round_the_outside(shop):
+    """On a Share Tea scan the floor ran past the walls and the back wall was
+    missing, so the route to a stop dropped behind the side wall went out
+    through the gap and along the outside of the building, and the report
+    said the way to the seats was 2.8 inches wide."""
+    graph, scenario, measure = shop
+    _floor_past_the_walls(graph)
+    _open_a_wall(graph)
+    east_wall = graph.by_id(node_id("wall_east")).transform.position.x
+    north_wall = graph.by_id(node_id("wall_north")).transform.position.y
+    behind = Scenario(name="To the seats", stops=[
+        scenario.stops[1], Stop(name="Seats", position=Vec3(x=east_wall + 0.15, y=0.0, z=0.0)),
+    ])
+    result = measure.route_clear_width(graph, behind, 0)
+    assert result.reachable
+    assert all(step.x < east_wall and step.y < north_wall for step in result.path)
+    assert result.inches > 20
+
+
 def test_a_stop_outside_still_reaches_the_ground_it_stands_on(shop):
     """Holding the outside back cannot strand a customer arriving from the
     street: the floor only confines a trip whose two stops are both on it."""

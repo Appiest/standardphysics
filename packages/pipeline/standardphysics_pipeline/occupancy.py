@@ -107,6 +107,25 @@ A door panel is often slightly thinner than the wall holding it. Clearing
 exactly the panel's footprint can leave a sliver of wall sealing the gap, and a
 one cell sliver blocks a route as completely as a brick wall."""
 
+BEHIND_A_WALL = 1.5
+"""Metres behind a wall within which the floor's edge makes that side of it outdoors.
+
+RoomPlan's floor is one rectangle around the whole capture, and the walls stand
+inside it. On a Share Tea scan the long wall stood 15 cm in from the floor's
+edge and a recess in the front wall ran 1.25 m deep. The back wall was missing,
+so that strip joined the room, and the route to a stop placed in the recess ran
+out through the gap and along the outside of the building, 2.8 inches wide.
+Further than this, open floor behind a wall is more likely a room the capture
+did not close than ground outside the building."""
+
+WALL_JUNCTION = 0.15
+"""Metres from a wall within which meeting another wall is the corner they share,
+not a wall standing across the floor behind it."""
+
+BEHIND_A_WALL_SAMPLES = np.linspace(-0.6, 0.6, 7)
+"""Where along a wall, as fractions of its half-length, the floor behind it is
+sounded. Kept off the ends, where the next wall round the corner starts."""
+
 
 @dataclass(frozen=True)
 class Grid:
@@ -124,12 +143,22 @@ class Grid:
     node_ids: list[UUID] = field(default_factory=list)
 
     indoors: np.ndarray | None = None
-    """Which free cells are the scanned floor, as against the ground outside it.
+    """Which free cells are the scanned floor inside the walls, as against the ground outside it.
+
+    Floor behind a wall, out to the floor's edge, is outside: see `BEHIND_A_WALL`.
 
     `OUTSIDE_MARGIN` leaves open ground beyond the walls so a route can start
     on the pavement, and `routes.widest_path` has to tell that ground from the
     room to keep a trip between two stops inside from using it. `None` where
     the capture returned no floor, which leaves the two indistinguishable.
+    """
+
+    on_floor: np.ndarray | None = None
+    """Which cells lie on the scanned floor at all, walls or no walls.
+
+    Says whether a stop was put in the room. A stop dropped behind a wall is
+    still meant to be in the shop, so its trip is held to `indoors` and it is
+    drawn in to the nearest floor there, instead of opening the ground outside.
     """
 
     def owner_at(self, row: int, col: int) -> UUID | None:
@@ -250,10 +279,11 @@ def build_grid(graph: SceneGraph, cell_size: float = CELL_SIZE) -> Grid:
             _punch(occupied, owner, node, world_x, world_y)
 
     _bound_the_world(occupied, graph, world_x, world_y)
-    return Grid(
-        min_x, min_y, cell_size, occupied, owner, node_ids,
-        _floor_mask(graph, world_x, world_y, INDOOR_MARGIN),
-    )
+    on_floor = _floor_mask(graph, world_x, world_y, INDOOR_MARGIN)
+    indoors = None
+    if on_floor is not None:
+        indoors = _inside_the_walls(on_floor, graph, owner, node_ids, world_x, world_y, cell_size)
+    return Grid(min_x, min_y, cell_size, occupied, owner, node_ids, indoors, on_floor)
 
 
 def _shell_measures_nothing(graph: SceneGraph) -> bool:
@@ -410,6 +440,124 @@ def _floor_mask(
     if floor is None:
         return None
     return _inside_convex_polygon(floor_polygon(floor), world_x, world_y, margin)
+
+
+@dataclass(frozen=True)
+class _WallLine:
+    """A wall as the line it stands on: its middle, the way it runs, and half its length."""
+
+    x: float
+    y: float
+    along: tuple[float, float]
+    half_length: float
+
+    @property
+    def across(self) -> tuple[float, float]:
+        return (-self.along[1], self.along[0])
+
+
+def _wall_line(node: SceneNode) -> _WallLine:
+    cos_t, sin_t = _rotation_2d(node)
+    p = node.transform.position
+    if node.dimensions.x >= node.dimensions.y:
+        return _WallLine(p.x, p.y, (cos_t, sin_t), node.dimensions.x / 2)
+    return _WallLine(p.x, p.y, (-sin_t, cos_t), node.dimensions.y / 2)
+
+
+def _first(mask: np.ndarray) -> np.ndarray:
+    """The first True along each row, or the row's length where there is none."""
+    return np.where(mask.any(axis=1), mask.argmax(axis=1), mask.shape[1])
+
+
+@dataclass(frozen=True)
+class _FloorBehindWalls:
+    """Sounds the floor behind a wall: where it ends, and whether another wall comes first."""
+
+    on_floor: np.ndarray
+    wall_owner: np.ndarray
+    """The owning wall's index in each cell a wall fills, -1 elsewhere."""
+    origin_x: float
+    origin_y: float
+    cell_size: float
+
+    def reach(self, line: _WallLine, side: float, own_index: int) -> float | None:
+        """How far behind the wall the floor ends on this side.
+
+        None when another wall stands behind this one first, which makes the
+        floor between them a room, or when open floor runs on past
+        `BEHIND_A_WALL`.
+        """
+        distances = np.arange(1, int(BEHIND_A_WALL / self.cell_size) + 1) * self.cell_size
+        offsets = BEHIND_A_WALL_SAMPLES[:, None] * line.half_length
+        xs = line.x + line.along[0] * offsets + side * line.across[0] * distances[None, :]
+        ys = line.y + line.along[1] * offsets + side * line.across[1] * distances[None, :]
+        rows = np.floor((ys - self.origin_y) / self.cell_size).astype(int)
+        cols = np.floor((xs - self.origin_x) / self.cell_size).astype(int)
+        on_grid = (rows >= 0) & (rows < self.on_floor.shape[0]) & (cols >= 0) & (cols < self.on_floor.shape[1])
+        rows, cols = np.clip(rows, 0, self.on_floor.shape[0] - 1), np.clip(cols, 0, self.on_floor.shape[1] - 1)
+        owner = self.wall_owner[rows, cols]
+        another_wall = on_grid & (owner >= 0) & (owner != own_index) & (distances[None, :] > WALL_JUNCTION)
+        edge = _first(~(on_grid & self.on_floor[rows, cols]))
+        if (edge == len(distances)).any() or (_first(another_wall) < edge).any():
+            return None
+        return float(distances[edge.max()])
+
+
+def _inside_the_walls(
+    on_floor: np.ndarray,
+    graph: SceneGraph,
+    owner: np.ndarray,
+    node_ids: list[UUID],
+    world_x: np.ndarray,
+    world_y: np.ndarray,
+    cell_size: float,
+) -> np.ndarray:
+    """The scanned floor, less what lies behind each wall out to the floor's edge.
+
+    A wall's outside is the side where the floor ends within `BEHIND_A_WALL`
+    and no other wall stands in between. When both sides or neither look like
+    that, the wall is left as it is rather than guessed at.
+    """
+    index_of = {node_id: index for index, node_id in enumerate(node_ids)}
+    walls = {index_of[node.id]: node for node in graph.nodes if node.id in index_of and reads_as_wall(node)}
+    sounding = _FloorBehindWalls(
+        on_floor,
+        np.where(np.isin(owner, list(walls)), owner, -1),
+        float(world_x[0, 0]) - cell_size / 2,
+        float(world_y[0, 0]) - cell_size / 2,
+        cell_size,
+    )
+    indoors = on_floor.copy()
+    for index, node in walls.items():
+        line = _wall_line(node)
+        outside = [(side, reach) for side in (1.0, -1.0) if (reach := sounding.reach(line, side, index)) is not None]
+        if len(outside) == 1:
+            _take_off_behind(indoors, line, *outside[0], cell_size, world_x, world_y)
+    return indoors
+
+
+def _take_off_behind(
+    indoors: np.ndarray,
+    line: _WallLine,
+    side: float,
+    reach: float,
+    cell_size: float,
+    world_x: np.ndarray,
+    world_y: np.ndarray,
+) -> None:
+    """Mark the strip behind a wall, as long as the wall and out to `reach`, as outdoors."""
+    depth = reach + cell_size
+    across = (side * line.across[0], side * line.across[1])
+    centre_x, centre_y = line.x + across[0] * depth / 2, line.y + across[1] * depth / 2
+    rows, cols = _window(
+        world_x, world_y, centre_x, centre_y,
+        abs(line.along[0]) * line.half_length + abs(across[0]) * depth / 2,
+        abs(line.along[1]) * line.half_length + abs(across[1]) * depth / 2,
+    )
+    dx, dy = world_x[rows, cols] - line.x, world_y[rows, cols] - line.y
+    behind = dx * across[0] + dy * across[1]
+    strip = (np.abs(dx * line.along[0] + dy * line.along[1]) <= line.half_length) & (behind > 0) & (behind <= depth)
+    indoors[rows, cols] &= ~strip
 
 
 def _inside_convex_polygon(polygon, world_x: np.ndarray, world_y: np.ndarray, margin: float) -> np.ndarray:
