@@ -30,7 +30,7 @@ That installs the Python packages into `.venv` and the web packages into `apps/w
 
 Open the workspace and create an account. A scan belongs to the owner who uploaded it, and the list only ever shows your own shops, so a fresh account starts empty.
 
-To start with a shop already in it, run `SP_SEED_SAMPLE_SHOP=1 ./start.sh`. That seeds the sample boba shop and the demo account that owns it, and prints the email and password to sign in as. Set `SP_SEED_OWNER_PASSWORD` to choose the password yourself; leave it unset and the server generates one and logs it.
+To start with a shop already in it, run `SP_SEED_SAMPLE_SHOP=1 ./start.sh`. That seeds the sample boba shop and the demo account that owns it, and logs the email to sign in as. Set `SP_SEED_OWNER_PASSWORD` to choose the password yourself; leave it unset and the server generates one and writes it to `demo-password` in the data directory (`services/api/var` unless `SP_DATA_DIR` says otherwise), readable only by you.
 
 To load the phone scans in `datasets/phone`, run `.venv/bin/python scripts/import_scan.py datasets/phone/*` while it's running.
 

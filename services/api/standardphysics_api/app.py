@@ -99,6 +99,7 @@ from .usdz_validation import MAX_ARCHIVE_BYTES, InvalidUsdz, validate_room_usdz
 from .worker import ASSESS, PROCESS, Worker
 
 PLACES = {*DESTINATIONS, "pickup"}
+DEMO_PASSWORD_FILE = "demo-password"
 
 log = logging.getLogger(__name__)
 
@@ -110,13 +111,23 @@ def _start_tracing(settings: Settings) -> None:
 
 
 def _seed_demo_account(database: Database, store: ArtifactStore, settings: Settings) -> None:
-    """Put the sample shop behind a real account, and say how to sign in as it."""
+    """Put the sample shop behind a real account, and say where its password is."""
     seed_sample_shop(database, store, settings.seed_owner_email, settings.seed_owner_password)
     log.warning(
-        "sample shop seeded. Sign in as %s with password %s",
+        "sample shop seeded. Sign in as %s with the password %s",
         settings.seed_owner_email,
-        settings.seed_owner_password,
+        _demo_password_whereabouts(settings),
     )
+
+
+def _demo_password_whereabouts(settings: Settings) -> str:
+    if not settings.seed_owner_password_generated:
+        return "in SP_SEED_OWNER_PASSWORD"
+    path = settings.data_dir / DEMO_PASSWORD_FILE
+    path.touch(mode=0o600, exist_ok=True)
+    path.chmod(0o600)
+    path.write_text(settings.seed_owner_password + "\n")
+    return f"written to {path}"
 
 
 def _problem_response(exc: ApiProblem) -> JSONResponse:
