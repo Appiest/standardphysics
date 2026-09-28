@@ -1,17 +1,22 @@
 name: iOS app
 
-# OwnerAPI.swift mirrors packages/contracts by hand, and the tests bundle the
-# two RoomPlan fixtures below, so either changing can break this build.
+# OwnerAPI.swift mirrors packages/contracts by hand, and the tests bundle two
+# RoomPlan fixtures from packages/fixtures, so either changing can break this
+# build. The sample shop the live report is made from comes from there too.
 # LiveOwnerFlowTests walks datasets/phone/test1 through a real API started from
-# services/api, so a change to the API or its pinned dependencies can too.
+# services/api, which imports packages/agents and packages/pipeline, so a
+# change to any of those or to their pinned dependencies can too.
+# LiveReportPDFTests prints a report link served by apps/web.
 on:
   push:
     paths:
       - "apps/ios/**"
       - "packages/contracts/**"
-      - "packages/fixtures/standardphysics_fixtures/data/real/apple_bedroom3.room.json"
-      - "packages/fixtures/standardphysics_fixtures/data/real/apple_livingroom.room.json"
+      - "packages/fixtures/**"
+      - "packages/agents/**"
+      - "packages/pipeline/**"
       - "services/api/**"
+      - "apps/web/**"
       - "requirements.lock"
       - "requirements-dev.lock"
       - "datasets/phone/test1/**"
@@ -20,9 +25,11 @@ on:
     paths:
       - "apps/ios/**"
       - "packages/contracts/**"
-      - "packages/fixtures/standardphysics_fixtures/data/real/apple_bedroom3.room.json"
-      - "packages/fixtures/standardphysics_fixtures/data/real/apple_livingroom.room.json"
+      - "packages/fixtures/**"
+      - "packages/agents/**"
+      - "packages/pipeline/**"
       - "services/api/**"
+      - "apps/web/**"
       - "requirements.lock"
       - "requirements-dev.lock"
       - "datasets/phone/test1/**"
@@ -37,12 +44,13 @@ env:
   DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
   XCODEGEN_VERSION: 2.45.3
   LIVE_API: http://127.0.0.1:8798
+  LIVE_WEB: http://127.0.0.1:3398
 
 jobs:
   simulator:
     name: Build and test on the simulator
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: apps/ios
@@ -95,23 +103,63 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.lock
           python -m pip install --no-deps -e tools/loopforge -e packages/contracts -e packages/fixtures -e packages/pipeline -e packages/agents -e services/api
-      # A fresh, empty data directory each run, so the live tests only ever
-      # see the guest accounts and shops they make themselves.
+      # A fresh data directory each run, holding only the sample shop, which
+      # belongs to its own demo account. The live owner flow signs in as fresh
+      # guests, so it still only ever sees the shops it makes itself.
       - name: Start a throwaway API for the live tests
         working-directory: ${{ github.workspace }}
         run: |
           mkdir -p "$RUNNER_TEMP/live-api-data"
+          SEED_PASSWORD=$(python -c 'import secrets; print(secrets.token_urlsafe(24))')
+          echo "::add-mask::$SEED_PASSWORD"
+          echo "SEED_PASSWORD=$SEED_PASSWORD" >> "$GITHUB_ENV"
           SP_DATA_DIR="$RUNNER_TEMP/live-api-data" SP_API_HOST=127.0.0.1 SP_API_PORT=8798 \
+            SP_SEED_SAMPLE_SHOP=1 SP_SEED_OWNER_PASSWORD="$SEED_PASSWORD" \
             nohup python -m standardphysics_api > "$RUNNER_TEMP/live-api.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/live-api.pid"
           curl -fsS --retry 60 --retry-delay 1 --retry-all-errors "$LIVE_API/health"
+      # The demo owner shares the sample shop the way the Share button does,
+      # and the link is kept once the worker has assessed the shop, so the
+      # page LiveReportPDFTests prints has its findings on it.
+      - name: Share the sample shop's report
+        run: |
+          jar="$RUNNER_TEMP/demo-owner.cookies"
+          curl -fsS -c "$jar" -H 'Content-Type: application/json' \
+            -d "{\"email\": \"demo@standardphysics.app\", \"password\": \"$SEED_PASSWORD\"}" \
+            "$LIVE_API/api/auth/sign-in" > /dev/null
+          scan=$(curl -fsS -b "$jar" "$LIVE_API/api/scans" | python3 -c "import json,sys; print(json.load(sys.stdin)['scans'][0]['id'])")
+          path=$(curl -fsS -b "$jar" -X POST "$LIVE_API/api/scans/$scan/shares" | python3 -c "import json,sys; print(json.load(sys.stdin)['path'])")
+          for _ in $(seq 1 120); do
+            curl -fsS "$LIVE_API/api/shared/${path#/r/}" | python3 -c "import json,sys; sys.exit(json.load(sys.stdin)['assessment'] is None)" && break
+            sleep 1
+          done
+          curl -fsS "$LIVE_API/api/shared/${path#/r/}" | python3 -c "import json,sys; sys.exit(json.load(sys.stdin)['assessment'] is None)"
+          echo "LIVE_REPORT=$LIVE_WEB$path" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      # next build writes the /api rewrite's destination into its manifest, so
+      # SP_API_ORIGIN has to name the throwaway API at build time.
+      - name: Build and start the web app
+        working-directory: apps/web
+        env:
+          SP_API_ORIGIN: ${{ env.LIVE_API }}
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          nohup npm start -- --hostname 127.0.0.1 --port 3398 > "$RUNNER_TEMP/live-web.log" 2>&1 &
+          curl -fsS --retry 60 --retry-delay 1 --retry-all-errors -o /dev/null "$LIVE_REPORT"
       # xcodebuild hands TEST_RUNNER_ variables to the test process with the
-      # prefix removed, which is how SP_LIVE_API reaches LiveOwnerFlowTests.
-      # LiveReportPDFTests still skips: it needs a report link on a running web.
+      # prefix removed, which is how SP_LIVE_API reaches LiveOwnerFlowTests
+      # and SP_LIVE_REPORT reaches LiveReportPDFTests.
       - name: Run StandardPhysicsTests
         shell: bash
         env:
           TEST_RUNNER_SP_LIVE_API: ${{ env.LIVE_API }}
+          TEST_RUNNER_SP_LIVE_REPORT: ${{ env.LIVE_REPORT }}
         run: >
           xcodebuild test-without-building
           -project StandardPhysics.xcodeproj
@@ -120,11 +168,15 @@ jobs:
           -derivedDataPath build/DerivedData
           -resultBundlePath build/StandardPhysicsTests.xcresult
           | tee "$RUNNER_TEMP/tests.log"
-      - name: Fail if the live owner flow skipped
-        run: grep -q "LiveOwnerFlowTests testAGuestWalksAnswersSavesAndKeepsTheShop\]' passed" "$RUNNER_TEMP/tests.log"
-      - name: Stop the API
+      - name: Fail if a live test skipped
+        run: |
+          grep -q "LiveOwnerFlowTests testAGuestWalksAnswersSavesAndKeepsTheShop\]' passed" "$RUNNER_TEMP/tests.log"
+          grep -q "LiveReportPDFTests testAReportLinkPrintsToAPDF\]' passed" "$RUNNER_TEMP/tests.log"
+      - name: Stop the web app and the API
         if: always()
-        run: kill "$(cat "$RUNNER_TEMP/live-api.pid")" 2>/dev/null || true
+        run: |
+          lsof -ti tcp:3398 | xargs kill 2>/dev/null || true
+          kill "$(cat "$RUNNER_TEMP/live-api.pid")" 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -132,3 +184,4 @@ jobs:
           path: |
             apps/ios/build/StandardPhysicsTests.xcresult
             ${{ runner.temp }}/live-api.log
+            ${{ runner.temp }}/live-web.log
