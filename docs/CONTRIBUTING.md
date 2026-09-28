@@ -8,6 +8,7 @@ The team built the first version in four lanes, each with its own document under
 
 | You are | Read |
 |---|---|
+| Anyone, before branching or merging | [`AGENTS.md`](../AGENTS.md), which is the one place the branch workflow is written down |
 | Any agent, before your first commit | [`docs/AGENT_PROTOCOL.md`](AGENT_PROTOCOL.md) |
 | Anyone, for what we're building | [`docs/PLAN.md`](PLAN.md) |
 | Lane A, capture | [`docs/lanes/LANE_A.md`](lanes/LANE_A.md) |
@@ -101,9 +102,12 @@ screen but the scan itself can be worked on there, which is most of them.
 scripts/ship-ios.sh
 ```
 
-Bumps the build number, archives, and uploads to TestFlight. It needs an App
-Store Connect API key, which is what lets xcodebuild make the distribution
-certificate on its own; the script says how to get one and where to put it.
+Bumps the build number, archives, and uploads to TestFlight. It ships only a
+clean checkout of a commit on origin/master whose CI and iOS runs both passed,
+and appends the build number and commit to `apps/ios/testflight-builds.log`.
+It needs an App Store Connect API key, which is what lets xcodebuild make the
+distribution certificate on its own; the script says how to get one and where
+to put it.
 
 ### Deploying
 

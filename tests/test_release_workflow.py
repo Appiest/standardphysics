@@ -51,9 +51,19 @@ def test_the_image_job_hands_on_the_digest_and_id_it_tested():
     assert "steps." in outputs["image-id"]
 
 
-def test_publish_waits_for_every_other_job():
+UNRELEASED_JOBS = {"publish", "reels"}
+
+
+def test_publish_waits_for_every_job_behind_the_image():
     jobs = _jobs()
-    assert set(jobs["publish"]["needs"]) == set(jobs) - {"publish"}
+    assert set(jobs["publish"]["needs"]) == set(jobs) - UNRELEASED_JOBS
+
+
+def test_the_reels_app_is_linted_and_typechecked():
+    reels = _jobs()["reels"]
+    runs = [step.get("run", "") for step in reels["steps"]]
+    assert reels["defaults"]["run"]["working-directory"] == "apps/reels"
+    assert runs[-3:] == ["npm ci", "npm run lint", "npm run typecheck"]
 
 
 def test_publish_retags_the_candidate_digest_the_image_job_pushed():
