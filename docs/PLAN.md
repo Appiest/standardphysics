@@ -206,7 +206,7 @@ print('OK' if 'Cube' in bpy.data.objects else 'BROKEN')
 
 ### Model access
 
-Every model call goes through [OpenRouter](https://openrouter.ai/openai/gpt-6-astra) using the OpenAI SDK: `base_url="https://openrouter.ai/api/v1"`, `OPENROUTER_API_KEY`, model `openai/gpt-6-astra`. That covers Astra's label, clean and frame jobs and the fix agent. The model advertises `tools`, `tool_choice` and `response_format`, which is what the patch interface needs.
+Frontier model calls go through [OpenRouter](https://openrouter.ai) using the OpenAI SDK: `base_url="https://openrouter.ai/api/v1"`, `OPENROUTER_API_KEY`, and `anthropic/claude-opus-5.5` unless `OPENROUTER_MODEL` or, for labelling, `LABEL_MODEL` says otherwise. That covers labelling, cleaning and frame jobs and the fix agent. `openai/gpt-6-astra` is retired: it costs 2.5 times Opus and would put a scan's labelling alone past the $1.50 a scan may spend.
 
 Require [zero data retention](https://openrouter.ai/docs/guides/features/zdr) on the account and on each request, because scans of a real shop are private. Pin the provider to OpenAI with [provider routing](https://openrouter.ai/docs/docs/routing/provider-selection) so the demo runs on one backend, and store the provider and model OpenRouter reports on every response. Set a credit limit on the key before the first long Blender run.
 
@@ -219,7 +219,7 @@ Every key lives in a gitignored `.env` on the API server, listed in `.env.exampl
 | Variable | Used by |
 |---|---|
 | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Every model call through OpenRouter; `OPENROUTER_MODEL` picks the model for all but labelling |
-| `ASTRA_MODEL` | The model Astra labels objects with; unset means Opus, about $0.75 a shop |
+| `LABEL_MODEL` | The model that labels scanned objects from the photos; unset means Opus 5.5, about $0.75 a shop |
 | `WANDB_API_KEY`, `WANDB_ENTITY`, `WANDB_PROJECT` | Weave tracing and evaluation; ARIA uses the same team project |
 | `TYPESAFE_API_KEY` | The router |
 | `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_STOREFRONT_PRIVATE_TOKEN` | The stretch catalog, only if it gets built |

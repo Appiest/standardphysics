@@ -1,6 +1,6 @@
 """Reconstruct the entire Moffett Library floor using Astra via OpenRouter.
 
-Queries Astra (openai/gpt-6-astra via OpenRouter) to semantically identify,
+Queries Opus 5.5 via OpenRouter to semantically identify,
 classify, and synthesize rich 3D multi-part geometry (tabletops, legs, cushions,
 backrests, frames, and materials) for all 164 furniture objects across the four wings.
 Bakes the resulting reconstructed scene into revision 2 of the scan using Blender,
@@ -52,7 +52,7 @@ def load_openrouter_key() -> str:
 
 def query_astra_furniture_specs(api_key: str) -> dict:
     """Ask Astra for Moffett Library furniture design specifications, colors, and materials."""
-    print("Querying Astra (openai/gpt-6-astra) for Moffett Library architectural & furniture specifications...")
+    print("Querying Opus 5.5 for Moffett Library architectural & furniture specifications...")
     prompt = """
     You are an architectural 3D reconstruction specialist analyzing Moffett Library (UC Berkeley) study hall scans.
     Based on university library interior design and the Moffett Library renovation:
@@ -83,7 +83,7 @@ def query_astra_furniture_specs(api_key: str) -> dict:
             "https://openrouter.ai/api/v1/chat/completions",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             data=json.dumps({
-                "model": "openai/gpt-6-astra",
+                "model": "anthropic/claude-opus-5.5",
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {"type": "json_object"},
                 "max_tokens": 1200,
