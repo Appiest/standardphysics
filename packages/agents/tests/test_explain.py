@@ -3,11 +3,12 @@
 import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from standardphysics_agents.training import TrainingChecker
 from standardphysics_agents.training.edits import apply_edits
-from standardphysics_agents.training.explain import explain_change
+from standardphysics_agents.training.explain import _moved_toward_passing, explain_change
 from standardphysics_agents.training.menu import build_menu
 from standardphysics_agents.training.wishes import infer_wishes
 from standardphysics_contracts import Mat4, Scenario, SceneGraph
@@ -109,3 +110,15 @@ def test_as_dict_round_trips_every_field(room, checker, wishes, option_one_after
         "bent": explanation.bent,
         "why": explanation.why,
     }
+
+
+@pytest.mark.parametrize(("comparison", "before", "after", "better"), [
+    ("at_least", 40.4, 52.8, True),
+    ("at_least", 40.4, 37.9, False),
+    ("at_least", None, 12.0, True),
+    ("at_most", 54.0, 48.0, True),
+    ("at_most", 48.0, 54.0, False),
+])
+def test_a_changed_measurement_is_called_better_only_when_it_moves_toward_passing(comparison, before, after, better):
+    rule = SimpleNamespace(comparison=comparison)
+    assert _moved_toward_passing(rule, before, after) is better
