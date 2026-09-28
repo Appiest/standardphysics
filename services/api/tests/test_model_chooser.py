@@ -88,3 +88,65 @@ def test_a_spent_budget_answers_without_asking_the_model_or_searching(make_clien
     result = _propose(client, scan_id, finding_id)
     assert not asked
     assert result["proposal"] is None and result["question"] is None
+
+
+class _Reply:
+    headers: dict = {}
+
+    def __init__(self, sent):
+        self.sent = sent
+        self.body = json.dumps({"choices": [{"message": {"content": '{"choose": [1]}'}}]}).encode()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, size=-1):
+        chunk, self.body = self.body, b""
+        return chunk
+
+
+def _capture_requests(monkeypatch):
+    sent = []
+    monkeypatch.setattr("urllib.request.urlopen", lambda request, timeout: sent.append(request) or _Reply(sent))
+    return sent
+
+
+def test_a_hosted_model_is_asked_with_its_providers_key_and_reasoning_off(monkeypatch):
+    sent = _capture_requests(monkeypatch)
+    monkeypatch.setenv("FIREWORKS_API_KEY", "fw-test-key")
+    monkeypatch.setenv("SP_LOOP_MODEL_URL", "https://api.fireworks.ai/inference/v1")
+    monkeypatch.setenv("SP_LOOP_MODEL", "accounts/fireworks/models/kimi-k3")
+    chooser = ModelChooser.from_environment("SP_LOOP_")
+    assert chooser is not None and chooser.ask([{"role": "user", "content": "pick"}]) == '{"choose": [1]}'
+    assert sent[0].get_header("Authorization") == "Bearer fw-test-key"
+    assert json.loads(sent[0].data)["reasoning_effort"] == "none"
+
+
+def test_an_explicit_key_wins_over_the_providers_key(monkeypatch):
+    sent = _capture_requests(monkeypatch)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-default")
+    monkeypatch.setenv("SP_LOOP_MODEL_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("SP_LOOP_MODEL", "some/model")
+    monkeypatch.setenv("SP_LOOP_MODEL_KEY", "or-explicit")
+    ModelChooser.from_environment("SP_LOOP_").ask([{"role": "user", "content": "pick"}])
+    assert sent[0].get_header("Authorization") == "Bearer or-explicit"
+    assert "reasoning_effort" not in json.loads(sent[0].data)
+
+
+def test_a_local_server_is_asked_without_a_key(monkeypatch):
+    sent = _capture_requests(monkeypatch)
+    monkeypatch.setenv("SP_LOOP_MODEL_URL", "http://127.0.0.1:8095/v1")
+    monkeypatch.setenv("SP_LOOP_MODEL", "local")
+    monkeypatch.delenv("SP_LOOP_MODEL_KEY", raising=False)
+    ModelChooser.from_environment("SP_LOOP_").ask([{"role": "user", "content": "pick"}])
+    assert sent[0].get_header("Authorization") is None
+
+
+def test_the_key_never_appears_in_the_choosers_repr(monkeypatch):
+    monkeypatch.setenv("SP_LOOP_MODEL_URL", "https://api.fireworks.ai/inference/v1")
+    monkeypatch.setenv("SP_LOOP_MODEL", "m")
+    monkeypatch.setenv("SP_LOOP_MODEL_KEY", "secret-value")
+    assert "secret-value" not in repr(ModelChooser.from_environment("SP_LOOP_"))

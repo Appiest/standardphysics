@@ -48,7 +48,7 @@ def door_clear_width(ctx: CheckContext) -> list[Observation]:
                 required_inches=rule.threshold,
                 relied_on=(door.id,),
                 locus=width_locus(ctx.graph, result),
-                facts={"door": door.label, "opening_inches": result.inches},
+                facts={"door": door.label, "door_name": roles.door_name(ctx.graph, door), "opening_inches": result.inches},
                 dedupe_key=(RULE_ID, str(door.id)),
                 reason="needs_tape_measure" if asking else "measured",
                 asks_for="measurement" if asking else None,

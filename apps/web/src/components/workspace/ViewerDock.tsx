@@ -52,7 +52,7 @@ function Choice({ pressed, onClick, icon, label, disabled }: { pressed: boolean;
       aria-pressed={pressed}
       disabled={disabled}
       onClick={onClick}
-      className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-ink-muted transition-colors hover:text-ink disabled:opacity-40 aria-pressed:bg-sheet aria-pressed:text-ink aria-pressed:shadow-sm"
+      className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-ink-muted pressable hover:text-ink disabled:opacity-40 aria-pressed:bg-sheet aria-pressed:text-ink aria-pressed:shadow-sm"
     >
       {icon}
       {label}

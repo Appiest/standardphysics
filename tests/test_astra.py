@@ -516,3 +516,35 @@ def test_reconstruction_wall_deadline_does_not_wait_for_stalled_workers(monkeypa
     result = reconstruct_result(graph, transport=stalled_transport)
     assert time.monotonic() - started < 0.18
     assert result.source == "roomplan"
+
+
+def test_a_counter_with_chairs_pulled_up_to_it_stays_measured():
+    counter = element("table", dims=(2.9, 1.13, 0.7), at=(0.0, 0.56, 0.0))
+    chair = element("chair", dims=(0.48, 0.87, 0.55), at=(0.0, 0.43, 0.55))
+    graph = parse_room_json({"objects": [counter, chair]})
+
+    rebuilt = reconstruct(graph)
+
+    assert rebuilt.by_id(uuid.UUID(counter["identifier"])).quality == "measured"
+
+
+def test_a_box_mostly_inside_another_needs_another_look():
+    big = element("storage", dims=(2.0, 1.0, 1.0), at=(0.0, 0.5, 0.0))
+    inside = element("storage", dims=(1.6, 0.9, 0.8), at=(0.1, 0.45, 0.0))
+    graph = parse_room_json({"objects": [big, inside]})
+
+    rebuilt = reconstruct(graph)
+
+    assert rebuilt.by_id(uuid.UUID(inside["identifier"])).quality == "needs_another_look"
+    assert rebuilt.by_id(uuid.UUID(big["identifier"])).quality == "needs_another_look"
+
+
+def test_the_labelling_model_cannot_decide_how_well_a_box_was_measured():
+    graph = parse_room_json({"objects": [element("table", dims=(2.9, 1.13, 0.7))]})
+    counter = graph.nodes[0]
+
+    rebuilt = reconstruct_result(graph, transport=lambda *_: model_response(
+        patch_for(counter, "Ordering counter", movable=False, quality="needs_another_look")))
+
+    assert rebuilt.source == "astra"
+    assert rebuilt.graph.by_id(counter.id).quality == "measured"

@@ -23,6 +23,7 @@ import { SavePrompt } from "./SavePrompt";
 import { SharePanel } from "./SharePanel";
 import { StepHeading } from "./StepHeading";
 import { StillToCheck } from "./StillToCheck";
+import { stillToCheckCount, stillToCheckItems } from "@/lib/still-to-check";
 import { FixAll, useModelLabel } from "./FixAll";
 import { ToolsPanel } from "./ToolsPanel";
 import { FoundLegend, FoundSection } from "./FoundList";
@@ -378,6 +379,7 @@ function ResultsStep({ shop, groups, statuses, selectedId, fixingHere, onStartFi
   onSection: (section: ResultsSection) => void;
 }) {
   const { scan, scene, journey, checklist, readOnly = false } = shop;
+  const stillToCheck = useMemo(() => stillToCheckItems(groups.questions, shop.requests), [groups.questions, shop.requests]);
   const rows: Row[] = useMemo(
     () => checklistRows(groups.problems, checklist).map((row) => ({ ...row, status: statuses.overrides[row.finding.id] ?? row.status })),
     [groups.problems, checklist, statuses.overrides],
@@ -392,8 +394,8 @@ function ResultsStep({ shop, groups, statuses, selectedId, fixingHere, onStartFi
       readOnly={readOnly}
       onStartFixing={onStartFixing}
       footer={shop.footer}
-      stillToCheck={<StillToCheck scanId={scan.id} questions={readOnly ? [] : groups.questions} requests={shop.requests} />}
-      pending={groups.questions.length}
+      stillToCheck={readOnly ? null : <StillToCheck scanId={scan.id} items={stillToCheck} />}
+      pending={stillToCheckCount(stillToCheck)}
       fixRoom={fixRoom}
       section={section}
       onSection={onSection}

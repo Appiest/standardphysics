@@ -30,7 +30,11 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
               padding: "0.75rem 1.25rem",
               fontSize: "1rem",
               cursor: "pointer",
+              transition: "scale 150ms ease-out",
             }}
+            onPointerDown={(event) => { event.currentTarget.style.scale = "0.96"; }}
+            onPointerUp={(event) => { event.currentTarget.style.scale = ""; }}
+            onPointerLeave={(event) => { event.currentTarget.style.scale = ""; }}
           >
             Reload
           </button>

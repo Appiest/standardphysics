@@ -42,7 +42,7 @@ export function FindingCard({ finding, scene, selected, status, fixing, saving, 
   const settled = status !== "to_do";
   return (
     <article className={`flex flex-col gap-4 rounded-2xl p-4 transition-shadow duration-150 ${settled ? "bg-ink/[0.04]" : "bg-sheet shadow-float"} ${selected ? "ring-2 ring-accent" : ""}`}>
-      <button type="button" onClick={() => actions.onShow(finding)} aria-pressed={selected} className="flex flex-col gap-3 text-left">
+      <button type="button" onClick={() => actions.onShow(finding)} aria-pressed={selected} className="pressable-wide flex flex-col gap-3 text-left">
         {!settled && scene && <SpotPlan scene={scene} finding={finding} />}
         <h2 className={`text-lg font-semibold leading-snug text-pretty ${settled ? "text-ink-muted" : ""}`}>{finding.title}</h2>
       </button>

@@ -47,8 +47,8 @@ export function ComparePanel({ comparison, amount, onAmount, scope }: { comparis
           aria-label={`Slide from ${comparison.beforeLabel.toLowerCase()} to ${comparison.afterLabel.toLowerCase()}`}
         />
         <div className="mt-1 flex justify-between text-sm font-medium">
-          <button type="button" onClick={() => onAmount(0)} className="rounded px-1 hover:bg-ink/5">{comparison.beforeLabel}</button>
-          <button type="button" onClick={() => onAmount(1)} className="rounded px-1 hover:bg-ink/5">{comparison.afterLabel}</button>
+          <button type="button" onClick={() => onAmount(0)} className="pressable rounded px-1 hover:bg-ink/5">{comparison.beforeLabel}</button>
+          <button type="button" onClick={() => onAmount(1)} className="pressable rounded px-1 hover:bg-ink/5">{comparison.afterLabel}</button>
         </div>
       </div>
 

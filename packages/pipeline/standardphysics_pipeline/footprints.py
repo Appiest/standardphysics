@@ -159,6 +159,19 @@ def _keep_left_of(polygon: Polygon, start: Point, end: Point) -> Polygon:
     return kept
 
 
+def _anticlockwise(polygon: Polygon) -> Polygon:
+    return polygon if signed_area(polygon) >= 0 else polygon[::-1]
+
+
+def covered_fraction(a: Polygon, b: Polygon) -> float:
+    """How much of convex footprint `a`'s area lies inside convex footprint `b`, from 0 to 1."""
+    area = abs(signed_area(a))
+    if area < DEGENERATE_AREA or surely_apart(a, b):
+        return 0.0
+    inside = convex_intersection(_anticlockwise(a), _anticlockwise(b))
+    return min(1.0, abs(signed_area(inside)) / area) if len(inside) >= 3 else 0.0
+
+
 def _point_to_segment(point: Point, a: Point, b: Point) -> float:
     px, py = point
     ax, ay = a

@@ -53,6 +53,28 @@
 }
 
 @layer components {
+  .pressable,
+  .pressable-wide {
+    transition-property: color, background-color, box-shadow, opacity, scale;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+  }
+
+  .pressable:active:not(:disabled, [aria-disabled="true"]) {
+    scale: 0.96;
+  }
+
+  .pressable-wide:active:not(:disabled, [aria-disabled="true"]) {
+    scale: 0.985;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pressable:active,
+    .pressable-wide:active {
+      scale: none !important;
+    }
+  }
+
   .measurement {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;

@@ -29,7 +29,7 @@ function FrameThumb({ frame, selected, onChoose }: { frame: FrameEntry; selected
       aria-pressed={selected}
       aria-label={`Photo ${frame.frame_id}`}
       onClick={onChoose}
-      className={`grid aspect-square min-h-11 w-full place-items-center overflow-hidden rounded-lg border transition-colors ${
+      className={`grid aspect-square min-h-11 w-full place-items-center overflow-hidden rounded-lg border pressable ${
         selected ? "border-accent ring-2 ring-accent/40" : "border-rule/60 bg-rule/30 hover:bg-rule/50"
       }`}
     >
@@ -397,7 +397,7 @@ export function MarkInPhoto({ scanId, revision, targetClass, suggestedNodeId, on
             <Camera size={18} aria-hidden />
             Mark a {targetLabel} in a photo
           </h2>
-          <button ref={closeRef} type="button" onClick={onClose} aria-label="Close marking" className="grid size-11 place-items-center rounded-lg text-ink-muted hover:bg-ink/5 hover:text-ink">
+          <button ref={closeRef} type="button" onClick={onClose} aria-label="Close marking" className="pressable grid size-11 place-items-center rounded-lg text-ink-muted hover:bg-ink/5 hover:text-ink">
             <X size={18} aria-hidden />
           </button>
         </div>

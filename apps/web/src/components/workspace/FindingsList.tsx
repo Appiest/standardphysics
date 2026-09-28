@@ -41,7 +41,7 @@ function FindingRow({ finding, selected, onSelect, extra }: RowProps) {
         data-finding-row
         aria-expanded={selected}
         onClick={onSelect}
-        className={`flex w-full gap-3 rounded-lg px-3 py-3 text-left transition-colors ${
+        className={`pressable-wide flex w-full gap-3 rounded-lg px-3 py-3 text-left ${
           selected ? "bg-sheet shadow-[0_1px_2px_rgb(27_28_30/0.1),0_8px_24px_rgb(27_28_30/0.07)]" : "hover:bg-ink/[0.04]"
         }`}
       >
@@ -108,7 +108,7 @@ export function FindingsList({ groups, selectedId, onSelect, extra }: ListProps)
             type="button"
             aria-expanded={passesOpen}
             onClick={() => setShowPasses(!passesOpen)}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-ink-muted hover:bg-ink/[0.04]"
+            className="pressable-wide flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-ink-muted hover:bg-ink/[0.04]"
           >
             <CaretDown size={14} weight="bold" className={`transition-transform ${passesOpen ? "" : "-rotate-90"}`} aria-hidden />
             {groups.passes.length} {groups.passes.length === 1 ? "check passes" : "checks pass"}
