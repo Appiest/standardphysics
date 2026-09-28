@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import logging
 import time
 import uuid
 from collections.abc import Callable, Iterator
@@ -51,11 +52,14 @@ from .model_chooser import ModelChooser, ModelReplyError, ModelSlots, without_wa
 from .proposals import fix_inputs, owner_wishes_of, space_typology_of
 from .stages import Stages
 
+log = logging.getLogger(__name__)
+
 MODEL_LOOP_TURNS = 5
 LOOP_MENU_SECONDS = 40.0
 """Longer than a single proposal's menu: built-in slides are guessed last, and on Share Tea the whole menu,
 built-ins included, took 31 s. The card shows a turn clock, so the owner sees the wait."""
 LOOP_ENVIRONMENT = "SP_LOOP_"
+UNEXPECTED_FAILURE = "Something went wrong on our side while fixing the room. Nothing was changed. Try again."
 clock: Callable[[], float] = time.monotonic
 
 
@@ -237,6 +241,9 @@ def _streamed(events: Iterator[ModelLoopEvent], chooser: ModelChooser, release: 
         yield from (_line(event) for event in events)
     except (OSError, ModelReplyError) as error:
         yield _line(ModelLoopEvent(kind="failed", message=_failure(chooser, error)))
+    except Exception:
+        log.exception("the model loop stopped on an unexpected error")
+        yield _line(ModelLoopEvent(kind="failed", message=UNEXPECTED_FAILURE))
     finally:
         release()
 

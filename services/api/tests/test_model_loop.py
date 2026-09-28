@@ -273,3 +273,16 @@ def test_a_plan_with_a_piece_where_it_cannot_stand_is_refused_before_the_model_i
     events = _events_from_plan(client, scan_id, [through_the_wall])
     assert events[-1]["kind"] == "failed" and "plan" in events[-1]["message"].lower()
     assert not asked
+
+
+def test_an_unexpected_error_mid_loop_ends_the_stream_with_a_message_instead_of_dropping_it(make_client, monkeypatch):
+    _configure(monkeypatch, _first_option)
+
+    def breaks(self):
+        raise ValueError("a menu option could not be built")
+
+    monkeypatch.setattr(model_loop.ModelLoop, "next_messages", breaks)
+    client, scan_id = _sample(make_client)
+    events = _events(client, scan_id)
+    assert events[0]["kind"] == "started"
+    assert events[-1]["kind"] == "failed" and "Try again" in events[-1]["message"]

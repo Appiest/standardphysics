@@ -69,7 +69,7 @@ from ..redesign import FurnitureMove
 from .catalog import ACCESSIBLE_FOUR_TOP, ACCESSIBLE_TWO_TOP, LOWERED_COUNTER_SECTION
 from .checker import TrainingChecker
 from .construction import MAX_FIXTURE_MOVE_INCHES, FixtureMove, build, construction_inches, fixture_ids
-from .edits import TrainingEdits, _json_text, combined, edits_json, node_moves, parse_edits
+from .edits import MAX_FIXTURE_MOVES, TrainingEdits, _json_text, combined, edits_json, node_moves, parse_edits
 from .fittings import HeightChange, LoweredSection, Replacement, height_range, rests_on, use_of
 from .owner import WishBook
 from .prices import construction_price
@@ -338,9 +338,10 @@ def _run_words(graph: SceneGraph, candidate: Candidate, finding: Finding) -> str
 
 
 def _fixture_set_guesses(graph: SceneGraph, finding: Finding, fixtures: set, label: str) -> list[_Guess]:
+    """A built-in slid with the built-ins it touches, unless that is more than one answer may move."""
     return [_Guess(TrainingEdits(fixture_moves=[_fixture_move(move) for move in found.moves]),
                    f"{_run_words(graph, found, finding)} (construction), for {label}")
-            for found in built_in_set_moves(graph, finding, fixtures)]
+            for found in built_in_set_moves(graph, finding, fixtures) if len(found.moves) <= MAX_FIXTURE_MOVES]
 
 
 def _fixture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:

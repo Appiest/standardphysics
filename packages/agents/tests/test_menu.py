@@ -225,3 +225,19 @@ def test_a_move_anchored_on_the_problem_itself_names_a_place_not_a_check(room):
     words, _ = _anchor(graph, node, finding)
     assert "_" not in words and "turn clear width" not in words
     assert words == "the problem spot"
+
+
+def test_a_built_in_touching_more_pieces_than_one_answer_may_move_is_not_offered_as_a_set(room, checker, monkeypatch):
+    from standardphysics_agents.fix.strategies import Candidate
+    from standardphysics_agents.training import menu as menu_module
+    from standardphysics_agents.training.edits import TrainingEdits
+    from standardphysics_contracts import NodeMove, Vec3
+
+    graph = room[0]
+    pieces = [node for node in graph.nodes if node.kind == "object"]
+    too_many = TrainingEdits.model_fields["fixture_moves"].metadata[0].max_length + 3
+    moves = [NodeMove(node_id=pieces[index % len(pieces)].id, delta_translation=Vec3(x=0.1, y=0.0, z=0.0),
+                      delta_rotation_z_degrees=0.0) for index in range(too_many)]
+    monkeypatch.setattr(menu_module, "built_in_set_moves", lambda *args: [Candidate("set", moves, 0.0)])
+    problem = checker.fixable_problems(checker.assess(graph))[0]
+    assert menu_module._fixture_set_guesses(graph, problem, {piece.id for piece in pieces}, "P1") == []
