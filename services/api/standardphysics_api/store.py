@@ -2,7 +2,8 @@
 
 A path is always built from a scan UUID and an artifact ID that passed
 `ARTIFACT_ID`, never from anything else a client sends, and the resolved path
-must stay under the root.
+must stay under the root. A body is staged under `ReceiveDeadlines`, so a client
+that stalls mid-upload loses its staged file rather than keeping it open.
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+
+from .receive_deadlines import ReceiveDeadlines
 
 ARTIFACT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 STAGING_PREFIX = ".upload-"
@@ -62,10 +65,17 @@ class StagedUpload:
 
 
 class ArtifactStore:
-    def __init__(self, root: pathlib.Path, max_bytes: int, quota: ScanQuota = ScanQuota()):
+    def __init__(
+        self,
+        root: pathlib.Path,
+        max_bytes: int,
+        quota: ScanQuota = ScanQuota(),
+        receive_deadlines: ReceiveDeadlines = ReceiveDeadlines(),
+    ):
         self.root = root.resolve()
         self.max_bytes = max_bytes
         self.quota = quota
+        self.receive_deadlines = receive_deadlines
 
     def artifact_path(self, scan_id: uuid.UUID, artifact_id: str) -> pathlib.Path:
         if not ARTIFACT_ID.fullmatch(artifact_id):
@@ -109,7 +119,10 @@ class ArtifactStore:
         return len(abandoned)
 
     async def stage(self, scan_id: uuid.UUID, chunks: AsyncIterator[bytes], limit: int | None = None) -> StagedUpload:
-        """Stream a body to a temp file beside its destination while hashing it, refusing it past `limit` bytes."""
+        """Stream a body to a temp file beside its destination while hashing it, refusing it past `limit` bytes.
+
+        A body that breaks a receive deadline raises `BodyTooSlow`; like any other failure, it deletes the file.
+        """
         ceiling = self.max_bytes if limit is None else min(limit, self.max_bytes)
         directory = self.scan_dir(scan_id) / "artifacts"
         directory.mkdir(parents=True, exist_ok=True)
@@ -117,7 +130,7 @@ class ArtifactStore:
         handle = tempfile.NamedTemporaryFile(dir=directory, prefix=STAGING_PREFIX, delete=False)
         try:
             with handle:
-                async for chunk in chunks:
+                async for chunk in self.receive_deadlines.start().paced(chunks):
                     size += len(chunk)
                     if size > ceiling:
                         raise ArtifactTooLarge(size)

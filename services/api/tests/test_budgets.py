@@ -126,6 +126,8 @@ def test_the_defaults_fit_the_walks_on_file():
         ("SP_MAX_OWNER_UPLOADS", "max_owner_uploads", 2),
         ("SP_MAX_CONCURRENT_UPLOADS", "max_concurrent_uploads", 9),
         ("SP_STAGING_MAX_AGE_SECONDS", "staging_max_age_seconds", 600),
+        ("SP_UPLOAD_IDLE_SECONDS", "upload_idle_seconds", 30),
+        ("SP_UPLOAD_TOTAL_SECONDS", "upload_total_seconds", 900),
     ],
 )
 def test_each_budget_is_configurable(monkeypatch, variable, field, value):

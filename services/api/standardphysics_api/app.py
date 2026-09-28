@@ -84,6 +84,7 @@ from .owner_routes import answered, install_owner_routes
 from .plans import install_plan_routes
 from .proposals import propose
 from .questions import answer_question
+from .receive_deadlines import BodyTooSlow
 from .replays import install_replay_routes
 from .report import build_report
 from .request_size import BoundedRequestBodies
@@ -175,7 +176,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     adopt_allowlist(database, settings.team_emails)
     revoke_passwords_left_on_apple_accounts(database)
     quota = ScanQuota(settings.max_scan_artifacts, settings.max_scan_bytes)
-    store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes, quota)
+    store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes, quota, settings.receive_deadlines())
     worker = Worker(database, store, stages, settings)
     worker.notifier = notifier_from(settings)
 
@@ -232,7 +233,9 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     )
 
     _install_health_routes(app, database, worker, settings.git_sha)
-    app.add_middleware(BoundedRequestBodies, max_bytes=settings.max_request_body_bytes)
+    app.add_middleware(
+        BoundedRequestBodies, max_bytes=settings.max_request_body_bytes, deadlines=settings.receive_deadlines()
+    )
     return app
 
 
@@ -470,6 +473,8 @@ async def _stage_upload(
         raise ApiProblem(400, "invalid artifact id") from None
     except ArtifactTooLarge:
         raise ApiProblem(413, "artifact too large") from None
+    except BodyTooSlow as slow:
+        raise ApiProblem(408, f"The upload stopped arriving: {slow}. Send it again.") from None
 
 
 def _queue_for_arrival(

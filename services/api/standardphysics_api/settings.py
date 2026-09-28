@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from standardphysics_agents.env_file import load_dotenv
 from standardphysics_agents.tracing import ENTITY_ENV, PROJECT_ENV
 
+from .receive_deadlines import ReceiveDeadlines
 from .store import ScanQuota
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -93,6 +94,12 @@ class Settings:
     max_concurrent_validations: int = 1
     """How many uploaded files are checked at once, from SP_MAX_CONCURRENT_VALIDATIONS; the rest wait their
     turn. Checking the largest mesh holds a few hundred megabytes, and the API has 3.2 GB for everything."""
+    upload_idle_seconds: int = 120
+    """How long a request body may go without a byte arriving before it is dropped with a 408, from
+    SP_UPLOAD_IDLE_SECONDS. Dropping it releases its upload reservation and deletes what it staged."""
+    upload_total_seconds: int = 2 * 60 * 60
+    """How long any one request body may take to arrive in all, from SP_UPLOAD_TOTAL_SECONDS. The largest
+    artifact allowed, 1 GiB, arrives in about 70 minutes at 2 Mbit/s."""
     staging_max_age_seconds: int = 3600
     """How long a staged upload may go unwritten before it counts as abandoned and is deleted, from
     SP_STAGING_MAX_AGE_SECONDS. A streaming upload writes its file every few milliseconds, so an hour
@@ -211,6 +218,9 @@ class Settings:
     def database_path(self) -> pathlib.Path:
         return self.data_dir / "standardphysics.sqlite3"
 
+    def receive_deadlines(self) -> ReceiveDeadlines:
+        return ReceiveDeadlines(self.upload_idle_seconds, self.upload_total_seconds)
+
     def job_deadline_seconds(self, kind: str) -> float:
         """How long a job of this kind may run. A photo bake's deadline is its kill timeout.
 
@@ -264,6 +274,10 @@ class Settings:
             ),
             max_concurrent_validations=_bounded_integer(
                 "SP_MAX_CONCURRENT_VALIDATIONS", cls.max_concurrent_validations, 1, 16
+            ),
+            upload_idle_seconds=_bounded_integer("SP_UPLOAD_IDLE_SECONDS", cls.upload_idle_seconds, 1, 86_400),
+            upload_total_seconds=_bounded_integer(
+                "SP_UPLOAD_TOTAL_SECONDS", cls.upload_total_seconds, 1, 7 * 86_400
             ),
             staging_max_age_seconds=_bounded_integer(
                 "SP_STAGING_MAX_AGE_SECONDS", cls.staging_max_age_seconds, 60, 7 * 86_400
