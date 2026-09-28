@@ -3,11 +3,13 @@
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue, type Variants } from "motion/react";
 import { useEffect } from "react";
 import { easeDrawn, exitTransition } from "@/lib/motion";
+import { finetuneTotals } from "../finetuneLedger";
 import { FinePrint, MaskedLines } from "../primitives";
 import type { SlideProps } from "../slides";
+import { BenchmarkPanel, LineagePanel } from "./FinetunePanels";
 
-type ToolsPhase = "runs" | "aria" | "marimo";
-const toolsPhases: ToolsPhase[] = ["runs", "aria", "marimo"];
+type ToolsPhase = "runs" | "aria" | "marimo" | "lineage" | "benchmarks";
+const toolsPhases: ToolsPhase[] = ["runs", "aria", "marimo", "lineage", "benchmarks"];
 
 type Run = { label: string; cellMillimeters: number | null; candidates: number; weakest: number };
 
@@ -160,7 +162,28 @@ const copy: Record<ToolsPhase, { headline: string[]; detail: string[]; source: s
     detail: [],
     source: "notebooks/scenario_sweep.py, docs/marimo.md",
   },
+  lineage: {
+    headline: ["marimo charts", `all ${finetuneTotals.adapters} of our`, "fine-tunes."],
+    detail: ["Every one tunes Qwen 3.8 27B.", `${finetuneTotals.rlSteps} RL steps, ${(finetuneTotals.trainTokens / 1_000_000).toFixed(1)}M tokens.`],
+    source: "notebooks/finetune_story.py, notebooks/public/finetune_ledger.json",
+  },
+  benchmarks: {
+    headline: ["We scored", "each training", "stage on new", "rooms."],
+    detail: ["Change in rooms cleared, in points."],
+    source: "notebooks/finetune_story.py, notebooks/public/finetune_ledger.json",
+  },
 };
+
+function ToolsPanel({ phase }: { phase: ToolsPhase }) {
+  if (phase === "marimo") return <MarimoPanel key="marimo" />;
+  if (phase === "lineage") return <LineagePanel key="lineage" />;
+  if (phase === "benchmarks") return <BenchmarkPanel key="benchmarks" />;
+  return (
+    <motion.div key="runs" initial="enter" animate="present" exit="exit">
+      <RunGrid phase={phase} />
+    </motion.div>
+  );
+}
 
 function ToolsCopy({ phase }: { phase: ToolsPhase }) {
   return (
@@ -193,13 +216,7 @@ export function ToolsSlide({ step }: SlideProps) {
       </div>
       <div className="relative">
         <AnimatePresence mode="wait" initial={false}>
-          {phase === "marimo" ? (
-            <MarimoPanel key="marimo" />
-          ) : (
-            <motion.div key="runs" initial="enter" animate="present" exit="exit">
-              <RunGrid phase={phase} />
-            </motion.div>
-          )}
+          <ToolsPanel key={phase === "aria" ? "runs" : phase} phase={phase} />
         </AnimatePresence>
       </div>
     </div>
