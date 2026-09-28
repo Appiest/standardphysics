@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ModelLoopEvent, NodeMove } from "@/types/contracts";
-import { finishedDetail, finishedHeadline, isAllCleared, problemsLeft, turnMoves, turnTitle } from "./fix-all-copy";
+import { finishedDetail, finishedHeadline, isAllCleared, namedProblems, problemsLeft, turnClock, turnInProgress, turnMoves, turnTitle } from "./fix-all-copy";
 import { NOT_STARTED } from "./model-loop-progress";
 
 const move: NodeMove = { node_id: "a", delta_translation: { x: 0.3, y: 0, z: 0 }, delta_rotation_z_degrees: 0 };
 
 function event(fields: Partial<ModelLoopEvent>): ModelLoopEvent {
-  return { kind: "turn", turn: null, picked: [], why: "", fixable_left: null, moves: [], explanation: null, message: "", ...fields };
+  return { kind: "turn", turn: null, picked: [], why: "", fixable_left: null, working_on: [], turns_at_most: null, moves: [], explanation: null, message: "", ...fields };
 }
 
 describe("fix all copy", () => {
@@ -39,5 +39,17 @@ describe("fix all copy", () => {
     const none = event({ kind: "finished", fixable_left: 3, message: "The model chose nothing it could use." });
     expect(finishedHeadline(none, 3)).toBe("No furniture move fixed a problem");
     expect(finishedDetail(none, false)).toBe("The layout stays as it is. The model chose nothing it could use.");
+  });
+
+  it("words the turn in progress as a count and a clock", () => {
+    expect(turnInProgress(2, 5)).toBe("Turn 2 of up to 5");
+    expect(turnInProgress(1, null)).toBe("Turn 1");
+    expect(turnClock(7)).toBe("0:07");
+    expect(turnClock(72)).toBe("1:12");
+  });
+
+  it("names the first few open problems and counts the rest", () => {
+    expect(namedProblems(["a", "b"])).toEqual({ named: ["a", "b"], more: 0 });
+    expect(namedProblems(["a", "b", "c", "d", "e"])).toEqual({ named: ["a", "b", "c"], more: 2 });
   });
 });

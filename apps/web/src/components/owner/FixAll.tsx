@@ -11,11 +11,14 @@ import {
   fixAllAnnouncement,
   idleDetail,
   isAllCleared,
+  namedProblems,
   problemsLeft,
   problemsLeftLabel,
   stoppedSentence,
+  turnClock,
+  turnInProgress,
   turnMoves,
-  workingDetail,
+  turnWork,
 } from "@/lib/fix-all-copy";
 import { ApiRefusal, modelLoopInfo, streamModelLoop } from "@/lib/layout-client";
 import { advanceModelLoop, type ModelLoopProgress, NOT_STARTED } from "@/lib/model-loop-progress";
@@ -197,14 +200,42 @@ function TurnRow({ turn }: { turn: ModelLoopEvent }) {
   );
 }
 
-function WorkingRow({ label }: { label: string }) {
+/** Whole seconds since the component mounted, ticking once a second. */
+function useSecondsRunning(): number {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const began = Date.now();
+    const timer = setInterval(() => setSeconds(Math.floor((Date.now() - began) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return seconds;
+}
+
+/** The turn under way: its number and clock, the problems it is working on, and what it is doing meanwhile. */
+function WorkingRow({ label, progress }: { label: string; progress: ModelLoopProgress }) {
+  const seconds = useSecondsRunning();
+  const { named, more } = namedProblems(progress.workingOn);
   return (
     <motion.li className="flex gap-3" initial={BLURRED_IN} animate={SHARP}
       exit={{ opacity: 0, y: -4, transition: { duration: 0.15 } }} transition={GROW}>
       <CircleNotch size={20} className="mt-0.5 shrink-0 text-accent motion-safe:animate-spin" aria-hidden />
-      <div className="min-w-0">
-        <p className="font-semibold">Choosing the next move</p>
-        <p className="mt-0.5 text-pretty text-sm text-ink-muted">{workingDetail(label)}</p>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="font-semibold">{turnInProgress(progress.turns.length + 1, progress.turnsAtMost)}</p>
+          <span className="text-sm tabular-nums text-ink-muted" aria-hidden>{turnClock(seconds)}</span>
+        </div>
+        {named.length > 0 && (
+          <ul className="mt-1.5 flex flex-col gap-1 text-sm" aria-label="Problems this turn is working on">
+            {named.map((title) => (
+              <li key={title} className="flex items-start gap-2">
+                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-accent motion-safe:animate-pulse" aria-hidden />
+                <span className="text-pretty">{title}</span>
+              </li>
+            ))}
+            {more > 0 && <li className="pl-3.5 text-ink-muted">and {more} more</li>}
+          </ul>
+        )}
+        <p className="mt-1.5 text-pretty text-sm text-ink-muted">{turnWork(label)}</p>
       </div>
     </motion.li>
   );
@@ -216,7 +247,7 @@ function Turns({ progress, label }: { progress: ModelLoopProgress; label: string
     <ol className="mt-5 flex flex-col gap-4" aria-label="Moves the model made">
       <AnimatePresence initial={false}>
         {progress.turns.map((turn) => <TurnRow key={turn.turn ?? turn.picked.join()} turn={turn} />)}
-        {progress.phase === "running" && <WorkingRow key="working" label={label} />}
+        {progress.phase === "running" && <WorkingRow key={`working-${progress.turns.length}`} label={label} progress={progress} />}
       </AnimatePresence>
     </ol>
   );

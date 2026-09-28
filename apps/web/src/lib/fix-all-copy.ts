@@ -5,8 +5,24 @@ export function idleDetail(label: string): string {
   return `${label} works through the whole room, choosing only moves that pass every check. Nothing changes until you keep it.`;
 }
 
-export function workingDetail(label: string): string {
-  return `${label} is choosing from moves that pass every check, then your shop is measured again.`;
+/** Which turn is running, out of the most the run can take. */
+export function turnInProgress(turn: number, atMost: number | null): string {
+  return atMost ? `Turn ${turn} of up to ${atMost}` : `Turn ${turn}`;
+}
+
+/** Seconds spent on this turn so far, as a clock: 0:07, 1:12. */
+export function turnClock(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/** What happens during a turn, which is why it takes a while. */
+export function turnWork(label: string): string {
+  return `${label} measures every move that fits your shop against the ADA rules, then picks one.`;
+}
+
+/** The open problems to name, and how many more there are beyond them. */
+export function namedProblems(workingOn: string[], shown = 3): { named: string[]; more: number } {
+  return { named: workingOn.slice(0, shown), more: Math.max(0, workingOn.length - shown) };
 }
 
 /** Problems still open: the latest turn's count, or the count the run started with. */

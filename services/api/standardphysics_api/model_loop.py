@@ -25,7 +25,15 @@ from standardphysics_agents.training.checker import TrainingChecker
 from standardphysics_agents.training.edits import apply_edits, node_moves, parse_edits
 from standardphysics_agents.training.menu import MenuLimits, build_menu, menu_messages, resolve
 from standardphysics_agents.training.owner import WishBook, stated_book
-from standardphysics_contracts import ModelLoopEvent, ModelLoopInfo, ModelLoopRequest, NodeMove, SceneGraph, Vec3
+from standardphysics_contracts import (
+    Finding,
+    ModelLoopEvent,
+    ModelLoopInfo,
+    ModelLoopRequest,
+    NodeMove,
+    SceneGraph,
+    Vec3,
+)
 
 from .db import Database
 from .model_chooser import MENU_SECONDS, ModelChooser, furniture_only
@@ -61,6 +69,11 @@ def _combined(moves: dict[uuid.UUID, NodeMove], added: list[NodeMove]) -> dict[u
     return total
 
 
+def _titles(problems: list[Finding]) -> list[str]:
+    """Each open problem's title once, in the owner's words."""
+    return list(dict.fromkeys(problem.title for problem in problems))
+
+
 @dataclass
 class ModelLoop:
     """One loop's state: the layout so far, every move made, and what to tell the model next turn."""
@@ -77,8 +90,11 @@ class ModelLoop:
     def __post_init__(self) -> None:
         self.current = self.current or self.start
 
+    def open_problems(self) -> list[Finding]:
+        return self.checker.fixable_problems(self.checker.assess(self.current))
+
     def fixable_left(self) -> int:
-        return len(self.checker.fixable_problems(self.checker.assess(self.current)))
+        return len(self.open_problems())
 
     def next_messages(self) -> list[dict] | None:
         """The prompt for the next turn, or None when there is nothing left the menu can offer."""
@@ -101,11 +117,11 @@ class ModelLoop:
             self.moves = _combined(self.moves, added)
         else:
             self.stop = "The model chose nothing it could use."
-        left = self.fixable_left()
-        self.last = {**resolution.as_dict(), "fixable_left": left}
+        open_problems = self.open_problems()
+        self.last = {**resolution.as_dict(), "fixable_left": len(open_problems)}
         picked = [self.menu.picked_in_owner_words(number) for number in resolution.applied]
         return ModelLoopEvent(kind="turn", turn=turn, picked=picked, why=self.menu.in_owner_words(resolution.why),
-                              fixable_left=left)
+                              fixable_left=len(open_problems), working_on=_titles(open_problems))
 
 
 def _events(stages: Stages, graph: SceneGraph, scenario, chooser: ModelChooser, typology,
@@ -113,8 +129,9 @@ def _events(stages: Stages, graph: SceneGraph, scenario, chooser: ModelChooser, 
     """Turns until the room is clear, the menu runs dry, the model picks nothing, or the turns run out."""
     with stages.locked():
         loop = ModelLoop(graph, stages.menu_checker(graph, scenario, typology), stated_book(graph, list(wishes)))
-        left = loop.fixable_left()
-    yield ModelLoopEvent(kind="started", fixable_left=left, message=f"{chooser.label} is looking at your shop.")
+        open_problems = loop.open_problems()
+    yield ModelLoopEvent(kind="started", fixable_left=len(open_problems), working_on=_titles(open_problems),
+                         turns_at_most=MODEL_LOOP_TURNS, message=f"{chooser.label} is looking at your shop.")
     for turn in range(1, MODEL_LOOP_TURNS + 1):
         with stages.locked():
             messages = loop.next_messages()

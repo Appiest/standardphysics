@@ -35,6 +35,10 @@ class ModelLoopEvent(BaseModel):
     why: str = ""
     """The model's own reason for this turn's pick."""
     fixable_left: int | None = None
+    working_on: list[str] = []
+    """On `started` and each `turn`, the titles of the problems still open, which the next turn works on."""
+    turns_at_most: int | None = None
+    """On `started`, how many turns the loop takes at most."""
     moves: list[NodeMove] = []
     """On `finished`, every move the loop made, measured from the layout it started with."""
     explanation: ProposalExplanation | None = None

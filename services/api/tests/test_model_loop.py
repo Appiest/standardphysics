@@ -52,7 +52,9 @@ def test_the_model_takes_turns_until_it_stops_and_the_moves_add_up(make_client, 
     finished = events[-1]
     assert finished["moves"] and finished["explanation"]["fixed"] and finished["message"]
     assert finished["fixable_left"] <= turns[0]["fixable_left"] <= events[0]["fixable_left"]
-    assert events[0]["fixable_left"] > 0
+    assert events[0]["fixable_left"] > 0 and events[0]["turns_at_most"] == 5
+    assert 0 < len(events[0]["working_on"]) <= events[0]["fixable_left"]
+    assert all(len(turn["working_on"]) <= turn["fixable_left"] for turn in turns)
 
 
 def test_an_unreachable_model_ends_the_stream_with_a_way_to_recover(make_client, monkeypatch):
