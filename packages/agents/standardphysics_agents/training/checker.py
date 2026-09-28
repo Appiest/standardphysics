@@ -45,13 +45,15 @@ FITTING_EDITS: dict[str, tuple[str, ...]] = {
 }
 """Rules no rearrangement clears, and the fitting edits that can."""
 
+FITTING_FIELDS = frozenset({"add_lowered_section", "height_changes", "replacements"})
+
 PROMOTED_TO_TRAINING = frozenset({"dining_surface_height", "reach_range"})
 """Rules above tier 1 that the fittings scope measures, from the heights the scan has."""
 
 
-def fittings_pack(pack: AgentRulePack) -> AgentRulePack:
+def fittings_pack(pack: AgentRulePack, promoted_ids: frozenset[str] = PROMOTED_TO_TRAINING) -> AgentRulePack:
     """The pack with the fitting rules above tier 1 run as measured tier 1 rules, for training only."""
-    promoted = [rule.model_copy(update={"tier": 1, "evidence": "measured"}) if rule.id in PROMOTED_TO_TRAINING
+    promoted = [rule.model_copy(update={"tier": 1, "evidence": "measured"}) if rule.id in promoted_ids
                 else rule for rule in pack.rules]
     return pack.model_copy(update={"rules": promoted})
 
@@ -91,10 +93,13 @@ class TrainingChecker:
     directives: list[PrecedentDirective] | None = None
     """The directives to hold layouts to; None means the ones a person has verified."""
     scope: Scope = "layout"
+    promoted: frozenset[str] = PROMOTED_TO_TRAINING
+    """Rules above tier 1 the fittings scope measures as tier 1. The owner's loop promotes none, so it only
+    works on what the owner's report shows."""
 
     def __post_init__(self) -> None:
         if self.scope == "fittings":
-            self.rules = fittings_pack(self.rules)
+            self.rules = fittings_pack(self.rules, self.promoted)
 
     @cached_property
     def owner_wishes(self):
@@ -130,6 +135,10 @@ class TrainingChecker:
 
     def resolvable(self, rule_id: str) -> bool:
         return bool(edits_that_resolve(self.rules.by_id(rule_id), self.scope))
+
+    def fittable(self, rule_id: str) -> bool:
+        """Whether a fitting edit (a height change, a swap, a lowered section) may clear this rule here."""
+        return any(edit in FITTING_FIELDS for edit in edits_that_resolve(self.rules.by_id(rule_id), self.scope))
 
     def unfixable_rules(self) -> dict[str, str]:
         """Every rule in the pack no edit clears in this scope, and why."""

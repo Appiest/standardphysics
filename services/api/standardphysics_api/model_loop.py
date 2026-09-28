@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 
 from standardphysics_agents.fix.budget import deadline_in
 from standardphysics_agents.training.checker import TrainingChecker
-from standardphysics_agents.training.edits import TrainingEdits, apply_edits, node_moves, parse_edits
+from standardphysics_agents.training.edits import TrainingEdits, apply_edits, has_construction, node_moves, parse_edits
 from standardphysics_agents.training.menu import Menu, MenuLimits, build_menu, menu_messages, resolve
 from standardphysics_agents.training.owner import WishBook, stated_book
 from standardphysics_contracts import (
@@ -127,7 +127,7 @@ class ModelLoop:
     def next_messages(self) -> list[dict] | None:
         """The prompt for the next turn, or None when there is nothing left the menu can offer."""
         if self.fixable_left() == 0:
-            self.stop = "Every problem furniture can fix is fixed."
+            self.stop = "Every problem a move or a contractor can fix is fixed."
             return None
         limits = MenuLimits(deadline=deadline_in(LOOP_MENU_SECONDS))
         menu = without_wall_shifts(build_menu(self.current, self.checker, stated=self.stated, limits=limits))
@@ -142,7 +142,7 @@ class ModelLoop:
         resolution = resolve(reply, self.current, menu, self.checker.pinned)
         edits = parse_edits(resolution.completion)
         added = _all_moves(edits) if edits else []
-        if edits is not None and added:
+        if edits is not None and (added or has_construction(edits)):
             self.current = apply_edits(self.current, edits)
             self.moves = _combined(self.moves, added)
             self.built_ins |= {move.node_id for move in edits.fixture_moves}
@@ -152,7 +152,7 @@ class ModelLoop:
         self.last = {**resolution.as_dict(), "fixable_left": len(open_problems)}
         picked = [menu.picked_in_owner_words(number) for number in resolution.applied]
         construction = [menu.picked_in_owner_words(number) for number in resolution.applied
-                        if (option := menu.option(number)) is not None and option.edits.fixture_moves]
+                        if (option := menu.option(number)) is not None and has_construction(option.edits)]
         return ModelLoopEvent(kind="turn", turn=turn, picked=picked, construction=construction,
                               why=menu.in_owner_words(resolution.why),
                               fixable_left=len(open_problems), working_on=_titles(open_problems))
@@ -166,7 +166,8 @@ def _events(stages: Stages, graph: SceneGraph, scenario, chooser: ModelChooser, 
             wishes) -> Iterator[ModelLoopEvent]:
     """Turns until the room is clear, the menu runs dry, the model picks nothing, or the turns or time run out."""
     with stages.locked():
-        loop = ModelLoop(graph, stages.menu_checker(graph, scenario, typology), stated_book(graph, list(wishes)))
+        loop = ModelLoop(graph, stages.menu_checker(graph, scenario, typology, scope="fittings"),
+                         stated_book(graph, list(wishes)))
         open_problems = loop.open_problems()
     yield ModelLoopEvent(kind="started", fixable_left=len(open_problems), working_on=_titles(open_problems),
                          turns_at_most=MODEL_LOOP_TURNS, message=f"{chooser.label} is looking at your shop.")

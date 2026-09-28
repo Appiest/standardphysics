@@ -190,3 +190,54 @@ def test_a_loop_on_a_missing_scan_is_refused_before_the_stream_starts(make_clien
     client, _ = _sample(make_client)
     missing = "00000000-0000-4000-8000-000000000000"
     assert client.post(f"/api/scans/{missing}/model-loop/stream", json={"base_revision": 0}).status_code == 404
+
+
+def _counter_with_register():
+    from standardphysics_contracts import Mat4, SceneNode, Vec3, to_meters
+    from standardphysics_fixtures import build_graph, node_id
+
+    register = SceneNode(id=node_id("register"), kind="object", label="Cash register", raw_category="electronics",
+                         dimensions=Vec3(x=0.35, y=0.28, z=0.25),
+                         transform=Mat4.translation(0.3, 3.42, to_meters(47.0) + 0.125), movable=False)
+    graph = build_graph()
+    return graph.model_copy(update={"nodes": [*graph.nodes, register]})
+
+
+def _prefer_a_section(reply_for):
+    def choose(messages):
+        options = json.loads(messages[-1]["content"])["options"]
+        section = next((option for option in options if "section" in option["do"]), options[0])
+        reply_for.append(section["do"])
+        return json.dumps({"choose": [section["option"]], "why": "Customers can order at the lowered part."})
+    return choose
+
+
+def test_the_loop_offers_a_contractor_fix_for_a_counter_too_high_and_clears_it():
+    from standardphysics_agents import VerificationLedger
+    from standardphysics_agents.rules import load_pack
+    from standardphysics_agents.training.checker import TrainingChecker
+    from standardphysics_agents.training.owner import stated_book
+    from standardphysics_fixtures import build_scenario
+    from standardphysics_pipeline import PipelineMeasurements
+
+    graph = _counter_with_register()
+    ledger = VerificationLedger()
+    for rule in load_pack().rules:
+        ledger = ledger.record(rule, verified_by="test suite, not a person")
+    checker = TrainingChecker(build_scenario(), rules=load_pack(), ledger=ledger,
+                              measure=PipelineMeasurements(), owner_layout=graph, scope="fittings",
+                              promoted=frozenset())
+    loop = model_loop.ModelLoop(graph, checker, stated_book(graph, []))
+    assert "service_counter_height" in {problem.check_id for problem in loop.open_problems()}
+    picked: list[str] = []
+    choose = _prefer_a_section(picked)
+    for turn in range(1, model_loop.MODEL_LOOP_TURNS + 1):
+        messages = loop.next_messages()
+        if messages is None:
+            break
+        event = loop.take(turn, choose(messages))
+        if any("section" in words for words in event.picked):
+            assert event.construction and all("section" in words for words in event.construction)
+            break
+    assert any("section" in move for move in picked)
+    assert "service_counter_height" not in {problem.check_id for problem in loop.open_problems()}
