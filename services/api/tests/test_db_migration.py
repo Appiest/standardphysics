@@ -111,7 +111,7 @@ def test_legacy_database_opens_additively_and_keeps_old_rows(make_client, tmp_pa
 
         with client.app.state.database.connect() as connection:
             columns = {row[1] for row in connection.execute("PRAGMA table_info(jobs)")}
-            assert {"input_hash", "note"} <= columns, columns
+            assert {"input_hash", "note", "interruptions"} <= columns, columns
             scenario_columns = {row[1] for row in connection.execute("PRAGMA table_info(scenarios)")}
             assert "version" in scenario_columns
             assessment_columns = {row[1] for row in connection.execute("PRAGMA table_info(assessments)")}

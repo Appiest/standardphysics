@@ -511,3 +511,97 @@ def test_a_database_that_stays_locked_while_settling_is_given_up_on(make_client,
         assert finish_calls["count"] > 1
         assert fail_calls["count"] > 1
         _assert_left_for_restart_and_degraded(client, scan_id)
+
+
+def _restart_during_run(client, scan_id: str, kind: str = PROCESS) -> None:
+    """The job is claimed and running when the server stops; the next start recovers it."""
+    with client.app.state.database.transaction() as connection:
+        connection.execute(
+            "UPDATE jobs SET state = 'running', attempts = attempts + 1 WHERE scan_id = ? AND kind = ?",
+            (scan_id, kind),
+        )
+    client.app.state.worker._recover_interrupted_jobs()
+
+
+def _interruptions(client, scan_id: str, kind: str = PROCESS) -> int:
+    with client.app.state.database.connect() as connection:
+        return connection.execute(
+            "SELECT interruptions FROM jobs WHERE scan_id = ? AND kind = ?", (scan_id, kind)
+        ).fetchone()["interruptions"]
+
+
+def test_an_interrupted_job_is_queued_again_and_its_interruption_is_counted(make_client):
+    with _one_queued_job(make_client, PROCESS) as (client, scan_id):
+        _restart_during_run(client, scan_id)
+        assert _job(client, scan_id, PROCESS)["state"] == "queued"
+        assert _interruptions(client, scan_id) == 1
+
+
+def test_a_job_interrupted_on_every_run_is_stopped_at_the_ceiling(make_client, caplog):
+    with _one_queued_job(make_client, PROCESS) as (client, scan_id):
+        _restart_during_run(client, scan_id)
+        _restart_during_run(client, scan_id)
+        assert _job(client, scan_id, PROCESS)["state"] == "queued"
+        with caplog.at_level(logging.ERROR, logger=worker_module.__name__):
+            _restart_during_run(client, scan_id)
+        job = _job(client, scan_id, PROCESS)
+        assert job["state"] == "failed"
+        assert job["error"].startswith("Stopped after 3 interrupted runs")
+        assert client.get(f"/api/scans/{scan_id}").json()["state"] == "failed"
+        assert "stopped after 3 interrupted runs" in caplog.text
+
+
+def test_the_stopped_run_is_kept_in_the_attempt_history(make_client):
+    with _one_queued_job(make_client, PROCESS) as (client, scan_id):
+        for _ in range(3):
+            _restart_during_run(client, scan_id)
+        with client.app.state.database.connect() as connection:
+            attempts = connection.execute("SELECT attempt, state, error FROM job_attempts").fetchall()
+        assert [(row["attempt"], row["state"]) for row in attempts] == [(3, "failed")]
+        assert attempts[0]["error"].startswith("Stopped after 3 interrupted runs")
+
+
+def test_the_ceiling_comes_from_the_settings(make_client):
+    with _one_queued_job(lambda: make_client(max_job_interruptions=1), PROCESS) as (client, scan_id):
+        _restart_during_run(client, scan_id)
+        assert _job(client, scan_id, PROCESS)["error"].startswith("Stopped after 1 interrupted runs")
+
+
+def test_the_ceiling_is_read_from_the_environment(monkeypatch):
+    from standardphysics_api.settings import Settings
+
+    monkeypatch.setenv("SP_MAX_JOB_INTERRUPTIONS", "5")
+    assert Settings.from_environment().max_job_interruptions == 5
+    monkeypatch.setenv("SP_MAX_JOB_INTERRUPTIONS", "0")
+    with pytest.raises(ValueError):
+        Settings.from_environment()
+
+
+def test_a_stopped_derived_job_leaves_the_scan_state_alone(make_client):
+    with _one_queued_job(make_client, "display") as (client, scan_id):
+        before = client.get(f"/api/scans/{scan_id}").json()["state"]
+        for _ in range(3):
+            _restart_during_run(client, scan_id, "display")
+        assert _job(client, scan_id, "display")["state"] == "failed"
+        assert client.get(f"/api/scans/{scan_id}").json()["state"] == before
+
+
+def test_retrying_a_stopped_scan_queues_the_job_with_a_fresh_count(make_client):
+    with _one_queued_job(make_client, PROCESS) as (client, scan_id):
+        for _ in range(3):
+            _restart_during_run(client, scan_id)
+        assert client.post(f"/api/scans/{scan_id}/complete").status_code == 200
+        assert _job(client, scan_id, PROCESS)["state"] == "queued"
+        assert _interruptions(client, scan_id) == 0
+        _restart_during_run(client, scan_id)
+        assert _job(client, scan_id, PROCESS)["state"] == "queued"
+
+
+def test_asking_for_a_derived_job_again_clears_its_count(make_client):
+    with _one_queued_job(make_client, "display") as (client, scan_id):
+        for _ in range(3):
+            _restart_during_run(client, scan_id, "display")
+        with client.app.state.database.transaction() as connection:
+            repo.queue_job_again(connection, uuid.UUID(scan_id), "display", 1)
+        assert _job(client, scan_id, "display")["state"] == "queued"
+        assert _interruptions(client, scan_id, "display") == 0

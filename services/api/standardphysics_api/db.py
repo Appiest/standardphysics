@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     note TEXT,
     model_requests_json TEXT,
     queued_at TEXT,
+    interruptions INTEGER NOT NULL DEFAULT 0,
     UNIQUE (scan_id, kind, revision)
 );
 CREATE TABLE IF NOT EXISTS revisions (
@@ -222,6 +223,7 @@ ADDED_COLUMNS = {
         ("note", "TEXT"),
         ("model_requests_json", "TEXT"),
         ("queued_at", "TEXT"),
+        ("interruptions", "INTEGER NOT NULL DEFAULT 0"),
     ),
     "scenarios": (("version", "INTEGER NOT NULL DEFAULT 0"),),
     "assessments": (("scenario_version", "INTEGER"),),

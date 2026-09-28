@@ -5,8 +5,11 @@ an exclusive lock on a file beside the database; a second process finds the
 lock held, says so in the log, and serves requests without running any job.
 Jobs are claimed atomically, and at startup every job left running is queued
 again, except a simulation, which is failed so that a restart never spends a
-second budget of paid model calls (`repo.fail_interrupted_simulations`). The
-lock is what makes that safe: no other live process can be running one of them.
+second budget of paid model calls (`repo.fail_interrupted_simulations`), and a
+job whose runs `max_job_interruptions` restarts in a row have cut short, which
+is failed so that an input that kills the server can't bring it down for ever
+(`repo.requeue_interrupted_jobs`). The lock is what makes that safe: no other
+live process can be running one of them.
 
 Neither loop stops on an error. A job's own failure is recorded on its row; an
 error outside any job, such as a database that stays locked, is logged and the
@@ -245,7 +248,15 @@ class Worker:
     def _recover_interrupted_jobs(self) -> None:
         with self.database.transaction() as connection:
             repo.fail_interrupted_simulations(connection)
-            repo.requeue_interrupted_jobs(connection)
+            stopped = repo.requeue_interrupted_jobs(connection, self.settings.max_job_interruptions)
+        for job in stopped:
+            log.error(
+                "job %s (%s, scan %s) was stopped after %s interrupted runs instead of being queued again",
+                job["id"],
+                job["kind"],
+                job["scan_id"],
+                job["interruptions"],
+            )
 
     def stop(self) -> None:
         self._stop.set()
