@@ -32,17 +32,12 @@ max-complexity = 10
 # every package's __init__.py became "__init__.py" and overwrote the others.
 # With source_pkgs and relative_files, the paths are the checkout's own, which
 # scripts/coverage_floors.py names modules by. The scripts folder is left out:
-# most of it is one-off research tooling.
+# most of it is one-off research tooling. Only the API is traced: the floors are
+# on its modules, and tracing the pipeline's geometry, which every processed scan
+# runs through, took the API suite from about 17 minutes to 60.
 branch = true
 relative_files = true
-source_pkgs = [
-    "standardphysics_contracts",
-    "standardphysics_fixtures",
-    "standardphysics_pipeline",
-    "standardphysics_agents",
-    "standardphysics_api",
-    "loopforge",
-]
+source_pkgs = ["standardphysics_api"]
 
 [tool.coverage.report]
 skip_empty = true
