@@ -189,8 +189,10 @@ def voxel_downsample(points: np.ndarray, voxel: float = DEFAULT_VOXEL) -> np.nda
     return points[np.sort(first)]
 
 
-def room_cloud(path: pathlib.Path, capture_to_room: Mat4, voxel: float = DEFAULT_VOXEL) -> np.ndarray:
+def room_cloud(path: pathlib.Path, capture_to_room: Mat4 | None, voxel: float = DEFAULT_VOXEL) -> np.ndarray:
     """Downsampled room-frame points from an uploaded mesh artifact."""
+    if capture_to_room is None:
+        raise LidarMeshError("the scan has no capture_to_room transform to place its mesh with")
     mesh = load_mesh(path)
     if mesh is None:
         raise LidarMeshError(f"not a LiDAR mesh: {path}")

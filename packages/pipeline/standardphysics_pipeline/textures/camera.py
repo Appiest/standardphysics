@@ -97,8 +97,12 @@ def camera_from_pose(pose: PoseRecord, capture_to_room: Mat4) -> PhotoCamera:
     return calibrated.resized(pose.image_width, pose.image_height)
 
 
-def load_cameras(poses_path: pathlib.Path, frame_ids: Iterable[str], capture_to_room: Mat4) -> list[PhotoCamera]:
+def load_cameras(
+    poses_path: pathlib.Path, frame_ids: Iterable[str], capture_to_room: Mat4 | None
+) -> list[PhotoCamera]:
     """Cameras for the requested frames, in capture order. Records that cannot be projected are skipped."""
+    if capture_to_room is None:
+        raise CameraMetadataError("the scan has no capture_to_room transform to place its photos with")
     wanted = set(frame_ids)
     cameras = [
         camera_from_pose(pose, capture_to_room)
