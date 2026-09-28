@@ -134,7 +134,7 @@ function capturedRoom(props: ShopSurfacesProps, boxes: ReactNode, picking: React
  * changes with the scan, so dragging moves pieces without cutting again.
  */
 function useScanPieces(exported: SceneGraph, placed: SceneGraph, arranging: boolean): ScanPieces | null {
-  const carve = useMemo(() => (arranging ? exported.nodes.filter((node) => node.movable && node.kind === "object") : null), [exported, arranging]);
+  const carve = useMemo(() => (arranging ? exported.nodes.filter((node) => node.kind === "object") : null), [exported, arranging]);
   return useMemo(() => (carve ? { carve, placed } : null), [carve, placed]);
 }
 

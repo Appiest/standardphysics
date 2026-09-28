@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { BackSide, BufferGeometry, Group, LinearFilter, Matrix4, Mesh, MeshBasicMaterial, Plane, Vector3, type Color, type Material, type Object3D, type Texture } from "three";
 import { carveGeometry, carveRegion, type CarveRegion } from "@/lib/carve-scan";
 import { toViewerMatrix } from "@/lib/scene-matrix";
+import { MoveMarks } from "./MoveMarks";
 import type { SceneGraph, SceneNode } from "@/types/contracts";
 
 /** The colour of a surface seen from the side the phone never stood on. */
@@ -201,16 +202,9 @@ function hasMoved(from: SceneNode, to: SceneNode): boolean {
   return from.transform.m.some((value, index) => Math.abs(value - to.transform.m[index]) > 1e-4);
 }
 
-/** Flat on the floor where the piece stood, a hair above it so the two don't fight over pixels. */
-function footprintMatrix(node: SceneNode): Matrix4 {
-  const lift = new Matrix4().makeTranslation(0, -node.dimensions.z / 2 + 0.005, 0);
-  return toViewerMatrix(node.transform).multiply(lift).multiply(new Matrix4().makeRotationX(-Math.PI / 2));
-}
-
 /**
- * A scanned piece drawn where its box now stands. The floor it leaves behind
- * was under it when the phone walked by, so it was never measured, and it is
- * drawn in the same flat grey as every other unmeasured surface.
+ * A scanned piece drawn where its box now stands, with marks on the floor for
+ * where it was, where it went and how it got there.
  */
 function MovedPiece({ group, from, to }: { group: Group; from: SceneNode; to: SceneNode }) {
   const invalidate = useThree((state) => state.invalidate);
@@ -221,16 +215,10 @@ function MovedPiece({ group, from, to }: { group: Group; from: SceneNode; to: Sc
     mover.current.matrixWorldNeedsUpdate = true;
     invalidate();
   }, [from, to, invalidate]);
-  const footprint = useMemo(() => footprintMatrix(from), [from]);
   return (
     <>
       <group ref={mover} matrixAutoUpdate={false}><primitive object={group} /></group>
-      {hasMoved(from, to) && (
-        <mesh matrixAutoUpdate={false} matrix={footprint} raycast={NOT_PICKABLE}>
-          <planeGeometry args={[from.dimensions.x, from.dimensions.y]} />
-          <meshBasicMaterial color={UNMEASURED} />
-        </mesh>
-      )}
+      {hasMoved(from, to) && <MoveMarks from={from} to={to} />}
     </>
   );
 }

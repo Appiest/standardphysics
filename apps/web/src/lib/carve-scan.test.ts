@@ -52,3 +52,24 @@ describe("carving a piece out of the scan", () => {
     expect(carved.room).toBeNull();
   });
 });
+
+describe("what a piece carries and what it lends", () => {
+  const cup = triangleAt(3, 1.3, -4);
+
+  it("takes what stands on a counter along with it", () => {
+    const carved = carveGeometry(scan(cup), new Matrix4(), [carveRegion(counter)]);
+    expect(carved.pieces.get("counter")?.index?.count).toBe(3);
+  });
+
+  it("leaves the air over a chair alone", () => {
+    const chair = { ...counter, id: "chair", dimensions: { x: 0.45, y: 0.5, z: 0.9 }, transform: { m: [1, 0, 0, 3, 0, 1, 0, 4, 0, 0, 1, 0.45, 0, 0, 0, 1] } as Mat4 };
+    const carved = carveGeometry(scan(triangleAt(3, 1.3, -4)), new Matrix4(), [carveRegion(chair)]);
+    expect(carved.pieces.size).toBe(0);
+  });
+
+  it("gives a triangle inside two boxes to the smaller one", () => {
+    const stool = { ...counter, id: "stool", dimensions: { x: 0.4, y: 0.4, z: 0.6 }, transform: { m: [1, 0, 0, 3, 0, 1, 0, 4, 0, 0, 1, 0.3, 0, 0, 0, 1] } as Mat4 };
+    const carved = carveGeometry(scan(triangleAt(3, 0.3, -4)), new Matrix4(), [carveRegion(counter), carveRegion(stool)]);
+    expect([...carved.pieces.keys()]).toEqual(["stool"]);
+  });
+});

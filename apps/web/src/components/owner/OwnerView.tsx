@@ -165,6 +165,11 @@ function useSaveAsk(guest: boolean) {
 
 type Tool = "plan" | "wheelchair";
 
+function isBuiltIn(scene: SceneGraph, nodeId: string | null): boolean {
+  const node = scene.nodes.find((candidate) => candidate.id === nodeId);
+  return node !== undefined && node.kind === "object" && !node.movable;
+}
+
 function pieceLabel(scene: SceneGraph, nodeId: string | null): string | null {
   return scene.nodes.find((node) => node.id === nodeId)?.label ?? null;
 }
@@ -267,6 +272,7 @@ function OwnerShop(props: ShopProps) {
     follow_ups: () => <FollowUpPanel scanId={scan.id} journey={journey} requests={props.requests} />,
     plan: () => (
       <PlanPanel arrangement={arrangement} before={problems.length} pieceName={pieceLabel(scene, arrangement.activeId) ?? tryPiece?.label ?? null}
+        builtIn={isBuiltIn(scene, arrangement.activeId)}
         review={<PlanReview review={review} scene={scene} finding={planFinding} onRelook={showProposal} onPreview={arrangement.setActiveId} />} onReset={putItAllBack} onDone={leavePlan} />
     ),
     wheelchair: () => <WheelchairPanel onDone={() => setTool(null)} />,

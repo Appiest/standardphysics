@@ -7,14 +7,25 @@ const REACH = 0.06;
 /** Surface this close above a piece's underside is the floor it stands on, which stays behind when the piece moves. */
 const FLOOR_SKIN = 0.04;
 
-/** A piece's measured box in viewer space, grown by REACH, with the floor under it left out. */
-export type CarveRegion = { id: string; toLocal: Matrix4; half: Vector3; bottom: number; bounds: Box3 };
+/** A top at least this big (m²) is a surface things are set on: a table, a counter, a display case. A chair seat is about 0.25. */
+const SURFACE_AREA = 0.5;
+/** How high above a surface the things standing on it reach: a drink machine, a register, a stack of cups. */
+const LOAD_HEIGHT = 0.6;
+
+/**
+ * A piece's measured box in viewer space, grown by REACH, with the floor under
+ * it left out. Over a surface it reaches up by LOAD_HEIGHT, so the register on
+ * a counter goes where the counter goes instead of hanging in the air.
+ */
+export type CarveRegion = { id: string; toLocal: Matrix4; half: Vector3; bottom: number; top: number; bounds: Box3; volume: number };
 
 export function carveRegion(node: SceneNode): CarveRegion {
   const toWorld = toViewerMatrix(node.transform);
-  const half = new Vector3(node.dimensions.x / 2 + REACH, node.dimensions.z / 2 + REACH, node.dimensions.y / 2 + REACH);
-  const bounds = new Box3(half.clone().negate(), half.clone()).applyMatrix4(toWorld);
-  return { id: node.id, toLocal: toWorld.clone().invert(), half, bottom: -node.dimensions.z / 2 + FLOOR_SKIN, bounds };
+  const { x, y, z } = node.dimensions;
+  const half = new Vector3(x / 2 + REACH, z / 2 + REACH, y / 2 + REACH);
+  const top = half.y + (x * y >= SURFACE_AREA ? LOAD_HEIGHT : 0);
+  const bounds = new Box3(new Vector3(-half.x, -half.y, -half.z), new Vector3(half.x, top, half.z)).applyMatrix4(toWorld);
+  return { id: node.id, toLocal: toWorld.clone().invert(), half, bottom: -z / 2 + FLOOR_SKIN, top, bounds, volume: x * y * z };
 }
 
 const LOCAL = new Vector3();
@@ -23,19 +34,24 @@ function holds(region: CarveRegion, point: Vector3): boolean {
   if (!region.bounds.containsPoint(point)) return false;
   LOCAL.copy(point).applyMatrix4(region.toLocal);
   const { half } = region;
-  return Math.abs(LOCAL.x) <= half.x && Math.abs(LOCAL.z) <= half.z && LOCAL.y <= half.y && LOCAL.y >= region.bottom;
+  return Math.abs(LOCAL.x) <= half.x && Math.abs(LOCAL.z) <= half.z && LOCAL.y <= region.top && LOCAL.y >= region.bottom;
 }
 
-/** Which region each triangle's centre falls in, or -1 for the room around them. */
+/**
+ * Which region each triangle's centre falls in, or -1 for the room around them.
+ * Where regions overlap, the smallest wins: a chair tucked under a table sits
+ * inside the table's box too, and it is still the chair.
+ */
 function ownersOf(index: ArrayLike<number>, position: BufferAttribute, toWorld: Matrix4, regions: CarveRegion[]): Int32Array {
   const owners = new Int32Array(index.length / 3).fill(-1);
+  const smallestFirst = [...regions.keys()].sort((one, other) => regions[one].volume - regions[other].volume);
   const [a, b, c] = [new Vector3(), new Vector3(), new Vector3()];
   for (let triangle = 0; triangle < owners.length; triangle++) {
     a.fromBufferAttribute(position, index[triangle * 3]);
     b.fromBufferAttribute(position, index[triangle * 3 + 1]);
     c.fromBufferAttribute(position, index[triangle * 3 + 2]);
     const centre = a.add(b).add(c).divideScalar(3).applyMatrix4(toWorld);
-    owners[triangle] = regions.findIndex((region) => holds(region, centre));
+    owners[triangle] = smallestFirst.find((region) => holds(regions[region], centre)) ?? -1;
   }
   return owners;
 }

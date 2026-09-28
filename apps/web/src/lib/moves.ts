@@ -38,6 +38,44 @@ function coversPoint(node: SceneNode, x: number, y: number): boolean {
   return Math.abs(localX) <= node.dimensions.x / 2 && Math.abs(localY) <= node.dimensions.y / 2;
 }
 
+/** Mirrors Lane C's RIDING_GAP: an underside this close to another piece's top is sitting on it. */
+const RIDING_GAP = 0.05;
+
+function topOf(node: SceneNode): number {
+  return node.transform.m[11] + node.dimensions.z / 2;
+}
+
+/** Mirrors Lane C's riders_of: what sits on the carrier's top, like a register on a counter. */
+export function ridersOf(scene: SceneGraph, carrier: SceneNode): SceneNode[] {
+  return scene.nodes.filter((node) => node.id !== carrier.id && node.kind === "object" &&
+    Math.abs(underside(node) - topOf(carrier)) <= RIDING_GAP && coversPoint(carrier, node.transform.m[3], node.transform.m[7]));
+}
+
+/** The rider's share of the carrier's move: it turns about the carrier's centre, not its own. */
+function riding(carrier: SceneNode, rider: SceneNode, move: NodeMove): NodeMove {
+  const [cx, cy] = [carrier.transform.m[3], carrier.transform.m[7]];
+  const [ox, oy] = [rider.transform.m[3] - cx, rider.transform.m[7] - cy];
+  const angle = (move.delta_rotation_z_degrees * Math.PI) / 180;
+  const [tx, ty] = [ox * Math.cos(angle) - oy * Math.sin(angle), ox * Math.sin(angle) + oy * Math.cos(angle)];
+  return {
+    node_id: rider.id,
+    delta_translation: { x: move.delta_translation.x + tx - ox, y: move.delta_translation.y + ty - oy, z: 0 },
+    delta_rotation_z_degrees: move.delta_rotation_z_degrees,
+  };
+}
+
+/** Mirrors Lane C's carried_along: the moves plus one for everything sitting on a moved piece. */
+export function carriedAlong(scene: SceneGraph, moves: MoveSet): MoveSet {
+  const all: MoveSet = { ...moves };
+  for (const move of Object.values(moves)) {
+    const carrier = scene.nodes.find((node) => node.id === move.node_id);
+    for (const rider of carrier ? ridersOf(scene, carrier) : []) {
+      all[rider.id] ??= riding(carrier!, rider, move);
+    }
+  }
+  return all;
+}
+
 /** Mirrors Lane C's settle: sit on the highest top under the piece's centre, or on the floor. */
 function settle(scene: SceneGraph, node: SceneNode, floorZ: number): SceneNode {
   const [x, y] = [node.transform.m[3], node.transform.m[7]];
@@ -49,8 +87,9 @@ function settle(scene: SceneGraph, node: SceneNode, floorZ: number): SceneNode {
   return { ...node, transform: { m } as Mat4 };
 }
 
-export function applyMoves(scene: SceneGraph, moves: MoveSet): SceneGraph {
-  if (Object.keys(moves).length === 0) return scene;
+export function applyMoves(scene: SceneGraph, chosen: MoveSet): SceneGraph {
+  if (Object.keys(chosen).length === 0) return scene;
+  const moves = carriedAlong(scene, chosen);
   const floorZ = floorHeight(scene);
   const resting = new Set(scene.nodes.filter((node) => moves[node.id] && restsOnSomething(node, floorZ)).map((node) => node.id));
   const moved = { ...scene, nodes: scene.nodes.map((node) => (moves[node.id] ? moveNode(node, moves[node.id]) : node)) };

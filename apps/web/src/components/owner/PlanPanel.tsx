@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowClockwise, ArrowCounterClockwise, CheckCircle } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowCounterClockwise, CheckCircle, Wrench } from "@phosphor-icons/react";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import type { Arrangement } from "@/components/workspace/useArrangement";
@@ -18,11 +18,13 @@ function problemsLeft(arrangement: Arrangement, before: number): number {
 }
 
 /** Plan a layout: drag pieces on the model, see what's left to fix, and keep the plan without changing the scan. */
-export function PlanPanel({ arrangement, before, pieceName, review, onReset, onDone }: {
+export function PlanPanel({ arrangement, before, pieceName, builtIn = false, review, onReset, onDone }: {
   arrangement: Arrangement;
   before: number;
   /** The piece in hand, or the one worth trying first. */
   pieceName: string | null;
+  /** Whether the piece in hand is built in, like a counter, so moving it means construction. */
+  builtIn?: boolean;
   /** What a proposed layout changes and a way to say what must stay, when the plan started from one. */
   review?: ReactNode;
   /** Puts every piece back where it was scanned, and drops the suggestion that moved them. */
@@ -37,11 +39,30 @@ export function PlanPanel({ arrangement, before, pieceName, review, onReset, onD
       <StepHeading title="Plan a layout">{planIntro(piece, arrangement.hasMoves)}</StepHeading>
       <PlanScore before={before} left={problemsLeft(arrangement, before)} checking={arrangement.checking} moved={arrangement.hasMoves} />
       {review}
-      {turnable && <TurnControls piece={piece} onTurn={(degrees) => arrangement.nudge(0, 0, degrees)} />}
+      {turnable && <PieceInHand piece={piece} builtIn={builtIn} onTurn={(degrees) => arrangement.nudge(0, 0, degrees)} />}
       {arrangement.problem && <p role="alert" className="text-problem">{arrangement.problem}</p>}
       {saved && <SavedNote />}
       <PlanActions arrangement={arrangement} saved={saved} onSave={async () => setSaved(await arrangement.save())} onReset={onReset} onDone={onDone} />
     </div>
+  );
+}
+
+/** What can be done with the piece being moved, and what moving it involves when it is built in. */
+function PieceInHand({ piece, builtIn, onTurn }: { piece: string; builtIn: boolean; onTurn: (degrees: number) => void }) {
+  return (
+    <>
+      {builtIn && <BuiltInNote piece={piece} />}
+      <TurnControls piece={piece} onTurn={onTurn} />
+    </>
+  );
+}
+
+function BuiltInNote({ piece }: { piece: string }) {
+  return (
+    <p className="flex items-start gap-2 text-pretty text-ink-muted">
+      <Wrench size={20} weight="bold" className="mt-0.5 shrink-0" aria-hidden />
+      The {piece} is built in, so moving it means construction work. Plumbing and power may need to move with it.
+    </p>
   );
 }
 

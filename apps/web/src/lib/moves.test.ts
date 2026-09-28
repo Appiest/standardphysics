@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SceneNode } from "@/types/contracts";
+import type { SceneGraph, SceneNode } from "@/types/contracts";
 import { applyMoves, candidateMoves, moveNode, withMove } from "./moves";
 
 const table: SceneNode = {
@@ -73,5 +73,25 @@ describe("settling", () => {
   it("leaves floor-standing furniture at its height", () => {
     const loose = { ...scene, nodes: [floor, table] };
     expect(heightOf(applyMoves(loose, withMove({}, "t", 1, 0, 0)), "t")).toBe(0.375);
+  });
+});
+
+describe("carrying what sits on a piece", () => {
+  const cup: SceneNode = { ...table, id: "c", label: "Cup", dimensions: { x: 0.1, y: 0.1, z: 0.12 },
+    transform: { m: [1, 0, 0, 2.2, 0, 1, 0, 2.2, 0, 0, 1, 0.81, 0, 0, 0, 1] } };
+  const scene: SceneGraph = { scan_id: "s", revision: 0, base_hash: null, nodes: [table, cup] };
+  const where = (moved: SceneGraph, id: string) => {
+    const m = moved.nodes.find((node) => node.id === id)!.transform.m;
+    return rounded([m[3], m[7], m[11]]);
+  };
+
+  it("slides the cup with the table it sits on", () => {
+    const moved = applyMoves(scene, { t: { node_id: "t", delta_translation: { x: 1, y: 0, z: 0 }, delta_rotation_z_degrees: 0 } });
+    expect(where(moved, "c")).toEqual([3.2, 2.2, 0.81]);
+  });
+
+  it("swings the cup about the table's centre when the table turns", () => {
+    const moved = applyMoves(scene, { t: { node_id: "t", delta_translation: { x: 0, y: 0, z: 0 }, delta_rotation_z_degrees: 90 } });
+    expect(where(moved, "c")).toEqual([2, 2.4, 0.81]);
   });
 });

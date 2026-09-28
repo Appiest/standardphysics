@@ -35,13 +35,25 @@ def test_the_documented_fix_clears_the_aisle(make_client):
     assert route["outcome"] == "passes"
 
 
-def test_moving_the_counter_is_blocked(make_client):
+def _blocked(client, scan_id, moves) -> set[str]:
+    body = client.post(f"/api/scans/{scan_id}/layout-checks", json={"base_revision": 0, "sequence": 1, "moves": moves}).json()
+    return {b["reason"] for b in body["blocked"]}
+
+
+def test_moving_the_counter_is_construction_not_a_locked_move(make_client):
     client, scan_id = _sample(make_client)
-    body = client.post(
-        f"/api/scans/{scan_id}/layout-checks",
-        json={"base_revision": 0, "sequence": 1, "moves": [_move(COUNTER, dy=-0.2)]},
-    ).json()
-    assert {b["reason"] for b in body["blocked"]} >= {"moved_something_fixed"}
+    assert "moved_something_fixed" not in _blocked(client, scan_id, [_move(COUNTER, dy=-0.2)])
+
+
+def _onto(client, scan_id, node: str, target: str) -> dict:
+    graph = client.get(f"/api/scans/{scan_id}/scene").json()
+    at = {each["id"]: (each["transform"]["m"][3], each["transform"]["m"][7]) for each in graph["nodes"]}
+    return _move(node, dx=at[target][0] - at[node][0], dy=at[target][1] - at[node][1])
+
+
+def test_a_moved_counter_still_cannot_land_on_furniture(make_client):
+    client, scan_id = _sample(make_client)
+    assert _blocked(client, scan_id, [_onto(client, scan_id, COUNTER, CASE_EAST)])
 
 
 def test_an_unknown_node_is_a_bad_request(make_client):
@@ -75,7 +87,7 @@ def test_saving_on_a_stale_base_conflicts(make_client):
 
 def test_a_blocked_layout_cannot_be_saved(make_client):
     client, scan_id = _sample(make_client)
-    response = client.post(f"/api/scans/{scan_id}/revisions", json={"base_revision": 0, "moves": [_move(COUNTER, dy=-0.2)]})
+    response = client.post(f"/api/scans/{scan_id}/revisions", json={"base_revision": 0, "moves": [_onto(client, scan_id, COUNTER, CASE_EAST)]})
     assert response.status_code == 409
     assert client.get(f"/api/scans/{scan_id}/scene").json()["revision"] == 0
 

@@ -2,7 +2,7 @@
 
 import { Edges, Html, useGLTF } from "@react-three/drei";
 import { useThree, type ThreeEvent } from "@react-three/fiber";
-import { Lock } from "@phosphor-icons/react";
+import { Wrench } from "@phosphor-icons/react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { BoxGeometry, Matrix4, Mesh, MeshStandardMaterial, Plane, Raycaster, Vector3, type BufferGeometry, type Intersection, type Material } from "three";
 import { canUseCapturedGlbGeometry, displayScale, MAX_DISPLAY_WALL_HEIGHT } from "@/lib/display-geometry";
@@ -98,6 +98,11 @@ function setCursor(cursor: string) {
   document.body.style.cursor = cursor;
 }
 
+/** Furniture and built-in fixtures both drag; a fixture moving is construction, which the layout check holds to its own rules. */
+function canDrag(node: SceneNode, dragAllNodes: boolean | undefined): boolean {
+  return Boolean(dragAllNodes) || node.kind === "object";
+}
+
 function useDrag(node: SceneNode, arrange: ArrangeHandlers | null, dragAllNodes: boolean | undefined) {
   const from = useRef<Vector3 | null>(null);
   const plane = useRef<Plane | null>(null);
@@ -114,7 +119,7 @@ function useDrag(node: SceneNode, arrange: ArrangeHandlers | null, dragAllNodes:
     };
   }, []);
 
-  if (!arrange || (!dragAllNodes && (!node.movable || node.kind !== "object"))) return {};
+  if (!arrange || !canDrag(node, dragAllNodes)) return {};
 
   return {
     onPointerDown(event: ThreeEvent<PointerEvent>) {
@@ -177,12 +182,13 @@ function edgeColor(node: SceneNode, props: Omit<ModelProps, "shown">): string | 
   return null;
 }
 
-function LockMark({ node }: { node: SceneNode }) {
+/** Over a built-in fixture while planning: it can move, but moving it means construction. */
+function BuiltInMark({ node }: { node: SceneNode }) {
   const top = new Vector3(node.transform.m[3], node.transform.m[11] + node.dimensions.z / 2 + 0.15, -node.transform.m[7]);
   return (
     <Html position={top} center style={{ pointerEvents: "none" }}>
       <span className="grid size-7 place-items-center rounded-full bg-ink text-paper shadow-md">
-        <Lock size={14} weight="bold" aria-label="Fixed in place" />
+        <Wrench size={14} weight="bold" aria-label="Built in: moving it means construction" />
       </span>
     </Html>
   );
@@ -193,7 +199,7 @@ function nodeState(node: SceneNode, props: Omit<ModelProps, "shown">) {
   return {
     faded: !inFocus,
     outline: edgeColor(node, props),
-    lockable: props.arrange !== null && !props.dragAllNodes && node.kind === "object" && !node.movable,
+    builtIn: props.arrange !== null && !props.dragAllNodes && node.kind === "object" && !node.movable,
     selectable: inFocus && props.arrange === null,
   };
 }
@@ -317,7 +323,7 @@ function areModelNodePropsEqual(prev: ModelNodeProps, next: ModelNodeProps): boo
 const ModelNode = memo(function ModelNode({ placed, ...props }: ModelNodeProps) {
   const { node, geometry, matrix } = placed;
   const [hovered, setHovered] = useState(false);
-  const { faded, outline, lockable, selectable } = nodeState(node, props);
+  const { faded, outline, builtIn, selectable } = nodeState(node, props);
   const drag = useDrag(node, props.arrange, props.dragAllNodes);
   const draggable = "onPointerDown" in drag;
   const clipWall = clipsWall(node, props.cutWalls);
@@ -348,7 +354,7 @@ const ModelNode = memo(function ModelNode({ placed, ...props }: ModelNodeProps) 
     >
       <DisplayMaterial source={placed.sourceMaterial} node={node} faded={faded} clipWall={clipWall} mode={props.materialMode} stale={props.staleNodeIds?.has(node.id)} coverage={props.coverage?.get(node.id)} pickOnly={props.pickOnly} />
       {outline && !props.lightweight && <Edges threshold={20} lineWidth={3} color={outline} renderOrder={5} depthTest={!props.pickOnly} clippingPlanes={clipWall ? WALL_CLIP_PLANES : null} />}
-      {lockable && hovered && !props.pickOnly && <LockMark node={node} />}
+      {builtIn && hovered && <BuiltInMark node={node} />}
     </mesh>
   );
 }, areModelNodePropsEqual);
