@@ -3,8 +3,11 @@
 import json
 import re
 
+import pytest
+from model_provider import Reply, completion, serve_provider
+
 from conftest import drain
-from standardphysics_api.model_chooser import ModelChooser
+from standardphysics_api.model_chooser import MAX_REPLY_BYTES, ModelChooser
 
 
 def _sample(make_client):
@@ -46,6 +49,23 @@ def test_a_configured_model_picks_from_the_menu_for_the_finding_asked_about(make
     assert asked and result["proposal"]["moves"]
     assert re.match(r"The model picked: .+\. Its reason: It opens the aisle", result["message"])
     assert result["explanation"]["fixed"]
+
+
+@pytest.mark.parametrize("reply", [
+    Reply(b'{"choices": [{"message": {"content": "cut off'),
+    Reply(completion("x" * MAX_REPLY_BYTES * 2)),
+    Reply(completion("late"), delay=2.0),
+])
+def test_a_model_whose_reply_cant_be_used_falls_back_to_the_search(make_client, monkeypatch, reply):
+    for provider in serve_provider():
+        provider.reply = reply
+        monkeypatch.setenv("SP_MENU_MODEL_URL", provider.url)
+        monkeypatch.setenv("SP_MENU_MODEL", "test-model")
+        monkeypatch.setenv("SP_MENU_MODEL_REPLY_SECONDS", "0.5")
+        client, scan_id, finding_id = _sample(make_client)
+        result = _propose(client, scan_id, finding_id)
+        assert provider.received.is_set()
+        assert result["proposal"] is not None and not result["message"].startswith("The model picked")
 
 
 def test_a_model_that_picks_nothing_falls_back_to_the_search(make_client, monkeypatch):
