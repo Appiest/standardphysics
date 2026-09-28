@@ -263,6 +263,11 @@ SHEET_THICKNESS = 0.05
 SHEET_AREA = 1.0
 """And how broad, in square metres, so that a shelf board is not a wall."""
 
+SHEET_REACH = 2.0
+"""Or how far its long side runs, in metres, so a narrow wall return beside a
+column still reads as the room. The Share Tea scan has two, 15 and 27 cm wide
+and 3 m tall, well under a square metre and nothing like a shelf board."""
+
 
 def bounds_the_room(node: SceneNode) -> bool:
     """Whether the region encloses the space rather than standing in it.
@@ -282,8 +287,10 @@ def bounds_the_room(node: SceneNode) -> bool:
     so it has not been worth a second rule yet, and a scan that turns one up will
     show as a thing that cannot be counted or moved.
     """
-    spans = sorted(node.dimensions.as_tuple())
-    return spans[0] <= SHEET_THICKNESS and spans[1] * spans[2] >= SHEET_AREA
+    thinnest, middle, longest = sorted(node.dimensions.as_tuple())
+    if thinnest > SHEET_THICKNESS or middle <= SHEET_THICKNESS:
+        return False
+    return middle * longest >= SHEET_AREA or longest >= SHEET_REACH
 
 
 def measured_as(node: SceneNode) -> Vec3:
