@@ -218,7 +218,8 @@ Every key lives in a gitignored `.env` on the API server, listed in `.env.exampl
 
 | Variable | Used by |
 |---|---|
-| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Astra and every other model call |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Every model call through OpenRouter; `OPENROUTER_MODEL` picks the model for all but labelling |
+| `ASTRA_MODEL` | The model Astra labels objects with; unset means Opus, about $0.75 a shop |
 | `WANDB_API_KEY`, `WANDB_ENTITY`, `WANDB_PROJECT` | Weave tracing and evaluation; ARIA uses the same team project |
 | `TYPESAFE_API_KEY` | The router |
 | `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_STOREFRONT_PRIVATE_TOKEN` | The stretch catalog, only if it gets built |
