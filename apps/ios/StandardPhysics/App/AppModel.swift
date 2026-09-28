@@ -322,7 +322,7 @@ final class AppModel: ObservableObject {
     private func startSetup(for scan: CapturedScan) async {
         let joins = walkJoins
         walkJoins = nil
-        let name = scan.name ?? joins.flatMap(shopName(of:)) ?? defaultShopName
+        let name = scan.name ?? walkName(joining: joins)
         let named: CapturedScan
         do {
             named = try scan.renamed(name, replacing: joins)
@@ -336,6 +336,21 @@ final class AppModel: ObservableObject {
         FirstRun.hasStartedAShop = true
         savedScans = CaptureLibrary.all()
         screen = .setup(ShopSetupModel(upload: model, app: self))
+    }
+
+    /// The walk's scan is made on the server as the walk starts, so its name
+    /// is settled then: the shop it joins, or the account's shop name.
+    func walkUploadPlan() -> WalkUploadPlan? {
+        guard let baseURL = AppEnvironment.apiBaseURL, let token = session.token else { return nil }
+        return WalkUploadPlan(
+            client: ScanUploadClient(baseURL: baseURL, token: token),
+            name: walkName(joining: walkJoins),
+            replaces: walkJoins
+        )
+    }
+
+    private func walkName(joining shop: UUID?) -> String {
+        shop.flatMap(shopName(of:)) ?? defaultShopName
     }
 
     private func shopName(of scanID: UUID) -> String? {

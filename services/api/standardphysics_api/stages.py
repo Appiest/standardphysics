@@ -57,7 +57,14 @@ from standardphysics_contracts import (
     Vec3,
 )
 from standardphysics_pipeline import PipelineMeasurements, blender, parse_room_json, reconstruct
-from standardphysics_pipeline.discovery import DiscoveryError, DiscoveryInputs, DiscoveryResult, discover_objects
+from standardphysics_pipeline.discovery import (
+    Detection,
+    DiscoveryError,
+    DiscoveryInputs,
+    DiscoveryResult,
+    detect_objects,
+    discover_objects,
+)
 from standardphysics_pipeline.discovery.mesh_surfaces import segment_surfaces
 from standardphysics_pipeline.lidar import LidarMeshError, room_faces
 from standardphysics_pipeline.textures import BakeInputs, BakeResult, bake_textures
@@ -123,6 +130,8 @@ class DiscoveryOutcome:
     failures: list[str] = field(default_factory=list)
     model_requests: list = field(default_factory=list)
     """S's ModelRequestInfo per actual detector request, persisted for the trail."""
+    read_during_walk: int = 0
+    """Photos answered while the walk was still going on, so discovery found them cached."""
 
     def note(self) -> str | None:
         """One visible line for the job record; categories only, never secrets."""
@@ -134,6 +143,8 @@ class DiscoveryOutcome:
             f"read {self.frames_read} photos",
             f"found {self.object_count} objects",
         ]
+        if self.read_during_walk:
+            parts.append(f"{self.read_during_walk} photos read during the walk")
         if self.failures:
             example = str(self.failures[0])[:200]
             parts.append(f"{len(self.failures)} frame(s) unread, e.g. {example}")
@@ -175,6 +186,8 @@ class Stages:
     measure: PipelineMeasurements = field(default_factory=PipelineMeasurements)
     label: Callable[[SceneGraph], SceneGraph] = reconstruct
     discover: Callable[[DiscoveryInputs], DiscoveryResult] = discover_objects
+    read_photo: Callable[..., list[Detection]] = detect_objects
+    """What reads one photo while its walk is still going on (`LiveReader`)."""
     export_glb: Callable[[SceneGraph, pathlib.Path, pathlib.Path | None], pathlib.Path] = blender.export_glb
     usdz_to_glb: Callable[..., blender.ConversionResult] = blender.usdz_to_glb
     render_finding: Callable[..., pathlib.Path] = blender.render_finding
