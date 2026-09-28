@@ -5,7 +5,7 @@ import { type ThreeEvent, useThree } from "@react-three/fiber";
 import { memo, useEffect, useMemo } from "react";
 import { BoxGeometry, type Matrix4, Vector3 } from "three";
 import { formatInches } from "@/lib/findings";
-import { boxTop, type FoundMark } from "@/lib/found-objects";
+import { boxTop, type FoundMark, type PieceSize } from "@/lib/found-objects";
 import type { SceneGraph, SceneNode } from "@/types/contracts";
 import { MODEL } from "./palette";
 import { boxMatrix } from "./ShopModel";
@@ -60,13 +60,28 @@ function labelAnchor(node: SceneNode): Vector3 {
   return new Vector3(m[3], boxTop(node) + LABEL_LIFT_METERS, -m[7]);
 }
 
-function MarkLabel({ mark, node }: { mark: FoundMark; node: SceneNode }) {
+function SizeLine({ size }: { size: PieceSize }) {
+  const parts: [number, string][] = [[size.wideInches, "wide"], [size.deepInches, "deep"], [size.tallInches, "tall"]];
+  return (
+    <span className="flex gap-2.5 text-paper/70">
+      {parts.map(([inches, word]) => (
+        <span key={word}><span className="measurement text-paper">{formatInches(inches)}</span> {word}</span>
+      ))}
+    </span>
+  );
+}
+
+/** A piece's name and top height; the one the owner picked also carries its size. */
+function MarkLabel({ mark, node, sized }: { mark: FoundMark; node: SceneNode; sized: boolean }) {
   const anchor = useMemo(() => labelAnchor(node), [node]);
   return (
     <Html position={anchor} center zIndexRange={[20, 0]} style={{ pointerEvents: "none" }}>
-      <span className="flex items-baseline gap-1.5 whitespace-nowrap rounded-full bg-ink px-2.5 py-1 text-sm text-paper shadow-float">
-        <span className="font-medium">{mark.name}</span>
-        {mark.topInches !== null && <span className="text-paper/70">top <span className="measurement text-paper">{formatInches(mark.topInches)}</span></span>}
+      <span className={`flex flex-col gap-0.5 whitespace-nowrap bg-ink text-sm text-paper shadow-float ${sized ? "rounded-xl px-3 py-2" : "rounded-full px-2.5 py-1"}`}>
+        <span className="flex items-baseline gap-1.5">
+          <span className="font-medium">{mark.name}</span>
+          {mark.topInches !== null && <span className="text-paper/70">top <span className="measurement text-paper">{formatInches(mark.topInches)}</span></span>}
+        </span>
+        {sized && <SizeLine size={mark.size} />}
       </span>
     </Html>
   );
@@ -103,7 +118,7 @@ const FoundBox = memo(function FoundBox({ mark, node, matrix, state, labelled, o
         <BoxFill opacity={look.fillOpacity} />
         <Edges threshold={20} lineWidth={look.lineWidth} color={look.edgeColor} transparent opacity={look.edgeOpacity} depthTest={!look.inFront} renderOrder={layer + 1} />
       </mesh>
-      {labelled && <MarkLabel mark={mark} node={node} />}
+      {labelled && <MarkLabel mark={mark} node={node} sized={state === "selected"} />}
     </>
   );
 });
