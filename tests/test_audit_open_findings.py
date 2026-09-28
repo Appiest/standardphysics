@@ -29,8 +29,7 @@ from standardphysics_contracts import (
     to_meters,
 )
 from standardphysics_fixtures import build_graph, build_scenario, node_id
-from standardphysics_pipeline import blender
-from standardphysics_pipeline import check_blender
+from standardphysics_pipeline import blender, check_blender
 from standardphysics_pipeline.blender import glb_node_names, usdz_to_glb
 from standardphysics_pipeline.ingest import parse_room_json
 from standardphysics_pipeline.measure import PipelineMeasurements
