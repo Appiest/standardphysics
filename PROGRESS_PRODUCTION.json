@@ -1,0 +1,85 @@
+{
+  "goal": "Production pass before Moscone: demo works, every ADA provision in the corpus is checked, detection finds suit-causing fixtures, fix-room loop runs on a hosted model with a one-click solver, buttons animate, scan to diagnosis and layout under 10 min and under $1.50 inference per user.",
+  "branch": "feat/production-pass (worktree ~/Documents/sp-production, off unified b1a26b4d)",
+  "demo_data": "~/Documents/sp-data/demo/share-tea-data (real Share Tea scan + sample shop, cloned from another session's scratchpad)",
+  "tasks": [
+    {
+      "id": 1,
+      "name": "Loop model on a hosted provider: ModelChooser sends an API key; pick a Fireworks open-weights model; policy note",
+      "model": "opus",
+      "status": "done b7822f6f"
+    },
+    {
+      "id": 2,
+      "name": "Ramp rules (ADA 405.2 running slope, 405.3 cross slope, 405.6 rise, 405.7 landings, 405.8 handrails) as rule-pack data plus a measured check",
+      "model": "opus",
+      "status": "done (subagent) 4d6dc22f"
+    },
+    {
+      "id": 3,
+      "name": "Kiosk / ordering machine reach and clear floor (308, 305, 707-style) wired to roles and to the precedent queries",
+      "model": "opus",
+      "status": "done (subagent) 4d6dc22f"
+    },
+    {
+      "id": 4,
+      "name": "Pickup / handoff counter counts as a service counter; POS and cash drawer labels complete",
+      "model": "sonnet",
+      "status": "done (subagent) 4d6dc22f"
+    },
+    {
+      "id": 5,
+      "name": "Detection prompt and roles vocabulary: kiosks, pickup counters, menu boards, condiment stations, ramps, handrails",
+      "model": "sonnet",
+      "status": "done (subagent) 7ffc7a9e"
+    },
+    {
+      "id": 6,
+      "name": "Implement the unimplemented precedent inspection queries so every corpus provision reports pass/fail/ask, never 'no implementation'",
+      "model": "opus",
+      "status": "done (subagent) 4d6dc22f"
+    },
+    {
+      "id": 7,
+      "name": "Menu: moves for failures found in loop logs (height problems with no lower surface, turning space blocked by built-ins)",
+      "model": "opus",
+      "status": "done: fitting tier c842cce5, cost ranking e6b8c7b0, wording 85257198; val 21/24 cleared, 3 misses are gate-refused turn_clear_width"
+    },
+    {
+      "id": 8,
+      "name": "Shared Button gets hover and press motion; ButtonLink and bespoke buttons use it",
+      "model": "sonnet",
+      "status": "done 7af0a4dd"
+    },
+    {
+      "id": 9,
+      "name": "Demo end to end on Share Tea in the browser: sign in, results, drag (mesh follows), edit then Fix room, save",
+      "model": "opus",
+      "status": "done: sample shop Fix room 2/2 in ~10 s; Fix this layout from an unsaved plan b7eeab8a; plan and 3D follow"
+    },
+    {
+      "id": 10,
+      "name": "Time and cost of scan to diagnosis to layout measured on a real scan; per-scan inference cost ledger",
+      "model": "opus",
+      "status": "done: results 192 s after upload (textures 707 s, background); ~$1.00 per scan: labelling $0.73, detection $0.25, loop ~$0.02"
+    },
+    {
+      "id": 11,
+      "name": "Overnight fine-tune only if the eval says the hosted base model misses; otherwise skip",
+      "model": "opus",
+      "status": "skipped: failures were menu coverage (no legal clearing option), not model choice"
+    }
+  ],
+  "log": [
+    "quality rule: overlap only flags covered box (00f59dcb, 4c8748f4)",
+    "door requests name each door (046f5235)",
+    "standby worker takes queue (84b06750)",
+    "still-to-check grouping (cf69d577)",
+    "ASTRA_MODEL separate from OPENROUTER_MODEL (84925d81)",
+    "re-check shops when checks change (960db19e)",
+    "fix this layout from the plan (b7eeab8a)",
+    "height request copy and one-per-title follow-ups (c6b0aed3)",
+    "path label stacking (59942e04)",
+    "validation: hosted kimi-k3 + ModelLoop, 21/24 rooms with problems cleared, median 13 s"
+  ]
+}
