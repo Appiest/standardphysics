@@ -103,14 +103,17 @@ PERSON_NAMES = taxonomy.names_for(taxonomy.PERSON)
 
 FIXED_NAMES = frozenset({
     "wall", "floor", "ceiling", "window", "door", "doorway", "column",
-    "pillar", "staircase", "stairs", "railing", "sink", "toilet", "radiator",
+    "pillar", "staircase", "stairs", "railing", "handrail", "ramp", "ramp landing", "sink", "toilet", "radiator",
     "built-in counter", "built-in shelving", "fireplace",
 })
 
 INSTRUCTION = (
     "You look at one photo of a shop or workplace interior and list the objects in it. "
     "Include anything a person uses or that takes up floor or counter space: payment terminals, "
-    "card readers, cash drawers, cash registers, ramps, ramp landings, monitors, laptops, tablets, printers, phones, kettles, "
+    "card readers, cash drawers, cashier drawers, cash registers, tip screens, self-order kiosks, ordering machines, "
+    "touchscreens, menu boards, condiment stations, self-serve stations, napkin, lid and straw dispensers, "
+    "pickup counters, handoff shelves, ramps, ramp landings, handrails, railings, steps, thresholds, "
+    "monitors, laptops, tablets, printers, phones, kettles, "
     "espresso machines, blenders, microwaves, refrigerators, display cases, shelving, signage, "
     "boxes, bins, chairs, stools, tables, counters, planters, fans, speakers, lamps. "
     "Also list every person you see, named exactly 'person'. "

@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 from typing import Callable
 
 from .checks.observation import Observation
-from .numbers import by, inches, measured, plural, size, things
+from .numbers import by, by_size, inches, measured, plural, size, span, things
 from .rules import RuleSpec
 
 
@@ -402,6 +402,160 @@ def _reach(observation: Observation, rule: RuleSpec) -> FindingCopy:
     )
 
 
+def _subject(observation: Observation, key: str, fallback: str) -> str:
+    return str(observation.facts.get(key) or fallback).casefold()
+
+
+def _standing_in(labels: list[str], verb: str) -> str:
+    """`The chair sits`, `The two display cases sit`, at the start of a sentence."""
+    named = things(labels)
+    if not named:
+        return f"Something {verb}s"
+    return f"{named[:1].upper()}{named[1:]} {verb if len(labels) > 1 else verb + 's'}"
+
+
+def _ramp_slope(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    ramp = _subject(observation, "ramp", "ramp")
+    rise = inches(observation.facts.get("rise", 0.0))
+    run = span(observation.facts.get("run", 0.0))
+    needed = span(observation.required_inches or 0.0)
+    detail = (f"It climbs {rise} over {run} of length. A ramp can climb at most 1 inch for every "
+              f"{rule.threshold:g} inches of length, so this one needs {needed}.")
+    if observation.satisfied:
+        return FindingCopy(title=f"The {ramp} is gentle enough", detail=detail)
+    return FindingCopy(
+        title=f"The {ramp} is too steep",
+        detail=detail,
+        fix=f"Rebuild the {ramp} at least {needed} long, so it climbs no more than 1 inch in every {rule.threshold:g}.",
+    )
+
+
+def _ramp_rise(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    ramp = _subject(observation, "ramp", "ramp")
+    limit = inches(rule.threshold)
+    detail = f"It climbs {measured(_measured_inches(observation), rule.threshold)} in one go. One run of ramp can climb {limit} before it needs a level landing."
+    if observation.satisfied:
+        return FindingCopy(title=f"The {ramp}'s climb fits in one run", detail=detail)
+    return FindingCopy(
+        title=f"The {ramp} climbs too high in one run",
+        detail=detail,
+        fix=f"Split the {ramp} into runs that each climb {limit} or less, with a level landing between them.",
+    )
+
+
+def _ramp_width(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    ramp = _subject(observation, "ramp", "ramp")
+    needed = inches(rule.threshold)
+    detail = f"It's {measured(_measured_inches(observation), rule.threshold)} wide. A ramp needs {needed}."
+    if observation.satisfied:
+        return FindingCopy(title=f"The {ramp} is wide enough", detail=detail)
+    return FindingCopy(
+        title=f"The {ramp} is too narrow",
+        detail=detail,
+        fix=f"Widen the {ramp} to {needed} clear between its edges or its handrails.",
+    )
+
+
+def _ramp_landing(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    ramp = _subject(observation, "ramp", "ramp")
+    needed = inches(rule.threshold)
+    if observation.satisfied:
+        return FindingCopy(
+            title=f"There's room to stop at both ends of the {ramp}",
+            detail=f"Each end has at least {needed} of clear floor past it, which is what someone coming on or off a ramp needs.",
+        )
+    if observation.reason == "too_short":
+        return FindingCopy(
+            title=f"The landing at one end of the {ramp} is too short",
+            detail=f"It's {measured(_measured_inches(observation), rule.threshold)} long. A landing needs {needed}.",
+            fix=f"Lengthen that landing to {needed}.",
+        )
+    movable = things(observation.facts.get("movable_blockers", []))
+    subject = _standing_in(observation.facts.get("blockers", []), "sit")
+    return FindingCopy(
+        title=f"There's no clear landing at one end of the {ramp}",
+        detail=f"{subject} in the {needed} of floor past the end of it. Someone coming off a ramp needs that much clear floor to stop.",
+        fix=f"Move {movable} out of the {needed} past the end of the {ramp}." if movable
+        else f"Keep {needed} of floor clear past each end of the {ramp}.",
+    )
+
+
+def _ramp_handrails(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    ramp = _subject(observation, "ramp", "ramp")
+    rise = inches(observation.facts.get("rise", 0.0))
+    limit = inches(rule.threshold)
+    if observation.reason == "low_rise":
+        return FindingCopy(
+            title=f"The {ramp} is low enough to go without handrails",
+            detail=f"It climbs {rise}. Handrails are needed once a ramp climbs more than {limit}.",
+        )
+    if observation.satisfied:
+        return FindingCopy(
+            title=f"The {ramp} has handrails on both sides",
+            detail=f"It climbs {rise}, and a ramp that climbs more than {limit} needs a handrail along each side.",
+        )
+    return REQUESTS[rule.id]
+
+
+def _handrail_height(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    ramp = _subject(observation, "ramp", "ramp")
+    low = inches(observation.facts.get("low", 34.0))
+    high = inches(observation.facts.get("high", rule.threshold))
+    detail = (f"Its top sits {measured(_measured_inches(observation), observation.required_inches)} above the ramp. "
+              f"Handrails belong between {low} and {high} up.")
+    if observation.satisfied:
+        return FindingCopy(title=f"The handrail on the {ramp} is a good height", detail=detail)
+    direction = "Raise" if observation.reason == "too_low" else "Lower"
+    return FindingCopy(
+        title=f"The handrail on the {ramp} is too {'low' if observation.reason == 'too_low' else 'high'}",
+        detail=detail,
+        fix=f"{direction} the handrail so its top sits between {low} and {high} above the ramp.",
+    )
+
+
+def _reach_limits(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    subject = _subject(observation, "subject", "control")
+    high = inches(observation.facts.get("high", rule.threshold))
+    low = inches(observation.facts.get("low", 15.0))
+    if observation.satisfied:
+        return FindingCopy(
+            title=f"The {subject} is within reach",
+            detail=f"Its top sits {inches(observation.facts.get('top', 0.0))} up. A seated person can reach anything between {low} and {high}.",
+        )
+    if observation.reason == "too_low":
+        return FindingCopy(
+            title=f"The {subject} is too low to reach",
+            detail=f"Its top is {inches(_measured_inches(observation))} up. A seated person reaches down to {low}.",
+            fix=f"Raise the {subject} so what a customer uses sits between {low} and {high} up.",
+        )
+    if observation.reason == "controls_unplaced":
+        return REQUESTS[rule.id]
+    return FindingCopy(
+        title=f"The {subject} is too high to reach",
+        detail=f"Its lowest edge is {inches(_measured_inches(observation))} up. A seated person reaches up to {high}.",
+        fix=f"Lower the {subject} so what a customer uses sits no higher than {high}.",
+    )
+
+
+def _kiosk_floor(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    kiosk = _subject(observation, "kiosk", "kiosk")
+    needed = by(observation.facts.get("required_wide", rule.threshold), observation.facts.get("required_deep", 48.0))
+    patch = by_size(observation.facts.get("required_wide", rule.threshold), observation.facts.get("required_deep", 48.0))
+    if observation.satisfied:
+        return FindingCopy(
+            title=f"There's room to pull up to the {kiosk}",
+            detail=f"The floor beside it has a clear {patch} patch, which is what using it from a wheelchair needs.",
+        )
+    movable = things(observation.facts.get("movable_blockers", []))
+    subject = _standing_in(observation.facts.get("blockers", []), "stand")
+    return FindingCopy(
+        title=f"There's not enough room to pull up to the {kiosk}",
+        detail=f"{subject} in the {needed} of floor a wheelchair needs in front of it.",
+        fix=f"Move {movable} so there's a clear {patch} patch in front of the {kiosk}." if movable
+        else f"Clear a {patch} patch of floor in front of the {kiosk}.",
+    )
+
+
 WRITERS: dict[str, Callable[[Observation, RuleSpec], FindingCopy]] = {
     "reach_range": _reach,
     "door_maneuvering_clearance": _door_clearance,
@@ -417,6 +571,15 @@ WRITERS: dict[str, Callable[[Observation, RuleSpec], FindingCopy]] = {
     "restroom_turning_space": _restroom_turning,
     "turn_clear_width": _turn_width,
     "exit_path": _exit_path,
+    "ramp_running_slope": _ramp_slope,
+    "ramp_rise": _ramp_rise,
+    "ramp_clear_width": _ramp_width,
+    "ramp_landing_length": _ramp_landing,
+    "ramp_handrails": _ramp_handrails,
+    "handrail_height": _handrail_height,
+    "kiosk_reach": _reach_limits,
+    "kiosk_clear_floor": _kiosk_floor,
+    "self_service_reach": _reach_limits,
 }
 
 
@@ -424,6 +587,22 @@ REQUESTS = {
     "door_maneuvering_clearance": FindingCopy(
         title="Tell us which way {door_name} opens",
         detail="Pushed outward or pulled inward, from where a customer stands. Pulling one open takes more room in front of it, so it decides whether this passes.",
+    ),
+    "ramp_handrails": FindingCopy(
+        title="Send a photo of the ramp's handrails",
+        detail="Stand at the bottom of the ramp and get both sides in. It climbs more than 6 inches, so it needs a handrail along each side.",
+    ),
+    "ramp_landing_length": FindingCopy(
+        title="Send a photo of the floor at each end of the ramp",
+        detail="Step back far enough to get 5 feet of floor past the top and past the bottom. Each end needs that much clear, level floor to stop on.",
+    ),
+    "kiosk_reach": FindingCopy(
+        title="Measure how high the kiosk's highest control is",
+        detail="Measure from the floor to the top of the touch screen, or to the highest button or card slot a customer uses. It needs to be 48 inches or lower.",
+    ),
+    "self_service_reach": FindingCopy(
+        title="Measure how high the self-serve spouts and stacks are",
+        detail="Measure from the floor to the highest lever, spout, lid stack or napkin a customer reaches for. It needs to be 48 inches or lower.",
     ),
     "door_clear_width": FindingCopy(
         title="Measure how wide {door_name} opens and send us the number",

@@ -99,7 +99,7 @@ export function wheelchairStartFrom(scenario: Scenario | null): { position: [num
 /** Checks a layout change can clear, because they're about where things stand. */
 export const MOVABLE_CHECKS = new Set([
   "route_clear_width", "passing_space", "turning_space", "turn_clear_width", "exit_path",
-  "service_counter_approach", "door_maneuvering_clearance",
+  "service_counter_approach", "door_maneuvering_clearance", "kiosk_clear_floor", "ramp_landing_length",
 ]);
 
 /** The first piece worth dragging: one that stands in a spot a problem is about, and can move. */

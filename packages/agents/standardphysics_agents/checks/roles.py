@@ -15,9 +15,12 @@ SERVICE_COUNTER_LABELS = frozenset(
     {
         "ordering counter", "service counter", "counter", "checkout counter",
         "cash wrap", "register counter", "sales counter", "bar", "front desk", "reception desk",
-        "pos counter", "payment counter",
+        "pos counter", "payment counter", "transaction counter", "cashier counter",
+        "pickup counter", "pick-up counter", "pickup shelf", "handoff counter", "hand-off counter",
+        "hand-off shelf", "handoff shelf", "order pickup", "drink pickup", "beverage pickup", "to-go shelf",
     }
 )
+"""904.4 covers every counter a customer is served at, including the one they collect an order from."""
 
 ENTRANCE_LABELS = frozenset({"front door", "entrance", "entry door", "main door"})
 
@@ -45,7 +48,8 @@ POINT_OF_SALE_LABELS = frozenset(
         "cash register",
         "point of sale",
         "payment terminal",
-        "card machine", "cash drawer", "pos terminal",
+        "card machine", "cash drawer", "pos terminal", "cashier drawer", "cash box", "tablet pos",
+        "square reader", "tip screen",
     }
 )
 
@@ -57,6 +61,31 @@ OPERABLE_PART_LABELS = frozenset(
     }
 )
 """Things a customer works with a hand while standing or sitting where they are, ADA 2010 309 and 308."""
+KIOSK_LABELS = frozenset(
+    {
+        "kiosk", "self-order kiosk", "self order kiosk", "ordering kiosk", "ordering machine",
+        "self-service kiosk", "self service kiosk", "touchscreen", "touch screen", "order screen",
+        "self checkout", "self-checkout", "card kiosk",
+    }
+)
+"""Machines a customer orders or pays at on their own, which 308 and 305 treat like any operable part."""
+
+SELF_SERVICE_LABELS = frozenset(
+    {
+        "condiments", "condiment station", "condiment bar", "napkins", "napkin dispenser", "lids",
+        "lid dispenser", "straws", "straw dispenser", "utensils", "utensil dispenser", "cutlery",
+        "drink dispenser", "beverage dispenser", "soda fountain", "beverage station", "drink station",
+        "self-serve station", "self serve station", "self-service station", "water dispenser",
+    }
+)
+"""Things a customer takes for themselves, which 904.5.1 puts within the reach ranges of 308."""
+
+RAMP_LABELS = frozenset({"ramp", "accessible ramp", "wheelchair ramp", "incline", "slope"})
+
+RAMP_LANDING_LABELS = frozenset({"ramp landing", "landing"})
+
+HANDRAIL_LABELS = frozenset({"handrail", "hand rail", "railing", "rail", "guardrail", "guard rail", "banister"})
+
 HOUSINGS = frozenset({"dispenser", "station", "stand", "unit", "pump", "cabinet", "panel", "box"})
 """Words a detector adds after an operable thing's name for what holds it: a sanitizer dispenser is a sanitizer."""
 
@@ -143,6 +172,31 @@ def is_operable_part(label: str) -> bool:
     words = _normalized(label).replace("-", " ").split()
     readings = [words, words[:-1]] if len(words) > 1 and words[-1] in HOUSINGS else [words]
     return any(reading[-len(name.split()):] == name.split() for reading in readings for name in OPERABLE_PART_LABELS)
+
+
+def _labelled(graph: SceneGraph, labels: frozenset[str]) -> list[SceneNode]:
+    return [node for node in graph.nodes if not bounds_the_room(node) and _normalized(node.label) in labels]
+
+
+def kiosks(graph: SceneGraph) -> list[SceneNode]:
+    return _labelled(graph, KIOSK_LABELS)
+
+
+def self_service(graph: SceneGraph) -> list[SceneNode]:
+    return _labelled(graph, SELF_SERVICE_LABELS)
+
+
+def ramps(graph: SceneGraph) -> list[SceneNode]:
+    return _labelled(graph, RAMP_LABELS)
+
+
+def ramp_landings(graph: SceneGraph) -> list[SceneNode]:
+    return _labelled(graph, RAMP_LANDING_LABELS)
+
+
+def handrails(graph: SceneGraph) -> list[SceneNode]:
+    """Railings are thin and long, so a railing's box can read as a sheet of the room; the name decides here."""
+    return [node for node in graph.nodes if _normalized(node.label) in HANDRAIL_LABELS]
 
 
 def point_of_sale(graph: SceneGraph) -> list[SceneNode]:

@@ -56,6 +56,18 @@ TOPICS: tuple[tuple[str, frozenset[str]], ...] = (
     ("restroom", frozenset({"restroom_turning_space"})),
     ("toilet", frozenset({"restroom_turning_space"})),
     ("bathroom", frozenset({"restroom_turning_space"})),
+    ("ramp", frozenset({
+        "ramp_running_slope", "ramp_rise", "ramp_clear_width", "ramp_landing_length", "ramp_handrails",
+    })),
+    ("handrail", frozenset({"ramp_handrails", "handrail_height"})),
+    ("railing", frozenset({"ramp_handrails", "handrail_height"})),
+    ("kiosk", frozenset({"kiosk_reach", "kiosk_clear_floor"})),
+    ("touchscreen", frozenset({"kiosk_reach", "kiosk_clear_floor"})),
+    ("condiment", frozenset({"self_service_reach"})),
+    ("straw", frozenset({"self_service_reach"})),
+    ("napkin", frozenset({"self_service_reach"})),
+    ("self-serve", frozenset({"self_service_reach"})),
+    ("pickup", frozenset({"service_counter_height", "service_counter_approach"})),
 )
 
 OUTCOME_ORDER = {"problem": 0, "passes": 1, "question": 2}

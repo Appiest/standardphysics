@@ -15,6 +15,7 @@ from standardphysics_contracts import SceneNode, to_inches
 from ..rules import RuleSpec
 from ..tracing import traced
 from . import roles
+from .clear_floor import at_least, at_most
 from .context import CheckContext
 from .observation import Observation
 from .questions import ask, no_nodes
@@ -46,6 +47,47 @@ def _reach(rule: RuleSpec, node: SceneNode) -> Observation:
         dedupe_key=(RULE_ID, str(node.id)),
         reason="too_low" if too_low else "measured",
     )
+
+
+def within_reach(ctx: CheckContext, rule_id: str, node: SceneNode) -> Observation:
+    """A box's top and bottom against the 308 ranges, failing only what the box itself settles.
+
+    Everything on a box whose top is between the low and high reach is in
+    range. A box wholly above the high reach or below the low one is out of
+    it. A box that runs past the high reach may still carry its controls lower,
+    as a floor-standing kiosk carries its screen, so that one asks for the
+    height of the highest control rather than guessing.
+    """
+    rule = ctx.rule(rule_id)
+    top, bottom = _top_inches(node), _bottom_inches(node)
+    high, low = rule.threshold, rule.parameter("unobstructed_low_inches")
+    reason = _reach_reason(top, bottom, high, low)
+    return Observation(
+        rule_id=rule_id,
+        satisfied=reason == "measured",
+        measured_inches=_reach_measurement(reason, top, bottom),
+        required_inches=low if reason == "too_low" else high,
+        relied_on=(node.id,),
+        locus=mounted_locus(node),
+        facts={"subject": node.label, "top": top, "bottom": bottom, "high": high, "low": low},
+        dedupe_key=(rule_id, str(node.id)),
+        reason=reason,
+        asks_for="measurement" if reason == "controls_unplaced" else None,
+    )
+
+
+def _reach_reason(top: float, bottom: float, high: float, low: float) -> str:
+    if not at_most(bottom, high):
+        return "too_high"
+    if not at_least(top, low):
+        return "too_low"
+    if at_most(top, high):
+        return "measured"
+    return "controls_unplaced"
+
+
+def _reach_measurement(reason: str, top: float, bottom: float) -> float:
+    return {"too_high": bottom, "too_low": top}.get(reason, top)
 
 
 @traced("checks.reach_range")

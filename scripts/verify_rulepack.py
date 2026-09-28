@@ -50,6 +50,20 @@ REQUIREMENTS = {
     " (1220 mm) maximum above the finish floor.",
     "dining_surface_height": "902.3: the tops of dining surfaces and work surfaces shall be 28 inches (710 mm)"
     " minimum and 34 inches (865 mm) maximum above the finish floor.",
+    "ramp_running_slope": "405.2: ramp runs shall have a running slope not steeper than 1:12, which is 12 inches"
+    " of run per inch of rise.",
+    "ramp_rise": "405.6: the rise for any ramp run shall be 30 inches (760 mm) maximum.",
+    "ramp_clear_width": "405.5: the clear width of a ramp run shall be 36 inches (915 mm) minimum.",
+    "ramp_landing_length": "405.7.3: landings shall have a clear length of 60 inches (1525 mm) long minimum.",
+    "ramp_handrails": "405.8: ramp runs with a rise greater than 6 inches (150 mm) shall have handrails.",
+    "handrail_height": "505.4: top of gripping surfaces of handrails shall be 34 inches (865 mm) minimum and"
+    " 38 inches (965 mm) maximum above ramp surfaces.",
+    "kiosk_reach": "308.2.1, through 309.3: the high forward reach shall be 48 inches (1220 mm) maximum above the"
+    " finish floor.",
+    "kiosk_clear_floor": "305.3: the clear floor or ground space shall be 30 inches (760 mm) minimum by"
+    " 48 inches (1220 mm) minimum.",
+    "self_service_reach": "904.5.1, through 308.2.1: self-service shelves and dispensing devices are 48 inches"
+    " (1220 mm) maximum above the finish floor.",
 }
 
 SKIPPED = {

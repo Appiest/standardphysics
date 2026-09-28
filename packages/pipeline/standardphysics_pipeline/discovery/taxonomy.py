@@ -39,6 +39,8 @@ FIXTURE_NAMES: FrozenSet[str] = frozenset({
     "payment terminal", "payment counter", "pos counter", "pos terminal", "ramp", "ramp landing",
     "accessible ramp", "landing", "lowered counter section", "accessible counter",
     "lowered section", "accessible section", "low counter", "cash wrap", "bar",
+    "pickup counter", "pick-up counter", "handoff counter", "hand-off counter", "transaction counter",
+    "cashier counter", "wheelchair ramp", "handrail", "hand rail", "railing",
 })
 
 
@@ -96,6 +98,8 @@ _NAMES: dict[str, frozenset[str]] = {
     SERVICE_COUNTER: frozenset({
         "counter", "service counter", "sales counter", "checkout counter",
         "order counter", "service desk", "reception counter", "cash wrap",
+        "pickup counter", "pick-up counter", "handoff counter", "hand-off counter",
+        "transaction counter", "cashier counter",
     }),
     RESTROOM_ENTRANCE: frozenset({
         "restroom", "restroom entrance", "restroom door", "bathroom",
