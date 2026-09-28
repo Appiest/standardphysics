@@ -122,7 +122,7 @@ def score_completion(completion: str, room: SceneGraph, checker: TrainingChecker
     edits = parse_edits(completion)
     if edits is None:
         return Verdict(0.0, reason="unparseable")
-    if _touched(edits) & checker.pinned:
+    if touched(edits) & checker.pinned:
         return Verdict(0.0, parsed=True, reason=MOVED_PINNED)
     complaint = edit_complaint(room, edits)
     if complaint:
@@ -169,7 +169,7 @@ def constrained(room: SceneGraph, edits: TrainingEdits, veto: CandidateRejection
     return Legality(candidate, broken, veto(room, candidate) if veto and not broken else None)
 
 
-def _touched(edits) -> set:
+def touched(edits) -> set:
     """Every piece an answer moves, refits or carries."""
     carried = [node_id for section in edits.add_lowered_section for node_id in section.carry]
     return {edit.node_id for edit in [*edits.moves, *edits.fixture_moves, *edits.height_changes, *edits.replacements]

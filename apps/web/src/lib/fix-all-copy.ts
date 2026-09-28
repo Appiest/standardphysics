@@ -1,7 +1,8 @@
 import type { ModelLoopProgress } from "@/lib/model-loop-progress";
 import type { ModelLoopEvent } from "@/types/contracts";
 
-export function idleDetail(label: string): string {
+export function idleDetail(label: string, fromPlan = false): string {
+  if (fromPlan) return `${label} starts from your plan as it stands and works through what is still wrong, choosing only moves that pass every check.`;
   return `${label} works through the whole room, choosing only moves that pass every check. Nothing changes until you keep it.`;
 }
 

@@ -26,6 +26,9 @@ class ModelLoopInfo(BaseModel):
 
 class ModelLoopRequest(BaseModel):
     base_revision: int
+    moves: list[NodeMove] = []
+    """The owner's plan to start from: pieces moved on the plan and not saved. The loop fixes that layout, and
+    the moves it returns are measured from the saved shop, so they include these."""
 
 
 class ModelLoopEvent(BaseModel):

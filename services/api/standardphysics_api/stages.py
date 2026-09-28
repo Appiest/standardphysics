@@ -38,7 +38,7 @@ from standardphysics_agents.precedents import rejection_for_space
 from standardphysics_agents.rules import AgentRulePack
 from standardphysics_agents.rules.verification import PREVIEW_REVIEWER as PREVIEW_REVIEWER
 from standardphysics_agents.rules.verification import preview_ledger as preview_ledger
-from standardphysics_agents.training.checker import TrainingChecker
+from standardphysics_agents.training.checker import Scope, TrainingChecker
 from standardphysics_agents.training.explain import explain_change, owner_text
 from standardphysics_agents.training.menu import MenuLimits, build_menu, menu_messages
 from standardphysics_agents.training.owner import keep_request, stated_book
@@ -404,10 +404,12 @@ class Stages:
         with self._search_lock:
             return picked_outcome(graph, checker, menu, reply, targets)
 
-    def menu_checker(self, graph: SceneGraph, scenario: Scenario, typology: SpaceTypology | None) -> TrainingChecker:
-        """The checker a menu is built with; the owner's own layout is `graph` as it stands."""
+    def menu_checker(self, graph: SceneGraph, scenario: Scenario, typology: SpaceTypology | None,
+                     scope: Scope = "layout") -> TrainingChecker:
+        """The checker a menu is built with; the owner's own layout is `graph` as it stands. The fittings scope
+        also counts construction that changes a piece, like a lowered counter section, as a fix."""
         return TrainingChecker(scenario, rules=load_pack(), ledger=self.ledger_factory(), measure=self.search_measure,
-                               owner_layout=graph, space_typology=typology)
+                               owner_layout=graph, space_typology=typology, scope=scope, promoted=frozenset())
 
     def locked(self):
         """Holds the search lock, so a caller measuring on the search cache doesn't race another search."""

@@ -110,11 +110,12 @@ export async function modelLoopInfo(): Promise<ModelLoopInfo> {
 }
 
 /** The model's turns on every open problem, handed over as the server sends them; resolves when the stream closes. */
-export async function streamModelLoop(scanId: string, baseRevision: number, onEvent: (event: ModelLoopEvent) => void, signal: AbortSignal) {
+/** Streams the loop's turns. With `plan`, the loop starts from the owner's unsaved moves instead of the saved shop. */
+export async function streamModelLoop(scanId: string, baseRevision: number, onEvent: (event: ModelLoopEvent) => void, signal: AbortSignal, plan: NodeMove[] = []) {
   const response = await fetch(`/api/scans/${scanId}/model-loop/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ base_revision: baseRevision }),
+    body: JSON.stringify({ base_revision: baseRevision, moves: plan }),
     signal,
   });
   if (!response.ok || !response.body) throw await refusal(response);

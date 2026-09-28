@@ -28,9 +28,10 @@ import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
+from standardphysics_agents.fix import carried_along
 from standardphysics_agents.fix.budget import deadline_in
 from standardphysics_agents.training.checker import TrainingChecker
-from standardphysics_agents.training.edits import TrainingEdits, apply_edits, node_moves, parse_edits
+from standardphysics_agents.training.edits import TrainingEdits, apply_edits, has_construction, node_moves, parse_edits
 from standardphysics_agents.training.menu import Menu, MenuLimits, build_menu, menu_messages, resolve
 from standardphysics_agents.training.owner import WishBook, stated_book
 from standardphysics_contracts import (
@@ -45,6 +46,7 @@ from standardphysics_contracts import (
 )
 
 from .db import Database
+from .layout import plan_candidate
 from .model_chooser import ModelChooser, ModelReplyError, ModelSlots, without_wall_shifts
 from .proposals import fix_inputs, owner_wishes_of, space_typology_of
 from .stages import Stages
@@ -127,7 +129,7 @@ class ModelLoop:
     def next_messages(self) -> list[dict] | None:
         """The prompt for the next turn, or None when there is nothing left the menu can offer."""
         if self.fixable_left() == 0:
-            self.stop = "Every problem furniture can fix is fixed."
+            self.stop = "Every problem a move or a contractor can fix is fixed."
             return None
         limits = MenuLimits(deadline=deadline_in(LOOP_MENU_SECONDS))
         menu = without_wall_shifts(build_menu(self.current, self.checker, stated=self.stated, limits=limits))
@@ -142,7 +144,7 @@ class ModelLoop:
         resolution = resolve(reply, self.current, menu, self.checker.pinned)
         edits = parse_edits(resolution.completion)
         added = _all_moves(edits) if edits else []
-        if edits is not None and added:
+        if edits is not None and (added or has_construction(edits)):
             self.current = apply_edits(self.current, edits)
             self.moves = _combined(self.moves, added)
             self.built_ins |= {move.node_id for move in edits.fixture_moves}
@@ -152,7 +154,7 @@ class ModelLoop:
         self.last = {**resolution.as_dict(), "fixable_left": len(open_problems)}
         picked = [menu.picked_in_owner_words(number) for number in resolution.applied]
         construction = [menu.picked_in_owner_words(number) for number in resolution.applied
-                        if (option := menu.option(number)) is not None and option.edits.fixture_moves]
+                        if (option := menu.option(number)) is not None and has_construction(option.edits)]
         return ModelLoopEvent(kind="turn", turn=turn, picked=picked, construction=construction,
                               why=menu.in_owner_words(resolution.why),
                               fixable_left=len(open_problems), working_on=_titles(open_problems))
@@ -162,11 +164,34 @@ def _in_words(seconds: float) -> str:
     return f"{seconds / 60:g} minutes" if seconds >= 120 and seconds % 60 == 0 else f"{seconds:g} seconds"
 
 
-def _events(stages: Stages, graph: SceneGraph, scenario, chooser: ModelChooser, typology,
+@dataclass(frozen=True)
+class Plan:
+    """Where the loop starts: the saved shop with the owner's unsaved moves, and those moves."""
+
+    start: SceneGraph
+    moves: list[NodeMove]
+    built_ins: set[uuid.UUID]
+
+
+def _plan(graph: SceneGraph, moves: list[NodeMove]) -> Plan | str:
+    """The owner's plan to start from, or why it cannot be a starting point."""
+    if not moves:
+        return Plan(graph, [], set())
+    start, blocked = plan_candidate(graph, moves, construction=True)
+    if blocked:
+        return f"Your plan has something where it can't stand ({blocked[0].detail}). Move it, then try again."
+    carried = carried_along(graph, moves)
+    fixtures = {move.node_id for move in carried if not graph.by_id(move.node_id).movable}
+    return Plan(start.model_copy(update={"revision": graph.revision}), carried, fixtures)
+
+
+def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: ModelChooser, typology,
             wishes) -> Iterator[ModelLoopEvent]:
     """Turns until the room is clear, the menu runs dry, the model picks nothing, or the turns or time run out."""
     with stages.locked():
-        loop = ModelLoop(graph, stages.menu_checker(graph, scenario, typology), stated_book(graph, list(wishes)))
+        loop = ModelLoop(plan.start, stages.menu_checker(plan.start, scenario, typology, scope="fittings"),
+                         stated_book(plan.start, list(wishes)), moves={move.node_id: move for move in plan.moves},
+                         built_ins=set(plan.built_ins))
         open_problems = loop.open_problems()
     yield ModelLoopEvent(kind="started", fixable_left=len(open_problems), working_on=_titles(open_problems),
                          turns_at_most=MODEL_LOOP_TURNS, message=f"{chooser.label} is looking at your shop.")
@@ -230,8 +255,11 @@ def stream_model_loop(
     if chooser is None:
         return iter([_line(ModelLoopEvent(kind="failed", message="No model is set up to run the loop."))])
     graph, scenario, _ = fix_inputs(database, scan_id, body.base_revision)
+    plan = _plan(graph, body.moves)
+    if isinstance(plan, str):
+        return iter([_line(ModelLoopEvent(kind="failed", message=plan))])
     wishes, typology = owner_wishes_of(database, scan_id), space_typology_of(database, scan_id)
     slots.take(owner_id)
-    events = _events(stages, graph, scenario, chooser, typology, wishes)
+    events = _events(stages, graph, plan, scenario, chooser, typology, wishes)
     lines = _streamed(events, chooser, lambda: slots.give_back(owner_id))
     return itertools.chain([next(lines)], lines)

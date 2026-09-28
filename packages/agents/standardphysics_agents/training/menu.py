@@ -54,6 +54,7 @@ from standardphysics_contracts import Finding, NodeMove, SceneGraph, SceneNode, 
 from standardphysics_pipeline.footprints import rotation_about_z
 
 from ..assess import Pass
+from ..checks import roles
 from ..evaluation.gate import accepts
 from ..fix import CandidateRejection, candidates, combine_rejections, pinch_from, room_heading, snap_moves
 from ..fix.budget import out_of_time
@@ -65,13 +66,15 @@ from ..fix.placement import placements
 from ..fix.strategies import Candidate
 from ..fix.surfaces import lower_surface_moves
 from ..redesign import FurnitureMove
+from .catalog import ACCESSIBLE_FOUR_TOP, ACCESSIBLE_TWO_TOP, LOWERED_COUNTER_SECTION
 from .checker import TrainingChecker
 from .construction import MAX_FIXTURE_MOVE_INCHES, FixtureMove, build, construction_inches, fixture_ids
-from .edits import TrainingEdits, _json_text, edits_json, node_moves, parse_edits
+from .edits import TrainingEdits, _json_text, combined, edits_json, node_moves, parse_edits
+from .fittings import HeightChange, LoweredSection, Replacement, height_range, rests_on, use_of
 from .owner import WishBook
 from .prompt import room_view
 from .quality import seat_table_pairs
-from .reward import constrained
+from .reward import constrained, touched
 from .usability import usability
 from .wishes import Wish, infer_wishes, kept
 
@@ -83,6 +86,7 @@ FIXTURE_DIRECTIONS = tuple((math.cos(math.radians(angle)), math.sin(math.radians
 FURNITURE_TRIES = 12
 CLEARING_TRIES = 18
 FIXTURE_TRIES = 12
+FITTING_TRIES = 8
 """Legal guesses measured per problem; each costs one full checker pass.
 
 The clearing families and then fixture slides are only measured for a problem
@@ -201,7 +205,7 @@ def _anchor(graph: SceneGraph, node: SceneNode, finding: Finding) -> tuple[str, 
         other = min(others, key=lambda o: math.dist(here, (o.transform.position.x, o.transform.position.y)))
         return f"the {other.label}", (other.transform.position.x, other.transform.position.y)
     point = finding.locus.point if finding.locus and finding.locus.point else node.transform.position
-    return f"the {finding.check_id.replace('_', ' ')}", (point.x, point.y)
+    return "the problem spot", (point.x, point.y)
 
 
 def _turn_words(degrees: float) -> str:
@@ -250,7 +254,7 @@ def _furniture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChe
         for candidate in _pinch_candidates(graph, finding, checker)]
     found.extend(_surface_guesses(graph, finding, label))
     found.sort(key=lambda pair: pair[0])
-    return _varied([guess for _, guess in found if not _touched(guess.edits) & set(checker.pinned)])
+    return _varied([guess for _, guess in found if not touched(guess.edits) & set(checker.pinned)])
 
 
 def _groups(graph: SceneGraph) -> list[frozenset]:
@@ -296,7 +300,7 @@ def _varied(guesses: list[_Guess]) -> list[_Guess]:
     """
     by_pieces: dict[frozenset, list[_Guess]] = {}
     for guess in guesses:
-        by_pieces.setdefault(frozenset(_touched(guess.edits)), []).append(guess)
+        by_pieces.setdefault(frozenset(touched(guess.edits)), []).append(guess)
     return [guess for guess in chain.from_iterable(zip_longest(*by_pieces.values())) if guess is not None]
 
 
@@ -345,8 +349,67 @@ def _fixture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingCheck
     return [guess for guess in chain.from_iterable(zip_longest(*families)) if guess is not None]
 
 
+def _named_pieces(graph: SceneGraph, finding: Finding) -> list[SceneNode]:
+    ids = {node.id for node in graph.nodes}
+    return [graph.by_id(node_id) for node_id in (finding.locus.node_ids if finding.locus else []) if node_id in ids]
+
+
+def _section_guesses(graph: SceneGraph, node: SceneNode, label: str) -> list[_Guess]:
+    """A lowered section cut into either end of a counter, with whatever people pay at set down on it."""
+    if use_of(graph, node) != "counter":
+        return []
+    paying = [item.id for item in roles.point_of_sale(graph) if rests_on(item, node)][:4]
+    carried = f", with the {', '.join(graph.by_id(item).label for item in paying)} set on it" if paying else ""
+    return [_Guess(TrainingEdits(add_lowered_section=[LoweredSection(counter_id=node.id, end=end, carry=paying)]),
+                   f"cut a {LOWERED_COUNTER_SECTION.length_inches:g} in section at {placing} of {_name(node)} "
+                   f"down to {LOWERED_COUNTER_SECTION.top_inches:g} in{carried} (construction), for {label}")
+            for end, placing in (("start", "one end"), ("end", "the other end"))]
+
+
+def _target_tops(finding: Finding, allowed: tuple[float, float]) -> list[float]:
+    """Tops that meet the rule's number with a little to spare, inside what the piece can be built or hung at."""
+    required = finding.required_inches
+    if required is None:
+        return []
+    measured = finding.measured_inches
+    lowering = measured is None or measured > required
+    tops = (required - 2.0, required) if lowering else (required + 2.0, required)
+    return sorted({round(min(max(top, allowed[0]), allowed[1]), 1) for top in tops})
+
+
+def _height_guesses(graph: SceneGraph, node: SceneNode, finding: Finding, label: str) -> list[_Guess]:
+    allowed = height_range(graph, node)
+    if allowed is None:
+        return []
+    verb = "rehang" if use_of(graph, node) is None else "rebuild"
+    return [_Guess(TrainingEdits(height_changes=[HeightChange(node_id=node.id, top_inches=top)]),
+                   f"{verb} {_name(node)} with its top at {top:g} in (construction), for {label}")
+            for top in _target_tops(finding, allowed)]
+
+
+def _replacement_guesses(graph: SceneGraph, node: SceneNode, label: str) -> list[_Guess]:
+    if use_of(graph, node) != "surface":
+        return []
+    return [_Guess(TrainingEdits(replacements=[Replacement(node_id=node.id, catalog_item=item.name)]),
+                   f"swap {_name(node)} for a {item.length_inches:g} in {item.label.lower()} "
+                   f"{item.top_inches:g} in high (construction), for {label}")
+            for item in (ACCESSIBLE_TWO_TOP, ACCESSIBLE_FOUR_TOP)]
+
+
+def _fitting_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:
+    """Construction that changes what a piece is rather than where it stands, for problems no move can clear:
+    a lowered counter section, a piece rebuilt or rehung at a reachable height, a table swapped for one at
+    dining height. Offered only when the checker counts fitting edits as fixes."""
+    if not checker.fittable(finding.check_id):
+        return []
+    families = [guesses for node in _named_pieces(graph, finding) if node.id not in checker.pinned
+                for guesses in (_section_guesses(graph, node, label), _height_guesses(graph, node, finding, label),
+                                _replacement_guesses(graph, node, label))]
+    return [guess for guess in chain.from_iterable(zip_longest(*families)) if guess is not None]
+
+
 TIERS = ((_furniture_guesses, FURNITURE_TRIES), (_clearing_guesses, CLEARING_TRIES),
-         (_fixture_guesses, FIXTURE_TRIES))
+         (_fixture_guesses, FIXTURE_TRIES), (_fitting_guesses, FITTING_TRIES))
 """Guess families in the order they are measured, each with its own tries."""
 
 
@@ -399,14 +462,14 @@ def _square_to_room(heading_degrees: float, room_heading_degrees: float,
 
 def _ends_square(room: SceneGraph, candidate: SceneGraph, edits: TrainingEdits) -> bool:
     """Whether every piece these edits move ends up square to the room, not standing at an angle in it."""
-    touched = _touched(edits)
+    changed = touched(edits)
     heading = room_heading(room)
-    if heading is None or not touched:
+    if heading is None or not changed:
         return True
     room_degrees = math.degrees(heading)
     by_id = {node.id: node for node in candidate.nodes}
     return all(_square_to_room(_node_heading_degrees(by_id[node_id]), room_degrees)
-               for node_id in touched if node_id in by_id)
+               for node_id in changed if node_id in by_id)
 
 
 def _rank(effect: dict) -> tuple:
@@ -607,23 +670,14 @@ class Resolution:
 EMPTY = TrainingEdits()
 
 
-def _combined(applied: TrainingEdits, option: TrainingEdits) -> TrainingEdits:
-    return TrainingEdits(moves=[*applied.moves, *option.moves], fixture_moves=[*applied.fixture_moves,
-                                                                              *option.fixture_moves])
-
-
-def _touched(edits: TrainingEdits) -> set[UUID]:
-    return {move.node_id for move in edits.moves} | {move.node_id for move in edits.fixture_moves}
-
-
 def _why_dropped(room: SceneGraph, applied: TrainingEdits, option: Option | None,
                  veto: CandidateRejection | None) -> str | None:
     if option is None:
         return "no such option"
-    if _touched(applied) & _touched(option.edits):
+    if touched(applied) & touched(option.edits):
         return "moves a piece an earlier pick already moved"
     try:
-        return constrained(room, _combined(applied, option.edits), veto).refusal
+        return constrained(room, combined(applied, option.edits), veto).refusal
     except ValueError:
         return "unbuildable construction"
 
@@ -639,7 +693,7 @@ def resolve_choice(room: SceneGraph, menu: Menu, choice: MenuChoice) -> Resoluti
             resolution.dropped.append({"option": number, "reason": reason})
             continue
         assert option is not None
-        applied = _combined(applied, option.edits)
+        applied = combined(applied, option.edits)
         resolution.applied.append(number)
     resolution.completion = edits_json(applied)
     return resolution

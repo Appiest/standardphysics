@@ -51,7 +51,9 @@ def _base(database: Database, scan_id: uuid.UUID, base_revision: int):
     return base, latest, scenario
 
 
-def _candidate(base: SceneGraph, moves: list[NodeMove], construction: bool = False) -> tuple[SceneGraph, list[Blocked]]:
+def plan_candidate(
+    base: SceneGraph, moves: list[NodeMove], construction: bool = False
+) -> tuple[SceneGraph, list[Blocked]]:
     known = {node.id for node in base.nodes}
     unknown = sorted(str(move.node_id) for move in moves if move.node_id not in known)
     if unknown:
@@ -72,7 +74,7 @@ def _is_fixture(node: SceneNode) -> bool:
 
 def check_layout(database: Database, stages: Stages, scan_id: uuid.UUID, body: LayoutCheckRequest) -> LayoutCheckResult:
     base, _, scenario = _base(database, scan_id, body.base_revision)
-    candidate, blocked = _candidate(base, body.moves, construction=True)
+    candidate, blocked = plan_candidate(base, body.moves, construction=True)
     findings = stages.assess(candidate, scenario, candidate.revision + 1).findings
     return LayoutCheckResult(
         sequence=body.sequence, graph_hash=graph_hash(candidate), findings=findings, blocked=blocked
@@ -81,7 +83,7 @@ def check_layout(database: Database, stages: Stages, scan_id: uuid.UUID, body: L
 
 def save_layout(database: Database, worker: Worker, scan_id: uuid.UUID, body: SaveLayoutRequest) -> SceneGraph:
     base, _, _ = _base(database, scan_id, body.base_revision)
-    candidate, blocked = _candidate(base, body.moves)
+    candidate, blocked = plan_candidate(base, body.moves)
     if blocked:
         raise ApiProblem(409, "that layout breaks a hard constraint", need=[b.detail for b in blocked])
     saved = candidate.model_copy(update={"revision": body.base_revision + 1})

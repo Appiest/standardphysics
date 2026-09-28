@@ -42,7 +42,11 @@ from .textures.camera import CameraMetadataError, camera_from_pose
 logger = logging.getLogger(__name__)
 
 API_KEY_ENV = "OPENROUTER_API_KEY"
-MODEL_ENV = "OPENROUTER_MODEL"
+MODEL_ENV = "ASTRA_MODEL"
+"""Labelling has its own model setting rather than OPENROUTER_MODEL, which other calls share. On a real Share
+Tea scan Opus labelled ten batches for $0.73 and told the 35.7 in service counters from the 44 in bar counters
+and bar stools from chairs; the local fallback got both wrong. At gpt-6-astra's price the same labels would
+cost about $1.83, over the $1.50 a scan is allowed."""
 BASE_URL_ENV = "OPENROUTER_BASE_URL"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL = "anthropic/claude-opus-5.5"
@@ -315,7 +319,9 @@ def _looks_like_counter(node: SceneNode, walls: list[SceneNode]) -> bool:
 
 
 def _shares_footprint(own: list[tuple[float, float]], other: list[tuple[float, float]]) -> bool:
-    return max(covered_fraction(own, other), covered_fraction(other, own)) >= SHARED_FOOTPRINT
+    """Whether most of this box's own floor lies inside the other's. A stool tucked under a counter shares its
+    footprint; the counter, with most of its floor clear, does not."""
+    return covered_fraction(own, other) >= SHARED_FOOTPRINT
 
 
 def _local_quality(node: SceneNode, objects: list[SceneNode]) -> QualityName:

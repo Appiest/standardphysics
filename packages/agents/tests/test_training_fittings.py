@@ -206,3 +206,26 @@ def test_a_register_moves_with_its_counter_rather_than_on_its_own(graph):
         change_height(room, HeightChange(node_id=REGISTER, top_inches=36.0))
     lowered = change_height(room, HeightChange(node_id=COUNTER, top_inches=36.0))
     assert to_inches(lowered.by_id(REGISTER).transform.position.z - 0.125) == pytest.approx(36.0)
+
+
+def test_the_menu_offers_a_lowered_section_for_a_counter_too_high_to_order_from(graph, fittings):
+    from standardphysics_agents.training.menu import build_menu
+
+    room = _register_on_the_counter(graph)
+    menu = build_menu(room, fittings)
+    too_high = next(f.id for f in fittings.assess(room).problems if f.check_id == "service_counter_height")
+    height = menu.problems[too_high]
+    sections = [option for option in menu.options if option.edits.add_lowered_section]
+    assert sections, [option.wording for option in menu.options]
+    clearing = [option for option in sections if height in option.effect["clears"]]
+    assert clearing
+    assert all(REGISTER in option.edits.add_lowered_section[0].carry for option in clearing)
+    assert all("(construction)" in option.wording for option in sections)
+
+
+def test_the_layout_scope_menu_offers_no_fittings(graph, layout):
+    from standardphysics_agents.training.menu import build_menu
+
+    menu = build_menu(_register_on_the_counter(graph), layout)
+    assert not any(option.edits.add_lowered_section or option.edits.height_changes or option.edits.replacements
+                   for option in menu.options)

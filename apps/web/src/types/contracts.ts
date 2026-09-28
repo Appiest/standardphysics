@@ -1054,6 +1054,7 @@ export interface ModelLoopInfo {
  */
 export interface ModelLoopRequest {
   base_revision: number;
+  moves: NodeMove[];
 }
 /**
  * Nodes the primitive selected, such as everything standing on a desk.

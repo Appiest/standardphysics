@@ -212,3 +212,16 @@ def test_owner_words_drop_piece_ids_and_name_problems_by_title():
     assert built_in.picked_in_owner_words(2) == "slide Service counter 12 in toward the wall"
     assert menu.in_owner_words("It clears P1 and P7 by moving Chair [3f2a].") == (
         'It clears "The path to the counter is too narrow" and P7 by moving Chair.')
+
+
+def test_a_move_anchored_on_the_problem_itself_names_a_place_not_a_check(room):
+    from standardphysics_agents.training.menu import _anchor
+    from standardphysics_contracts import Finding, Locus, Vec3
+
+    graph = room[0]
+    node = next(node for node in graph.nodes if node.kind == "object")
+    locus = Locus.model_construct(point=Vec3(x=0.0, y=0.0, z=0.0), node_ids=[node.id])
+    finding = Finding.model_construct(id=node.id, check_id="turn_clear_width", outcome="problem", locus=locus)
+    words, _ = _anchor(graph, node, finding)
+    assert "_" not in words and "turn clear width" not in words
+    assert words == "the problem spot"
