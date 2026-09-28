@@ -11,7 +11,9 @@ from standardphysics_agents.training.construction import build
 from standardphysics_agents.training.edits import TrainingEdits, apply_edits, parse_edits
 from standardphysics_agents.training.menu import (
     MENU_SYSTEM_PROMPT,
+    Menu,
     MenuChoice,
+    Option,
     _drop_covered_diagonals,
     _Guess,
     _square_to_room,
@@ -199,3 +201,12 @@ def test_a_diagonal_option_stays_when_it_alone_clears_a_problem():
     only_diagonal = _measured(["P1"], False)
     kept = _drop_covered_diagonals([square_elsewhere, only_diagonal])
     assert kept == [square_elsewhere, only_diagonal]
+
+
+def test_owner_words_drop_piece_ids_and_name_problems_by_title():
+    menu = Menu(problems={}, options=[Option(1, "slide Table [68d0] 3 in further from the Counter, for P1",
+                                             TrainingEdits(), {})],
+                problem_view=[{"label": "P1", "title": "The path to the counter is too narrow"}])
+    assert menu.picked_in_owner_words(1) == "slide Table 3 in further from the Counter"
+    assert menu.in_owner_words("It clears P1 and P7 by moving Chair [3f2a].") == (
+        'It clears "The path to the counter is too narrow" and P7 by moving Chair.')

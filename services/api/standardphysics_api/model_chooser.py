@@ -76,8 +76,8 @@ def picked_outcome(graph: SceneGraph, checker, menu: Menu, reply: str, targets: 
         return None
     after = apply_edits(graph, edits)
     proposal = _build_proposal(graph, after, Candidate("model_choice", moves, 0.0), tuple(f.id for f in targets))
-    wordings = [menu.option(number).wording for number in resolution.applied]
+    wordings = [menu.picked_in_owner_words(number) for number in resolution.applied]
     picked = "; ".join(wordings) or "its own moves, snapped to legal floor"
-    reason = f" Its reason: {resolution.why}" if resolution.why else ""
+    reason = f" Its reason: {menu.in_owner_words(resolution.why)}" if resolution.why else ""
     return FixOutcome(proposal=proposal, graph=after, message=f"The model picked: {picked}.{reason}",
                       targets=tuple(f.id for f in targets))

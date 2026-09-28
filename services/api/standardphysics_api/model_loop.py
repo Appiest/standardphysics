@@ -101,8 +101,9 @@ class ModelLoop:
             self.stop = "The model chose nothing it could use."
         left = self.fixable_left()
         self.last = {**resolution.as_dict(), "fixable_left": left}
-        picked = [self.menu.option(number).wording for number in resolution.applied]
-        return ModelLoopEvent(kind="turn", turn=turn, picked=picked, why=resolution.why, fixable_left=left)
+        picked = [self.menu.picked_in_owner_words(number) for number in resolution.applied]
+        return ModelLoopEvent(kind="turn", turn=turn, picked=picked, why=self.menu.in_owner_words(resolution.why),
+                              fixable_left=left)
 
 
 def _events(stages: Stages, graph: SceneGraph, scenario, chooser: ModelChooser, typology,

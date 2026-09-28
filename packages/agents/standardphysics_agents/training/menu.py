@@ -44,6 +44,7 @@ from __future__ import annotations
 import json
 import math
 import random
+import re
 from dataclasses import dataclass, field
 from itertools import chain, zip_longest
 from uuid import UUID
@@ -126,6 +127,15 @@ class Option:
         return {"option": self.number, "do": self.wording, **self.effect}
 
 
+_ID_TAG = re.compile(r" \[[0-9a-f]{4}\]")
+_PROBLEM_LABEL = re.compile(r"\bP\d+\b")
+_FOR_PROBLEM = re.compile(r",? for P\d+$")
+
+
+def _quoted_title(titles: dict[str, str], label: str) -> str:
+    return f'"{titles[label]}"' if label in titles else label
+
+
 @dataclass(frozen=True)
 class Menu:
     problems: dict[UUID, str]
@@ -140,6 +150,16 @@ class Menu:
 
     def option(self, number: int) -> Option | None:
         return next((option for option in self.options if option.number == number), None)
+
+    def in_owner_words(self, text: str) -> str:
+        """Model-facing text without piece id tags, each problem label replaced by its finding's title."""
+        titles = {view["label"]: view["title"] for view in self.problem_view}
+        untagged = _ID_TAG.sub("", text)
+        return _PROBLEM_LABEL.sub(lambda match: _quoted_title(titles, match.group(0)), untagged)
+
+    def picked_in_owner_words(self, number: int) -> str:
+        """An option's wording for the owner, without the problem it was offered for."""
+        return self.in_owner_words(_FOR_PROBLEM.sub("", self.option(number).wording))
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,7 @@
 """A configured model fixes the layout turn by turn from the menu, streamed to the owner."""
 
 import json
+import re
 import urllib.error
 
 from conftest import drain
@@ -27,7 +28,7 @@ def _configure(monkeypatch, ask):
 
 def _first_option(self, messages):
     options = json.loads(messages[-1]["content"])["options"]
-    return json.dumps({"choose": [options[0]["option"]], "why": "It clears the most with the least moving."})
+    return json.dumps({"choose": [options[0]["option"]], "why": "It clears P1 with the least moving."})
 
 
 def test_the_button_is_hidden_until_a_model_is_set_up(make_client, monkeypatch):
@@ -46,6 +47,8 @@ def test_the_model_takes_turns_until_it_stops_and_the_moves_add_up(make_client, 
     assert kinds[0] == "started" and kinds[-1] == "finished" and "turn" in kinds
     turns = [event for event in events if event["kind"] == "turn"]
     assert all(turn["picked"] and turn["why"] for turn in turns)
+    owner_text = " ".join([*(words for turn in turns for words in turn["picked"]), *(turn["why"] for turn in turns)])
+    assert not re.search(r"\[[0-9a-f]{4}\]|\bP\d+\b", owner_text)
     finished = events[-1]
     assert finished["moves"] and finished["explanation"]["fixed"] and finished["message"]
     assert finished["fixable_left"] <= turns[0]["fixable_left"] <= events[0]["fixable_left"]
