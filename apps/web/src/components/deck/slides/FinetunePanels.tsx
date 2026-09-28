@@ -2,7 +2,7 @@
 
 import { motion } from "motion/react";
 import { easeDrawn } from "@/lib/motion";
-import { benchmarkedRuns, clearedChanges, finetuneRuns, promotedRl, type FinetuneRun, type StageChange } from "../finetuneLedger";
+import { finetuneRuns, loopResults, promotedRl, ruleShifts, type FinetuneRun, type RuleShift } from "../finetuneLedger";
 import { fadeReveal } from "../primitives";
 
 const WIDTH = 1120;
@@ -104,25 +104,36 @@ export function LineagePanel() {
   );
 }
 
-function chipTone(points: number) {
-  if (points > 0.05) return "bg-pass/15 text-pass";
-  return points < -0.05 ? "bg-fail/12 text-fail" : "bg-paper-sunken text-ink-muted";
-}
+const wholePercent = (share: number) => `${Math.round(share * 100)}%`;
 
-function signedPoints(points: number) {
-  const size = Math.abs(points).toFixed(1);
-  return points < -0.05 ? `−${size}` : `+${size}`;
-}
-
-function ChangeChip({ change }: { change: StageChange }) {
+function RuleShiftRow({ shift, index }: { shift: RuleShift; index: number }) {
+  const rose = shift.after > shift.before;
+  const left = Math.min(shift.before, shift.after);
+  const span = Math.abs(shift.after - shift.before);
   return (
-    <span className={`whitespace-nowrap rounded-full px-deck-hairline py-1 font-display text-caption font-bold figures-tabular ${chipTone(change.points)}`}>
-      {change.stage} {signedPoints(change.points)}
-    </span>
+    <div role="row" className="contents">
+      <motion.span role="rowheader" variants={fadeReveal(0.3 + index * 0.07, 12)} className="font-display text-caption font-bold">
+        {shift.run.title}
+      </motion.span>
+      <motion.span role="cell" variants={fadeReveal(0.35 + index * 0.07, 12)} className="relative mx-deck-hairline block h-deck-hairline rounded-full bg-paper-sunken">
+        <motion.span
+          className={`absolute inset-y-0 block origin-left rounded-full ${rose ? "bg-pass" : "bg-ink-muted"}`}
+          style={{ left: `${left * 100}%`, width: `${span * 100}%` }}
+          initial={{ scaleX: 0 }}
+          animate={{ scaleX: 1 }}
+          transition={{ duration: 0.8, ease: easeDrawn, delay: 0.6 + index * 0.07 }}
+        />
+        <span aria-hidden className="absolute top-1/2 size-deck-hairline -translate-x-1/2 -translate-y-1/2 rounded-full bg-paper-raised ring-4 ring-ink" style={{ left: `${shift.before * 100}%` }} />
+        <span aria-hidden className={`absolute top-1/2 size-deck-hairline -translate-x-1/2 -translate-y-1/2 rounded-full ${rose ? "bg-pass" : "bg-ink-muted"}`} style={{ left: `${shift.after * 100}%` }} />
+      </motion.span>
+      <motion.span role="cell" variants={fadeReveal(0.4 + index * 0.07, 12)} className="whitespace-nowrap text-right font-display text-caption font-bold figures-tabular">
+        {wholePercent(shift.before)} → {wholePercent(shift.after)}
+      </motion.span>
+    </div>
   );
 }
 
-export function BenchmarkPanel() {
+export function RulesLearnedPanel() {
   return (
     <motion.div
       initial="enter"
@@ -130,20 +141,45 @@ export function BenchmarkPanel() {
       exit="exit"
       variants={fadeReveal(0.1, 20)}
       role="table"
-      aria-label="Change in held-out rooms cleared after each training stage, in percentage points"
-      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-deck-gap gap-y-deck-hairline bg-paper-raised p-deck-gap shadow-xl"
+      aria-label="Share of held-out answers that broke no hard rule, before training and after each run's last stage"
+      className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_auto] items-center gap-x-deck-hairline gap-y-deck-hairline bg-paper-raised p-deck-gap shadow-xl"
     >
-      {benchmarkedRuns.map((run, index) => (
-        <div key={run.key} role="row" className="contents">
-          <motion.span role="rowheader" variants={fadeReveal(0.3 + index * 0.07, 12)} className="font-display text-caption font-bold">
-            {run.title}
-          </motion.span>
-          <motion.span role="cell" variants={fadeReveal(0.35 + index * 0.07, 12)} className="flex justify-end gap-deck-hairline">
-            {clearedChanges(run).map((change) => (
-              <ChangeChip key={change.stage} change={change} />
-            ))}
-          </motion.span>
-        </div>
+      {ruleShifts.map((shift, index) => (
+        <RuleShiftRow key={shift.run.key} shift={shift} index={index} />
+      ))}
+    </motion.div>
+  );
+}
+
+export function SolvedPanel() {
+  const best = Math.max(...loopResults.map((result) => result.cleared));
+  return (
+    <motion.div
+      initial="enter"
+      animate="present"
+      exit="exit"
+      variants={fadeReveal(0.1, 20)}
+      role="img"
+      aria-label={loopResults.map((result) => `${result.label}: ${result.cleared} of ${result.of} rooms cleared`).join("; ")}
+      className="flex flex-col gap-deck-rise bg-paper-raised p-deck-gap shadow-xl"
+    >
+      {loopResults.map((result, index) => (
+        <motion.div key={result.label} variants={fadeReveal(0.3 + index * 0.12, 12)} className="flex flex-col gap-deck-hairline">
+          <div className="flex items-baseline justify-between gap-deck-gap font-display text-caption font-bold">
+            <span>{result.label}</span>
+            <span className="whitespace-nowrap figures-tabular">
+              {result.cleared} of {result.of}
+            </span>
+          </div>
+          <div className="h-deck-hairline w-full rounded-full bg-paper-sunken">
+            <motion.div
+              className={`h-full origin-left rounded-full ${result.cleared === best ? "bg-ink" : "bg-ink-muted"}`}
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: result.cleared / result.of }}
+              transition={{ duration: 0.9, ease: easeDrawn, delay: 0.5 + index * 0.12 }}
+            />
+          </div>
+        </motion.div>
       ))}
     </motion.div>
   );
