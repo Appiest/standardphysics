@@ -6,8 +6,9 @@
 # It installs Docker, mounts the Block Storage volume, gives the box swap so a
 # 4 GB Droplet can build the workspace, and closes every port but SSH and the
 # two Caddy needs. It also installs a nightly backup timer, left off until .env
-# names somewhere to send the backups. Running it twice changes nothing the
-# second time.
+# names somewhere to send the backups, and a monitor that runs every five
+# minutes, left off until .env names somewhere to send alerts. Running it
+# twice changes nothing the second time.
 #
 # It never formats a disk that already holds a filesystem. A volume carrying
 # last month's scans is not a blank disk, and the check below is the only
@@ -23,6 +24,7 @@ SWAPFILE="/swapfile"
 SWAP_SIZE_MB=2048
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_UNIT=standardphysics-backup
+MONITOR_UNIT=standardphysics-monitor
 
 log() { printf '\n== %s\n' "$1"; }
 
@@ -119,8 +121,8 @@ enable_unattended_upgrades() {
   dpkg-reconfigure -f noninteractive unattended-upgrades
 }
 
-backup_destination_configured() {
-  [ -f "$HERE/.env" ] && grep -Eq '^SP_BACKUP_DEST=.+' "$HERE/.env"
+env_has() {
+  [ -f "$HERE/.env" ] && grep -Eq "^$1=.+" "$HERE/.env"
 }
 
 # The timer is installed every time and only switched on once .env names a
@@ -158,11 +160,49 @@ Persistent=true
 WantedBy=timers.target
 UNIT
   systemctl daemon-reload
-  if backup_destination_configured; then
+  if env_has SP_BACKUP_DEST; then
     systemctl enable --now "$BACKUP_UNIT.timer"
     log "Backups run nightly to the SP_BACKUP_DEST in .env"
   else
     log "Backups are off until SP_BACKUP_DEST is set in .env"
+  fi
+}
+
+# Off until .env has SP_ALERT_WEBHOOK, for the same reason as the backups:
+# monitor.sh with nowhere to send an alert says so and does nothing.
+# StateDirectory gives it /var/lib/standardphysics-monitor, where it keeps the
+# checks that were failing last time, so one outage sends one message.
+install_monitor_timer() {
+  log "Installing the five-minute monitor"
+  cat > "/etc/systemd/system/$MONITOR_UNIT.service" <<UNIT
+[Unit]
+Description=Check Standard Physics and alert when something breaks or recovers
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=$HERE/monitor.sh
+StateDirectory=$MONITOR_UNIT
+UNIT
+  cat > "/etc/systemd/system/$MONITOR_UNIT.timer" <<UNIT
+[Unit]
+Description=Check Standard Physics every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl daemon-reload
+  if env_has SP_ALERT_WEBHOOK; then
+    systemctl enable --now "$MONITOR_UNIT.timer"
+    log "Alerts go to the SP_ALERT_WEBHOOK in .env"
+  else
+    log "Monitoring is off until SP_ALERT_WEBHOOK is set in .env"
   fi
 }
 
@@ -175,6 +215,7 @@ main() {
   use_bbr
   enable_unattended_upgrades
   install_backup_timer
+  install_monitor_timer
 
   cat <<NEXT
 
@@ -190,6 +231,8 @@ Done. What is left:
   4. curl https://<your api domain>/health
   5. Set SP_BACKUP_DEST in .env, then turn on the nightly backup:
        systemctl enable --now $BACKUP_UNIT.timer
+  6. Set SP_ALERT_WEBHOOK in .env, then turn on the monitor:
+       systemctl enable --now $MONITOR_UNIT.timer
 
 NEXT
 }

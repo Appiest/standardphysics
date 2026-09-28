@@ -387,11 +387,74 @@ files, including removing the old `-wal` and `-shm` files, which belong to the
 database being replaced. The volume stays mounted throughout, because it is a
 mount point and moving it would move the mount.
 
-## What to alert on
+## Alerts
 
-Nothing here pages anyone yet. These are the conditions worth an alert, what
-to poll for each, and whether `/health/details` already answers it. Its body
-looks like this:
+`deploy/digitalocean/monitor.sh` runs every five minutes from a systemd
+timer that `setup.sh` installs. It checks four things and posts a message to
+`SP_ALERT_WEBHOOK` when one starts failing and again when it recovers:
+
+| Check | Fails when | Threshold in `.env` |
+| --- | --- | --- |
+| readiness | `/health/ready` answers anything but 200, or cannot be reached | none |
+| queue | `oldest_queued_job_seconds` in `/health/details` is over the limit | `SP_MONITOR_QUEUE_SECONDS=1800` |
+| disk | the scans volume has less free space than the limit, measured with `df` | `SP_MONITOR_MIN_FREE_PERCENT=15` |
+| backup | the newest snapshot in `SP_BACKUP_DEST` is older than the limit, or there is none. Skipped when `SP_BACKUP_DEST` is empty. | `SP_MONITOR_BACKUP_HOURS=26` |
+
+It asks the API at `https://$API_DOMAIN` by default, through Caddy, so an
+expired certificate or a stopped Caddy fails readiness too.
+`SP_MONITOR_URL` points it somewhere else.
+
+A message goes out only when the set of failing checks changes, so an outage
+that lasts an hour sends one message when it starts and one when it ends,
+not twelve. The failing set lives in
+`/var/lib/standardphysics-monitor/failing`, and it is updated only after the
+webhook accepts the message. If the webhook is down, the next run sends the
+same news again.
+
+`SP_ALERT_WEBHOOK` can be one of two kinds:
+
+- **An ntfy topic.** Install the ntfy app on your phone, subscribe to a
+  long, unguessable topic name, and set
+  `SP_ALERT_WEBHOOK=https://ntfy.sh/<that topic>`. The message arrives as
+  plain text with the title "Standard Physics monitor", at high priority
+  when something started failing. Anyone who knows the topic name can read
+  it, so pick a name nobody would guess. For a self-hosted ntfy server, set
+  `SP_ALERT_FORMAT=ntfy` as well.
+- **A generic JSON webhook.** Any other URL gets a POST of
+  `{"text": "..."}` with `Content-Type: application/json`, which is what a
+  Slack incoming webhook takes.
+
+A message reads like this:
+
+```
+Standard Physics at https://api.standardphysics.app
+Failing: readiness: https://api.standardphysics.app/health/ready answered 503
+Failing: queue: the oldest queued job has waited 2400s, over the 1800s limit
+```
+
+Turn it on once the webhook is in `.env`, and run it once by hand:
+
+```bash
+systemctl enable --now standardphysics-monitor.timer
+systemctl start standardphysics-monitor.service
+journalctl -u standardphysics-monitor.service     # prints the failing checks, or "every check passes"
+```
+
+To see a real alert arrive, point `SP_MONITOR_URL` in `.env` at a URL that
+answers 404, start the service, then put it back and start it again: that
+sends one failure message and one recovery.
+
+The monitor runs on the Droplet it watches, so it cannot report the Droplet
+itself being off or unreachable. Add an outside check for that: a
+DigitalOcean uptime check on `https://api.standardphysics.app/health`, with
+its own email or Slack alert, takes a few minutes in the control panel.
+`doctor.sh` reports whether alerts are on.
+
+### What else is worth watching
+
+These are the conditions worth a person's attention, including the ones the
+monitor does not cover, what to poll for each, and whether `/health/details`
+already answers it. Its body looks like this:
 
 ```json
 {
@@ -413,9 +476,10 @@ looks like this:
 | Failed deploy | `scripts/deploy.sh` exits non-zero: 75 means jobs were in flight, 69 means the queue could not be read, 66 means no tested image exists for the commit, anything else means the pull, build or restart failed. After a deploy, the `commit` in `/health/details` should match the last line of `/var/log/standardphysics-deploys.log`, which only records deploys that got as far as the restart. | the script's exit code, `/health/details` | The commit only |
 | Tracing off | Only when `WANDB_PROJECT` is set on purpose and traces stop arriving. `tracing` in `/health/details` says whether tracing started and, when it did not, why. It reports that the client started, not that each trace arrived. | `/health/details`, the API log's `weave tracing is off` warning | Yes |
 
-A cron job on the Droplet that curls `/health/details` and runs `df` every
-few minutes, posting to a webhook when a row trips, covers the first four.
-DigitalOcean's uptime checks can watch `/health` from outside.
+`monitor.sh` covers the queue age, a worker that has died, stalled or overrun
+its deadline (through `/health/ready`), the scans volume's free space and
+the backup's age. It does not watch the backup destination's disk, a failed
+deploy, or tracing.
 
 ## Pointing the app at it
 

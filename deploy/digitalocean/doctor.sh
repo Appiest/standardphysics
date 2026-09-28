@@ -9,7 +9,7 @@
 # by the wrong user, which is what it usually is.
 set -uo pipefail
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 
 PASS=0
 FAIL=0
@@ -142,6 +142,20 @@ check_blender() {
   fi
 }
 
+check_monitoring() {
+  head_ "Alerts"
+  if [ -z "$(env_value SP_ALERT_WEBHOOK)" ]; then
+    note "off: nobody hears about an outage until SP_ALERT_WEBHOOK is set in .env"
+    return
+  fi
+  if systemctl is-active --quiet standardphysics-monitor.timer 2>/dev/null; then
+    ok "monitor.sh runs every five minutes"
+  else
+    bad "SP_ALERT_WEBHOOK is set but the monitor timer is not running" \
+        "systemctl enable --now standardphysics-monitor.timer"
+  fi
+}
+
 show_recent_errors() {
   head_ "Last words from the API"
   local lines
@@ -160,6 +174,7 @@ main() {
   check_dns
   check_containers
   check_blender
+  check_monitoring
   show_recent_errors
 
   head_ "Summary"
