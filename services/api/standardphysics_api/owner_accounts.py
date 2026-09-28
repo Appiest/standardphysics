@@ -9,6 +9,7 @@ into it.
 
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 
@@ -33,6 +34,8 @@ from .auth import (
 from .db import Database
 from .errors import ApiProblem
 
+log = logging.getLogger(__name__)
+
 DEVICE_TOKEN = re.compile(r"^[0-9a-fA-F]{32,200}$")
 GUESTS_PER_ADDRESS = 20
 GUEST_WINDOW_SECONDS = 3600
@@ -54,13 +57,29 @@ class AppleSignIn(BaseModel):
 
 
 def _linked_by_email(connection: sqlite3.Connection, identity: AppleIdentity) -> Owner | None:
-    """An account that already has this person's Apple email, which Apple has confirmed is theirs."""
+    """An account that already has this person's Apple email, which Apple has confirmed is theirs.
+
+    Nothing confirmed the email when the account was made, so the Apple ID
+    takes it over and the password and sessions it had are revoked.
+    """
     if not identity.email or not identity.email_verified:
         return None
     owner = accounts.owner_by_email(connection, identity.email)
     if owner is None or owner.guest:
         return None
-    return accounts.attach_apple(connection, owner, identity.subject, None)
+    revoked = accounts.claim_for_apple(connection, owner, identity.subject)
+    log.warning(
+        "account %s was claimed by the Apple ID with its verified email: its password, %d session(s) and "
+        "%d push token(s) were revoked", owner.id, revoked.sessions, revoked.devices,
+    )
+    return owner
+
+
+def revoke_passwords_left_on_apple_accounts(database: Database) -> None:
+    with database.transaction() as connection:
+        revoked = accounts.revoke_passwords_on_apple_accounts(connection)
+    if revoked:
+        log.warning("revoked the password on %d account(s) that Apple signs in to", revoked)
 
 
 def _apple_owner(connection: sqlite3.Connection, identity: AppleIdentity, current: Owner | None) -> Owner:

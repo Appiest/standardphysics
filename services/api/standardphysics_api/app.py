@@ -77,7 +77,7 @@ from .loop_run import run as run_loop_on
 from .loop_run import stream as stream_loop_on
 from .model_loop import loop_info, stream_model_loop
 from .notifications import notifier_from
-from .owner_accounts import install_account_routes
+from .owner_accounts import install_account_routes, revoke_passwords_left_on_apple_accounts
 from .owner_requests import carry_answers
 from .owner_routes import answered, install_owner_routes
 from .plans import install_plan_routes
@@ -171,6 +171,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
         stages = Stages(ledger_factory=preview_ledger) if settings.preview_unverified_rules else Stages()
     database = Database(settings.database_path)
     adopt_allowlist(database, settings.team_emails)
+    revoke_passwords_left_on_apple_accounts(database)
     quota = ScanQuota(settings.max_scan_artifacts, settings.max_scan_bytes)
     store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes, quota)
     worker = Worker(database, store, stages, settings)
