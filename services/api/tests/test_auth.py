@@ -159,6 +159,29 @@ def test_the_scan_list_holds_only_your_own_shops(client, stranger):
     assert [s["id"] for s in stranger.get("/api/scans").json()["scans"]] == [theirs]
 
 
+def _other_spellings(scan_id: str) -> list[str]:
+    """Every way uuid.UUID parses the same scan that is not the canonical hyphenated form."""
+    hexes = uuid.UUID(scan_id).hex
+    return [hexes, hexes.upper(), "{" + scan_id + "}", "urn:uuid:" + scan_id]
+
+
+def test_another_spelling_of_someone_elses_scan_id_is_still_not_theirs(client, stranger):
+    """The guard matched only the 36-character form while the routes parse any UUID, so a hyphenless id walked past it."""
+    theirs = create_scan(client)
+    for spelling in _other_spellings(theirs):
+        assert stranger.get(f"/api/scans/{spelling}").status_code == 404, spelling
+        assert stranger.get(f"/api/scans/{spelling}/journey").status_code == 404, spelling
+        assert stranger.delete(f"/api/scans/{spelling}").status_code == 404, spelling
+    assert client.get(f"/api/scans/{theirs}").status_code == 200
+
+
+def test_another_spelling_of_a_scan_id_does_not_open_a_team_tool(client):
+    mine = create_scan(client)
+    for spelling in _other_spellings(mine):
+        response = client.post(f"/api/scans/{spelling}/rebuild")
+        assert response.status_code in (403, 404), (spelling, response.status_code)
+
+
 def test_a_missing_scan_is_not_found_rather_than_forbidden(client):
     assert client.get(f"/api/scans/{uuid.uuid4()}").status_code == 404
 
