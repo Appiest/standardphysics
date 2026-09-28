@@ -5,7 +5,8 @@
 #
 # It installs Docker, mounts the Block Storage volume, gives the box swap so a
 # 4 GB Droplet can build the workspace, and closes every port but SSH and the
-# two Caddy needs. It also installs a nightly backup timer, left off until .env
+# two Caddy needs. It installs a logrotate rule for the deploy log that
+# scripts/deploy.sh appends to. It also installs a nightly backup timer, left off until .env
 # names somewhere to send the backups, and a monitor that runs every five
 # minutes, left off until .env names somewhere to send alerts. Running it
 # twice changes nothing the second time.
@@ -121,6 +122,15 @@ enable_unattended_upgrades() {
   dpkg-reconfigure -f noninteractive unattended-upgrades
 }
 
+# The containers' own logs are capped in docker-compose.yml. This covers the
+# files the deploy scripts append to on the host, which nothing else trims.
+# logrotate refuses a rule file that anyone but root can write, hence 0644.
+install_log_rotation() {
+  log "Rotating the deploy log"
+  apt-get install -y -qq logrotate
+  install -m 0644 -o root -g root "$HERE/logrotate.conf" /etc/logrotate.d/standardphysics
+}
+
 env_has() {
   [ -f "$HERE/.env" ] && grep -Eq "^$1=.+" "$HERE/.env"
 }
@@ -214,6 +224,7 @@ main() {
   close_ports
   use_bbr
   enable_unattended_upgrades
+  install_log_rotation
   install_backup_timer
   install_monitor_timer
 

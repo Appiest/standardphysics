@@ -44,11 +44,24 @@
 # core free for Caddy and SSH while a bake has the box, and costs the bake up
 # to an eighth of its speed. The workspace gets one core, so a burst of page
 # renders cannot take the bake's second one.
+#
+# Docker keeps every line a container prints in a json-file on the Droplet
+# disk, and by default never deletes any of it. Each service below keeps at
+# most five 20 MB files, 100 MB per container, which is days of API logs even
+# through a busy bake. `docker compose logs` reads the same files, so what it
+# can show goes back that far and no further.
+
+x-logging: &rotated-logs
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
 
 services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    logging: *rotated-logs
     ports:
       - "80:80"
       - "443:443"
@@ -78,6 +91,7 @@ services:
     image: standardphysics:${GIT_SHA:-latest}
     command: ["api"]
     restart: unless-stopped
+    logging: *rotated-logs
     mem_limit: 3200m
     memswap_limit: 4200m
     cpus: 1.75
@@ -121,6 +135,7 @@ services:
     image: standardphysics:${GIT_SHA:-latest}
     command: ["web"]
     restart: unless-stopped
+    logging: *rotated-logs
     mem_limit: 512m
     memswap_limit: 768m
     cpus: 1.0

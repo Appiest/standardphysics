@@ -45,7 +45,8 @@ VOLUME_NAME=standardphysics-scans ./setup.sh
 ```
 
 That installs Docker, mounts the volume, adds swap, closes every port but SSH
-and the two Caddy needs, and turns on unattended security updates. It never
+and the two Caddy needs, turns on unattended security updates, and installs
+the logrotate rule for the deploy log. It never
 formats a disk that already holds a filesystem, so running it again on a box
 with scans on it is safe.
 
@@ -89,6 +90,13 @@ The compose file caps the API at 3.2 GB and 1.75 cores and the workspace at
 Docker and SSH still have room. The comment at the top of
 `docker-compose.yml` has the arithmetic. On a bigger Droplet, raise them
 there.
+
+Logs are capped too, so a chatty week cannot fill the Droplet disk. Docker
+keeps each container's output in at most five 20 MB files, which is as far
+back as `docker compose logs` can reach. `setup.sh` installs
+`deploy/digitalocean/logrotate.conf` as `/etc/logrotate.d/standardphysics`,
+which rotates the deploy log once it passes 1 MB and keeps ten old files. A
+box set up before that rule existed gets it by running `setup.sh` again.
 
 ## Blender
 
