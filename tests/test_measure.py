@@ -187,6 +187,59 @@ def test_an_outline_with_no_area_contains_nothing():
     assert contains_point([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)], (0.5, 0.5))
 
 
+def _unanchored_photo_candidate(graph: SceneGraph, height: float) -> SceneNode:
+    """What discovery emits for a sighting with no measured surface behind it:
+    no size, and an attachment asking for review. This one sits in the pinch
+    between the display cases, where any cell it claimed would change the width."""
+    west = graph.by_id(node_id("case_west")).transform.position
+    east = graph.by_id(node_id("case_east")).transform.position
+    return SceneNode(
+        id=uuid.uuid5(uuid.NAMESPACE_OID, "unanchored_candidate_television"),
+        kind="candidate_television",
+        label="Candidate television (tv)",
+        raw_category="tv",
+        dimensions=Vec3(x=0.0, y=0.0, z=0.0),
+        transform=Mat4(m=[
+            1.0, 0.0, 0.0, (west.x + east.x) / 2,
+            0.0, 1.0, 0.0, (west.y + east.y) / 2,
+            0.0, 0.0, 1.0, height,
+            0.0, 0.0, 0.0, 1.0,
+        ]),
+        quality="needs_another_look",
+        movable=False,
+        labeled_by="discovery",
+        attachment=SurfaceAttachment(
+            support_type="unanchored",
+            localization_quality="unanchored",
+            review_status="candidate",
+        ),
+    )
+
+
+@pytest.mark.parametrize("height", [0.5, 1.54])
+def test_a_sizeless_photo_candidate_leaves_the_route_as_it_was(shop, height):
+    """Moffett A-102 carried one of these at 1.54 m and every route on the
+    floor read as unreachable."""
+    graph, scenario, measure = shop
+    candidate = _unanchored_photo_candidate(graph, height)
+    with_candidate = graph.model_copy(update={"nodes": [*graph.nodes, candidate]})
+
+    assert not blocks_floor(candidate)
+    result = measure.route_clear_width(with_candidate, scenario, 0)
+    assert result.reachable
+    assert result.inches == pytest.approx(PINCH_INCHES, abs=1e-6)
+    assert not build_grid(with_candidate).occupied.all()
+
+
+def test_a_sizeless_wall_still_fails_closed(shop):
+    graph, _, _ = shop
+    nodes = [
+        node.model_copy(update={"dimensions": Vec3(x=0.0, y=0.0, z=0.0)}) if node.id == node_id("wall_north") else node
+        for node in graph.nodes
+    ]
+    assert build_grid(graph.model_copy(update={"nodes": nodes})).occupied.all()
+
+
 def test_occupied_cells_name_an_object_or_are_the_world_edge(shop):
     """Ground beyond the building is closed off but belongs to no node, so a
     finding can never blame the edge of the world for a pinch."""

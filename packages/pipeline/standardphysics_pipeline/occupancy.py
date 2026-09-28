@@ -172,13 +172,25 @@ def blocks_floor(node: SceneNode) -> bool:
     whose underside is a metre up has a high top and blocks nothing on the
     floor; ADA 2010 307 handles it as a protruding object instead. A floor mat
     has a low top and blocks nothing either.
+
+    A node that measured nothing blocks nothing: it says where something was
+    seen, not how much floor it takes up.
     """
-    if node.kind in PASSABLE_KINDS:
+    if node.kind in PASSABLE_KINDS or measured_nothing(node):
         return False
     centre = node.transform.position.z
     top = centre + node.dimensions.z / 2
     bottom = centre - node.dimensions.z / 2
     return top > BLOCKING_HEIGHT and bottom < CANE_DETECTABLE
+
+
+def measured_nothing(node: SceneNode) -> bool:
+    """Whether the node has no size in any direction.
+
+    A wall is allowed to have no thickness and a floor no height, but nothing
+    real has no extent at all.
+    """
+    return max(node.dimensions.as_tuple()) <= 0
 
 
 def _rotation_2d(node: SceneNode) -> tuple[float, float]:
@@ -210,7 +222,7 @@ def _bounds(graph: SceneGraph) -> tuple[float, float, float, float]:
 
 def build_grid(graph: SceneGraph, cell_size: float = CELL_SIZE) -> Grid:
     min_x, min_y, max_x, max_y = _bounds(graph)
-    if _measures_nothing(graph):
+    if _shell_measures_nothing(graph):
         return _all_blocked(min_x, min_y, max_x, max_y, cell_size)
     cols = max(int(np.ceil((max_x - min_x) / cell_size)), 1)
     rows = max(int(np.ceil((max_y - min_y) / cell_size)), 1)
@@ -239,8 +251,8 @@ def build_grid(graph: SceneGraph, cell_size: float = CELL_SIZE) -> Grid:
     )
 
 
-def _measures_nothing(graph: SceneGraph) -> bool:
-    """Whether the capture handed back a region with no size in any direction.
+def _shell_measures_nothing(graph: SceneGraph) -> bool:
+    """Whether part of the room itself came back with no size in any direction.
 
     A wall is allowed to have no thickness and a floor no height, but nothing
     real has no extent at all. One of those in the graph means the capture did
@@ -253,7 +265,7 @@ def _measures_nothing(graph: SceneGraph) -> bool:
     either way, and one of them used to close every route in the room.
     """
     return any(
-        max(node.dimensions.as_tuple()) <= 0 for node in graph.nodes if not is_fixed_to_a_surface(node)
+        measured_nothing(node) and not is_fixed_to_a_surface(node) for node in graph.nodes
     )
 
 
