@@ -207,7 +207,6 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     )
     _install_scan_routes(app, database, store, budgets)
     reservations = UploadReservations(settings.max_owner_uploads, settings.max_concurrent_uploads)
-    app.state.upload_reservations = reservations
     _install_upload_routes(app, database, store, worker, settings, budgets, reservations)
     _install_workspace_routes(app, database, store, stages)
     install_owner_routes(app, database, store, stages)
