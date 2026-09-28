@@ -80,7 +80,7 @@ from .model_loop import loop_info, stream_model_loop
 from .notifications import notifier_from
 from .owner_accounts import install_account_routes, revoke_passwords_left_on_apple_accounts
 from .owner_requests import carry_answers
-from .owner_routes import answered, install_owner_routes
+from .owner_routes import PhotoLimits, answered, install_owner_routes
 from .plans import install_plan_routes
 from .proposals import propose
 from .questions import answer_question
@@ -213,7 +213,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
     reservations = UploadReservations(settings.max_owner_uploads, settings.max_concurrent_uploads)
     _install_upload_routes(app, database, store, worker, settings, budgets, reservations)
     _install_workspace_routes(app, database, store, stages)
-    install_owner_routes(app, database, store, stages)
+    install_owner_routes(app, database, store, stages, PhotoLimits(budgets, reservations))
     _install_combine_routes(app, database, store, worker)
     _install_file_routes(app, database, store)
     _install_layout_routes(app, database, stages, worker)

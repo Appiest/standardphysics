@@ -172,3 +172,23 @@ class UploadAdmission:
         except ScanFull as full:
             raise ApiProblem(413, str(full)) from None
         self.budgets.admit_owner_bytes(connection, self.owner, incoming_bytes + owner_in_flight)
+
+
+@dataclass(frozen=True)
+class PhotoAdmission:
+    """The limits an answer photo answers to: its owner's budget, the disk, and how many uploads are
+    streaming already. A photo is not an artifact, so the scan's artifact quota doesn't count it; each
+    request keeps one photo, which caps a scan's photos at one per request."""
+
+    budgets: Budgets
+    store: ArtifactStore
+    owner: Owner
+    reservations: UploadReservations
+
+    def before_reading(self, connection: sqlite3.Connection, declared_bytes: int, in_flight: InFlight) -> None:
+        self.budgets.admit_disk(self.store, declared_bytes + in_flight.disk_bytes)
+        self.budgets.admit_owner_bytes(connection, self.owner, declared_bytes + in_flight.owner_bytes)
+
+    def before_storing(self, connection: sqlite3.Connection, staged_bytes: int) -> None:
+        self.budgets.admit_disk(self.store, 0)
+        self.budgets.admit_owner_bytes(connection, self.owner, staged_bytes)

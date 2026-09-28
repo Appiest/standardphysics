@@ -1,10 +1,15 @@
 """What the app asks the owner for, what they answer, and what that changes."""
 
+import asyncio
 import io
+import uuid
 
+import httpx
+import pytest
 from PIL import Image
 
 from conftest import create_scan, drain
+from standardphysics_api.store import ArtifactStore
 
 IN_SHOP = ["restroom", "inside_doors", "entrance_threshold", "door_hardware", "floor_surface",
            "restroom_turning_space", "door_opening_force"]
@@ -157,3 +162,84 @@ def test_a_walk_cannot_replace_someone_else_s_shop(client, stranger):
     theirs = create_scan(client)
     refused = stranger.post("/api/scans", json={"name": "Mine", "device_model": "iPhone", "duration_seconds": 1, "replaces": theirs})
     assert refused.status_code == 404
+
+
+STAGING_WAIT_SECONDS = 10
+
+
+def _photo_path(scan_id: str, request_id: str = "door_hardware") -> str:
+    return f"/api/scans/{scan_id}/requests/{request_id}/photo"
+
+
+def _free_space(monkeypatch, free: int) -> None:
+    monkeypatch.setattr(ArtifactStore, "free_bytes", lambda self: free)
+
+
+async def _held_photo(photo: bytes, release: asyncio.Event):
+    await release.wait()
+    yield photo
+
+
+async def _second_photo_while_the_first_streams(client, scan_id: str) -> tuple[int, int]:
+    """Start one photo whose body waits, send a second while it waits, then let the first finish."""
+    photo, release = _jpeg(), asyncio.Event()
+    staging = client.app.state.store.scan_dir(uuid.UUID(scan_id)) / "artifacts"
+    session = {"Cookie": "; ".join(f"{name}={value}" for name, value in client.cookies.items())}
+    length = {"Content-Length": str(len(photo))}
+    transport = httpx.ASGITransport(app=client.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver", headers=session) as racing:
+        first = asyncio.create_task(
+            racing.put(_photo_path(scan_id), content=_held_photo(photo, release), headers=length)
+        )
+        async with asyncio.timeout(STAGING_WAIT_SECONDS):
+            while not list(staging.glob(".upload-*")) and not first.done():
+                await asyncio.sleep(0.01)
+        assert not first.done(), (await first).text
+        second = await racing.put(_photo_path(scan_id, "floor_surface"), content=photo, headers=length)
+        release.set()
+        return (await first).status_code, second.status_code
+
+
+@pytest.mark.parametrize(
+    ("limit", "refusal"), [({"max_owner_uploads": 1}, 429), ({"max_concurrent_uploads": 1}, 503)]
+)
+def test_photos_past_the_upload_cap_are_refused_with_a_retry(make_client, limit, refusal):
+    with make_client(**limit) as client:
+        scan_id = create_scan(client)
+        statuses = asyncio.run(_second_photo_while_the_first_streams(client, scan_id))
+        after = client.put(_photo_path(scan_id, "floor_surface"), content=_jpeg())
+    assert statuses == (200, refusal)
+    assert after.status_code == 200, after.text
+
+
+def test_two_photos_that_together_cross_the_disk_floor_are_not_both_taken(make_client, monkeypatch):
+    with make_client(min_free_disk_bytes=1_000_000) as client:
+        scan_id = create_scan(client)
+        _free_space(monkeypatch, 1_000_000 + len(_jpeg()) * 3 // 2)
+        statuses = asyncio.run(_second_photo_while_the_first_streams(client, scan_id))
+    assert statuses == (200, 507)
+
+
+def test_low_disk_refuses_a_photo_before_reading_it(make_client, monkeypatch):
+    with make_client(min_free_disk_bytes=1_000_000) as client:
+        scan_id = create_scan(client)
+        _free_space(monkeypatch, 999_999)
+        refused = client.put(_photo_path(scan_id), content=_jpeg())
+        request = _requests(client, scan_id)["door_hardware"]
+        stored = list(client.app.state.store.scan_dir(uuid.UUID(scan_id)).rglob("*.jpg"))
+    assert refused.status_code == 507, refused.text
+    assert request["status"] == "open"
+    assert stored == []
+
+
+def test_a_photo_counts_against_the_owner_byte_budget(make_client):
+    with make_client(max_owner_bytes=len(_jpeg()) - 1) as client:
+        scan_id = create_scan(client)
+        refused = client.put(_photo_path(scan_id), content=_jpeg())
+    assert refused.status_code == 413, refused.text
+
+
+def test_a_photo_declared_over_the_size_cap_is_refused_unread(client):
+    scan_id = create_scan(client)
+    refused = client.put(_photo_path(scan_id), content=_jpeg(), headers={"Content-Length": str(16 * 1024 * 1024)})
+    assert refused.status_code == 413, refused.text
