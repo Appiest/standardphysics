@@ -49,3 +49,8 @@ jobs:
       # the limit is for a worker that hangs.
       - run: scripts/smoke_image.sh standardphysics:ci
         timeout-minutes: 10
+      # The Python job has no Blender, so the export, render and bake
+      # regressions skip there. This image has the pinned Blender, and the
+      # script fails if any of them skip for want of it.
+      - run: scripts/test_blender_in_image.sh standardphysics:ci
+        timeout-minutes: 12
