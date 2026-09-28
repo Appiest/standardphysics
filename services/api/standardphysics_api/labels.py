@@ -27,6 +27,7 @@ from standardphysics_contracts.textures import FRAME_ID_PATTERN
 from standardphysics_pipeline.discovery.crops import save_crop
 
 from . import repository as repo
+from .budgets import admit_new_job
 from .db import Database
 from .errors import ApiProblem
 from .layout import STALE_LAYOUT
@@ -74,6 +75,7 @@ def review_outlet(
     with database.transaction() as connection:
         if repo.latest_revision_number(connection, scan_id) != base_revision:
             raise ApiProblem(409, STALE_LAYOUT)
+        admit_new_job(connection, worker.settings.max_queued_jobs)
         repo.save_revision(connection, saved, source="owner", base_revision=base_revision)
         repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
     worker.wake()
@@ -139,6 +141,7 @@ def mark_observation(
     with database.transaction() as connection:
         if repo.latest_revision_number(connection, scan_id) != base_revision:
             raise ApiProblem(409, STALE_LAYOUT)
+        admit_new_job(connection, worker.settings.max_queued_jobs)
         repo.save_revision(connection, saved, source="owner", base_revision=base_revision)
         repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
     worker.wake()
@@ -208,6 +211,7 @@ def _relabel(database, worker, scan_id, base_revision, node_id, change) -> Scene
     with database.transaction() as connection:
         if repo.latest_revision_number(connection, scan_id) != base_revision:
             raise ApiProblem(409, STALE_LAYOUT)
+        admit_new_job(connection, worker.settings.max_queued_jobs)
         repo.save_revision(connection, saved, source="owner", base_revision=base_revision)
         repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
     worker.wake()

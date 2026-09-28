@@ -21,6 +21,7 @@ from standardphysics_contracts import (
 )
 
 from . import repository as repo
+from .budgets import admit_new_job
 from .db import Database
 from .errors import ApiProblem
 from .stages import Stages
@@ -70,6 +71,7 @@ def save_layout(database: Database, worker: Worker, scan_id: uuid.UUID, body: Sa
         latest = repo.latest_revision_number(connection, scan_id)
         if latest != body.base_revision:
             raise ApiProblem(409, STALE_LAYOUT)
+        admit_new_job(connection, worker.settings.max_queued_jobs)
         repo.save_revision(connection, saved, source="owner", base_revision=body.base_revision)
         repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
     worker.wake()

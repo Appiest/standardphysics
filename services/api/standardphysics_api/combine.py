@@ -25,6 +25,7 @@ from standardphysics_pipeline.ingest import parse_room_json
 from standardphysics_pipeline.registration import PlaneAlignment, align_points
 
 from . import repository as repo
+from .budgets import admit_new_job
 from .db import Database
 from .errors import ApiProblem
 from .store import ArtifactStore
@@ -121,6 +122,7 @@ def save_combine(database: Database, worker: Worker, scan_id: uuid.UUID, body: S
     with database.transaction() as connection:
         if repo.latest_revision_number(connection, scan_id) != body.base_revision:
             raise ApiProblem(409, "a newer layout was saved since this one started")
+        admit_new_job(connection, worker.settings.max_queued_jobs)
         repo.save_revision(connection, saved, source="owner", base_revision=body.base_revision)
         repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
     worker.wake()

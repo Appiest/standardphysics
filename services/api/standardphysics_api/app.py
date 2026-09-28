@@ -65,7 +65,7 @@ from . import repository as repo
 from .approach import evaluate as evaluate_approach
 from .architecture_export import install_architecture_export_routes
 from .auth import install_auth, owner_of
-from .budgets import Budgets, InFlight, Reservation, UploadAdmission, UploadReservations
+from .budgets import Budgets, InFlight, Reservation, UploadAdmission, UploadReservations, admit_new_job
 from .combine import SaveCombineRequest, rooms_of, save_combine
 from .coverage import parse_coverage
 from .db import Database
@@ -543,6 +543,7 @@ def _install_upload_routes(
                 explicit = maybe_queue_semantic(
                     connection, current, PROCESS,
                     settle_seconds=settings.evidence_settle_seconds, explicit=True,
+                    max_queued_jobs=budgets.queued_jobs,
                 ) == "queued"
             if explicit:
                 worker.wake()
@@ -889,7 +890,8 @@ def _install_file_routes(app: FastAPI, database: Database, store: ArtifactStore)
 def _install_simulation_routes(app: FastAPI, database: Database, stages: Stages, worker: Worker) -> None:
     @app.post("/api/scans/{scan_id}/simulations", response_model=SimulationStatus, status_code=202)
     def start_simulation(scan_id: uuid.UUID, body: SimulationRequest) -> SimulationStatus:
-        return queue_simulation(database, stages, worker, scan_id, body)
+        limit = worker.settings.max_queued_jobs
+        return queue_simulation(database, stages, worker, scan_id, body, max_queued_jobs=limit)
 
     @app.get("/api/scans/{scan_id}/simulations", response_model=SimulationStatus)
     def get_simulation(scan_id: uuid.UUID, revision: int) -> SimulationStatus:
@@ -912,6 +914,7 @@ def _install_simulation_routes(app: FastAPI, database: Database, stages: Stages,
         with database.transaction() as connection:
             if repo.latest_revision_number(connection, scan_id) != base.revision:
                 raise ApiProblem(409, STALE_LAYOUT)
+            admit_new_job(connection, worker.settings.max_queued_jobs)
             repo.save_revision(connection, rebuilt, source="rebuild", base_revision=base.revision)
             repo.enqueue_job(connection, scan_id, ASSESS, rebuilt.revision)
         worker.wake()

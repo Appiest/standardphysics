@@ -31,6 +31,7 @@ from .store import ArtifactStore, ScanFull
 QUEUE_RETRY_SECONDS = 300
 LOW_DISK = "The server is running low on storage, so it can't take new uploads right now. Try again later."
 QUEUE_FULL = "Lots of shops are being measured right now. Your walk is saved, so try again in a few minutes."
+QUEUE_BUSY = "Lots of shops are being measured right now, so this can't be checked yet. Try again in a few minutes."
 UPLOAD_RETRY_SECONDS = 30
 
 
@@ -60,8 +61,20 @@ class Budgets:
             raise ApiProblem(507, LOW_DISK)
 
     def admit_queued_work(self, connection: sqlite3.Connection) -> None:
-        if repo.queued_job_count(connection) >= self.queued_jobs:
-            raise ApiProblem(503, QUEUE_FULL, headers={"Retry-After": str(QUEUE_RETRY_SECONDS)})
+        admit_new_job(connection, self.queued_jobs, QUEUE_FULL)
+
+
+def admit_new_job(connection: sqlite3.Connection, max_queued_jobs: int | None, refusal: str = QUEUE_BUSY) -> None:
+    """Refuse a job someone is asking for while `max_queued_jobs` are already waiting, with a time to retry.
+
+    Call it in the transaction that queues the job, so two requests can't both take the last place.
+    `None` is work a finished job queues for itself, such as the checks after a measurement, which is
+    never refused: turning it away would leave a shop half done with nobody left to ask again.
+    """
+    if max_queued_jobs is None:
+        return
+    if repo.queued_job_count(connection) >= max_queued_jobs:
+        raise ApiProblem(503, refusal, headers={"Retry-After": str(QUEUE_RETRY_SECONDS)})
 
 
 @dataclass(frozen=True)
