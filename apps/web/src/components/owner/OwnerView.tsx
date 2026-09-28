@@ -18,7 +18,7 @@ import { PathStep } from "./PathStep";
 import { PlanPanel } from "./PlanPanel";
 import { PlanReview } from "./PlanReview";
 import { RequestList } from "./RequestList";
-import { ResultsPanel, type Row } from "./ResultsPanel";
+import { ResultsPanel, type ResultsSection, type Row } from "./ResultsPanel";
 import { SavePrompt } from "./SavePrompt";
 import { SharePanel } from "./SharePanel";
 import { StepHeading } from "./StepHeading";
@@ -190,6 +190,7 @@ function OwnerShop(props: ShopProps) {
   const [walkedLegs, setWalkedLegs] = useState<Vec3[][]>([]);
   const [fixingHere, setFixingHere] = useState(false);
   const [planFinding, setPlanFinding] = useState<Finding | null>(null);
+  const [resultsSection, setResultsSection] = useState<ResultsSection>(null);
   const review = useProposalReview(scan.id, scene.revision, scan.owner_wishes);
   const modelLabel = useModelLabel();
   const save = useSaveAsk(guest);
@@ -279,6 +280,8 @@ function OwnerShop(props: ShopProps) {
         stillToCheck={<StillToCheck scanId={scan.id} questions={readOnly ? [] : groups.questions} requests={props.requests} />}
         pending={groups.questions.length}
         fixRoom={fixRoom}
+        section={resultsSection}
+        onSection={setResultsSection}
         actions={{ onShow: (finding) => setSelected(finding.id === selected?.id ? null : finding), onStatus: statuses.set, onPlan: planFor }}
       >
         {!readOnly && <SharePanel scanId={scan.id} shopName={scan.name} onShared={save.ask} />}

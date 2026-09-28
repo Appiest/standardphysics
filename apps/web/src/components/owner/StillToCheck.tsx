@@ -11,8 +11,7 @@ export function StillToCheck({ scanId, questions, requests }: { scanId: string; 
   const sendable = questions.map((finding) => byFinding.get(finding.id)).filter(isSendable);
   const others = questions.filter((finding) => !isSendable(byFinding.get(finding.id)));
   return (
-    <section aria-labelledby="still-to-check" className="flex flex-col gap-3">
-      <h2 id="still-to-check" className="text-lg font-semibold">Still to check</h2>
+    <div className="flex flex-col gap-3">
       {sendable.length > 0 && <RequestList scanId={scanId} requests={sendable} />}
       {others.length > 0 && (
         <ul className="flex flex-col gap-2">
@@ -24,7 +23,7 @@ export function StillToCheck({ scanId, questions, requests }: { scanId: string; 
           ))}
         </ul>
       )}
-    </section>
+    </div>
   );
 }
 
