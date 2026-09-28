@@ -86,6 +86,8 @@ because a photo bake takes up to fifteen minutes and the loop beats only when
 it ends. A job that runs past its kind's deadline is reported overdue instead."""
 PROBLEM_STATES = ("stopped", "stalled", "overdue")
 """Loop states that mean jobs are not getting done, worst first."""
+STANDBY_RETRY_SECONDS = 5.0
+"""How often a process that found the queue taken tries the lock again."""
 LOOP_NAMES: dict[bool | str, str] = {False: "jobs", True: "textures", REARRANGE: "rearrange", FURNITURE: "furniture"}
 """Each worker loop by its lane: False takes every job but the laned kinds, True takes texture bakes,
 REARRANGE takes layout suggestions, whose provider calls can wait on a cold deployment, and FURNITURE
@@ -236,12 +238,25 @@ class Worker:
         if not self.lock.acquire():
             self._standby = True
             log.error(
-                "another worker already holds %s (process %s), so this process serves requests but runs no jobs;"
-                " run one API process per database",
+                "another worker already holds %s (process %s), so this process serves requests and takes over"
+                " the jobs when that process exits; run one API process per database",
                 self.lock.path,
                 self.lock.holder(),
             )
+            threading.Thread(target=self._wait_for_the_lock, name="standardphysics-standby", daemon=True).start()
             return
+        self._take_the_queue()
+
+    def _wait_for_the_lock(self) -> None:
+        """A deploy can overlap the old process for a moment; once it exits, this one runs the jobs."""
+        while not self._stop.wait(STANDBY_RETRY_SECONDS):
+            if self.lock.acquire():
+                self._standby = False
+                log.warning("the previous worker exited, so this process now runs the jobs")
+                self._take_the_queue()
+                return
+
+    def _take_the_queue(self) -> None:
         try:
             self._recover_interrupted_jobs()
         except Exception:

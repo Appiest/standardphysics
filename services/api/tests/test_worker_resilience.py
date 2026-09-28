@@ -246,6 +246,26 @@ def test_a_second_worker_on_the_same_database_refuses_to_run_jobs(make_client, c
             after_the_first_stopped.stop()
 
 
+def test_a_standby_worker_takes_the_queue_once_the_holder_exits(make_client, monkeypatch):
+    monkeypatch.setattr(worker_module, "STANDBY_RETRY_SECONDS", 0.05)
+    with make_client() as client:
+        first = client.app.state.worker
+        first.start()
+        second = Worker(first.database, first.store, first.stages, first.settings)
+        try:
+            second.start()
+            assert second.status()["lock"] == "standby"
+            first.stop()
+            assert _wait_for(lambda: second.status()["lock"] == "held", seconds=5)
+            assert _wait_for(lambda: all(pulse.thread is not None for pulse in second.pulses.values()), seconds=5)
+            scan_id = create_scan(client)
+            _queue(client, scan_id, PROCESS)
+            second.wake()
+            assert _wait_for(lambda: _job(client, scan_id, PROCESS)["state"] != "queued", seconds=10)
+        finally:
+            second.stop()
+
+
 @contextlib.contextmanager
 def _one_queued_job(make_client, kind: str = "simulate"):
     """A client with one queued job, so a test can break the worker only after the API has set it up."""
