@@ -23,6 +23,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field
 
+from . import drain
 from . import repository as repo
 from .accounts import Owner
 from .errors import ApiProblem
@@ -70,9 +71,11 @@ def admit_new_job(connection: sqlite3.Connection, max_queued_jobs: int | None, r
     Call it in the transaction that queues the job, so two requests can't both take the last place.
     `None` is work a finished job queues for itself, such as the checks after a measurement, which is
     never refused: turning it away would leave a shop half done with nobody left to ask again.
+    While a deploy drains the API every other job is refused, so the restart has nothing new to interrupt.
     """
     if max_queued_jobs is None:
         return
+    drain.refuse_new_work(connection)
     if repo.queued_job_count(connection) >= max_queued_jobs:
         raise ApiProblem(503, refusal, headers={"Retry-After": str(QUEUE_RETRY_SECONDS)})
 

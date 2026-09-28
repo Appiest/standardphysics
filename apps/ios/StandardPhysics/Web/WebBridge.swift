@@ -222,6 +222,11 @@ final class PhotoPickerDelegate: NSObject, UIImagePickerControllerDelegate, UINa
 }
 
 /// Loads a page in a web view nobody sees and prints it to a PDF.
+///
+/// The view sits in the app's window, just past its right edge. Left out of
+/// any window, WebKit drops the page's process to a background role as soon as
+/// the page loads. On a busy CI simulator the load then finished but `pdf()`
+/// did not come back before the timeout, three runs in four.
 @MainActor
 final class LinkPDFRenderer: NSObject, WKNavigationDelegate {
     /// US Letter, so the file prints on the paper a landlord or inspector has.
@@ -239,6 +244,7 @@ final class LinkPDFRenderer: NSObject, WKNavigationDelegate {
         configuration.websiteDataStore = .nonPersistent()
         let view = WKWebView(frame: CGRect(origin: .zero, size: Self.pageSize), configuration: configuration)
         view.navigationDelegate = self
+        Self.parkPastTheScreenEdge(view)
         webView = view
         return await withCheckedContinuation { continuation in
             self.continuation = continuation
@@ -269,7 +275,26 @@ final class LinkPDFRenderer: NSObject, WKNavigationDelegate {
         continuation?.resume(returning: data)
         continuation = nil
         webView?.navigationDelegate = nil
+        webView?.removeFromSuperview()
         webView = nil
+    }
+
+    private static func parkPastTheScreenEdge(_ view: WKWebView) {
+        guard let window = UIApplication.shared.foregroundWindow else { return }
+        view.frame.origin = CGPoint(x: window.bounds.maxX, y: 0)
+        view.isUserInteractionEnabled = false
+        view.accessibilityElementsHidden = true
+        window.addSubview(view)
+    }
+}
+
+private extension UIApplication {
+    var foregroundWindow: UIWindow? {
+        let windows = connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .filter { $0.activationState == .foregroundActive }
+            .flatMap(\.windows)
+        return windows.first(where: \.isKeyWindow) ?? windows.first
     }
 }
 

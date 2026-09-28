@@ -5,8 +5,11 @@ an exclusive lock on a file beside the database; a second process finds the
 lock held, says so in the log, and serves requests without running any job.
 Jobs are claimed atomically, and at startup every job left running is queued
 again, except a simulation, which is failed so that a restart never spends a
-second budget of paid model calls (`repo.fail_interrupted_simulations`). The
-lock is what makes that safe: no other live process can be running one of them.
+second budget of paid model calls (`repo.fail_interrupted_simulations`), and a
+job whose runs `max_job_interruptions` restarts in a row have cut short, which
+is failed so that an input that kills the server can't bring it down for ever
+(`repo.requeue_interrupted_jobs`). The lock is what makes that safe: no other
+live process can be running one of them.
 
 Neither loop stops on an error. A job's own failure is recorded on its row; an
 error outside any job, such as a database that stays locked, is logged and the
@@ -44,11 +47,12 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
-from standardphysics_agents.tracing import tracing_for_this_process
+from standardphysics_agents.tracing import flush_was_abandoned, tracing_for_this_process
 from standardphysics_contracts import SimulationRequest
 from standardphysics_pipeline.discovery.live import LiveReader, LiveReport
 from standardphysics_pipeline.floor_coverage import with_floor_coverage
 
+from . import drain as deploy_drain
 from . import evidence, guest_sweep
 from . import repository as repo
 from .db import Database
@@ -297,7 +301,15 @@ class Worker:
             connection.execute(
                 "UPDATE jobs SET state='failed', error=? WHERE kind=? AND state='running'", (INTERRUPTED, REARRANGE)
             )
-            repo.requeue_interrupted_jobs(connection)
+            stopped = repo.requeue_interrupted_jobs(connection, self.settings.max_job_interruptions)
+        for job in stopped:
+            log.error(
+                "job %s (%s, scan %s) was stopped after %s interrupted runs instead of being queued again",
+                job["id"],
+                job["kind"],
+                job["scan_id"],
+                job["interruptions"],
+            )
 
 
     def stop(self) -> None:
@@ -358,6 +370,8 @@ class Worker:
             pass
 
     def run_once(self, texture_only: bool | None = None, kind: str | None = None) -> bool:
+        if deploy_drain.is_draining(self.settings.data_dir):
+            return False
         with self.database.transaction() as connection:
             job = repo.claim_job(connection, texture_only, kind=kind)
         if job is None:
@@ -958,6 +972,21 @@ def _report_to_parent(sender, function: Callable[..., object], *args: object) ->
         )
     sender.send(report)
     sender.close()
+    _exit_past_a_stalled_flush()
+
+
+def _exit_past_a_stalled_flush() -> None:
+    """End the child now if Weave could not flush in time.
+
+    The SDK's own exit handlers wait, without a limit, for the queue that just
+    failed to drain, so an ordinary exit would sit there until the worker kills
+    the child at its job's deadline and fails a job that finished. The report is
+    already with the parent, and every database write was committed in its own
+    transaction, so skipping those handlers loses only the traces that were lost anyway.
+    """
+    if flush_was_abandoned():
+        logging.shutdown()
+        os._exit(0)
 
 
 def _kill_with_everything_it_started(child) -> None:

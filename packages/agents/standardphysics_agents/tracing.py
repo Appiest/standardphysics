@@ -11,6 +11,11 @@ each model call. `start_conversation`, `start_turn`, `start_tool` and
 `start_llm` wrap the SDK calls of the same names. With tracing off, or no
 conversation open, each yields an `Unrecorded` that accepts the same writes and
 keeps none of them.
+
+Nothing here may hold up the process either. `weave.init` and the final flush
+both talk to W&B over the network, so each runs on a daemon thread and is given
+up on after its deadline: API startup and a job child's exit wait that long at
+most for an endpoint that has stopped answering.
 """
 
 from __future__ import annotations
@@ -22,6 +27,7 @@ import os
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any, Callable, TypeVar
 
 Fn = TypeVar("Fn", bound=Callable[..., Any])
@@ -29,6 +35,15 @@ Fn = TypeVar("Fn", bound=Callable[..., Any])
 PROJECT_ENV = "WANDB_PROJECT"
 ENTITY_ENV = "WANDB_ENTITY"
 API_KEY_ENV = "WANDB_API_KEY"
+INIT_DEADLINE_ENV = "SP_WEAVE_INIT_TIMEOUT_SECONDS"
+FLUSH_DEADLINE_ENV = "SP_WEAVE_FLUSH_TIMEOUT_SECONDS"
+INIT_DEADLINE_SECONDS = 30.0
+"""How long `weave.init` may take before tracing is left off. It checks the key and
+creates the project, a few round trips that take a second or two when W&B is answering."""
+FLUSH_DEADLINE_SECONDS = 15.0
+"""How long draining the queue of unsent calls may take on the way out."""
+SENDER_LOGGER = "weave.trace_server_bindings"
+"""Where the Weave SDK logs a batch of calls it could not send."""
 
 WEAVE_SETTINGS = {"implicitly_patch_integrations": False}
 """Every agent and model span is opened by hand, so Weave's automatic patching
@@ -37,6 +52,72 @@ of model clients stays off. With both on, one call is recorded twice."""
 USAGE_FIELDS = ("input_tokens", "output_tokens")
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _Outcome:
+    finished: bool
+    error: Exception | None = None
+
+
+def _run_with_deadline(work: Callable[[], object], seconds: float, name: str) -> _Outcome:
+    """Run `work` on a daemon thread and stop waiting for it after `seconds`.
+
+    A thread can't be stopped from outside, so one that is still waiting on the
+    network is abandoned rather than killed. It is a daemon, so it never keeps
+    the process alive.
+    """
+    errors: list[Exception] = []
+
+    def run() -> None:
+        try:
+            work()
+        except Exception as error:
+            errors.append(error)
+
+    thread = threading.Thread(target=run, name=name, daemon=True)
+    thread.start()
+    thread.join(seconds)
+    if thread.is_alive():
+        return _Outcome(finished=False)
+    return _Outcome(finished=True, error=errors[0] if errors else None)
+
+
+def _deadline(env: str, default: float) -> float:
+    raw = os.environ.get(env)
+    if not raw:
+        return default
+    try:
+        seconds = float(raw)
+    except ValueError:
+        seconds = -1.0
+    if seconds > 0:
+        return seconds
+    log.warning("%s=%s is not a positive number of seconds, so %s is used", env, raw, default)
+    return default
+
+
+class _SenderErrors(logging.Handler):
+    """Counts what the Weave SDK logs at ERROR while sending calls.
+
+    The SDK sends from a background queue and never tells its caller whether a
+    call arrived; when a batch is dropped it logs the fact and moves on. These
+    log records are the only failures it surfaces, so a count of zero means
+    none were logged, not that every call was delivered.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.ERROR)
+        self.count = 0
+        self.last: str | None = None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.count += 1
+        self.last = record.getMessage()[:500]
+
+    def note(self, message: str) -> None:
+        self.count += 1
+        self.last = message
 
 
 class _Tracing:
@@ -48,6 +129,8 @@ class _Tracing:
         self._weave: Any = None
         self._ops: dict[Any, Callable[..., Any]] = {}
         self._flush_registered = False
+        self.sender_errors = _SenderErrors()
+        self.flush_abandoned = False
 
     @property
     def live(self) -> bool:
@@ -63,16 +146,21 @@ class _Tracing:
         if module is None:
             self.off_because = "the weave SDK could not be imported"
             return False
-        if not _open_project(module, target):
-            self.off_because = f"weave.init failed for {target}"
+        refusal = _open_project(module, target)
+        if refusal is not None:
+            self.off_because = refusal
             return False
         self._weave, self.project, self.off_because = module, target, None
+        logging.getLogger(SENDER_LOGGER).addHandler(self.sender_errors)
         self._flush_at_exit()
         return True
 
     def stop(self) -> None:
-        if self._weave is not None:
-            _flush(self._weave)
+        stalled = _flush(self._weave) if self._weave is not None else None
+        if stalled is not None:
+            self.flush_abandoned = True
+            self.sender_errors.note(stalled)
+        logging.getLogger(SENDER_LOGGER).removeHandler(self.sender_errors)
         self._weave, self.project, self._ops = None, None, {}
         self.off_because = "tracing was shut down"
 
@@ -188,31 +276,44 @@ def _warn_if_key_has_no_project() -> None:
         log.warning("weave tracing is off: %s is set but %s is not.", API_KEY_ENV, PROJECT_ENV)
 
 
-def _open_project(module: Any, target: str) -> bool:
-    """`weave.init` needs a key and a network, so it fails for reasons the
-    caller cannot see coming: a rejected key, no connection, a project the
-    account cannot write to. Any of those leaves tracing off and the server
-    running, because this lane may not require a third-party account.
+def _open_project(module: Any, target: str) -> str | None:
+    """Why `weave.init` left tracing off, or None when it came up.
+
+    `weave.init` needs a key and a network, so it fails for reasons the caller
+    cannot see coming: a rejected key, no connection, a project the account
+    cannot write to, an endpoint that accepts the connection and never answers.
+    Any of those leaves tracing off and the server running, because this lane
+    may not require a third-party account.
     """
-    try:
-        module.init(target, settings=dict(WEAVE_SETTINGS))
-    except Exception as error:
-        log.warning("weave tracing is off, %s said: %s", target, error)
-        return False
+    seconds = _deadline(INIT_DEADLINE_ENV, INIT_DEADLINE_SECONDS)
+    outcome = _run_with_deadline(lambda: module.init(target, settings=dict(WEAVE_SETTINGS)), seconds, "weave-init")
+    if not outcome.finished:
+        log.warning("weave tracing is off: weave.init for %s did not finish within %s s", target, seconds)
+        return f"weave.init for {target} did not finish within {seconds} s"
+    if outcome.error is not None:
+        log.warning("weave tracing is off, %s said: %s", target, outcome.error)
+        return f"weave.init failed for {target}"
     log.info("weave tracing is on for %s", target)
-    return True
+    return None
 
 
-def _flush(module: Any) -> None:
-    """Drain the queue of calls not yet sent. A failure here is logged and
-    swallowed, because it happens on the way out and must not stop a shutdown."""
+def _flush(module: Any) -> str | None:
+    """Drain the queue of calls not yet sent. Returns what went wrong when it ran out of time.
+
+    A failure here is logged and swallowed, because it happens on the way out
+    and must not stop a shutdown.
+    """
     finish = getattr(module, "finish", None)
     if finish is None:
-        return
-    try:
-        finish()
-    except Exception as error:
-        log.warning("weave could not flush its last traces: %s", error)
+        return None
+    seconds = _deadline(FLUSH_DEADLINE_ENV, FLUSH_DEADLINE_SECONDS)
+    outcome = _run_with_deadline(finish, seconds, "weave-flush")
+    if not outcome.finished:
+        log.warning("weave did not flush its last traces within %s s; the unsent ones are lost", seconds)
+        return f"weave did not flush within {seconds} s"
+    if outcome.error is not None:
+        log.warning("weave could not flush its last traces: %s", outcome.error)
+    return None
 
 
 def _project_name(project: str | None, entity: str | None) -> str | None:
@@ -264,9 +365,30 @@ def project_url() -> str | None:
     return f"https://wandb.ai/{_TRACING.project}/weave"
 
 
+def flush_was_abandoned() -> bool:
+    """Whether a flush in this process ran past its deadline.
+
+    The Weave SDK registers exit handlers that wait, without a limit, for the
+    same queue to drain, so a process that saw this should end with `os._exit`
+    once its own work is done.
+    """
+    return _TRACING.flush_abandoned
+
+
 def tracing_status() -> dict[str, Any]:
-    """Whether traces are being sent and where, or why not, for /health/details."""
-    return {"active": _TRACING.live, "project_url": project_url(), "off_because": _TRACING.off_because}
+    """Whether traces are being sent and where, or why not, for /health/details.
+
+    `delivery_errors` counts the send failures the Weave SDK logged and any
+    flush that ran out of time. The SDK reports nothing for a call that
+    arrived, so "active" means tracing came up, not that W&B has every call.
+    """
+    return {
+        "active": _TRACING.live,
+        "project_url": project_url(),
+        "off_because": _TRACING.off_because,
+        "delivery_errors": _TRACING.sender_errors.count,
+        "last_delivery_error": _TRACING.sender_errors.last,
+    }
 
 
 def traced(name: str) -> Callable[[Fn], Fn]:

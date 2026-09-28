@@ -12,6 +12,11 @@ on whether a key happens to be exported are not testing anything.
 
 So the keys are cleared for every test. A test that wants a model asks for the
 `with_models` fixture and says so, which also makes the ones that do stand out.
+
+Clearing keys only covers the calls we know about, so sockets are guarded too:
+tests/support/offline_network.py refuses every connection that leaves this
+machine. Asking for `with_models` marks a test `network`, which skips it unless
+SP_ALLOW_NETWORK_TESTS=1 is set and lets it through the guard when it is.
 """
 
 from __future__ import annotations
@@ -26,6 +31,14 @@ MODEL_KEYS = (
     "TYPESAFE_API_KEY",
     "TYPESAFE_BASE_URL",
 )
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(items):
+    """A test that reaches a real model reaches the network, so it is marked for it."""
+    for item in items:
+        if "with_models" in getattr(item, "fixturenames", ()):
+            item.add_marker(pytest.mark.network)
 
 
 @pytest.fixture(autouse=True)

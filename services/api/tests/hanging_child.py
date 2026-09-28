@@ -30,3 +30,26 @@ def raise_value_error(message: str) -> None:
 
 def double(number: int) -> int:
     return number * 2
+
+
+def trace_through_a_stalled_flush(project: str) -> str:
+    """Trace to a Weave whose flush never returns, and whose exit handler waits on it for ever as the real SDK's does."""
+    import atexit
+    import sys
+    import threading
+
+    from standardphysics_agents import tracing
+
+    never_answers = threading.Event()
+
+    class StalledWeave:
+        def init(self, target: str) -> None:
+            atexit.register(never_answers.wait)
+
+        def finish(self) -> None:
+            never_answers.wait()
+
+    sys.modules["weave"] = StalledWeave()  # type: ignore[assignment]
+    with tracing.tracing_for_this_process(project):
+        pass
+    return "finished"
