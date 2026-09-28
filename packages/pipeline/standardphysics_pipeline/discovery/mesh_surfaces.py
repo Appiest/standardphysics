@@ -23,6 +23,7 @@ from standardphysics_contracts import (
     stands_upright,
 )
 
+from ..occupancy import UNCLAIMED_SURFACE
 from .boxes import claimed_by_any, inside, to_local
 
 HEIGHT_BAND_M = 0.025
@@ -230,7 +231,7 @@ def _candidate_nodes(pieces: list[SurfacePiece], graph: SceneGraph,
         candidates.append(SceneNode(
             id=uuid.uuid5(CANDIDATE_NAMESPACE, f"{graph.scan_id}:{piece.orientation}:{piece.centre.as_tuple()}"),
             kind="surface_candidate", label=f"Unidentified {piece.orientation} surface",
-            raw_category="lidar_candidate", dimensions=piece.dimensions,
+            raw_category=UNCLAIMED_SURFACE, dimensions=piece.dimensions,
             transform=Mat4.translation(*piece.centre.as_tuple()), quality="needs_another_look",
             movable=False, labeled_by="lidar",
         ))
@@ -240,13 +241,13 @@ def _candidate_nodes(pieces: list[SurfacePiece], graph: SceneGraph,
 
 def segment_surfaces(faces: np.ndarray, graph: SceneGraph, before: SceneGraph | None = None) -> SegmentedSurfaces:
     """Segment original scanned faces; photo-discovered nodes can supply their names."""
-    graph = graph.model_copy(update={"nodes": [node for node in graph.nodes if node.raw_category != "lidar_candidate"]})
+    graph = graph.model_copy(update={"nodes": [node for node in graph.nodes if node.raw_category != UNCLAIMED_SURFACE]})
     if not len(faces):
         return SegmentedSurfaces(graph.nodes, [], 0.0, 0.0, 0.0)
     centres, area, vertical = _face_geometry(faces)
     original = before or graph
     original = original.model_copy(update={
-        "nodes": [node for node in original.nodes if node.raw_category != "lidar_candidate"]
+        "nodes": [node for node in original.nodes if node.raw_category != UNCLAIMED_SURFACE]
     })
     before_area = float(area[claimed_by_any(centres, original)].sum())
     floor = _floor_level(centres, area, vertical, graph)
