@@ -229,3 +229,13 @@ def test_the_layout_scope_menu_offers_no_fittings(graph, layout):
     menu = build_menu(_register_on_the_counter(graph), layout)
     assert not any(option.edits.add_lowered_section or option.edits.height_changes or option.edits.replacements
                    for option in menu.options)
+
+
+def test_the_menu_ranks_a_lowered_section_above_rebuilding_the_whole_counter(graph, fittings):
+    from standardphysics_agents.training.menu import _rank, build_menu
+
+    menu = build_menu(_register_on_the_counter(graph), fittings)
+    sections = [_rank(option.effect) for option in menu.options if option.edits.add_lowered_section]
+    rebuilds = [_rank(option.effect) for option in menu.options if option.edits.height_changes]
+    assert sections and rebuilds
+    assert min(sections) < min(rebuilds)
