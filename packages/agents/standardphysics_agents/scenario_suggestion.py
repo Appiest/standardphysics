@@ -20,7 +20,9 @@ from scipy import ndimage
 from standardphysics_contracts import Scenario, SceneGraph, SceneNode, Stop, Vec3, stands_upright
 from standardphysics_pipeline import build_grid, footprint, sleeping_places
 from standardphysics_pipeline.footprints import rotation_about_z
+from standardphysics_pipeline.occupancy import reads_as_wall
 
+from standardphysics_agents.checks import roles
 from standardphysics_agents.checks.roles import RoomKind, room_kind
 
 STANDING_ROOM = 0.45
@@ -32,6 +34,12 @@ APART = 1.0
 INSET = 0.8
 """How far a stop sits inside the room from a wall or door."""
 
+STAND_OFF = 0.5
+"""Metres out from a counter's customer side where someone stands to order or collect."""
+
+HANDOFF_WORDS = ("pickup", "pick-up", "handoff", "hand-off", "to-go")
+"""Words that make a service counter the place orders are collected from rather than placed."""
+
 ROUTE_NAMES: dict[RoomKind, str] = {
     "service": "Order a drink",
     "home": "Get around the room",
@@ -40,6 +48,9 @@ ROUTE_NAMES: dict[RoomKind, str] = {
 
 Bounds = tuple[float, float, float, float]
 Point = tuple[float, float]
+Axis = tuple[float, float]
+Side = tuple[Point, Axis]
+"""A point and a direction: the half of the floor in front of a counter."""
 
 
 def outline_points(graph: SceneGraph) -> list[tuple[float, float]]:
@@ -128,6 +139,62 @@ def _beside(node: SceneNode, toward: Point) -> Point:
     return _toward((p.x, p.y), toward, min(exits) + 0.5)
 
 
+def counter_axes(counter: SceneNode) -> tuple[Axis, Axis, float, float]:
+    """Along the counter, across it, its depth across, and half its length."""
+    cos_t, sin_t = rotation_about_z(counter)
+    along, across = (cos_t, sin_t), (-sin_t, cos_t)
+    if counter.dimensions.x >= counter.dimensions.y:
+        return along, across, counter.dimensions.y, counter.dimensions.x / 2
+    return across, along, counter.dimensions.x, counter.dimensions.y / 2
+
+
+def customer_side(counter: SceneNode, door: Point) -> Axis:
+    """Which way a counter's customers stand from it: off its long side facing the front door.
+
+    Staff work on the other side, which is where `staff_areas` puts the kitchen.
+    """
+    _, across, _, _ = counter_axes(counter)
+    centre = counter.transform.position
+    toward_door = across[0] * (door[0] - centre.x) + across[1] * (door[1] - centre.y)
+    return across if toward_door >= 0 else (-across[0], -across[1])
+
+
+def _stand_at(counter: SceneNode, front: Axis, along_by: float = 0.0) -> Point:
+    """Where a customer stands at a counter, `along_by` metres along it from the middle."""
+    along, _, depth, _ = counter_axes(counter)
+    centre = counter.transform.position
+    out = depth / 2 + STAND_OFF
+    return (
+        centre.x + front[0] * out + along[0] * along_by,
+        centre.y + front[1] * out + along[1] * along_by,
+    )
+
+
+def _hands_off(node: SceneNode) -> bool:
+    return any(word in node.label.casefold() for word in HANDOFF_WORDS)
+
+
+def _service_counters(graph: SceneGraph) -> list[SceneNode]:
+    """The counters the checks serve customers at, or anything labelled a counter when none is."""
+    return roles.service_counters(graph) or [node for node in graph.nodes if "counter" in node.label.lower()]
+
+
+def _ordering_counter(graph: SceneGraph) -> SceneNode | None:
+    counters = _service_counters(graph)
+    return _largest([node for node in counters if not _hands_off(node)] or counters)
+
+
+def _pickup_counter(graph: SceneGraph) -> SceneNode | None:
+    return _largest([node for node in _service_counters(graph) if _hands_off(node)])
+
+
+def _toward_the_room(counter: SceneNode, centre: Point) -> float:
+    """Which end of the counter faces the middle of the room, as +1 or -1 along it."""
+    along, _, _, _ = counter_axes(counter)
+    p = counter.transform.position
+    return 1.0 if along[0] * (centre[0] - p.x) + along[1] * (centre[1] - p.y) >= 0 else -1.0
+
+
 def _tables(graph: SceneGraph) -> list[SceneNode]:
     return [node for node in graph.nodes if node.raw_category == "table"]
 
@@ -136,6 +203,7 @@ class _OpenFloor:
     """Snaps a point to the closest cell inside the room with standing room."""
 
     def __init__(self, graph: SceneGraph):
+        self.graph = graph
         self.grid = build_grid(graph)
         clearance = ndimage.distance_transform_edt(~self.grid.occupied) * self.grid.cell_size
         cell_indices = np.indices(self.grid.occupied.shape)
@@ -149,10 +217,26 @@ class _OpenFloor:
         self.roomy = inside & (clearance >= STANDING_ROOM)
         self.open = inside & (clearance > 0)
 
-    def snap(self, point: Point, taken: list[Vec3]) -> Vec3:
-        """The nearest cell with standing room, clear of the stops already placed."""
+    def walled_off(self, point: Point) -> bool:
+        """Off the floor, behind a wall or inside one: floor that moving furniture could never free."""
+        row, col = self.grid.to_cell(*point)
+        if not self.grid.contains(row, col) or (self.grid.indoors is not None and not self.grid.indoors[row, col]):
+            return True
+        owner = self.grid.owner_at(row, col)
+        return owner is not None and reads_as_wall(self.graph.by_id(owner))
+
+    def snap(self, point: Point, taken: list[Vec3], keep_to: Side | None = None) -> Vec3:
+        """The nearest cell with standing room, clear of the stops already placed.
+
+        `keep_to` holds the stop in front of a counter, so a crowded customer
+        side does not send it round to the staff side, or across the shop.
+        """
         distance = np.hypot(self.xs - point[0], self.ys - point[1])
         cost = np.where(self.roomy, distance, np.where(self.open, distance + 1.0, np.inf))
+        if keep_to is not None:
+            (origin_x, origin_y), (normal_x, normal_y) = keep_to
+            in_front = (self.xs - origin_x) * normal_x + (self.ys - origin_y) * normal_y > 0
+            cost = np.where(in_front, cost, np.inf)
         for other in taken:
             cost = np.where(np.hypot(self.xs - other.x, self.ys - other.y) < APART, np.inf, cost)
         if np.isinf(cost).all():
@@ -172,8 +256,13 @@ class _Room:
         self.floor = _OpenFloor(graph)
         self.placed: list[Vec3] = []
 
-    def stop(self, name: str, at: Point, anchor: SceneNode | None) -> Stop:
-        position = self.floor.snap(at, self.placed)
+    @property
+    def door(self) -> Point:
+        """Where customers come in: the entrance once it is placed, the middle of the room before."""
+        return (self.placed[0].x, self.placed[0].y) if self.placed else self.centre
+
+    def stop(self, name: str, at: Point, anchor: SceneNode | None, keep_to: Side | None = None) -> Stop:
+        position = self.floor.snap(at, self.placed, keep_to)
         self.placed.append(position)
         return Stop(name=name, position=position, anchor_node_id=anchor.id if anchor else None)
 
@@ -186,23 +275,48 @@ def _entrance(room: _Room) -> Stop:
     return room.stop("Entrance", _toward((p.x, p.y), room.centre, INSET), door)
 
 
-def _counter(room: _Room) -> tuple[Point, SceneNode | None]:
-    named = [node for node in room.graph.nodes if "counter" in node.label.lower()]
-    counter = _largest(named)
-    if counter is not None:
-        return _beside(counter, room.centre), counter
-    return (room.centre[0], room.bounds[3] - INSET), None
+def _front(room: _Room, counter: SceneNode) -> Axis:
+    """The counter's customer side, unless that side stands against a wall and the other does not.
+
+    Furniture crowding the customer side does not flip it: that is a finding
+    to report, and the staff side is still not where anyone orders.
+    """
+    front = customer_side(counter, room.door)
+    back = (-front[0], -front[1])
+    if room.floor.walled_off(_stand_at(counter, front)) and not room.floor.walled_off(_stand_at(counter, back)):
+        return back
+    return front
+
+
+def _at_counter(room: _Room, name: str, counter: SceneNode, along_by: float = 0.0) -> Stop:
+    front = _front(room, counter)
+    centre = counter.transform.position
+    return room.stop(name, _stand_at(counter, front, along_by), counter, ((centre.x, centre.y), front))
+
+
+def _counter_stop(room: _Room) -> Stop:
+    """In front of the counter people order at, on the side customers stand."""
+    counter = _ordering_counter(room.graph)
+    if counter is None:
+        return room.stop("Counter", (room.centre[0], room.bounds[3] - INSET), None)
+    return _at_counter(room, "Counter", counter)
+
+
+def _pickup_stop(room: _Room) -> Stop:
+    """At the pickup counter when the scan names one, otherwise a step along the ordering counter."""
+    handoff = _pickup_counter(room.graph)
+    if handoff is not None:
+        return _at_counter(room, "Pickup", handoff)
+    counter = _ordering_counter(room.graph)
+    if counter is None:
+        return room.stop("Pickup", (room.centre[0] + APART, room.bounds[3] - INSET), None)
+    return _at_counter(room, "Pickup", counter, _toward_the_room(counter, room.centre) * APART)
 
 
 def _service_stops(room: _Room) -> list[Stop]:
-    counter_at, counter = _counter(room)
     table = _nearest(_tables(room.graph), room.centre)
     seat_at = _beside(table, room.centre) if table else (room.bounds[0] + INSET, room.centre[1])
-    return [
-        room.stop("Counter", counter_at, counter),
-        room.stop("Pickup", (counter_at[0] + 1.0, counter_at[1]), counter),
-        room.stop("Seat", seat_at, table),
-    ]
+    return [_counter_stop(room), _pickup_stop(room), room.stop("Seat", seat_at, table)]
 
 
 def _home_stops(room: _Room) -> list[Stop]:
@@ -260,10 +374,8 @@ def _far_corners(bounds, entrance: tuple[float, float]) -> list[tuple[float, flo
 
 
 def _destination(
-    graph: SceneGraph, destination: str, centre, counter_at, fallback
+    graph: SceneGraph, destination: str, centre, fallback
 ) -> tuple[str, tuple[float, float], SceneNode | None]:
-    if destination == "pickup":
-        return "Pickup", (counter_at[0] + 1.0, counter_at[1]), None
     name, words, categories = DESTINATIONS[destination]
     matches = [
         node for node in graph.nodes
@@ -277,11 +389,13 @@ def suggest_path(graph: SceneGraph, destinations: list[str]) -> Scenario:
     """In the front door, to the counter, to each place the owner picked, and out again."""
     room = _Room(graph)
     entrance = _entrance(room)
-    counter_at, counter = _counter(room)
     corners = _far_corners(room.bounds, (entrance.position.x, entrance.position.y))
-    stops = [entrance, room.stop("Counter", counter_at, counter)]
+    stops = [entrance, _counter_stop(room)]
     for index, destination in enumerate(destinations):
-        name, at, anchor = _destination(graph, destination, room.centre, counter_at, corners[index % len(corners)])
+        if destination == "pickup":
+            stops.append(_pickup_stop(room))
+            continue
+        name, at, anchor = _destination(graph, destination, room.centre, corners[index % len(corners)])
         stops.append(room.stop(name, at, anchor))
     exit_stop = entrance.model_copy(update={"name": "Exit"})
     return Scenario(name="Customer path", stops=[*stops, exit_stop])
