@@ -3,22 +3,23 @@
 #
 #   scripts/deploy.sh
 #
-# One command instead of a session: it pulls on the box, fetches or builds the
-# image, and runs doctor.sh, streaming everything back. Set SP_DEPLOY_HOST in
-# your shell if the box moves.
+# One command instead of a session: it pulls on the box, fetches the image,
+# and runs doctor.sh, streaming everything back. Set SP_DEPLOY_HOST in your
+# shell if the box moves.
 #
-# The image it starts is the one CI tested. The image job in ci.yml pushes each
-# master commit that passed the smoke test to GHCR as
-# ghcr.io/imhaohao/standardphysics:<sha>, and this pulls that tag. When the
-# commit has no published image yet (CI still running, or the package not yet
-# readable by the box), or SP_DEPLOY_BUILD=1 asks for it, the box builds the
-# image itself, as it did before CI published anything. SP_DEPLOY_IMAGE points
-# at another registry repository.
+# The image it starts is the one CI tested. The publish job in ci.yml tags a
+# master commit's image as ghcr.io/imhaohao/standardphysics:<sha> only after
+# every check in that workflow passed for the commit, and this pulls that tag.
+# When the tag cannot be pulled (CI still running or failed, or the package
+# not readable by the box), it refuses with exit code 66 rather than ship
+# something nothing tested. SP_DEPLOY_BUILD=1 builds the image on the box
+# instead, says so, and records the deploy as untested-local-build.
+# SP_DEPLOY_IMAGE points at another registry repository.
 #
 # Either way the image is tagged standardphysics:<sha>, and each deploy adds a
 # line to /var/log/standardphysics-deploys.log on the box with the commit and
-# the registry digest it started, or built-on-droplet, so what to roll back to
-# is written down. docs/DEPLOY.md has the rollback. A box left on an older
+# the registry digest it started, or untested-local-build, so what to roll back
+# to is written down. docs/DEPLOY.md has the rollback. A box left on an older
 # commit by a rollback goes back to master here before it pulls.
 #
 # It refuses to deploy while the API has jobs queued or running. The restart
@@ -26,8 +27,8 @@
 # empty unless SP_DEPLOY_FORCE=1 says to go anyway. A queue it cannot read is a
 # refusal too, not an empty queue: a stopped or wedged API is exactly when
 # nobody knows what it was doing. The image is pulled or built before the
-# queue is read, so the build's minutes are not part of the window in which a new upload can
-# start a job that the restart then kills. docs/DEPLOY.md says what is left.
+# queue is read, so those minutes are not part of the window in which a new
+# upload can start a job that the restart then kills. docs/DEPLOY.md says what is left.
 #
 # It refuses to deploy behind your own work. The Droplet pulls master from
 # GitHub, so a commit still sitting on this laptop is not going anywhere, and
@@ -112,14 +113,20 @@ git pull --ff-only
 export GIT_SHA=\$(git rev-parse HEAD)
 cd deploy/digitalocean
 published='$IMAGE':\$GIT_SHA
-if [ '$BUILD' != 1 ] && docker pull --quiet \"\$published\"; then
+if [ '$BUILD' = 1 ]; then
+  echo \"SP_DEPLOY_BUILD=1: building \$GIT_SHA here. This image is untested; CI has not run its checks against it.\" >&2
+  docker compose build
+  origin=untested-local-build
+elif docker pull --quiet \"\$published\"; then
   docker tag \"\$published\" standardphysics:\$GIT_SHA
   docker tag \"\$published\" standardphysics:latest
   origin=\$(docker image inspect --format '{{index .RepoDigests 0}}' \"\$published\")
 else
-  echo \"Could not pull \$published, because CI has not published it yet or the box cannot read the package, so building it here.\"
-  docker compose build
-  origin=built-on-droplet
+  echo \"There is no tested image for this commit: \$published could not be pulled.\" >&2
+  echo 'CI publishes it once every check has passed on master. Wait for that run to go green,' >&2
+  echo 'or check that this box can read the package (docs/DEPLOY.md, The image CI tested).' >&2
+  echo 'SP_DEPLOY_BUILD=1 builds it on the box instead, untested.' >&2
+  exit 66
 fi
 in_flight=\$(docker compose exec -T api /opt/venv/bin/python -c $(printf %q "$IN_FLIGHT_QUERY") 2>/dev/null) || in_flight=unknown
 if [ '$FORCE' != 1 ] && ! [[ \"\$in_flight\" =~ ^[0-9]+\$ ]]; then

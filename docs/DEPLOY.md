@@ -129,8 +129,8 @@ From your own machine, which is the usual way:
 scripts/deploy.sh
 ```
 
-It pulls master on the Droplet, fetches the image CI tested for that commit
-(or builds one, below), and runs `doctor.sh`, streaming the lot back. Only one deploy runs at a time: a second is refused rather than
+It pulls master on the Droplet, fetches the image CI tested for that commit,
+and runs `doctor.sh`, streaming the lot back. Only one deploy runs at a time: a second is refused rather than
 queued, because two of them racing to recreate a container leave the name
 taken, the stack half torn down and the site answering 502. It stops if you have commits master does not, because the Droplet
 pulls from GitHub and a deploy that quietly ships the previous commit is worse
@@ -148,8 +148,8 @@ anyway in either case:
 SP_DEPLOY_FORCE=1 scripts/deploy.sh
 ```
 
-The order on the box is pull, fetch or build the image, read the queue,
-restart. A build takes minutes and the old API keeps serving through it, so
+The order on the box is pull, fetch the image, read the queue, restart. A
+pull (or a build, below) takes minutes and the old API keeps serving through it, so
 the queue is read after the image is ready and immediately before
 `docker compose up -d` swaps the containers. A refused deploy leaves the new
 image on the box, and running the script again once the queue drains reuses
@@ -162,19 +162,30 @@ would start it.
 The `image` job in `.github/workflows/ci.yml` builds the image, runs
 `scripts/smoke_image.sh` and the Blender regressions in it, and on a push to
 master pushes that same image to GitHub's registry as
-`ghcr.io/imhaohao/standardphysics:<sha>`. The job summary on the Actions run
-records the digest it was pushed as. `scripts/deploy.sh` pulls that tag and
+`ghcr.io/imhaohao/standardphysics:candidate-<sha>`. The `publish` job waits
+for every other job in the workflow (the Python suites, the contract drift
+check, the web lint, typecheck, tests and build, the browser flow, and the
+image job) and only then copies the candidate's manifest to
+`ghcr.io/imhaohao/standardphysics:<sha>`, unchanged, so the digest stays the
+one that was tested. A commit with any failing check never gets the `<sha>`
+tag. The publish job's summary on the Actions run records the digest.
+Never deploy a `candidate-` tag by hand: it exists before the web checks
+have finished. `scripts/deploy.sh` pulls that tag and
 retags it `standardphysics:<sha>` on the box, so what serves traffic is the
 exact image that passed CI, and the Droplet spends no time or memory building.
 
-The script builds on the box instead when the pull fails, which happens when
-CI has not finished with the commit yet or the Droplet cannot read the
-package. `SP_DEPLOY_BUILD=1` asks for a build outright. `SP_DEPLOY_IMAGE`
-points it at another registry repository.
+When the `<sha>` tag cannot be pulled, because CI has not finished with the
+commit, a check failed, or the Droplet cannot read the package, the script
+stops with exit code 66 and says which of those to look at. It does not fall
+back to building, since a build on the box has passed none of CI's checks.
+When you need to ship anyway, such as GitHub being down during an incident,
+`SP_DEPLOY_BUILD=1 scripts/deploy.sh` builds from the checked-out commit on
+the box, warns that the image is untested, and records the deploy as
+`untested-local-build`. `SP_DEPLOY_IMAGE` points the script at another
+registry repository.
 
 **A person has to do this once, by hand.** GHCR packages start out private,
-and until the Droplet can read this one every deploy falls back to building
-on the box. Pick one:
+and until the Droplet can read this one every deploy is refused. Pick one:
 
 - Make the package public: on GitHub, open the repository's Packages,
   choose `standardphysics`, then Package settings, and set its visibility to
@@ -185,7 +196,7 @@ on the box. Pick one:
   then on the box run
   `echo <token> | docker login ghcr.io -u <github-user> --password-stdin`.
   The login is saved in `/root/.docker/config.json` and outlives reboots;
-  a token that expires sends deploys back to building on the box.
+  a token that expires makes deploys refuse again until it is replaced.
 
 Either way, check it from the Droplet with
 `docker pull ghcr.io/imhaohao/standardphysics:<a master sha>`.
@@ -207,7 +218,7 @@ stop claiming jobs while a maintenance flag is set, which lives in
 
 Each deploy appends the time, the commit and where its image came from to
 `/var/log/standardphysics-deploys.log` on the Droplet. The last field is the
-registry digest that was pulled, or `built-on-droplet`. That file is the list
+registry digest that was pulled, or `untested-local-build`. That file is the list
 of commits you can roll back to.
 
 On the Droplet itself it is the commands the script runs:
@@ -216,9 +227,8 @@ On the Droplet itself it is the commands the script runs:
 git checkout master
 git pull
 export GIT_SHA=$(git rev-parse HEAD)
-docker pull ghcr.io/imhaohao/standardphysics:$GIT_SHA \
-  && docker tag ghcr.io/imhaohao/standardphysics:$GIT_SHA standardphysics:$GIT_SHA \
-  || docker compose build
+docker pull ghcr.io/imhaohao/standardphysics:$GIT_SHA   # stop here if it fails
+docker tag ghcr.io/imhaohao/standardphysics:$GIT_SHA standardphysics:$GIT_SHA
 # count the unfinished jobs, as above, and stop here if there are any
 docker compose up -d
 ```
@@ -395,7 +405,7 @@ looks like this:
 | Worker stall | `/health` answers 503 because a loop has died, or a loop's `state` is `stalled`, or a `busy` loop's `job.running_seconds` passes the longest bake you expect | `/health`, `/health/details` | Yes |
 | Disk free | Under 15% or 5 GB free on the scans volume, or on the backup destination. Uploads and bakes write there, and SQLite fails every write once it is full. | `df -h /mnt/standardphysics-scans`, or the `space:` line of `doctor.sh` | No |
 | Failed backup | The unit failed, or the newest snapshot is more than 26 hours old. `backup.sh` exits 2 when a file the live database lists is missing, and 75 when another backup was already running. | `systemctl is-failed standardphysics-backup.service`, `./restore.sh` with no arguments lists the snapshots | No |
-| Failed deploy | `scripts/deploy.sh` exits non-zero: 75 means jobs were in flight, 69 means the queue could not be read, anything else means the pull, build or restart failed. After a deploy, the `commit` in `/health/details` should match the last line of `/var/log/standardphysics-deploys.log`, which only records deploys that got as far as the restart. | the script's exit code, `/health/details` | The commit only |
+| Failed deploy | `scripts/deploy.sh` exits non-zero: 75 means jobs were in flight, 69 means the queue could not be read, 66 means no tested image exists for the commit, anything else means the pull, build or restart failed. After a deploy, the `commit` in `/health/details` should match the last line of `/var/log/standardphysics-deploys.log`, which only records deploys that got as far as the restart. | the script's exit code, `/health/details` | The commit only |
 | Tracing off | Only when `WANDB_PROJECT` is set on purpose and traces stop arriving. `tracing` in `/health/details` says whether tracing started and, when it did not, why. It reports that the client started, not that each trace arrived. | `/health/details`, the API log's `weave tracing is off` warning | Yes |
 
 A cron job on the Droplet that curls `/health/details` and runs `df` every

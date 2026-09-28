@@ -67,6 +67,7 @@ def deploy(box: pathlib.Path, in_flight: int = 0, **environment: str) -> subproc
         "FAKE_COMMIT": COMMIT,
         "FAKE_IN_FLIGHT": str(in_flight),
         "FAKE_DIGEST": DIGEST,
+        "FAKE_PUBLISHED": "1",
         "SP_DEPLOY_DIR": str(box / "standardphysics"),
         "SP_DEPLOY_LOCK": str(box / "deploy.lock"),
         "SP_DEPLOY_HISTORY": str(box / "deploys.log"),
@@ -104,12 +105,13 @@ def test_a_deploy_waits_for_queued_and_running_jobs(box):
     assert not (box / "deploys.log").exists()
 
 
-def test_the_queue_is_read_after_the_build_and_just_before_the_restart(box):
-    """The build takes minutes. Reading the queue before it would leave all of
-    them for an upload to start a job that the restart then kills."""
+def test_the_queue_is_read_after_the_image_is_fetched_and_just_before_the_restart(box):
+    """A pull or a build takes minutes. Reading the queue before it would leave
+    all of them for an upload to start a job that the restart then kills."""
     assert deploy(box).returncode == 0
-    compose = [line.split()[2] for line in calls(box) if line.startswith("docker compose")]
-    assert compose == ["build", "exec", "up"]
+    steps = [" ".join(line.split()[1:3]) for line in calls(box) if line.startswith("docker")]
+    fetched, queue_read, restarted = (steps.index(step) for step in ("pull --quiet", "compose exec", "compose up"))
+    assert fetched < queue_read < restarted
 
 
 def test_the_container_is_asked_a_query_that_counts_only_unfinished_jobs(box):
@@ -149,7 +151,7 @@ def test_forcing_a_deploy_goes_ahead_when_the_queue_cannot_be_read(box):
 
 
 def test_the_image_ci_tested_is_pulled_and_tagged_instead_of_rebuilt(box):
-    result = deploy(box, FAKE_PUBLISHED="1")
+    result = deploy(box)
     assert result.returncode == 0, result.stderr
     docker = [line.removesuffix(f" GIT_SHA={COMMIT}") for line in calls(box) if line.startswith("docker")]
     assert f"docker pull --quiet {PUBLISHED}" in docker
@@ -158,19 +160,25 @@ def test_the_image_ci_tested_is_pulled_and_tagged_instead_of_rebuilt(box):
 
 
 def test_a_promoted_deploy_writes_down_the_digest_it_started(box):
-    assert deploy(box, FAKE_PUBLISHED="1").returncode == 0
+    assert deploy(box).returncode == 0
     assert (box / "deploys.log").read_text().split()[1:] == [COMMIT, DIGEST]
 
 
-def test_a_commit_ci_has_not_published_is_built_on_the_box(box):
-    result = deploy(box)
-    assert result.returncode == 0, result.stderr
-    assert any(line.startswith("docker compose build") for line in calls(box))
-    assert (box / "deploys.log").read_text().split()[1:] == [COMMIT, "built-on-droplet"]
+def test_a_commit_without_a_tested_image_is_refused_rather_than_built(box):
+    """CI publishes a commit's image only after every check passes, so a build
+    on the box would ship something nothing has tested."""
+    result = deploy(box, FAKE_PUBLISHED="")
+    assert result.returncode == 66
+    assert PUBLISHED in result.stderr and "SP_DEPLOY_BUILD=1" in result.stderr
+    assert not any(line.startswith("docker compose build") for line in calls(box))
+    assert compose_up(box) == []
+    assert not (box / "deploys.log").exists()
 
 
-def test_asking_for_a_build_never_pulls(box):
-    result = deploy(box, FAKE_PUBLISHED="1", SP_DEPLOY_BUILD="1")
+def test_asking_for_a_build_never_pulls_and_says_the_image_is_untested(box):
+    result = deploy(box, SP_DEPLOY_BUILD="1")
     assert result.returncode == 0, result.stderr
     assert not any(line.startswith("docker pull") for line in calls(box))
     assert any(line.startswith("docker compose build") for line in calls(box))
+    assert "untested" in result.stderr
+    assert (box / "deploys.log").read_text().split()[1:] == [COMMIT, "untested-local-build"]

@@ -15,8 +15,8 @@
 # :latest. scripts/deploy.sh fills that tag by pulling the image CI tested,
 # ghcr.io/imhaohao/standardphysics:<sha>, and tagging it under this local name,
 # so this file never names a registry and runs the same whether the image was
-# pulled or built. The build section below is the fallback for a commit CI has
-# not published, or for SP_DEPLOY_BUILD=1. GIT_SHA picks the tag: deploy.sh
+# pulled or built. The build section below is used only when SP_DEPLOY_BUILD=1
+# asks for an untested build on the box, or by hand. GIT_SHA picks the tag: deploy.sh
 # sets it from `git rev-parse HEAD`, and a rollback is `git checkout <sha>` and
 # `GIT_SHA=<sha> docker compose up -d`, which finds that tag already on the box
 # and starts it without a rebuild. Without GIT_SHA it falls back to :latest.
