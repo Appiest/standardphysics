@@ -7,13 +7,21 @@ come after it, and each says no before the work or the bytes are taken on.
 The team is exempt from the per-owner limits. Its account holds every test walk
 of the Moffitt library, about ten at up to 2.5 GB each, and the free-disk floor
 protects the volume from it just as well.
+
+An upload that is still streaming is in neither the database nor, fully, on the
+disk, so each one holds a reservation of the bytes it declared from admission
+until it is stored or refused. Admission counts every reservation held, so two
+uploads that each fit but together don't are not both taken.
 """
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
+import threading
 import uuid
-from dataclasses import dataclass
+from collections.abc import AsyncIterator, Callable, Iterator
+from dataclasses import dataclass, field
 
 from . import repository as repo
 from .accounts import Owner
@@ -23,6 +31,7 @@ from .store import ArtifactStore, ScanFull
 QUEUE_RETRY_SECONDS = 300
 LOW_DISK = "The server is running low on storage, so it can't take new uploads right now. Try again later."
 QUEUE_FULL = "Lots of shops are being measured right now. Your walk is saved, so try again in a few minutes."
+UPLOAD_RETRY_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -56,27 +65,97 @@ class Budgets:
 
 
 @dataclass(frozen=True)
+class InFlight:
+    """What uploads already streaming will still add: to the disk, and to one owner's stored bytes."""
+
+    disk_bytes: int = 0
+    owner_bytes: int = 0
+
+
+@dataclass(eq=False)
+class Reservation:
+    owner_id: uuid.UUID
+    declared_bytes: int
+    arrived_bytes: int = 0
+
+    def still_to_arrive(self) -> int:
+        return max(self.declared_bytes - self.arrived_bytes, 0)
+
+    async def counted(self, chunks: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
+        """Pass the body through, keeping count, since bytes already written show up in the disk's free space."""
+        async for chunk in chunks:
+            self.arrived_bytes += len(chunk)
+            yield chunk
+
+
+@dataclass
+class UploadReservations:
+    """Every upload streaming in this process, capped per owner and in total."""
+
+    per_owner: int
+    total: int
+    _held: list[Reservation] = field(default_factory=list)
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    @contextlib.contextmanager
+    def hold(
+        self, owner_id: uuid.UUID, declared_bytes: int, admit: Callable[[InFlight], None]
+    ) -> Iterator[Reservation]:
+        """Reserve `declared_bytes` if `admit` accepts them on top of what is in flight, until the block ends."""
+        reservation = Reservation(owner_id, declared_bytes)
+        with self._lock:
+            self._admit_another(owner_id)
+            admit(self._in_flight(owner_id))
+            self._held.append(reservation)
+        try:
+            yield reservation
+        finally:
+            with self._lock:
+                self._held.remove(reservation)
+
+    def _admit_another(self, owner_id: uuid.UUID) -> None:
+        retry = {"Retry-After": str(UPLOAD_RETRY_SECONDS)}
+        if sum(held.owner_id == owner_id for held in self._held) >= self.per_owner:
+            raise ApiProblem(429, f"This account is already sending {self.per_owner} files at once. "
+                             "Try this one again when one of them finishes.", headers=retry)
+        if len(self._held) >= self.total:
+            raise ApiProblem(503, "The server is taking lots of uploads right now. Try again in a moment.",
+                             headers=retry)
+
+    def _in_flight(self, owner_id: uuid.UUID) -> InFlight:
+        return InFlight(
+            disk_bytes=sum(held.still_to_arrive() for held in self._held),
+            owner_bytes=sum(held.declared_bytes for held in self._held if held.owner_id == owner_id),
+        )
+
+
+@dataclass(frozen=True)
 class UploadAdmission:
-    """Every limit one artifact upload answers to: its scan's quota, its owner's budget and the disk."""
+    """Every limit one artifact upload answers to: its scan's quota, its owner's budget, the disk,
+    and how many uploads are streaming already."""
 
     budgets: Budgets
     store: ArtifactStore
     owner: Owner
     scan_id: uuid.UUID
+    reservations: UploadReservations
 
-    def before_reading(self, connection: sqlite3.Connection, declared_bytes: int) -> None:
-        """What can be refused from the headers alone, so a doomed body is never streamed to disk."""
-        self.budgets.admit_disk(self.store, declared_bytes)
-        self._admit(connection, declared_bytes)
+    def before_reading(self, connection: sqlite3.Connection, declared_bytes: int, in_flight: InFlight) -> None:
+        """What can be refused from the headers alone, so a doomed body is never streamed to disk.
+
+        The uploads already streaming are counted as if they had landed, since they were admitted first.
+        """
+        self.budgets.admit_disk(self.store, declared_bytes + in_flight.disk_bytes)
+        self._admit(connection, declared_bytes, in_flight.owner_bytes)
 
     def before_storing(self, connection: sqlite3.Connection, staged_bytes: int) -> None:
         """The staged bytes are on disk already, so the floor is checked with nothing more to come."""
         self.budgets.admit_disk(self.store, 0)
-        self._admit(connection, staged_bytes)
+        self._admit(connection, staged_bytes, 0)
 
-    def _admit(self, connection: sqlite3.Connection, incoming_bytes: int) -> None:
+    def _admit(self, connection: sqlite3.Connection, incoming_bytes: int, owner_in_flight: int) -> None:
         try:
             self.store.quota.admit(*repo.artifact_usage(connection, self.scan_id), incoming_bytes)
         except ScanFull as full:
             raise ApiProblem(413, str(full)) from None
-        self.budgets.admit_owner_bytes(connection, self.owner, incoming_bytes)
+        self.budgets.admit_owner_bytes(connection, self.owner, incoming_bytes + owner_in_flight)

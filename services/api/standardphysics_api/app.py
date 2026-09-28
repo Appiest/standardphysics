@@ -64,7 +64,7 @@ from . import repository as repo
 from .approach import evaluate as evaluate_approach
 from .architecture_export import install_architecture_export_routes
 from .auth import install_auth, owner_of
-from .budgets import Budgets, UploadAdmission
+from .budgets import Budgets, InFlight, Reservation, UploadAdmission, UploadReservations
 from .combine import SaveCombineRequest, rooms_of, save_combine
 from .coverage import parse_coverage
 from .db import Database
@@ -140,6 +140,12 @@ def _existing_password_whereabouts(settings: Settings) -> str:
     return f"it was created with: SP_SEED_OWNER_PASSWORD as it was then, or the one in {path}"
 
 
+def _sweep_abandoned_staging(store: ArtifactStore, settings: Settings) -> None:
+    removed = store.remove_abandoned_staging(settings.staging_max_age_seconds)
+    if removed:
+        log.info("deleted %d staged upload(s) abandoned before this start", removed)
+
+
 def _problem_response(exc: ApiProblem) -> JSONResponse:
     return JSONResponse(exc.body.model_dump(exclude_none=True), status_code=exc.status, headers=exc.headers)
 
@@ -181,6 +187,7 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
             log.info("cleared %d expired session(s)", expired)
         if settings.seed_sample_shop:
             _seed_demo_account(database, store, settings)
+        _sweep_abandoned_staging(store, settings)
         if run_worker:
             worker.start()
         yield
@@ -199,7 +206,9 @@ def create_app(settings: Settings | None = None, stages: Stages | None = None, r
         settings.max_owner_scans, settings.max_owner_bytes, settings.max_queued_jobs, settings.min_free_disk_bytes
     )
     _install_scan_routes(app, database, store, budgets)
-    _install_upload_routes(app, database, store, worker, settings, budgets)
+    reservations = UploadReservations(settings.max_owner_uploads, settings.max_concurrent_uploads)
+    app.state.upload_reservations = reservations
+    _install_upload_routes(app, database, store, worker, settings, budgets, reservations)
     _install_workspace_routes(app, database, store, stages)
     install_owner_routes(app, database, store, stages)
     _install_combine_routes(app, database, store, worker)
@@ -360,15 +369,24 @@ def _accept_staged(
         return 201, artifact
 
 
-def _refuse_a_doomed_upload_early(
+def _reserve_or_refuse_early(
     database: Database, admission: UploadAdmission, artifact_id: str, request: Request
-) -> None:
-    """Say no before reading the body when a new artifact could not fit anyway. A repeat upload still gets its 200."""
+) -> contextlib.AbstractContextManager[Reservation]:
+    """Say no before reading the body when a new artifact could not fit anyway, and otherwise hold
+    room for it while it streams. A repeat upload still gets its 200.
+
+    A body sent without a length is reserved at the largest size an artifact may have.
+    """
     declared = request.headers.get("content-length", "")
-    with database.connect() as connection:
-        _scan_or_404(connection, admission.scan_id)
-        if repo.find_artifact(connection, admission.scan_id, artifact_id) is None:
-            admission.before_reading(connection, int(declared) if declared.isdigit() else 0)
+    declared_bytes = int(declared) if declared.isdigit() else admission.store.max_bytes
+
+    def refuse_a_doomed_upload(in_flight: InFlight) -> None:
+        with database.connect() as connection:
+            _scan_or_404(connection, admission.scan_id)
+            if repo.find_artifact(connection, admission.scan_id, artifact_id) is None:
+                admission.before_reading(connection, declared_bytes, in_flight)
+
+    return admission.reservations.hold(admission.owner.id, declared_bytes, refuse_a_doomed_upload)
 
 
 def _coverage_of(store: ArtifactStore, scan: Scan) -> list[SurfaceCoverage]:
@@ -437,11 +455,13 @@ def _validate_staged(staged: StagedUpload, kind: str) -> None:
         raise ApiProblem(400, check.message) from None
 
 
-async def _stage_upload(store: ArtifactStore, scan_id: uuid.UUID, artifact_id: str, request: Request):
-    """Stage the uploaded bytes, turning the store's refusals into problems."""
+async def _stage_upload(
+    store: ArtifactStore, scan_id: uuid.UUID, artifact_id: str, request: Request, reservation: Reservation
+):
+    """Stage the uploaded bytes, no more than were reserved, turning the store's refusals into problems."""
     try:
         store.artifact_path(scan_id, artifact_id)
-        return await store.stage(scan_id, request.stream())
+        return await store.stage(scan_id, reservation.counted(request.stream()), reservation.declared_bytes)
     except InvalidArtifactId:
         raise ApiProblem(400, "invalid artifact id") from None
     except ArtifactTooLarge:
@@ -482,6 +502,7 @@ def _install_upload_routes(
     worker: Worker,
     settings: Settings,
     budgets: Budgets,
+    reservations: UploadReservations,
 ) -> None:
     @app.put("/api/scans/{scan_id}/artifacts/{artifact_id}", response_model=Artifact, status_code=201)
     async def upload_artifact(
@@ -491,16 +512,16 @@ def _install_upload_routes(
         x_checksum_sha256: Annotated[str, Header()],
         x_artifact_kind: Annotated[ArtifactKind, Header()],
     ):
-        admission = UploadAdmission(budgets, store, owner_of(request), scan_id)
-        _refuse_a_doomed_upload_early(database, admission, artifact_id, request)
-        staged = await _stage_upload(store, scan_id, artifact_id, request)
-        try:
-            _validate_staged(staged, x_artifact_kind)
-            status, artifact = _accept_staged(
-                database, admission, artifact_id, x_artifact_kind, x_checksum_sha256, staged
-            )
-        finally:
-            store.discard(staged)
+        admission = UploadAdmission(budgets, store, owner_of(request), scan_id, reservations)
+        with _reserve_or_refuse_early(database, admission, artifact_id, request) as reservation:
+            staged = await _stage_upload(store, scan_id, artifact_id, request, reservation)
+            try:
+                _validate_staged(staged, x_artifact_kind)
+                status, artifact = _accept_staged(
+                    database, admission, artifact_id, x_artifact_kind, x_checksum_sha256, staged
+                )
+            finally:
+                store.discard(staged)
         if _queue_for_arrival(
             database, store, worker, scan_id, x_artifact_kind, settings.evidence_settle_seconds
         ):

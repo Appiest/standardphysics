@@ -51,7 +51,7 @@ log = logging.getLogger(__name__)
 PROCESS, ASSESS, DISPLAY = "process", "assess", "display"
 
 
-GUEST_SWEEP_SECONDS = 3600.0
+SWEEP_SECONDS = 3600.0
 IDLE_WAIT_SECONDS = 2.0
 FIRST_RETRY_SECONDS = 1.0
 LONGEST_RETRY_SECONDS = 60.0
@@ -183,7 +183,7 @@ class Worker:
         self.lock = WorkerLock(database.path)
         self._standby = False
         self.notifier: Notifier = LoggedNotifier()
-        self._guests_swept_at = 0.0
+        self._swept_at = 0.0
         self._on_this_thread = threading.local()
         self._unsettled: dict[int, str] = {}
         """Jobs whose outcome could not be written, by id, with the error. Cleared by a restart,
@@ -447,18 +447,23 @@ class Worker:
             return
         if not texture_only:
             self._sweep_due_settled()
-            self._sweep_guests_hourly()
+            self._sweep_hourly()
         self._wake.wait(timeout=IDLE_WAIT_SECONDS)
         self._wake.clear()
 
-    def _sweep_guests_hourly(self) -> None:
-        if time.monotonic() - self._guests_swept_at < GUEST_SWEEP_SECONDS:
+    def _sweep_hourly(self) -> None:
+        """Delete expired guest shops and staged uploads nothing is writing any more."""
+        if time.monotonic() - self._swept_at < SWEEP_SECONDS:
             return
-        self._guests_swept_at = time.monotonic()
+        self._swept_at = time.monotonic()
         try:
             guest_sweep.sweep(self.database, self.store, self.notifier, datetime.now(UTC))
         except Exception:
             log.warning("guest sweep failed:\n%s", traceback.format_exc())
+        try:
+            self.store.remove_abandoned_staging(self.settings.staging_max_age_seconds)
+        except OSError:
+            log.warning("staging sweep failed:\n%s", traceback.format_exc())
 
     def _tell_results_ready(self, scan_id: uuid.UUID) -> None:
         """One push, the first time a shop's results are ready. A re-check afterwards stays quiet."""

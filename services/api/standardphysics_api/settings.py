@@ -81,6 +81,15 @@ class Settings:
     """The free space kept on the data volume, from SP_MIN_FREE_DISK_BYTES. Below it, new scans and
     uploads are refused with a 507. It is at least one artifact at the largest size allowed, so an
     upload admitted just above the floor can't run the 10 GB volume out of space by itself."""
+    max_owner_uploads: int = 4
+    """How many uploads one account may stream at once, from SP_MAX_OWNER_UPLOADS. The phone sends one
+    artifact at a time, and at most two while optional files follow the core ones; more is refused with a 429."""
+    max_concurrent_uploads: int = 32
+    """How many uploads the whole server streams at once, from SP_MAX_CONCURRENT_UPLOADS; more is refused with a 503."""
+    staging_max_age_seconds: int = 3600
+    """How long a staged upload may go unwritten before it counts as abandoned and is deleted, from
+    SP_STAGING_MAX_AGE_SECONDS. A streaming upload writes its file every few milliseconds, so an hour
+    of silence means the request that owned it is gone, usually in a restart."""
     preview_unverified_rules: bool = False
     """Development only. Runs every rule as if a person had verified it, so the
     viewer has findings to draw before the rule pack is reviewed."""
@@ -228,6 +237,11 @@ class Settings:
             max_owner_bytes=_bounded_integer("SP_MAX_OWNER_BYTES", cls.max_owner_bytes, 1, 2**50),
             max_queued_jobs=_bounded_integer("SP_MAX_QUEUED_JOBS", cls.max_queued_jobs, 1, 1_000_000),
             min_free_disk_bytes=_bounded_integer("SP_MIN_FREE_DISK_BYTES", cls.min_free_disk_bytes, 0, 2**50),
+            max_owner_uploads=_bounded_integer("SP_MAX_OWNER_UPLOADS", cls.max_owner_uploads, 1, 1_000),
+            max_concurrent_uploads=_bounded_integer("SP_MAX_CONCURRENT_UPLOADS", cls.max_concurrent_uploads, 1, 10_000),
+            staging_max_age_seconds=_bounded_integer(
+                "SP_STAGING_MAX_AGE_SECONDS", cls.staging_max_age_seconds, 60, 7 * 86_400
+            ),
             evidence_settle_seconds=_bounded_integer(
                 "SP_EVIDENCE_SETTLE_SECONDS", 30, 0, 86_400
             ),
