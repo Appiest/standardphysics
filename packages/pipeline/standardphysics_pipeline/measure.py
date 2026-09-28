@@ -125,6 +125,12 @@ def _rectangle(
     ]
 
 
+def _clearance_of(result: PathResult) -> np.ndarray:
+    """The per-cell clearance a reachable route always carries."""
+    assert result.clearance is not None
+    return result.clearance
+
+
 class PipelineMeasurements:
     """Implements MeasurementProvider against real geometry."""
 
@@ -277,7 +283,7 @@ class PipelineMeasurements:
         if not result.reachable:
             return 0.0
         return longest_run_below(
-            grid, result.clearance, result.path, threshold_inches, exempt=result.exempt
+            grid, _clearance_of(result), result.path, threshold_inches, exempt=result.exempt
         )
 
     def route_runs_below(
@@ -297,7 +303,7 @@ class PipelineMeasurements:
         if not result.reachable:
             return []
         return runs_below(
-            grid, result.clearance, result.path, threshold_inches, exempt=result.exempt
+            grid, _clearance_of(result), result.path, threshold_inches, exempt=result.exempt
         )
 
     def route_path_clearances(
@@ -317,7 +323,7 @@ class PipelineMeasurements:
         if not result.reachable:
             return []
         return path_clearances(
-            grid, result.clearance, result.path, exempt=result.exempt
+            grid, _clearance_of(result), result.path, exempt=result.exempt
         )
 
     def turn_detail(
@@ -343,7 +349,7 @@ class PipelineMeasurements:
         if not result.reachable or not result.path:
             return None
 
-        turn = measure_turn(graph, grid, result.clearance, world_path(grid, result.path))
+        turn = measure_turn(graph, grid, _clearance_of(result), world_path(grid, result.path))
         if turn is None or (require_measured and not turn.fully_measured):
             return None
         return turn

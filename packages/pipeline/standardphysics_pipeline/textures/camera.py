@@ -22,12 +22,15 @@ import json
 import pathlib
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
+from typing import TypeVar
 
 import numpy as np
 from pydantic import ValidationError
 from standardphysics_contracts import Mat4, PoseRecord
 
 ARKIT_TO_PIXEL_AXES = np.diag([1.0, -1.0, -1.0, 1.0])
+
+Checked = TypeVar("Checked")
 
 
 class CameraMetadataError(ValueError):
@@ -93,13 +96,19 @@ def camera_from_pose(pose: PoseRecord, capture_to_room: Mat4 | None) -> PhotoCam
     room_to_camera = ARKIT_TO_PIXEL_AXES @ np.linalg.inv(camera_to_arkit) @ room_to_arkit
     k = pose.intrinsics
     calibrated = PhotoCamera(
-        frame_id=pose.frame_id,
+        frame_id=_checked(pose.frame_id),
         room_to_camera=room_to_camera,
         fx=k[0], fy=k[4], cx=k[6], cy=k[7],
-        width=pose.calibration_width, height=pose.calibration_height,
+        width=_checked(pose.calibration_width), height=_checked(pose.calibration_height),
         timestamp=pose.timestamp,
     )
-    return calibrated.resized(pose.image_width, pose.image_height)
+    return calibrated.resized(_checked(pose.image_width), _checked(pose.image_height))
+
+
+def _checked(value: Checked | None) -> Checked:
+    """A pose field `PoseRecord.projectable` has already found present."""
+    assert value is not None
+    return value
 
 
 def load_cameras(

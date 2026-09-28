@@ -271,7 +271,7 @@ def _with_every_face_owned(mesh: UnwrappedScan, size: int, rows, columns, faces,
     taken[rows.astype(np.int64) * size + columns] = True
     face_normals_ = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
     face_normals_ /= np.maximum(np.linalg.norm(face_normals_, axis=1, keepdims=True), 1e-12)
-    extra = [[], [], [], [], []]
+    extra: list[list] = [[], [], [], [], []]
     for point_uv, point in zip(points_uv, points):
         row, column = _pixel_of(point_uv, size)
         flat = row * size + column
@@ -655,6 +655,7 @@ def bake_scan_atlas(
             ))
             _return_freed_memory()
         mesh_path = work / "mesh.npz"
+        assert mesh.atlases is not None
         np.savez(mesh_path, vertices=mesh.vertices, triangles=mesh.triangles, uv=mesh.uv, atlases=mesh.atlases)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         _write_glb(mesh_path, [atlas.path for atlas in atlases], out_path)

@@ -13,6 +13,7 @@ from __future__ import annotations
 import dataclasses
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -89,7 +90,7 @@ def coverage_fractions(rgb_path, geometry_path, coverage_path, region_mask=None)
     stale = np.asarray(Image.open(rgb_path).convert("RGB"))
     total = geometry & (stale.sum(axis=-1) > 0)
     frac = photograph_frac(photographed, total)
-    result = {"target_pixels": int(total.sum()), "photographed_fraction": frac}
+    result: dict[str, Any] = {"target_pixels": int(total.sum()), "photographed_fraction": frac}
     if region_mask is not None:
         result["critical_roi_fraction"] = photograph_frac(np.asarray(region_mask, dtype=bool) & photographed,
                                                           np.asarray(region_mask, dtype=bool) & total)
@@ -155,7 +156,7 @@ def edge_width_profiles(reference: np.ndarray, candidate: np.ndarray, mask: np.n
         pairs = freeze_edge_pairs(reference, mask)
         if edge_pairs_path is not None:
             edge_pairs_path.write_text(json.dumps(pairs))
-    widths = {"reference": [], "candidate": [], "added": []}
+    widths: dict[str, list[float]] = {"reference": [], "candidate": [], "added": []}
     for pair in pairs[:10]:
         y, x0, x1 = pair["y"], pair["x0"], pair["x1"]
         for label, image in (("reference", reference), ("candidate", candidate)):
@@ -193,7 +194,7 @@ def freeze_edge_pairs(reference: np.ndarray, mask: np.ndarray | None, max_pairs:
             continue
         strength = gradient[y, row]
         order = row[np.argsort(-strength)]
-        taken = []
+        taken: list[int] = []
         for x in order:
             if all(abs(x - t) > 26 for t in taken):
                 taken.append(x)

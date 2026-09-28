@@ -294,6 +294,7 @@ def _standing_rooms(
     nowhere to go, so each shared cell goes to the stop it is nearer, and each
     stop keeps the cell it landed on.
     """
+    assert world.start is not None and world.goal is not None
     leaving = _standing_room(grid, world.walkable, start, world.start, radius)
     arriving = _standing_room(grid, world.walkable, goal, world.goal, radius)
     shared = leaving & arriving

@@ -9,6 +9,7 @@ import tempfile
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import overload
 
 import numpy as np
 from PIL import Image
@@ -299,7 +300,15 @@ class _Photos(Sequence):
     def __len__(self) -> int:
         return len(self.cameras)
 
-    def __getitem__(self, index: int) -> np.ndarray:
+    @overload
+    def __getitem__(self, index: int) -> np.ndarray: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[np.ndarray]: ...
+
+    def __getitem__(self, index: int | slice) -> np.ndarray | list[np.ndarray]:
+        if isinstance(index, slice):
+            return [self[each] for each in range(*index.indices(len(self)))]
         return _decoded(self.cameras[index], self.paths[self.cameras[index].frame_id])
 
 

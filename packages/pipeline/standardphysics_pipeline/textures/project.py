@@ -159,8 +159,7 @@ def _batches(faces: np.ndarray, side: np.ndarray):
 def _small_texels(x, y, first_column, first_row, width, height, faces, size, square):
     """Texel centres inside many small faces at once, as (faces, rows, columns, barycentric weights)."""
     offsets = np.arange(square)
-    down, across = np.meshgrid(offsets, offsets, indexing="ij")
-    down, across = down.ravel(), across.ravel()
+    down, across = (grid.ravel() for grid in np.meshgrid(offsets, offsets, indexing="ij"))
     x, y = x[faces], y[faces]
     within = (across[None] < width[faces, None]) & (down[None] < height[faces, None])
     determinant = (y[:, 1] - y[:, 2]) * (x[:, 0] - x[:, 2]) + (x[:, 2] - x[:, 1]) * (y[:, 0] - y[:, 2])
@@ -412,7 +411,7 @@ def sphere_footprints(small: PhotoCamera, centres: np.ndarray, radii: np.ndarray
     corners = centres[:, None, :] + signs[None] * radii[:, None, None]
     local = small.to_camera(corners.reshape(-1, 3).astype(np.float64)).reshape(-1, 8, 3)
     depth = local[..., 2]
-    usable = (depth > NEAR_LIMIT).all(axis=1)
+    usable = np.asarray((depth > NEAR_LIMIT).all(axis=1))
     safe = np.where(depth > NEAR_LIMIT, depth, NEAR_LIMIT)
     u, v = small.fx * local[..., 0] / safe + small.cx, small.fy * local[..., 1] / safe + small.cy
     nearest = small.to_camera(centres.astype(np.float64))[:, 2] - radii

@@ -17,6 +17,7 @@ import json
 import plistlib
 import re
 import sys
+from typing import Any
 
 import bpy
 
@@ -68,7 +69,7 @@ def lookup(mapping, name):
 def rename_through(mapping):
     """Rename in two passes so a target name colliding with a not-yet-renamed
     object cannot make Blender append .001 and lose the identity."""
-    staged = []
+    staged: list[tuple[Any, str]] = []
     for obj in list(bpy.data.objects):
         target = lookup(mapping, obj.name)
         if target:

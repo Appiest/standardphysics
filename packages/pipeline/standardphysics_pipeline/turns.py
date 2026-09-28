@@ -231,6 +231,11 @@ class _Across:
     clearance: np.ndarray
     pivot: SceneNode | None
 
+    def _known_pivot(self) -> SceneNode:
+        """The pivot, on the paths that only run once there is one."""
+        assert self.pivot is not None
+        return self.pivot
+
     def narrowest(self, points: list[Vec3]) -> float | None:
         """Narrowest point in a zone, or None when the zone has nothing in it.
 
@@ -251,7 +256,7 @@ class _Across:
         pivot's nearest point to it. A ray through the apex instead runs
         diagonally off the pivot's corner whenever the route swings wide.
         """
-        origin = closest_point(footprint(self.pivot), (apex.x, apex.y))
+        origin = closest_point(footprint(self._known_pivot()), (apex.x, apex.y))
         metres = self._across_from(origin, end.axis)
         return None if metres is None else to_inches(metres)
 
@@ -279,7 +284,7 @@ class _Across:
     def _first_hit(self, origin, direction):
         """The first occupied cell along the ray that is not the pivot, and
         how far along the ray it lies."""
-        outline = footprint(self.pivot)
+        outline = footprint(self._known_pivot())
         step = self.grid.cell_size / 2
         travelled = 0.0
         while travelled < MAX_ACROSS:
@@ -293,7 +298,7 @@ class _Across:
         return None
 
     def _is_pivot(self, cell, point, outline) -> bool:
-        return self.grid.owner_at(*cell) == self.pivot.id or contains_point(
+        return self.grid.owner_at(*cell) == self._known_pivot().id or contains_point(
             outline, point, self.grid.cell_size
         )
 

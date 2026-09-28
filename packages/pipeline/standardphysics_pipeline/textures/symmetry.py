@@ -288,7 +288,10 @@ def mirrored_completion(
     Each plane fills only what the scan and the planes before it left empty, so
     two planes never lay the same missing corner twice.
     """
-    new_vertices, new_triangles, sources, planes = [], [], [], []
+    new_vertices: list[np.ndarray] = []
+    new_triangles: list[np.ndarray] = []
+    sources: list[np.ndarray] = []
+    planes: list[MirrorPlane] = []
     next_index = len(vertices)
     scan = _IndexedScan.of(vertices, triangles)
     for index, node in enumerate(graph.nodes):
