@@ -239,3 +239,16 @@ def test_the_menu_ranks_a_lowered_section_above_rebuilding_the_whole_counter(gra
     rebuilds = [_rank(option.effect) for option in menu.options if option.edits.height_changes]
     assert sections and rebuilds
     assert min(sections) < min(rebuilds)
+
+
+def test_the_owners_checker_leaves_problems_resting_on_shaky_geometry_as_questions(graph, scenario, pipeline, pack, ledger):
+    from standardphysics_fixtures.shop import node_id
+
+    shaky = graph.model_copy(update={"nodes": [
+        node.model_copy(update={"quality": "needs_another_look"}) if node.id in {node_id("case_west"), node_id("case_east")}
+        else node for node in graph.nodes]})
+    training = TrainingChecker(scenario, rules=pack, ledger=ledger, measure=pipeline, scope="fittings")
+    owners = TrainingChecker(scenario, rules=pack, ledger=ledger, measure=pipeline, scope="fittings",
+                             trust_unsure_geometry=False)
+    assert "route_clear_width" in {f.check_id for f in training.fixable_problems(training.assess(shaky))}
+    assert "route_clear_width" not in {f.check_id for f in owners.fixable_problems(owners.assess(shaky))}

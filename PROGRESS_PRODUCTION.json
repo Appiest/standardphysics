@@ -75,7 +75,7 @@
     "door requests name each door (046f5235)",
     "standby worker takes queue (84b06750)",
     "still-to-check grouping (cf69d577)",
-    "ASTRA_MODEL separate from OPENROUTER_MODEL (84925d81)",
+    "labelling has its own LABEL_MODEL setting (84925d81); gpt-6-astra retired from every default",
     "re-check shops when checks change (960db19e)",
     "fix this layout from the plan (b7eeab8a)",
     "height request copy and one-per-title follow-ups (c6b0aed3)",

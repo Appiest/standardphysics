@@ -405,11 +405,13 @@ class Stages:
             return picked_outcome(graph, checker, menu, reply, targets)
 
     def menu_checker(self, graph: SceneGraph, scenario: Scenario, typology: SpaceTypology | None,
-                     scope: Scope = "layout") -> TrainingChecker:
+                     scope: Scope = "layout", trust_unsure_geometry: bool = True) -> TrainingChecker:
         """The checker a menu is built with; the owner's own layout is `graph` as it stands. The fittings scope
-        also counts construction that changes a piece, like a lowered counter section, as a fix."""
+        also counts construction that changes a piece, like a lowered counter section, as a fix, and without
+        `trust_unsure_geometry` a problem resting on shaky geometry stays a question, as in the owner's report."""
         return TrainingChecker(scenario, rules=load_pack(), ledger=self.ledger_factory(), measure=self.search_measure,
-                               owner_layout=graph, space_typology=typology, scope=scope, promoted=frozenset())
+                               owner_layout=graph, space_typology=typology, scope=scope, promoted=frozenset(),
+                               trust_unsure_geometry=trust_unsure_geometry)
 
     def locked(self):
         """Holds the search lock, so a caller measuring on the search cache doesn't race another search."""

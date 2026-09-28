@@ -3,7 +3,7 @@ import type { ModelLoopEvent } from "@/types/contracts";
 import { advanceModelLoop, CONNECTION_LOST, type ModelLoopAction, NOT_STARTED } from "./model-loop-progress";
 
 function event(fields: Partial<ModelLoopEvent>): ModelLoopEvent {
-  return { kind: "turn", turn: null, picked: [], why: "", fixable_left: null, working_on: [], turns_at_most: null, construction: [], built_ins: [], moves: [], explanation: null, message: "", ...fields };
+  return { kind: "turn", turn: null, picked: [], why: "", fixable_left: null, working_on: [], turns_at_most: null, construction: [], built_ins: [], proposed: [], moves: [], explanation: null, message: "", ...fields };
 }
 
 const replay = (actions: ModelLoopAction[]) => actions.reduce(advanceModelLoop, NOT_STARTED);
@@ -33,5 +33,10 @@ describe("model loop progress", () => {
     expect(replay([{ kind: "start" }, { kind: "stop" }, event({ turn: 1 })])).toMatchObject({ phase: "stopped", turns: [] });
     expect(replay([{ kind: "start" }, { kind: "closed" }])).toMatchObject({ phase: "failed", error: CONNECTION_LOST });
     expect(replay([{ kind: "start" }, event({ kind: "finished" }), { kind: "closed" }]).phase).toBe("finished");
+  });
+
+  it("proposes nothing when a server from before proposals leaves them out", () => {
+    const { proposed: _dropped, ...older } = event({ kind: "finished", moves: [] });
+    expect(replay([{ kind: "start" }, older as ModelLoopEvent]).finished?.proposed).toEqual([]);
   });
 });

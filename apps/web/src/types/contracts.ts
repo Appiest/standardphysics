@@ -1021,6 +1021,7 @@ export interface ModelLoopEvent {
   message: string;
   moves: NodeMove[];
   picked: string[];
+  proposed: string[];
   turn: number | null;
   turns_at_most: number | null;
   why: string;

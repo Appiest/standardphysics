@@ -51,7 +51,7 @@ function useWideScreen(): boolean {
 }
 
 /** The steps that read the shop rather than work on it; the others use the model for picking, dragging or driving. */
-const PANELS_SHOWING_FOUND = new Set(["answers", "results", "follow_ups", "waiting", "failed"]);
+const PANELS_SHOWING_FOUND = new Set(["answers", "results", "waiting", "failed"]);
 
 export function showsFound(panel: string): boolean {
   return PANELS_SHOWING_FOUND.has(panel);

@@ -96,6 +96,10 @@ class TrainingChecker:
     promoted: frozenset[str] = PROMOTED_TO_TRAINING
     """Rules above tier 1 the fittings scope measures as tier 1. The owner's loop promotes none, so it only
     works on what the owner's report shows."""
+    trust_unsure_geometry: bool = True
+    """Training takes geometry marked needs_another_look as measured. The owner's loop does not, so an answer
+    resting on it stays a question, as in the owner's report, and the loop never chases what the owner sees as
+    still to check."""
 
     def __post_init__(self) -> None:
         if self.scope == "fittings":
@@ -113,7 +117,7 @@ class TrainingChecker:
 
     def assess(self, graph: SceneGraph) -> Pass:
         return assess(
-            trusted_geometry(graph),
+            trusted_geometry(graph) if self.trust_unsure_geometry else graph,
             self.scenario,
             self.measure,
             rules=self.rules,

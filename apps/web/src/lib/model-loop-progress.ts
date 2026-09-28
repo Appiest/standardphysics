@@ -31,13 +31,16 @@ const whileRunning = (progress: ModelLoopProgress, next: ModelLoopProgress) => (
 
 const eventOf = (action: ModelLoopAction) => action as ModelLoopEvent;
 
+/** A server from before `proposed` existed leaves it out; nothing is then proposed, rather than the card breaking. */
+const withProposed = (event: ModelLoopEvent): ModelLoopEvent => ({ ...event, proposed: event.proposed ?? [] });
+
 const HANDLERS: Record<ModelLoopAction["kind"], Handler> = {
   start: () => ({ ...NOT_STARTED, phase: "running" }),
   started: (progress, action) => whileRunning(progress, {
     ...progress, startedWith: eventOf(action).fixable_left ?? null, turnsAtMost: eventOf(action).turns_at_most ?? null, workingOn: eventOf(action).working_on,
   }),
   turn: (progress, action) => whileRunning(progress, { ...progress, turns: [...progress.turns, eventOf(action)], workingOn: eventOf(action).working_on }),
-  finished: (progress, action) => whileRunning(progress, { ...progress, phase: "finished", finished: eventOf(action) }),
+  finished: (progress, action) => whileRunning(progress, { ...progress, phase: "finished", finished: withProposed(eventOf(action)) }),
   failed: (progress, action) => whileRunning(progress, { ...progress, phase: "failed", error: eventOf(action).message }),
   stop: (progress) => whileRunning(progress, { ...progress, phase: "stopped" }),
   closed: (progress) => whileRunning(progress, { ...progress, phase: "failed", error: CONNECTION_LOST }),

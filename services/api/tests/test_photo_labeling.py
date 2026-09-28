@@ -40,7 +40,7 @@ def test_ingest_passes_uploaded_frames_to_the_default_astra_labeler(client, monk
         }]}
         return {"choices": [{"message": {"content": json.dumps(response)}}]}
 
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("FIREWORKS_API_KEY", "test-key")
     monkeypatch.setattr("standardphysics_pipeline.astra._openrouter_post", transport)
     scan_id = create_scan(client)
     put_artifact(client, scan_id, "room-json", json.dumps({"objects": [room_object]}).encode(), "room_json")

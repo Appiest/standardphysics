@@ -16,6 +16,7 @@ import pathlib
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -42,19 +43,57 @@ from .textures.camera import CameraMetadataError, camera_from_pose
 logger = logging.getLogger(__name__)
 
 API_KEY_ENV = "OPENROUTER_API_KEY"
-MODEL_ENV = "ASTRA_MODEL"
+MODEL_ENV = "LABEL_MODEL"
 """Labelling has its own model setting rather than OPENROUTER_MODEL, which other calls share. On a real Share
-Tea scan Opus labelled ten batches for $0.73 and told the 35.7 in service counters from the 44 in bar counters
-and bar stools from chairs; the local fallback got both wrong. At gpt-6-astra's price the same labels would
-cost about $1.83, over the $1.50 a scan is allowed."""
+Tea scan, DeepSeek v4.1 Flash on Fireworks matched Opus on the counters that mattered: both 35.7 in RoomPlan
+boxes came back not movable and both 44 in bar-counter tables came back "Table" and not movable, for $0.04
+against Opus's $0.73. It did not tell bar stools from chairs, calling both "Chair"; movability still came back
+right. FALLBACK_MODEL, Kimi K3, is tried once when DeepSeek's answer is unusable, before giving up to local
+labels. Kimi is not the default itself: on the same scan it ran to the wall-clock deadline before finishing
+every batch, at several times DeepSeek's token cost. Set LABEL_MODEL to pin one model instead of the pair,
+including anthropic/claude-opus-5.5 through OPENROUTER_API_KEY and OPENROUTER_BASE_URL. gpt-6-astra is
+retired: 2.5 times Opus's price would push a scan past the $1.50 it is allowed."""
+FALLBACK_MODEL = "accounts/fireworks/models/kimi-k3"
 BASE_URL_ENV = "OPENROUTER_BASE_URL"
-DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_MODEL = "anthropic/claude-opus-5.5"
+DEFAULT_BASE_URL = "https://api.fireworks.ai/inference/v1"
+DEFAULT_MODEL = "accounts/fireworks/models/deepseek-v4p1-flash"
+
+FIREWORKS_HOST = "api.fireworks.ai"
+OPENROUTER_HOST = "openrouter.ai"
+PROVIDER_KEYS = {FIREWORKS_HOST: "FIREWORKS_API_KEY", OPENROUTER_HOST: API_KEY_ENV}
+"""The environment variable holding each hosted provider's key, keyed by the chat endpoint's host."""
+REASONING_OFF_BY_HOST: dict[str, dict[str, Any]] = {FIREWORKS_HOST: {"reasoning_effort": "none"}}
+"""Mirrors discovery/detect.py's host table: hosts that accept turning reasoning off, and how each spells it."""
 
 
 def provider_routing(model: str) -> dict:
     """Pin the request to the provider that makes the model, and retain nothing."""
     return {"order": [model.split("/")[0]], "allow_fallbacks": False, "data_collection": "deny"}
+
+
+def _base_url() -> str:
+    return (os.environ.get(BASE_URL_ENV) or DEFAULT_BASE_URL).rstrip("/")
+
+
+def _host(url: str) -> str:
+    return urllib.parse.urlsplit(url).hostname or ""
+
+
+def _api_key_env() -> str:
+    return PROVIDER_KEYS.get(_host(_base_url()), API_KEY_ENV)
+
+
+def _request_options(model: str, host: str) -> dict[str, Any]:
+    """Fields only the host in use accepts: OpenRouter's routing and usage reporting, or reasoning turned off."""
+    if host == OPENROUTER_HOST:
+        return {"reasoning": {"effort": "low"}, "provider": provider_routing(model), "usage": {"include": True}}
+    return dict(REASONING_OFF_BY_HOST.get(host, {}))
+
+
+def _model_candidates() -> list[str]:
+    """DEFAULT_MODEL then FALLBACK_MODEL, unless MODEL_ENV pins one model explicitly."""
+    explicit = os.environ.get(MODEL_ENV)
+    return [explicit] if explicit else [DEFAULT_MODEL, FALLBACK_MODEL]
 
 
 REQUEST_TIMEOUT_SECONDS = 120.0
@@ -343,33 +382,52 @@ def _remote_patches(
     poses_path: pathlib.Path | None = None,
     lidar_mesh_path: pathlib.Path | None = None,
 ) -> list[LabelPatch] | None:
-    api_key = os.environ.get(API_KEY_ENV)
+    api_key = os.environ.get(_api_key_env())
     if transport is None and not api_key:
         return None
     objects = graph.contents()
-    batches = [objects[index:index + RECONSTRUCTION_BATCH_SIZE] for index in range(0, len(objects), RECONSTRUCTION_BATCH_SIZE)]
-    if not batches:
+    if not objects:
         return None
     paths = tuple(frame_paths or ())
+    mesh_profiles = object_mesh_profiles(graph, lidar_mesh_path)
     deadline = time.monotonic() + RECONSTRUCTION_WALL_TIMEOUT_SECONDS
-    executor: ThreadPoolExecutor | None = None
-    try:
-        mesh_profiles = object_mesh_profiles(graph, lidar_mesh_path)
+    for model in _model_candidates():
         if time.monotonic() >= deadline:
             return None
+        patches = _attempt_with_model(graph, objects, model, transport, api_key or "", paths, poses_path, mesh_profiles, deadline)
+        if patches is not None:
+            return patches
+    return None
+
+
+def _attempt_with_model(
+    graph: SceneGraph,
+    objects: list[SceneNode],
+    model: str,
+    transport: Transport | None,
+    api_key: str,
+    frame_paths: tuple[pathlib.Path, ...],
+    poses_path: pathlib.Path | None,
+    mesh_profiles: dict[str, Any],
+    deadline: float,
+) -> list[LabelPatch] | None:
+    """Every object answered by this one model, or None when a batch is missing, invalid, or times out."""
+    batches = [objects[index:index + RECONSTRUCTION_BATCH_SIZE] for index in range(0, len(objects), RECONSTRUCTION_BATCH_SIZE)]
+    executor: ThreadPoolExecutor | None = None
+    try:
         executor = ThreadPoolExecutor(max_workers=MAX_RECONSTRUCTION_WORKERS)
         futures = [executor.submit(
-            _remote_batch, graph, batch, transport, api_key or "", paths, poses_path, mesh_profiles, deadline
+            _remote_batch, graph, batch, transport, api_key, model, frame_paths, poses_path, mesh_profiles, deadline
         ) for batch in batches]
         patches: list[LabelPatch] = []
         for future in as_completed(futures, timeout=max(0.0, deadline - time.monotonic())):
             result = future.result()
             if result is None:
-                logger.warning("astra_remote_batch_invalid reason=invalid_response")
+                logger.warning("astra_remote_batch_invalid reason=invalid_response model=%s", model)
                 return None
             patches.extend(result)
     except (urllib.error.URLError, urllib.error.HTTPError, OSError, TimeoutError, ValueError) as error:
-        logger.warning("astra_remote_batch_failed reason=%s", type(error).__name__)
+        logger.warning("astra_remote_batch_failed reason=%s model=%s", type(error).__name__, model)
         return None
     finally:
         if executor is not None:
@@ -382,6 +440,7 @@ def _remote_batch(
     objects: Sequence[SceneNode],
     transport: Transport | None,
     api_key: str,
+    model: str,
     frame_paths: Iterable[pathlib.Path] | None,
     poses_path: pathlib.Path | None,
     mesh_profiles: dict[str, Any],
@@ -395,6 +454,7 @@ def _remote_batch(
         frame_paths=frame_paths,
         poses_path=poses_path,
         mesh_profiles=mesh_profiles,
+        model=model,
     )
     if transport is not None:
         payload = transport(_chat_url(), body, _chat_headers(api_key))
@@ -456,7 +516,7 @@ def _body_evidence_by_node(body: dict[str, Any]) -> dict[UUID, set[str]]:
 
 
 def _chat_url() -> str:
-    return f"{(os.environ.get(BASE_URL_ENV) or DEFAULT_BASE_URL).rstrip('/')}/chat/completions"
+    return f"{_base_url()}/chat/completions"
 
 
 def _chat_headers(api_key: str) -> dict[str, str]:
@@ -470,6 +530,7 @@ def _chat_body(
     poses_path: pathlib.Path | None = None,
     lidar_mesh_path: pathlib.Path | None = None,
     mesh_profiles: dict[str, Any] | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     calibrated = _calibrated_photo_evidence(graph, frame_paths, poses_path)
     image_messages = [item.message for item in calibrated] or _image_messages(graph, frame_paths, poses_path)
@@ -483,16 +544,15 @@ def _chat_body(
     )
     if image_messages:
         content = [{"type": "text", "text": content}, *image_messages]
-    model = os.environ.get(MODEL_ENV) or DEFAULT_MODEL
-    return {
-        "model": model,
+    chosen_model = model or os.environ.get(MODEL_ENV) or DEFAULT_MODEL
+    body = {
+        "model": chosen_model,
         "max_tokens": MAX_OUTPUT_TOKENS,
-        "reasoning": {"effort": "low"},
         "messages": [{"role": "system", "content": INSTRUCTION}, {"role": "user", "content": content}],
         "response_format": {"type": "json_schema", "json_schema": {"name": "astra_labels", "strict": True, "schema": LABEL_SCHEMA}},
-        "provider": provider_routing(model),
-        "usage": {"include": True},
     }
+    body.update(_request_options(chosen_model, _host(_base_url())))
+    return body
 
 
 @dataclass(frozen=True)

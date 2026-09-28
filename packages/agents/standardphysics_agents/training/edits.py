@@ -31,6 +31,8 @@ def _json_text(completion: str) -> str:
     return visible[start:end + 1] if start >= 0 and end > start else visible
 
 
+MAX_FIXTURE_MOVES = 8
+"""The most built-ins one answer may move."""
 CONSTRUCTION_FIELDS = ("wall_shifts", "fixture_moves", "height_changes", "replacements", "add_lowered_section")
 
 
@@ -39,7 +41,7 @@ class TrainingEdits(RoomEdits):
 
     moves: list[FurnitureMove] = Field(default_factory=list, max_length=64)
     wall_shifts: list[WallShift] = Field(default_factory=list, max_length=len(SIDES))
-    fixture_moves: list[FixtureMove] = Field(default_factory=list, max_length=8)
+    fixture_moves: list[FixtureMove] = Field(default_factory=list, max_length=MAX_FIXTURE_MOVES)
     height_changes: list[HeightChange] = Field(default_factory=list, max_length=16)
     replacements: list[Replacement] = Field(default_factory=list, max_length=16)
     add_lowered_section: list[LoweredSection] = Field(default_factory=list, max_length=4)
