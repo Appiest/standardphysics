@@ -65,12 +65,13 @@ from .reconcile import reconcile_outlets
 from .second_look import Photos, second_look
 from .semantic_corrections import apply_secondary_semantic_corrections, is_work_surface
 from .surface_attach import attach_detection_to_surface
+from .walk_sampling import worth_reading
 from .worktops import measure_worktops
 
 log = logging.getLogger(__name__)
 
 FRAME_LIMIT = 400
-"""Every keyframe of a normal walk. A frame nobody reads is a person left in
+"""Every keyframe of a normal walk that the walk sampler keeps. A frame nobody reads is a person left in
 the mesh and an object that was never there: on a real 110-second capture,
 sampling 24 of 218 frames found half the laptops and a quarter of the people."""
 DETECTION_WORKERS = 16
@@ -290,7 +291,7 @@ def _cameras(inputs: DiscoveryInputs, graph: SceneGraph) -> list[PhotoCamera]:
     stored = [camera for camera in cameras if inputs.frame_paths.get(camera.frame_id, pathlib.Path()).is_file()]
     if not stored:
         raise DiscoveryError("no stored photo has a matching camera pose")
-    return evenly_spread(stored, FRAME_LIMIT)
+    return evenly_spread(worth_reading(stored), FRAME_LIMIT)
 
 
 def _orientations(poses_path: pathlib.Path) -> dict[str, str]:

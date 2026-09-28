@@ -30,6 +30,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
 from standardphysics_contracts import SimulationRequest
+from standardphysics_pipeline.discovery.live import LiveReader, LiveReport
 
 from . import evidence, guest_sweep
 from . import repository as repo
@@ -162,6 +163,12 @@ class _UnusableEvidence(Exception):
     a new upload that repairs the pairing queues the next attempt."""
 
 
+def _count_what_the_walk_read(outcome: DiscoveryOutcome, walk: LiveReport) -> None:
+    """Put the photos read during the walk on the job record: they were real, billed requests."""
+    outcome.read_during_walk = walk.read
+    outcome.model_requests = [*walk.requests, *outcome.model_requests]
+
+
 class Worker:
     def __init__(
         self,
@@ -180,6 +187,7 @@ class Worker:
         self.notifier: Notifier = LoggedNotifier()
         self._guests_swept_at = 0.0
         self._on_this_thread = threading.local()
+        self.live_reader = LiveReader(read_photo=stages.read_photo)
 
     def start(self) -> None:
         if not self.lock.acquire():
@@ -212,6 +220,7 @@ class Worker:
             repo.requeue_interrupted_jobs(connection)
 
     def stop(self) -> None:
+        self.live_reader.stop()
         self._stop.set()
         self._wake.set()
         threads = [pulse.thread for pulse in self.pulses.values() if pulse.thread is not None]
@@ -564,6 +573,7 @@ class Worker:
         if room_json is None:
             raise _UnusableEvidence("the scan has no room_json to measure")
         frame_paths, poses_path, lidar_mesh_path = self.label_inputs(scan_id)
+        read_during_walk = self.live_reader.finish(scan_id)
         # With a declared manifest every state except not_started means the
         # pairing is unfilled or broken; such a run never counts as semantic.
         run_discovery = not declared or association_state == "not_started"
@@ -577,6 +587,8 @@ class Worker:
         )
         if not run_discovery:
             outcome = DiscoveryOutcome(deferred_reason=association_failure or association_state)
+        else:
+            _count_what_the_walk_read(outcome, read_during_walk)
         self._checkpoint()
         with self.database.transaction() as connection:
             repo.save_revision(connection, graph, source="ingest")

@@ -70,6 +70,7 @@ from .evidence import evidence_status_for, maybe_queue_semantic, record_closure
 from .labels import mark_counter, mark_observation, review_outlet, unmark_counter
 from .layout import check_layout, save_layout
 from .lidar_mesh import MAX_LIDAR_MESH_BYTES, InvalidLidarMesh, validate_lidar_mesh
+from .live_walk import frame_pose, read_during_walk
 from .loop_run import run as run_loop_on
 from .loop_run import stream as stream_loop_on
 from .notifications import notifier_from
@@ -476,8 +477,10 @@ def _install_upload_routes(
         request: Request,
         x_checksum_sha256: Annotated[str, Header()],
         x_artifact_kind: Annotated[ArtifactKind, Header()],
+        x_frame_pose: Annotated[str | None, Header()] = None,
     ):
         admission = UploadAdmission(budgets, store, owner_of(request), scan_id)
+        pose = frame_pose(x_frame_pose, artifact_id, x_artifact_kind)
         _refuse_a_doomed_upload_early(database, admission, artifact_id, request)
         staged = await _stage_upload(store, scan_id, artifact_id, request)
         try:
@@ -487,6 +490,8 @@ def _install_upload_routes(
             )
         finally:
             store.discard(staged)
+        if status == 201:
+            read_during_walk(worker.live_reader, store, scan_id, artifact_id, pose)
         if _queue_for_arrival(
             database, store, worker, scan_id, x_artifact_kind, settings.evidence_settle_seconds
         ):

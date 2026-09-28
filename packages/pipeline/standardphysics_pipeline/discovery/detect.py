@@ -222,6 +222,46 @@ class RateLimitGate:
 
 RATE_LIMIT_GATE = RateLimitGate()
 
+DETECTOR_SLOTS_IN_FLIGHT = 16
+"""Detector requests in flight across the whole process, whichever scan asked.
+
+The account's generated-token budget is shared by every scan, so the cap has to
+be too: sixteen at once is what one walk reads at without a rate limit (see
+`discover.DETECTION_WORKERS`)."""
+
+
+class DetectorSlots:
+    """A process-wide cap on requests in flight, where an urgent request always goes first.
+
+    Discovery for a walk that has ended is urgent: someone is waiting for it.
+    Reading photos while a walk is still going on is not, so it only takes a
+    slot no urgent request is waiting for, and a finished walk is never slowed
+    down by someone else's walk that is still in progress.
+    """
+
+    def __init__(self, size: int = DETECTOR_SLOTS_IN_FLIGHT) -> None:
+        self._free = size
+        self._urgent_waiting = 0
+        self._changed = threading.Condition()
+
+    def acquire(self, urgent: bool) -> None:
+        with self._changed:
+            if urgent:
+                self._urgent_waiting += 1
+                self._changed.wait_for(lambda: self._free > 0)
+                self._urgent_waiting -= 1
+            else:
+                self._changed.wait_for(lambda: self._free > 0 and not self._urgent_waiting)
+            self._free -= 1
+
+    def release(self) -> None:
+        with self._changed:
+            self._free += 1
+            self._changed.notify_all()
+
+
+DETECTOR_SLOTS = DetectorSlots()
+
 
 @dataclass(frozen=True)
 class Detection:
@@ -332,8 +372,12 @@ def detect_objects(
     orientation: str = "landscape_right",
     transport: Transport | None = None,
     recorded: list[ModelRequestInfo] | None = None,
+    urgent: bool = True,
 ) -> list[Detection]:
     """Every object the model finds in one frame, boxed in that frame's stored pixels.
+
+    `urgent` is False only for photos read while their walk is still going on,
+    which wait for any request someone is already waiting on (`DetectorSlots`).
 
     `recorded`, when given, receives one `ModelRequestInfo` per actual provider
     response: provider, model, provider request id, usage and orientation.
@@ -347,20 +391,20 @@ def detect_objects(
     api_key = _api_key()
     if transport is None and not api_key:
         raise DetectionAuthError(f"neither {API_KEY_ENV} nor {FALLBACK_KEY_ENV} is set, so no frame can be read")
-    payload = _answer(transport, _request_body(frame), api_key)
+    payload = _answer(transport, _request_body(frame), api_key, urgent)
     if recorded is not None:
         recorded.append(_request_info(payload, frame_id, orientation))
     return _detections_from(payload, frame, frame_id)
 
 
-def _answer(transport: Transport | None, body: dict[str, Any], api_key: str) -> dict[str, Any]:
+def _answer(transport: Transport | None, body: dict[str, Any], api_key: str, urgent: bool = True) -> dict[str, Any]:
     """The model's reply, asked for again after a blip or a rate limit until the attempts run out."""
     attempt = 0
     while True:
         attempt += 1
         RATE_LIMIT_GATE.wait()
         try:
-            return _post(transport, body, api_key)
+            return _post_in_a_slot(transport, body, api_key, urgent)
         except DetectionRateLimited as error:
             if attempt >= RATE_LIMITED_ATTEMPTS:
                 raise
@@ -374,6 +418,14 @@ def _answer(transport: Transport | None, body: dict[str, Any], api_key: str) -> 
             if attempt >= MAX_ATTEMPTS:
                 raise
             time.sleep(_backoff(attempt))
+
+
+def _post_in_a_slot(transport: Transport | None, body: dict[str, Any], api_key: str, urgent: bool) -> dict[str, Any]:
+    DETECTOR_SLOTS.acquire(urgent)
+    try:
+        return _post(transport, body, api_key)
+    finally:
+        DETECTOR_SLOTS.release()
 
 
 def _backoff(attempt: int) -> float:
