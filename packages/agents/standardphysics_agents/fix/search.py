@@ -35,6 +35,7 @@ from ..copy import no_arrangement, proposal_rationale, relaxation_question
 from ..hashing import inventory
 from ..rules import AgentRulePack, VerificationLedger
 from ..tracing import traced
+from .budget import out_of_time
 from .constraints import violations
 from .moves import apply_moves, unlocked, without
 from .pinch import Pinch, pinch_from
@@ -168,6 +169,7 @@ class _Search:
     candidate_rejection: CandidateRejection | None = None
     measured: int = 0
     rejected: list[str] = field(default_factory=list)
+    deadline: float | None = None
 
     def run(self, pinch: Pinch, limit: int) -> tuple[Candidate, SceneGraph] | None:
         return self.check(pinch, candidates(pinch, limit))
@@ -177,6 +179,8 @@ class _Search:
 
         known = {finding.id for finding in self.baseline.problems}
         for candidate in guesses:
+            if out_of_time(self.deadline):
+                return None
             rearranged = apply_moves(self.graph, candidate.moves)
             broken = violations(self.graph, rearranged)
             if broken:
@@ -216,8 +220,13 @@ def propose_fix(
     limit: int = CANDIDATE_LIMIT,
     offer_relaxation: bool = True,
     candidate_rejection: CandidateRejection | None = None,
+    deadline: float | None = None,
 ) -> FixOutcome:
-    """One arrangement that clears a named finding, or one thing to ask about."""
+    """One arrangement that clears a named finding, or one thing to ask about.
+
+    With a `deadline` (see `fix/budget.py`) the search stops guessing once it
+    passes and answers with what it found by then, which may be nothing.
+    """
     problems = [finding for finding in targets if finding.outcome == "problem"
                 and rules.by_id(finding.check_id).rearrangeable]
     before = baseline or assess(
@@ -227,13 +236,13 @@ def propose_fix(
 
     search = _Search(
         graph, scenario, measure, rules, ledger, max_tier,
-        baseline=before, candidate_rejection=candidate_rejection,
+        baseline=before, candidate_rejection=candidate_rejection, deadline=deadline,
     )
     for pinch in _pinches(problems, graph):
         result = search.run(pinch, limit)
         if result is None and limit > 0:
             finding = next(f for f in problems if f.id == pinch.finding_id)
-            result = search.check(pinch, placements(graph, pinch, finding, rules, limit * 4))
+            result = search.check(pinch, placements(graph, pinch, finding, rules, limit * 4, deadline))
         if result is None:
             continue
         picked, rearranged = result
@@ -251,9 +260,9 @@ def propose_fix(
         _find_relaxation(
             graph, scenario, measure, problems,
             rules=rules, ledger=ledger, max_tier=max_tier, baseline=before,
-            candidate_rejection=candidate_rejection,
+            candidate_rejection=candidate_rejection, deadline=deadline,
         )
-        if offer_relaxation
+        if offer_relaxation and not out_of_time(deadline)
         else None
     )
     return FixOutcome(
@@ -286,6 +295,7 @@ def _find_relaxation(
     max_tier: Tier,
     baseline: Pass,
     candidate_rejection: CandidateRejection | None,
+    deadline: float | None = None,
 ) -> Relaxation | None:
     """One thing the owner could allow, tested before it is offered.
 
@@ -297,11 +307,11 @@ def _find_relaxation(
         found = _try_unlocking(
             graph, scenario, measure, pinch,
             rules=rules, ledger=ledger, max_tier=max_tier, baseline=baseline,
-            candidate_rejection=candidate_rejection,
+            candidate_rejection=candidate_rejection, deadline=deadline,
         ) or _try_setting_aside(
             graph, scenario, measure, pinch,
             rules=rules, ledger=ledger, max_tier=max_tier, baseline=baseline,
-            candidate_rejection=candidate_rejection,
+            candidate_rejection=candidate_rejection, deadline=deadline,
         )
         if found:
             return found
@@ -310,7 +320,7 @@ def _find_relaxation(
 
 def _try_unlocking(
     graph, scenario, measure, pinch, *, rules, ledger, max_tier, baseline,
-    candidate_rejection,
+    candidate_rejection, deadline=None,
 ) -> Relaxation | None:
     for node in pinch.fixed:
         opened = unlocked(graph, [node.id])
@@ -323,7 +333,7 @@ def _try_unlocking(
             opened, scenario, measure, [target],
             rules=rules, ledger=ledger, baseline=baseline,
             max_tier=max_tier, limit=RELAXATION_LIMIT, offer_relaxation=False,
-            candidate_rejection=candidate_rejection,
+            candidate_rejection=candidate_rejection, deadline=deadline,
         )
         if outcome.found:
             return _relaxation("unlock", [node])
@@ -332,12 +342,14 @@ def _try_unlocking(
 
 def _try_setting_aside(
     graph, scenario, measure, pinch, *, rules, ledger, max_tier, baseline,
-    candidate_rejection,
+    candidate_rejection, deadline=None,
 ) -> Relaxation | None:
     from ..evaluation.gate import accepts
 
     known = {finding.id for finding in baseline.problems}
     for node in pinch.movable:
+        if out_of_time(deadline):
+            return None
         candidate = without(graph, [node.id])
         after = assess(
             candidate, scenario, measure,
