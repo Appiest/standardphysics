@@ -63,7 +63,7 @@ def floor_polygon(node: SceneNode) -> Polygon:
                     m[0] * local_x + m[1] * local_y + m[2] * local_z + m[3],
                     m[4] * local_x + m[5] * local_y + m[6] * local_z + m[7],
                 ))
-    return _convex_hull(points)
+    return convex_hull(points)
 
 
 def polygon_bounds(polygon: Polygon) -> tuple[float, float, float, float]:
@@ -80,7 +80,7 @@ def contains_point(polygon: Polygon, point: Point, margin: float = 0.0) -> bool:
     single point or line, so each edge test passes for every point in the
     room, and a photo candidate given no size stood over the whole floor.
     """
-    area = _signed_area(polygon) if len(polygon) >= 3 else 0.0
+    area = signed_area(polygon) if len(polygon) >= 3 else 0.0
     if abs(area) <= DEGENERATE_AREA:
         return False
     direction = 1 if area >= 0 else -1
@@ -100,7 +100,7 @@ def distance_outside(polygon: Polygon, point: Point, margin: float = 0.0) -> flo
     return min(_point_to_segment(point, start, end) for start, end in _edges(polygon))
 
 
-def _convex_hull(points: list[Point]) -> Polygon:
+def convex_hull(points: list[Point]) -> Polygon:
     """Monotone-chain hull keeps a floor boundary ordered without an AABB."""
     unique = sorted(set(points))
     if len(unique) <= 2:
@@ -122,8 +122,36 @@ def _convex_hull(points: list[Point]) -> Polygon:
     return lower[:-1] + upper[:-1]
 
 
-def _signed_area(polygon: Polygon) -> float:
+def signed_area(polygon: Polygon) -> float:
+    """Positive when the outline runs anticlockwise, as `convex_hull` returns it."""
     return sum(start[0] * end[1] - end[0] * start[1] for start, end in _edges(polygon)) / 2
+
+
+def convex_intersection(subject: Polygon, clip: Polygon) -> Polygon:
+    """The overlap of two anticlockwise convex outlines, by clipping one edge at a time."""
+    if len(subject) < 3 or len(clip) < 3:
+        return []
+    kept = subject
+    for start, end in _edges(clip):
+        kept = _keep_left_of(kept, start, end)
+        if not kept:
+            return []
+    return kept
+
+
+def _keep_left_of(polygon: Polygon, start: Point, end: Point) -> Polygon:
+    def side(point: Point) -> float:
+        return (end[0] - start[0]) * (point[1] - start[1]) - (end[1] - start[1]) * (point[0] - start[0])
+
+    kept: Polygon = []
+    for current, following in _edges(polygon):
+        here, there = side(current), side(following)
+        if here >= 0:
+            kept.append(current)
+        if (here >= 0) != (there >= 0):
+            t = here / (here - there)
+            kept.append((current[0] + t * (following[0] - current[0]), current[1] + t * (following[1] - current[1])))
+    return kept
 
 
 def _point_to_segment(point: Point, a: Point, b: Point) -> float:
