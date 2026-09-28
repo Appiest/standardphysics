@@ -7,7 +7,6 @@ never appear in a response, a log line or the web build.
 from __future__ import annotations
 
 import logging
-import math
 import os
 import pathlib
 import secrets
@@ -161,7 +160,7 @@ class Settings:
     SP_BAKE_TIMEOUT_SECONDS changes it.
     """
     jobs_in_own_process: bool = False
-    """Process, assess, display and simulate jobs run in a process of their own, killed at their kind's deadline.
+    """Every job but a photo bake runs in a process of its own, killed at its kind's deadline.
 
     A thread can't be stopped from outside, so a stage stuck in a C extension,
     a network call that never returns or a loop that never ends would hold the
@@ -192,6 +191,16 @@ class Settings:
     """How long a simulation may run, from SP_SIMULATE_TIMEOUT_SECONDS. A deep one runs its trials, a
     thousand by default, once for each of up to nine redesign rounds. On the worker's own thread the
     job checks its deadline between rounds, so a run past it stops after the round in progress."""
+    rearrange_timeout_seconds: float = 60 * 60
+    """How long a layout suggestion may run, from SP_REARRANGE_TIMEOUT_SECONDS. It asks the model at most
+    twenty times, four rounds in each of up to five windows, and an OpenRouter request gives up after two
+    minutes, so forty minutes of asking is the most a working suggestion takes. The Fireworks path can also
+    wait ten minutes for a cold deployment, and its requests give up after five, so raise this for it."""
+    furniture_timeout_seconds: float = 3 * 60 * 60
+    """How long a furniture refinement may run, from SP_FURNITURE_TIMEOUT_SECONDS. It fits every chair,
+    sofa, table, bed and stool in the build one after another; the script gives each fit up to forty
+    minutes and each comparison render five. A run stopped here keeps the fits it finished, and retrying
+    it picks up from the first object it had not reached."""
     max_job_interruptions: int = MAX_INTERRUPTIONS
     """How many runs of one job restarts may cut short before startup fails it instead of queueing
     it again, from SP_MAX_JOB_INTERRUPTIONS. Retrying the scan clears the count."""
@@ -252,15 +261,22 @@ class Settings:
     def job_deadline_seconds(self, kind: str) -> float:
         """How long a job of this kind may run. A photo bake's deadline is its kill timeout.
 
-        A kind with no deadline gets none; the worker fails such a job as soon as it runs it.
+        A kind missing from this table gets the shortest deadline here, and a warning in the log,
+        rather than no deadline at all: a job with none would hold its worker loop for ever.
         """
-        return {
+        deadlines = {
             "process": self.process_timeout_seconds,
             "assess": self.assess_timeout_seconds,
             "display": self.display_timeout_seconds,
             "simulate": self.simulate_timeout_seconds,
             "texture": self.bake_timeout_seconds,
-        }.get(kind, math.inf)
+            "rearrange": self.rearrange_timeout_seconds,
+            "furniture": self.furniture_timeout_seconds,
+        }
+        if kind not in deadlines:
+            log.warning("a %s job has no deadline of its own, so it gets the shortest one", kind)
+            return min(deadlines.values())
+        return deadlines[kind]
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -283,6 +299,8 @@ class Settings:
             assess_timeout_seconds=_bounded_integer("SP_ASSESS_TIMEOUT_SECONDS", 20 * 60, 60, 86_400),
             display_timeout_seconds=_bounded_integer("SP_DISPLAY_TIMEOUT_SECONDS", 30 * 60, 60, 86_400),
             simulate_timeout_seconds=_bounded_integer("SP_SIMULATE_TIMEOUT_SECONDS", 4 * 60 * 60, 60, 7 * 86_400),
+            rearrange_timeout_seconds=_bounded_integer("SP_REARRANGE_TIMEOUT_SECONDS", 60 * 60, 60, 86_400),
+            furniture_timeout_seconds=_bounded_integer("SP_FURNITURE_TIMEOUT_SECONDS", 3 * 60 * 60, 60, 86_400),
             max_job_interruptions=_bounded_integer("SP_MAX_JOB_INTERRUPTIONS", MAX_INTERRUPTIONS, 1, 100),
             team_emails=_email_set("SP_TEAM_EMAILS"),
             apns_key=_secret("SP_APNS_KEY", "SP_APNS_KEY_PATH"),
