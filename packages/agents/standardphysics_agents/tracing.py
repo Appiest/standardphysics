@@ -13,6 +13,7 @@ import functools
 import logging
 import os
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any, Callable, TypeVar
 
@@ -186,6 +187,23 @@ def init(project: str | None = None, entity: str | None = None) -> bool:
 def shutdown() -> None:
     """Send every trace still queued, then stop tracing. Called on API shutdown."""
     _TRACING.stop()
+
+
+@contextmanager
+def tracing_for_this_process(project: str | None = None, entity: str | None = None) -> Iterator[bool]:
+    """Trace a spawned process's work, and send what it traced before it ends.
+
+    A spawned interpreter starts with none of its parent's state, tracing
+    included, so a worker's job child comes up untraced unless it calls
+    `init` itself. The block yields whether tracing came up. With no project
+    set it costs what `init` costs then: no import and no network.
+    """
+    started = init(project, entity)
+    try:
+        yield started
+    finally:
+        if started:
+            shutdown()
 
 
 def is_live() -> bool:

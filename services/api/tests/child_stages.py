@@ -11,6 +11,7 @@ import pathlib
 import sqlite3
 import time
 
+from standardphysics_agents.tracing import traced
 from standardphysics_pipeline.discovery import DiscoveryResult
 
 from conftest import no_blender_stages
@@ -54,3 +55,13 @@ def locked_on_the_first_try(settings):
         return preview_ledger()
 
     return no_blender_stages(ledger_factory=ledger)
+
+
+@traced("child_stages.label")
+def _traced_label(graph):
+    return graph
+
+
+def traced_at_labeling(settings):
+    """Stages whose labeling is a traced operation, so a job child's trace can be looked for."""
+    return no_blender_stages(label=_traced_label, discover=_find_nothing)

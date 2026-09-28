@@ -20,7 +20,9 @@ On the server every job's heavy stage runs in a spawned child process
 kinds when `jobs_in_own_process` is on. The child gets the settings, never a
 live connection, and opens the database and the store itself; a child still
 running at its job's deadline is killed with everything it started, the job is
-failed, and the loop moves on to the next job.
+failed, and the loop moves on to the next job. A spawned child inherits none
+of the parent's tracing, so each one starts Weave from the settings itself and
+flushes it before it exits.
 """
 
 from __future__ import annotations
@@ -42,6 +44,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
+from standardphysics_agents.tracing import tracing_for_this_process
 from standardphysics_contracts import SimulationRequest
 
 from . import evidence, guest_sweep
@@ -953,7 +956,8 @@ def _transient_alone(error: BaseException) -> bool:
 
 def bake_photos(settings: Settings, scan_id: uuid.UUID, build_id: int) -> None:
     """One photo build, run where its arithmetic cannot hold up the API's requests."""
-    run_texture(Database(settings.database_path), _store_for(settings), Stages(), scan_id, build_id)
+    with tracing_for_this_process(settings.weave_project, settings.weave_entity):
+        run_texture(Database(settings.database_path), _store_for(settings), Stages(), scan_id, build_id)
 
 
 def run_job(settings: Settings, stages_for: Callable[[Settings], Stages], job: dict) -> bool:
@@ -962,10 +966,12 @@ def run_job(settings: Settings, stages_for: Callable[[Settings], Stages], job: d
     The child opens its own database connections and store from the settings
     and runs the same stage the worker thread would, on a worker that never
     starts its loops, so the results land exactly where an in-thread run puts them.
+    It traces to the same Weave project as the API, and sends its traces before it exits.
     """
-    worker = Worker(Database(settings.database_path), _store_for(settings), stages_for(settings), settings)
-    worker.notifier = notifier_from(settings)
-    return worker.run_stage(job)
+    with tracing_for_this_process(settings.weave_project, settings.weave_entity):
+        worker = Worker(Database(settings.database_path), _store_for(settings), stages_for(settings), settings)
+        worker.notifier = notifier_from(settings)
+        return worker.run_stage(job)
 
 
 def _store_for(settings: Settings) -> ArtifactStore:
