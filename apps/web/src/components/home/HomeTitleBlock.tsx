@@ -1,4 +1,4 @@
-import { ChartBar, Images } from "@phosphor-icons/react/dist/ssr";
+import { ChartBar, Images, Notebook } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { DeleteAccountButton } from "@/components/auth/DeleteAccountButton";
 import { DeveloperModeToggle } from "@/components/auth/DeveloperModeToggle";
@@ -18,6 +18,10 @@ function TeamTools() {
       <Link href="/team/funnel" className={`-ms-3 ${buttonClassName("quiet", true)}`}>
         <ChartBar size={18} aria-hidden />
         See how far owners get
+      </Link>
+      <Link href="/team/training" className={`-ms-3 ${buttonClassName("quiet", true)}`}>
+        <Notebook size={18} aria-hidden />
+        Open the fine-tuning notebook
       </Link>
       <DeveloperModeToggle />
     </div>

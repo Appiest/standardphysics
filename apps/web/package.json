@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
+    "notebook:export": "cd ../../notebooks && ${MARIMO:-../.venv/bin/marimo} export html-wasm finetune_story.py -o ../apps/web/.notebooks/finetune-story --mode run -f",
     "test": "vitest run",
     "contracts": "node scripts/generate-contracts.mjs"
   },
