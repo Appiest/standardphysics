@@ -10,9 +10,10 @@ import { overviewPose, poseAtPoint, poseFromLocus, topDownPose, type ViewerPose 
 import { canBeCounter } from "@/lib/counter";
 import { type Panel, wheelchairStartFrom } from "@/lib/owner-journey";
 import { stopMarkers } from "@/lib/route";
-import type { Finding, Scenario, SceneGraph, Vec3 } from "@/types/contracts";
+import type { Finding, Scenario, SceneGraph, StaffArea, Vec3 } from "@/types/contracts";
 import type { ModelSetup } from "./OwnerModel";
 import type { PathEditor } from "./usePathEditor";
+import type { StaffAdjuster } from "./useStaffAdjuster";
 
 /** The piece the scan already calls a counter, so the owner often only has to say yes. */
 export function guessCounter(scene: SceneGraph | null): string | null {
@@ -28,18 +29,35 @@ function useRouteHandles(path: PathEditor | null, setDragging: (on: boolean) => 
   }), [path, setDragging]);
 }
 
-/** The staff-only floor: draggable while the owner shapes the path, shown on the confirmed one otherwise. */
-function useStaffHandles(path: PathEditor | null, scenario: Scenario | null, setDragging: (on: boolean) => void): StaffHandles | null {
+type Choosing = { chosen: number | null; setChosen: (index: number | null) => void };
+
+/**
+ * The staff-only floor: every area draggable while the owner shapes the path;
+ * on the confirmed path, the one the owner taps opens to drag or resize.
+ */
+function useStaffHandles(path: PathEditor | null, adjuster: StaffAdjuster | null, scenario: Scenario | null, choosing: Choosing, setDragging: (on: boolean) => void): StaffHandles | null {
+  const { chosen, setChosen } = choosing;
   return useMemo(() => {
     if (path) {
       return {
-        areas: path.scenario?.staff_only ?? [], editable: true,
+        areas: path.scenario?.staff_only ?? [], editable: true, chosen: "all", onChoose: STAY_PUT,
         onGrab: () => setDragging(true), onMove: path.moveStaff, onResize: path.resizeStaff, onDrop: () => setDragging(false),
       };
     }
-    const areas = scenario?.staff_only ?? [];
-    return areas.length === 0 ? null : { areas, editable: false, onGrab: STAY_PUT, onMove: STAY_PUT, onResize: STAY_PUT, onDrop: STAY_PUT };
-  }, [path, scenario, setDragging]);
+    if (!adjuster) return shownOnly(scenario?.staff_only ?? []);
+    if (adjuster.areas.length === 0) return null;
+    return {
+      areas: adjuster.areas, editable: true, chosen, onChoose: setChosen,
+      onGrab: () => setDragging(true), onMove: adjuster.moveStaff, onResize: adjuster.resizeStaff,
+      onDrop: () => { setDragging(false); adjuster.save(); },
+    };
+  }, [path, adjuster, scenario, chosen, setChosen, setDragging]);
+}
+
+/** Staff-only floor drawn on a shop the owner can only read, or while they drive through it. */
+function shownOnly(areas: StaffArea[]): StaffHandles | null {
+  if (areas.length === 0) return null;
+  return { areas, editable: false, chosen: null, onChoose: STAY_PUT, onGrab: STAY_PUT, onMove: STAY_PUT, onResize: STAY_PUT, onDrop: STAY_PUT };
 }
 
 function useArrangeHandlers(arrangement: Arrangement | null, setDragging: (on: boolean) => void): ArrangeHandlers | null {
@@ -55,6 +73,8 @@ function useArrangeHandlers(arrangement: Arrangement | null, setDragging: (on: b
 type Mode = {
   panel: Panel; scene: SceneGraph; selected: Finding | null; counter: string | null; path: PathEditor | null;
   arrangement: Arrangement | null; wheelchair: boolean; scenario: Scenario | null;
+  /** The confirmed path's staff-only floor, when the owner may still change it. */
+  staff: StaffAdjuster | null;
   /** The confirmed path's walking route, shown while driving the walk-through. */
   walkedLegs: Vec3[][];
   /** The found pieces, when this step outlines them, and the one the owner asked to see. */
@@ -90,13 +110,15 @@ export function useOwnerModel(mode: Mode, onPickNode: (nodeId: string) => void, 
   const editing = useRouteHandles(mode.path, setDragging);
   const confirmed = useConfirmedRoute(mode.scenario, mode.walkedLegs, mode.wheelchair);
   const route = editing ?? confirmed;
-  const staff = useStaffHandles(mode.path, mode.scenario, setDragging);
+  const [chosenStaff, setChosenStaff] = useState<number | null>(null);
+  const staff = useStaffHandles(mode.path, mode.staff, mode.scenario, { chosen: chosenStaff, setChosen: setChosenStaff }, setDragging);
   const arrange = useArrangeHandlers(mode.arrangement, setDragging);
   const fromAbove = mode.panel === "counter" || mode.panel === "path";
   const overview = useMemo(() => (fromAbove ? topDownPose(mode.scene) : overviewPose(mode.scene)), [fromAbove, mode.scene]);
   const camera = mode.selected?.locus?.camera;
   const pose = useMemo(() => chosenPose(camera, mode.foundFocus, mode.scene, overview), [camera, mode.foundFocus, mode.scene, overview]);
   const pick = useCallback((nodeId: string) => onPickNode(nodeId), [onPickNode]);
+  const clear = useCallback(() => { setChosenStaff(null); onClear(); }, [onClear]);
   const wheelchairStart = useMemo(() => wheelchairStartFrom(mode.scenario), [mode.scenario]);
   return {
     shown: mode.arrangement?.shown ?? mode.scene,
@@ -112,6 +134,6 @@ export function useOwnerModel(mode: Mode, onPickNode: (nodeId: string) => void, 
     arrange,
     dragging,
     onSelectNode: pick,
-    onClear,
+    onClear: clear,
   };
 }
