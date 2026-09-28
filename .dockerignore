@@ -10,3 +10,6 @@ apps/ios
 .env
 .env.*
 !.env.example
+
+# The marimo notebook export is rebuilt in its own image stage.
+apps/web/.notebooks

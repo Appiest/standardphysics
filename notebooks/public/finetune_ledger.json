@@ -1,0 +1,1379 @@
+{
+ "collected_at": "2026-09-27T22:14:25+00:00",
+ "base_model": "Qwen 3.8 27B",
+ "trainer": "Fireworks serverless LoRA training",
+ "adapters": [
+  {
+   "name": "room6-qwen3p8-27b-sft",
+   "created": "2026-09-24T01:43:12.039787Z",
+   "rank": 32
+  },
+  {
+   "name": "room6-qwen3p8-27b-rl",
+   "created": "2026-09-24T02:02:57.790371Z",
+   "rank": 32
+  },
+  {
+   "name": "multiroom-qwen3p8-27b-sft",
+   "created": "2026-09-24T10:32:23.740765Z",
+   "rank": 32
+  },
+  {
+   "name": "multiroom-qwen3p8-27b-rl",
+   "created": "2026-09-24T10:51:52.258429Z",
+   "rank": 32
+  },
+  {
+   "name": "synthetic-qwen3p8-27b-sft",
+   "created": "2026-09-24T12:03:45.585834Z",
+   "rank": 32
+  },
+  {
+   "name": "synthetic-qwen3p8-27b-rl",
+   "created": "2026-09-24T12:17:23.387827Z",
+   "rank": 32
+  },
+  {
+   "name": "harness-qwen3p8-27b-sft",
+   "created": "2026-09-25T13:40:34.830211Z",
+   "rank": 32
+  },
+  {
+   "name": "harness-qwen3p8-27b-rl",
+   "created": "2026-09-25T14:02:28.117274Z",
+   "rank": 32
+  },
+  {
+   "name": "arkit-qwen3p8-27b-sft",
+   "created": "2026-09-25T21:45:43.774599Z",
+   "rank": 32
+  },
+  {
+   "name": "overnight-0926-sft",
+   "created": "2026-09-26T11:21:07.869940Z",
+   "rank": 32
+  },
+  {
+   "name": "menu-blind-qwen3p8-27b-sft",
+   "created": "2026-09-27T11:14:03.698530Z",
+   "rank": 32
+  }
+ ],
+ "runs": [
+  {
+   "key": "room6",
+   "title": "One room",
+   "question": "Can the model learn to fix one real shop from 28 worked answers?",
+   "eval_set": "10 held-out versions of the same room, four tries each",
+   "rl_curve": [
+    {
+     "step": 0,
+     "reward": 0.007,
+     "accepted": 2,
+     "samples": 48
+    },
+    {
+     "step": 1,
+     "reward": 0.0291,
+     "accepted": 7,
+     "samples": 48
+    },
+    {
+     "step": 2,
+     "reward": 0.0447,
+     "accepted": 11,
+     "samples": 48
+    },
+    {
+     "step": 3,
+     "reward": 0.0547,
+     "accepted": 14,
+     "samples": 48
+    },
+    {
+     "step": 4,
+     "reward": 0.0776,
+     "accepted": 21,
+     "samples": 48
+    },
+    {
+     "step": 5,
+     "reward": 0.0684,
+     "accepted": 17,
+     "samples": 48
+    },
+    {
+     "step": 6,
+     "reward": 0.0436,
+     "accepted": 12,
+     "samples": 48
+    },
+    {
+     "step": 7,
+     "reward": 0.0962,
+     "accepted": 23,
+     "samples": 48
+    },
+    {
+     "step": 8,
+     "reward": 0.0472,
+     "accepted": 13,
+     "samples": 48
+    },
+    {
+     "step": 9,
+     "reward": 0.0484,
+     "accepted": 12,
+     "samples": 48
+    },
+    {
+     "step": 10,
+     "reward": 0.0836,
+     "accepted": 22,
+     "samples": 48
+    },
+    {
+     "step": 11,
+     "reward": 0.075,
+     "accepted": 20,
+     "samples": 48
+    },
+    {
+     "step": 12,
+     "reward": 0.0461,
+     "accepted": 13,
+     "samples": 48
+    },
+    {
+     "step": 13,
+     "reward": 0.1032,
+     "accepted": 24,
+     "samples": 48
+    },
+    {
+     "step": 14,
+     "reward": 0.0557,
+     "accepted": 14,
+     "samples": 48
+    },
+    {
+     "step": 15,
+     "reward": 0.0809,
+     "accepted": 21,
+     "samples": 48
+    },
+    {
+     "step": 16,
+     "reward": 0.0642,
+     "accepted": 18,
+     "samples": 48
+    },
+    {
+     "step": 17,
+     "reward": 0.0587,
+     "accepted": 16,
+     "samples": 48
+    },
+    {
+     "step": 18,
+     "reward": 0.0539,
+     "accepted": 14,
+     "samples": 48
+    },
+    {
+     "step": 19,
+     "reward": 0.1286,
+     "accepted": 32,
+     "samples": 48
+    },
+    {
+     "step": 20,
+     "reward": 0.12,
+     "accepted": 29,
+     "samples": 48
+    },
+    {
+     "step": 21,
+     "reward": 0.1287,
+     "accepted": 28,
+     "samples": 48
+    },
+    {
+     "step": 22,
+     "reward": 0.0721,
+     "accepted": 19,
+     "samples": 48
+    },
+    {
+     "step": 23,
+     "reward": 0.0837,
+     "accepted": 22,
+     "samples": 48
+    }
+   ],
+   "training": {
+    "sft_rows": 28,
+    "sft_epochs": 3,
+    "rl_steps_done": 24,
+    "rl_steps_planned": 24,
+    "rl_rollouts_per_step": 48,
+    "rl_status": "done"
+   },
+   "evaluations": [
+    {
+     "label": "Base",
+     "samples": 40,
+     "cleared": 0.0,
+     "accepted": 0.15,
+     "rules_pass": 0.25,
+     "reward": 0.0327
+    },
+    {
+     "label": "After SFT",
+     "samples": 40,
+     "cleared": 0.0,
+     "accepted": 0.25,
+     "rules_pass": 0.525,
+     "reward": 0.0524
+    },
+    {
+     "label": "After RL",
+     "samples": 40,
+     "cleared": 0.0,
+     "accepted": 0.225,
+     "rules_pass": 0.4,
+     "reward": 0.0428
+    }
+   ],
+   "models": [
+    "room6-qwen3p8-27b-sft",
+    "room6-qwen3p8-27b-rl"
+   ],
+   "sessions": [
+    {
+     "run_id": "run-61c024e05eae478f931078ceb54f00fc",
+     "from_state": null,
+     "opened_at": "2026-09-24T01:38:41Z"
+    }
+   ],
+   "spend": {
+    "prefill_tokens": 2060800,
+    "sample_tokens": 81873,
+    "train_tokens": 1298890,
+    "estimated_dollars": 9.6205
+   },
+   "funnel": [
+    {
+     "count": 59,
+     "label": "versions of one room"
+    },
+    {
+     "count": 28,
+     "label": "worked answers for SFT"
+    },
+    {
+     "count": 49,
+     "label": "RL prompts"
+    },
+    {
+     "count": 10,
+     "label": "held out"
+    }
+   ],
+   "sources": [
+    "ft-runs/room6/orchestrator.log",
+    "ft-runs/room6/data/*.jsonl",
+    "ft-runs/room6/qwen3p8-27b/rl_metrics.jsonl",
+    "ft-runs/room6/data"
+   ],
+   "parent": null
+  },
+  {
+   "key": "multiroom",
+   "title": "Many real rooms",
+   "question": "Does it generalise when the training rooms come from six real scans?",
+   "eval_set": "65 held-out variants from two buildings, four tries each",
+   "rl_curve": [
+    {
+     "step": 0,
+     "reward": 0.0343,
+     "accepted": 3,
+     "samples": 48
+    },
+    {
+     "step": 1,
+     "reward": 0.0569,
+     "accepted": 4,
+     "samples": 48
+    },
+    {
+     "step": 2,
+     "reward": 0.302,
+     "accepted": 19,
+     "samples": 48
+    },
+    {
+     "step": 3,
+     "reward": 0.1902,
+     "accepted": 15,
+     "samples": 48
+    },
+    {
+     "step": 4,
+     "reward": 0.1201,
+     "accepted": 8,
+     "samples": 48
+    },
+    {
+     "step": 5,
+     "reward": 0.1651,
+     "accepted": 12,
+     "samples": 48
+    },
+    {
+     "step": 6,
+     "reward": 0.1036,
+     "accepted": 6,
+     "samples": 48
+    },
+    {
+     "step": 7,
+     "reward": 0.2757,
+     "accepted": 16,
+     "samples": 48
+    },
+    {
+     "step": 8,
+     "reward": 0.1151,
+     "accepted": 13,
+     "samples": 48
+    },
+    {
+     "step": 9,
+     "reward": 0.1189,
+     "accepted": 7,
+     "samples": 48
+    },
+    {
+     "step": 10,
+     "reward": 0.0186,
+     "accepted": 3,
+     "samples": 48
+    },
+    {
+     "step": 11,
+     "reward": 0.2561,
+     "accepted": 17,
+     "samples": 48
+    },
+    {
+     "step": 12,
+     "reward": 0.1816,
+     "accepted": 13,
+     "samples": 48
+    },
+    {
+     "step": 13,
+     "reward": 0.0838,
+     "accepted": 7,
+     "samples": 48
+    },
+    {
+     "step": 14,
+     "reward": 0.2338,
+     "accepted": 19,
+     "samples": 48
+    },
+    {
+     "step": 15,
+     "reward": 0.2467,
+     "accepted": 14,
+     "samples": 48
+    },
+    {
+     "step": 16,
+     "reward": 0.2233,
+     "accepted": 16,
+     "samples": 48
+    },
+    {
+     "step": 17,
+     "reward": 0.3005,
+     "accepted": 23,
+     "samples": 48
+    },
+    {
+     "step": 18,
+     "reward": 0.2467,
+     "accepted": 17,
+     "samples": 48
+    },
+    {
+     "step": 19,
+     "reward": 0.2194,
+     "accepted": 13,
+     "samples": 48
+    },
+    {
+     "step": 20,
+     "reward": 0.2253,
+     "accepted": 15,
+     "samples": 48
+    },
+    {
+     "step": 21,
+     "reward": 0.1956,
+     "accepted": 16,
+     "samples": 48
+    },
+    {
+     "step": 22,
+     "reward": 0.3986,
+     "accepted": 26,
+     "samples": 48
+    },
+    {
+     "step": 23,
+     "reward": 0.2937,
+     "accepted": 19,
+     "samples": 48
+    }
+   ],
+   "training": {
+    "sft_rows": 31,
+    "sft_epochs": 3,
+    "sft_optimizer_steps": 12,
+    "rl_steps_done": 24,
+    "rl_steps_planned": 24,
+    "rl_rollouts_per_step": 48,
+    "rl_status": "done",
+    "rl_updated_at": "2026-09-24T10:49:13Z",
+    "lora_rank": 32,
+    "budget_dollars": 40
+   },
+   "evaluations": [
+    {
+     "label": "Base",
+     "samples": 260,
+     "cleared": 0.1462,
+     "accepted": 0.2038,
+     "rules_pass": 0.4231,
+     "reward": 0.1663
+    },
+    {
+     "label": "After SFT",
+     "samples": 260,
+     "cleared": 0.1462,
+     "accepted": 0.2385,
+     "rules_pass": 0.5231,
+     "reward": 0.1907
+    },
+    {
+     "label": "After RL",
+     "samples": 260,
+     "cleared": 0.1115,
+     "accepted": 0.3154,
+     "rules_pass": 0.6923,
+     "reward": 0.2038
+    }
+   ],
+   "models": [
+    "multiroom-qwen3p8-27b-sft",
+    "multiroom-qwen3p8-27b-rl"
+   ],
+   "sessions": [
+    {
+     "run_id": "run-172a16f2d4d244b1a00378d301bd2b80",
+     "from_state": null,
+     "opened_at": "2026-09-24T09:52:21Z"
+    },
+    {
+     "run_id": "run-b27c7e25815c4a0fa686c64fd406ffeb",
+     "from_state": "amelia-team/run-172a16f2d4d244b1a00378d301bd2b80/sft-state",
+     "opened_at": "2026-09-24T10:31:58Z"
+    }
+   ],
+   "spend": {
+    "prefill_tokens": 3424152,
+    "sample_tokens": 989184,
+    "train_tokens": 1158089,
+    "estimated_dollars": 16.655
+   },
+   "sources": [
+    "ft-runs/multiroom/v2/PROGRESS_MULTIROOM.json",
+    "ft-runs/multiroom/v2/report.json",
+    "repo/runs/finetune/multiroom/v2/qwen3p8-27b/rl_metrics.jsonl"
+   ],
+   "funnel": [
+    {
+     "count": 32,
+     "label": "rooms"
+    },
+    {
+     "count": 210,
+     "label": "scrambled versions"
+    },
+    {
+     "count": 67,
+     "label": "with a found fix"
+    },
+    {
+     "count": 31,
+     "label": "SFT rows after fitting"
+    }
+   ],
+   "parent": null
+  },
+  {
+   "key": "synthetic",
+   "title": "500 generated shops",
+   "question": "Do 1,498 answers on generated shops help on real ones?",
+   "eval_set": "The same 65 real held-out variants, four tries each",
+   "rl_curve": [
+    {
+     "step": 0,
+     "reward": 0.565,
+     "accepted": 43,
+     "samples": 48
+    },
+    {
+     "step": 1,
+     "reward": 0.525,
+     "accepted": 39,
+     "samples": 48
+    },
+    {
+     "step": 2,
+     "reward": 0.6718,
+     "accepted": 48,
+     "samples": 48
+    },
+    {
+     "step": 3,
+     "reward": 0.6126,
+     "accepted": 45,
+     "samples": 48
+    },
+    {
+     "step": 4,
+     "reward": 0.713,
+     "accepted": 48,
+     "samples": 48
+    },
+    {
+     "step": 5,
+     "reward": 0.5941,
+     "accepted": 42,
+     "samples": 48
+    },
+    {
+     "step": 6,
+     "reward": 0.6807,
+     "accepted": 48,
+     "samples": 48
+    },
+    {
+     "step": 7,
+     "reward": 0.6917,
+     "accepted": 48,
+     "samples": 48
+    },
+    {
+     "step": 8,
+     "reward": 0.5669,
+     "accepted": 46,
+     "samples": 48
+    },
+    {
+     "step": 9,
+     "reward": 0.6406,
+     "accepted": 47,
+     "samples": 48
+    },
+    {
+     "step": 10,
+     "reward": 0.5147,
+     "accepted": 39,
+     "samples": 48
+    },
+    {
+     "step": 11,
+     "reward": 0.6807,
+     "accepted": 48,
+     "samples": 48
+    }
+   ],
+   "training": {
+    "sft_rows": 1498,
+    "sft_epochs": 1,
+    "sft_optimizer_steps": 188,
+    "rl_steps_done": 12,
+    "rl_steps_planned": 12,
+    "rl_rollouts_per_step": 48,
+    "rl_status": "done",
+    "rl_updated_at": "2026-09-24T12:14:55Z",
+    "lora_rank": 32,
+    "budget_dollars": 45
+   },
+   "evaluations": [
+    {
+     "label": "Base",
+     "samples": 260,
+     "cleared": 0.1462,
+     "accepted": 0.3346,
+     "rules_pass": 0.6885,
+     "reward": 0.2274
+    },
+    {
+     "label": "After SFT",
+     "samples": 260,
+     "cleared": 0.0692,
+     "accepted": 0.2923,
+     "rules_pass": 0.7192,
+     "reward": 0.171
+    },
+    {
+     "label": "After RL",
+     "samples": 260,
+     "cleared": 0.05,
+     "accepted": 0.2808,
+     "rules_pass": 0.7115,
+     "reward": 0.1496
+    }
+   ],
+   "models": [
+    "synthetic-qwen3p8-27b-sft",
+    "synthetic-qwen3p8-27b-rl"
+   ],
+   "sessions": [
+    {
+     "run_id": "run-33afdf0a125d49858254f8a42adca6eb",
+     "from_state": "amelia-team/run-b27c7e25815c4a0fa686c64fd406ffeb/rl-state-0024",
+     "opened_at": "2026-09-24T11:16:50Z"
+    }
+   ],
+   "spend": {
+    "prefill_tokens": 2395336,
+    "sample_tokens": 694272,
+    "train_tokens": 3206708,
+    "estimated_dollars": 21.4969
+   },
+   "sources": [
+    "ft-runs/synthetic-20260924/PROGRESS_SYNTHETIC.json",
+    "ft-runs/synthetic-20260924/report.json",
+    "synthetic/runs/finetune/synthetic/qwen3p8-27b/rl_metrics.jsonl"
+   ],
+   "funnel": [
+    {
+     "count": 510,
+     "label": "rooms"
+    },
+    {
+     "count": 1565,
+     "label": "scrambled versions"
+    },
+    {
+     "count": 1498,
+     "label": "with a found fix"
+    },
+    {
+     "count": 1498,
+     "label": "SFT rows after fitting"
+    }
+   ],
+   "parent": "multiroom"
+  },
+  {
+   "key": "harness",
+   "title": "Real and generated together",
+   "question": "What happens when real scans and generated shops share one dataset?",
+   "eval_set": "120 held-out variants, 67 real and 53 generated",
+   "rl_curve": [
+    {
+     "step": 0,
+     "reward": 0.1785,
+     "accepted": 20,
+     "samples": 48
+    },
+    {
+     "step": 1,
+     "reward": 0.3253,
+     "accepted": 30,
+     "samples": 48
+    },
+    {
+     "step": 2,
+     "reward": 0.3231,
+     "accepted": 30,
+     "samples": 48
+    },
+    {
+     "step": 3,
+     "reward": 0.3763,
+     "accepted": 37,
+     "samples": 48
+    },
+    {
+     "step": 4,
+     "reward": 0.2837,
+     "accepted": 27,
+     "samples": 48
+    },
+    {
+     "step": 5,
+     "reward": 0.2093,
+     "accepted": 25,
+     "samples": 48
+    },
+    {
+     "step": 6,
+     "reward": 0.3294,
+     "accepted": 30,
+     "samples": 48
+    },
+    {
+     "step": 7,
+     "reward": 0.3959,
+     "accepted": 40,
+     "samples": 48
+    },
+    {
+     "step": 8,
+     "reward": 0.3651,
+     "accepted": 31,
+     "samples": 48
+    },
+    {
+     "step": 9,
+     "reward": 0.3425,
+     "accepted": 35,
+     "samples": 48
+    },
+    {
+     "step": 10,
+     "reward": 0.4095,
+     "accepted": 38,
+     "samples": 48
+    },
+    {
+     "step": 11,
+     "reward": 0.3911,
+     "accepted": 34,
+     "samples": 48
+    }
+   ],
+   "training": {
+    "sft_rows": 375,
+    "sft_epochs": 1,
+    "sft_optimizer_steps": 47,
+    "rl_steps_done": 12,
+    "rl_steps_planned": 12,
+    "rl_rollouts_per_step": 48,
+    "rl_status": "done",
+    "rl_updated_at": "2026-09-25T13:57:48Z",
+    "lora_rank": 32,
+    "budget_dollars": 45
+   },
+   "evaluations": [
+    {
+     "label": "Base",
+     "samples": 194,
+     "cleared": 0.2423,
+     "accepted": 0.5155,
+     "rules_pass": 0.9845,
+     "reward": 0.3159
+    },
+    {
+     "label": "After SFT",
+     "samples": 194,
+     "cleared": 0.2732,
+     "accepted": 0.5361,
+     "rules_pass": 0.9897,
+     "reward": 0.3297
+    },
+    {
+     "label": "After RL",
+     "samples": 194,
+     "cleared": 0.1701,
+     "accepted": 0.4124,
+     "rules_pass": 1.0,
+     "reward": 0.2474
+    }
+   ],
+   "models": [
+    "harness-qwen3p8-27b-sft",
+    "harness-qwen3p8-27b-rl"
+   ],
+   "sessions": [
+    {
+     "run_id": "run-61b939b2c05644a1aaaff4510b1759a3",
+     "from_state": null,
+     "opened_at": "2026-09-25T13:23:19Z"
+    }
+   ],
+   "spend": {
+    "prefill_tokens": 3172158,
+    "sample_tokens": 592896,
+    "train_tokens": 3026101,
+    "estimated_dollars": 21.6336
+   },
+   "sources": [
+    "ft-runs/harness/PROGRESS_HARNESS_TRAINING.json",
+    "ft-runs/harness/report.json",
+    "ft-runs/harness/qwen3p8-27b/rl_metrics.jsonl"
+   ],
+   "funnel": [
+    {
+     "count": 770,
+     "label": "rooms"
+    },
+    {
+     "count": 849,
+     "label": "scrambled versions"
+    },
+    {
+     "count": 736,
+     "label": "with a found fix"
+    },
+    {
+     "count": 375,
+     "label": "SFT rows after fitting"
+    }
+   ],
+   "parent": null
+  },
+  {
+   "key": "ablation-a",
+   "title": "RL on real rooms only",
+   "question": "Starting from the same SFT, does RL on real rooms alone beat a half-and-half mix?",
+   "eval_set": "Real held-out variants after RL steps 4 and 8",
+   "rl_curve": [
+    {
+     "step": 0,
+     "reward": 0.0788,
+     "accepted": 7,
+     "samples": 32
+    },
+    {
+     "step": 1,
+     "reward": 0.2498,
+     "accepted": 11,
+     "samples": 32
+    },
+    {
+     "step": 2,
+     "reward": 0.1032,
+     "accepted": 6,
+     "samples": 32
+    },
+    {
+     "step": 3,
+     "reward": 0.1346,
+     "accepted": 5,
+     "samples": 32
+    },
+    {
+     "step": 4,
+     "reward": 0.2686,
+     "accepted": 14,
+     "samples": 32
+    },
+    {
+     "step": 5,
+     "reward": 0.1012,
+     "accepted": 4,
+     "samples": 32
+    },
+    {
+     "step": 6,
+     "reward": 0.052,
+     "accepted": 2,
+     "samples": 32
+    },
+    {
+     "step": 7,
+     "reward": 0.2499,
+     "accepted": 10,
+     "samples": 32
+    }
+   ],
+   "training": {
+    "sft_rows": null,
+    "sft_epochs": null,
+    "sft_optimizer_steps": null,
+    "rl_steps_done": 8,
+    "rl_steps_planned": 8,
+    "rl_rollouts_per_step": 32,
+    "rl_status": "done",
+    "rl_updated_at": "2026-09-25T17:24:21Z",
+    "lora_rank": 32,
+    "budget_dollars": 9.5
+   },
+   "evaluations": [
+    {
+     "label": "After RL step 4",
+     "samples": 134,
+     "cleared": 0.306,
+     "accepted": 0.3657,
+     "rules_pass": 0.9851,
+     "reward": 0.2846
+    },
+    {
+     "label": "After RL step 8",
+     "samples": 134,
+     "cleared": 0.2761,
+     "accepted": 0.3657,
+     "rules_pass": 0.9776,
+     "reward": 0.2801
+    }
+   ],
+   "models": [],
+   "sessions": [
+    {
+     "run_id": "run-6840740983ce4cc49603db869d10bc23",
+     "from_state": "amelia-team/run-61b939b2c05644a1aaaff4510b1759a3/sft-state",
+     "opened_at": "2026-09-25T17:13:59Z"
+    },
+    {
+     "run_id": "run-662d3357aa284e68a5fae3cf9756abd8",
+     "from_state": "amelia-team/run-6840740983ce4cc49603db869d10bc23/rl-state-0004",
+     "opened_at": "2026-09-25T17:19:35Z"
+    },
+    {
+     "run_id": "run-d7fb73b600184ba3b50a4f6edba448ee",
+     "from_state": "amelia-team/run-662d3357aa284e68a5fae3cf9756abd8/rl-state-0008",
+     "opened_at": "2026-09-25T17:24:21Z"
+    },
+    {
+     "run_id": "run-b2ed3011a08b4cdf81835a4b293a25c1",
+     "from_state": "amelia-team/run-6840740983ce4cc49603db869d10bc23/rl-state-0004",
+     "opened_at": "2026-09-25T19:50:30Z"
+    },
+    {
+     "run_id": "run-ae64a118c703463e8c884dc1ace51856",
+     "from_state": "amelia-team/run-662d3357aa284e68a5fae3cf9756abd8/rl-state-0008",
+     "opened_at": "2026-09-25T19:53:27Z"
+    }
+   ],
+   "spend": {
+    "prefill_tokens": 1116012,
+    "sample_tokens": 268288,
+    "train_tokens": 337158,
+    "estimated_dollars": 4.9602
+   },
+   "sources": [
+    "ft-runs/ablation/arm-A/PROGRESS.json",
+    "ft-runs/ablation/arm-A/rl_metrics.jsonl"
+   ],
+   "funnel": null,
+   "parent": "harness"
+  },
+  {
+   "key": "ablation-b",
+   "title": "RL on a half-and-half mix",
+   "question": "The same test, with half of each RL step drawn from generated shops",
+   "eval_set": "Real held-out variants after RL steps 4 and 8",
+   "rl_curve": [
+    {
+     "step": 0,
+     "reward": 0.1576,
+     "accepted": 11,
+     "samples": 32
+    },
+    {
+     "step": 1,
+     "reward": 0.1366,
+     "accepted": 11,
+     "samples": 32
+    },
+    {
+     "step": 2,
+     "reward": 0.2455,
+     "accepted": 12,
+     "samples": 32
+    },
+    {
+     "step": 3,
+     "reward": 0.1696,
+     "accepted": 12,
+     "samples": 32
+    },
+    {
+     "step": 4,
+     "reward": 0.2176,
+     "accepted": 10,
+     "samples": 32
+    },
+    {
+     "step": 5,
+     "reward": 0.0827,
+     "accepted": 5,
+     "samples": 32
+    },
+    {
+     "step": 6,
+     "reward": 0.2869,
+     "accepted": 15,
+     "samples": 32
+    },
+    {
+     "step": 7,
+     "reward": 0.1392,
+     "accepted": 9,
+     "samples": 32
+    }
+   ],
+   "training": {
+    "sft_rows": null,
+    "sft_epochs": null,
+    "sft_optimizer_steps": null,
+    "rl_steps_done": 8,
+    "rl_steps_planned": 8,
+    "rl_rollouts_per_step": 32,
+    "rl_status": "done",
+    "rl_updated_at": "2026-09-25T17:35:32Z",
+    "lora_rank": 32,
+    "budget_dollars": 9.5
+   },
+   "evaluations": [
+    {
+     "label": "After RL step 4",
+     "samples": 134,
+     "cleared": 0.3209,
+     "accepted": 0.3881,
+     "rules_pass": 0.9851,
+     "reward": 0.2945
+    },
+    {
+     "label": "After RL step 8",
+     "samples": 134,
+     "cleared": 0.291,
+     "accepted": 0.3657,
+     "rules_pass": 0.9776,
+     "reward": 0.2722
+    }
+   ],
+   "models": [],
+   "sessions": [
+    {
+     "run_id": "run-4dfa51f3455843d88e05054f8fa16477",
+     "from_state": "amelia-team/run-61b939b2c05644a1aaaff4510b1759a3/sft-state",
+     "opened_at": "2026-09-25T17:24:35Z"
+    },
+    {
+     "run_id": "run-b58f781a338f4d6689f4afce4433cd59",
+     "from_state": "amelia-team/run-4dfa51f3455843d88e05054f8fa16477/rl-state-0004",
+     "opened_at": "2026-09-25T17:30:18Z"
+    },
+    {
+     "run_id": "run-1b0c426a195a4e37a1c299f14ba21b5f",
+     "from_state": "amelia-team/run-b58f781a338f4d6689f4afce4433cd59/rl-state-0008",
+     "opened_at": "2026-09-25T17:35:32Z"
+    },
+    {
+     "run_id": "run-f4033bd6162245a08b6774b750388c18",
+     "from_state": "amelia-team/run-4dfa51f3455843d88e05054f8fa16477/rl-state-0004",
+     "opened_at": "2026-09-25T19:56:50Z"
+    },
+    {
+     "run_id": "run-90506434f08c4d7bae967e3453844f15",
+     "from_state": "amelia-team/run-b58f781a338f4d6689f4afce4433cd59/rl-state-0008",
+     "opened_at": "2026-09-25T20:00:10Z"
+    }
+   ],
+   "spend": {
+    "prefill_tokens": 1203620,
+    "sample_tokens": 268288,
+    "train_tokens": 544386,
+    "estimated_dollars": 5.9734
+   },
+   "sources": [
+    "ft-runs/ablation/arm-B/PROGRESS.json",
+    "ft-runs/ablation/arm-B/rl_metrics.jsonl"
+   ],
+   "funnel": null,
+   "parent": "harness"
+  },
+  {
+   "key": "arkit",
+   "title": "Apple ARKit layouts",
+   "question": "Does adding 388 layouts converted from Apple's ARKitScenes help?",
+   "eval_set": "163 held-out variants across real, generated and ARKit rooms",
+   "rl_curve": [],
+   "training": {
+    "sft_rows": 738,
+    "sft_epochs": 2,
+    "sft_optimizer_steps": 186,
+    "rl_steps_done": null,
+    "rl_steps_planned": null,
+    "rl_rollouts_per_step": null,
+    "rl_status": null,
+    "rl_updated_at": null,
+    "lora_rank": 32,
+    "budget_dollars": 70
+   },
+   "evaluations": [
+    {
+     "label": "Base",
+     "samples": 326,
+     "cleared": 0.1442,
+     "accepted": 0.4601,
+     "rules_pass": 0.9294,
+     "reward": 0.2397
+    },
+    {
+     "label": "After SFT",
+     "samples": 326,
+     "cleared": 0.1595,
+     "accepted": 0.5429,
+     "rules_pass": 0.9693,
+     "reward": 0.2861
+    }
+   ],
+   "models": [
+    "arkit-qwen3p8-27b-sft"
+   ],
+   "sessions": [
+    {
+     "run_id": "run-bd4d6eb84a3147dea75f92275df33e85",
+     "from_state": null,
+     "opened_at": "2026-09-25T21:02:52Z"
+    }
+   ],
+   "spend": {
+    "prefill_tokens": 1717600,
+    "sample_tokens": 333824,
+    "train_tokens": 4539068,
+    "estimated_dollars": 23.6863
+   },
+   "sources": [
+    "harness/runs/finetune/arkit/PROGRESS_TRAINING.json",
+    "harness/runs/finetune/arkit/dataset_report.json"
+   ],
+   "funnel": [
+    {
+     "count": 388,
+     "label": "ARKit layouts"
+    },
+    {
+     "count": 375,
+     "label": "generated shops"
+    },
+    {
+     "count": 31,
+     "label": "real scan windows"
+    },
+    {
+     "count": 738,
+     "label": "SFT rows after fitting"
+    }
+   ],
+   "parent": null
+  },
+  {
+   "key": "overnight",
+   "title": "Solver answers",
+   "question": "Can the model learn from the answers our room solver found?",
+   "eval_set": "65 real held-out variants, one try each",
+   "rl_curve": [],
+   "training": {
+    "sft_rows": 396,
+    "sft_epochs": 1,
+    "sft_optimizer_steps": 50,
+    "rl_steps_done": null,
+    "rl_steps_planned": null,
+    "rl_rollouts_per_step": null,
+    "rl_status": null,
+    "rl_updated_at": null,
+    "lora_rank": 32,
+    "budget_dollars": 12
+   },
+   "evaluations": [
+    {
+     "label": "Base",
+     "samples": 65,
+     "cleared": 0.0308,
+     "accepted": 0.0769,
+     "rules_pass": 0.4,
+     "reward": 0.0448
+    },
+    {
+     "label": "After SFT",
+     "samples": 65,
+     "cleared": 0.0923,
+     "accepted": 0.2615,
+     "rules_pass": 0.7538,
+     "reward": 0.1447
+    }
+   ],
+   "models": [
+    "overnight-0926-sft"
+   ],
+   "sessions": [
+    {
+     "run_id": "run-79c76a3771f74aa6968f5d175a86253b",
+     "from_state": null,
+     "opened_at": "2026-09-26T11:11:56Z"
+    }
+   ],
+   "spend": {
+    "prefill_tokens": 252550,
+    "sample_tokens": 66560,
+    "train_tokens": 903561,
+    "estimated_dollars": 4.5495
+   },
+   "sources": [
+    "overnight/out/sft-1.progress.json",
+    "overnight/out/PROGRESS.json"
+   ],
+   "funnel": [
+    {
+     "count": 38,
+     "label": "solver answers on real rooms"
+    },
+    {
+     "count": 35,
+     "label": "corrections"
+    },
+    {
+     "count": 250,
+     "label": "generated shops"
+    },
+    {
+     "count": 396,
+     "label": "SFT rows, real ones twice"
+    }
+   ],
+   "five_loop": {
+    "real_heldout": {
+     "Base model alone": {
+      "cleared": 23,
+      "of": 65
+     },
+     "After SFT, alone": {
+      "cleared": 16,
+      "of": 65
+     },
+     "Local 1-layer LoRA, alone": {
+      "cleared": 24,
+      "of": 65
+     },
+     "Solver alone, no model": {
+      "cleared": 50,
+      "of": 65
+     },
+     "Base model with the solver": {
+      "cleared": 59,
+      "of": 65
+     }
+    },
+    "test_shops": {
+     "Base model alone": {
+      "cleared": 16,
+      "of": 105
+     },
+     "Base model with the solver": {
+      "cleared": 58,
+      "of": 105
+     }
+    }
+   },
+   "parent": null
+  },
+  {
+   "key": "menu",
+   "title": "Pick from a menu",
+   "question": "If the model chooses from pre-checked moves, does training still help?",
+   "eval_set": "52 held-out rooms, choosing blind from a menu of legal moves",
+   "rl_curve": [
+    {
+     "step": 0,
+     "reward": 0.9645,
+     "accepted": 36,
+     "samples": 36
+    },
+    {
+     "step": 1,
+     "reward": 0.9886,
+     "accepted": 36,
+     "samples": 36
+    },
+    {
+     "step": 2,
+     "reward": 0.9962,
+     "accepted": 36,
+     "samples": 36
+    },
+    {
+     "step": 3,
+     "reward": 0.9908,
+     "accepted": 36,
+     "samples": 36
+    },
+    {
+     "step": 4,
+     "reward": 0.9963,
+     "accepted": 36,
+     "samples": 36
+    }
+   ],
+   "training": {
+    "sft_rows": 299,
+    "sft_epochs": 2,
+    "sft_optimizer_steps": 76,
+    "rl_steps_done": 5,
+    "rl_steps_planned": 16,
+    "rl_rollouts_per_step": 36,
+    "rl_status": "running",
+    "rl_updated_at": "2026-09-27T19:15:02Z",
+    "lora_rank": 32,
+    "budget_dollars": 30
+   },
+   "evaluations": [
+    {
+     "label": "Base",
+     "samples": 52,
+     "cleared": 0.8077,
+     "accepted": 1.0,
+     "rules_pass": 1.0,
+     "reward": 0.839
+    },
+    {
+     "label": "After SFT",
+     "samples": 52,
+     "cleared": 0.8077,
+     "accepted": 1.0,
+     "rules_pass": 1.0,
+     "reward": 0.8384
+    }
+   ],
+   "models": [
+    "menu-blind-qwen3p8-27b-sft"
+   ],
+   "sessions": [
+    {
+     "run_id": "run-7a1ffb36d6e44ad7b4582e2b2294d405",
+     "from_state": null,
+     "opened_at": "2026-09-27T10:59:56Z"
+    },
+    {
+     "run_id": "run-5aae430e1d2448fca5396ccf345c07d2",
+     "from_state": "amelia-team/run-7a1ffb36d6e44ad7b4582e2b2294d405/sft-state",
+     "opened_at": "2026-09-27T19:11:48Z"
+    }
+   ],
+   "spend": {
+    "prefill_tokens": 1403098,
+    "sample_tokens": 51200,
+    "train_tokens": 2023518,
+    "estimated_dollars": 11.1987
+   },
+   "sources": [
+    "tonight-0927/progress.json",
+    "tonight-0927/run/rl_metrics.jsonl"
+   ],
+   "funnel": null,
+   "parent": null
+  }
+ ]
+}

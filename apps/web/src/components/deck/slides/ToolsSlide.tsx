@@ -3,11 +3,15 @@
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type MotionValue, type Variants } from "motion/react";
 import { useEffect } from "react";
 import { easeDrawn, exitTransition } from "@/lib/motion";
+import { finetuneTotals, ruleShifts, rulesFell, rulesRose } from "../finetuneLedger";
 import { FinePrint, MaskedLines } from "../primitives";
 import type { SlideProps } from "../slides";
+import { LineagePanel, RulesLearnedPanel, SolvedPanel } from "./FinetunePanels";
+import { LiveNotebookPanel } from "./LiveNotebookPanel";
+import { MarimoMapPanel, RulesInMarimoPanel } from "./MarimoPanels";
 
-type ToolsPhase = "runs" | "aria" | "marimo";
-const toolsPhases: ToolsPhase[] = ["runs", "aria", "marimo"];
+type ToolsPhase = "runs" | "aria" | "marimo" | "rules" | "lineage" | "learned" | "solved" | "map" | "live";
+const toolsPhases: ToolsPhase[] = ["runs", "aria", "marimo", "rules", "lineage", "learned", "solved", "map", "live"];
 
 type Run = { label: string; cellMillimeters: number | null; candidates: number; weakest: number };
 
@@ -160,7 +164,57 @@ const copy: Record<ToolsPhase, { headline: string[]; detail: string[]; source: s
     detail: [],
     source: "notebooks/scenario_sweep.py, docs/marimo.md",
   },
+  rules: {
+    headline: ["The rules we", "train against", "run in marimo."],
+    detail: ["The checker that grades the model", "judges every nudge in the notebook."],
+    source: "notebooks/scenario_sweep.py, fix/constraints.py, training/reward.py",
+  },
+  lineage: {
+    headline: ["marimo charts", `all ${finetuneTotals.adapters} of our`, "fine-tunes."],
+    detail: ["Every one tunes Qwen 3.8 27B.", `${finetuneTotals.rlSteps} RL steps, ${(finetuneTotals.trainTokens / 1_000_000).toFixed(1)}M tokens.`],
+    source: "notebooks/finetune_story.py, notebooks/public/finetune_ledger.json",
+  },
+  learned: {
+    headline: ["Fine-tuning", "taught it the", "hard rules."],
+    detail: [`Fewer broken rules in ${rulesRose} of ${ruleShifts.length} runs,`, rulesFell === 0 ? "and more in none." : `more in ${rulesFell}.`],
+    source: "notebooks/finetune_story.py, notebooks/public/finetune_ledger.json",
+  },
+  solved: {
+    headline: ["The solver", "finishes the", "job."],
+    detail: ["Rooms cleared in five tries,", "out of 65 real held-out rooms."],
+    source: "runs/finetune/overnight-20260926/REPORT.txt, notebooks/finetune_story.py",
+  },
+  map: {
+    headline: ["Where marimo", "sits in our", "training loop."],
+    detail: ["Solid is built.", "Dashed is next."],
+    source: "notebooks/scenario_sweep.py, notebooks/finetune_story.py",
+  },
+  live: {
+    headline: ["The real", "notebook runs", "right here."],
+    detail: ["marimo runs its Python", "inside this browser tab."],
+    source: "notebooks/finetune_story.py, served at /team/training",
+  },
 };
+
+const panels: Partial<Record<ToolsPhase, () => React.JSX.Element>> = {
+  marimo: MarimoPanel,
+  rules: RulesInMarimoPanel,
+  lineage: LineagePanel,
+  learned: RulesLearnedPanel,
+  solved: SolvedPanel,
+  map: MarimoMapPanel,
+  live: LiveNotebookPanel,
+};
+
+function ToolsPanel({ phase }: { phase: ToolsPhase }) {
+  const Panel = panels[phase];
+  if (Panel) return <Panel />;
+  return (
+    <motion.div key="runs" initial="enter" animate="present" exit="exit">
+      <RunGrid phase={phase} />
+    </motion.div>
+  );
+}
 
 function ToolsCopy({ phase }: { phase: ToolsPhase }) {
   return (
@@ -193,13 +247,7 @@ export function ToolsSlide({ step }: SlideProps) {
       </div>
       <div className="relative">
         <AnimatePresence mode="wait" initial={false}>
-          {phase === "marimo" ? (
-            <MarimoPanel key="marimo" />
-          ) : (
-            <motion.div key="runs" initial="enter" animate="present" exit="exit">
-              <RunGrid phase={phase} />
-            </motion.div>
-          )}
+          <ToolsPanel key={phase === "aria" ? "runs" : phase} phase={phase} />
         </AnimatePresence>
       </div>
     </div>
