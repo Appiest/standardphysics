@@ -182,15 +182,17 @@ class TestReadingDuringTheWalk:
         assert order.index("second") < last_of_the_first
 
     def test_the_end_of_a_walk_leaves_what_is_still_queued_to_discovery(self, photos, tmp_path):
-        release = threading.Event()
+        release, reading = threading.Event(), threading.Event()
 
         def held(path, frame_id, **_):
+            reading.set()
             release.wait(2)
             return []
 
         reader = LiveReader(workers=1, read_photo=held)
         for pose in walked(sorted(photos)):
             reader.offer("walk", pose, photos[pose.frame_id], tmp_path / "detections")
+        assert reading.wait(2)
         threading.Timer(0.1, release.set).start()
         report = reader.finish("walk")
         assert (report.kept, report.read, report.left_for_discovery) == (6, 1, 5)

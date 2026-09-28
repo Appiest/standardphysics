@@ -33,6 +33,7 @@ from standardphysics_contracts import PoseRecord
 
 from .cache import DetectionCache
 from .detect import (
+    DETECTOR_SLOTS_IN_FLIGHT,
     Detection,
     DetectionAuthError,
     DetectionError,
@@ -44,11 +45,13 @@ from .walk_sampling import WalkSampler, viewpoint_of_pose
 
 log = logging.getLogger(__name__)
 
-LIVE_READERS = 12
+LIVE_READERS = DETECTOR_SLOTS_IN_FLIGHT
 """Photos read at once across every walk in progress. A walk keeps about 1.5
 photos a second and one takes about 5.5 s to read, so one walk needs about nine
-in flight to keep up; the rest of the sixteen detector slots stay free for
-walks that have ended."""
+in flight to keep up. Several walks at once can use every slot, because a walk
+that has ended takes each slot first as it frees. With twelve, three walks at
+once were held to 2 photos a second between them, well under the account's
+budget, and each left 197 of its 355 photos for the end."""
 FINISH_WAIT_SECONDS = 20.0
 """How long the end of a walk waits for photos already being read, which is
 about one request. Anything still out after this is asked again by discovery."""
