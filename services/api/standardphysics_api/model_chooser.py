@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.parse
 import urllib.request
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 from standardphysics_agents.fix import FixOutcome
 from standardphysics_agents.fix.search import _build_proposal
@@ -31,6 +32,19 @@ MENU_SECONDS = 15.0
 """How long the menu may spend measuring options before the model is asked to choose from what it has."""
 SEARCH_AFTER_MENU_SECONDS = 10.0
 """How long the search may run when the model's menu had nothing to offer."""
+PROVIDER_KEYS = {"api.fireworks.ai": "FIREWORKS_API_KEY", "openrouter.ai": "OPENROUTER_API_KEY"}
+"""The environment variable holding each hosted provider's key, used when `<prefix>MODEL_KEY` is unset."""
+REASONING_OFF = {"api.fireworks.ai": {"reasoning_effort": "none"}}
+"""Hosts that accept turning reasoning off. A menu pick is a short JSON answer, and reasoning tokens would
+eat the reply budget and add seconds per turn."""
+
+
+def _host(url: str) -> str:
+    return urllib.parse.urlparse(url).hostname or ""
+
+
+def _key_for(prefix: str, url: str) -> str:
+    return os.environ.get(f"{prefix}MODEL_KEY") or os.environ.get(PROVIDER_KEYS.get(_host(url), ""), "")
 
 
 @dataclass(frozen=True)
@@ -38,19 +52,25 @@ class ModelChooser:
     url: str
     model: str
     label: str = "The model"
+    api_key: str = field(default="", repr=False)
 
     @classmethod
     def from_environment(cls, prefix: str = "SP_MENU_") -> ModelChooser | None:
-        """The model named by `<prefix>MODEL_URL` and `<prefix>MODEL`, called `<prefix>MODEL_LABEL` to the owner."""
+        """The model named by `<prefix>MODEL_URL` and `<prefix>MODEL`, called `<prefix>MODEL_LABEL` to the owner.
+        A hosted provider's key comes from `<prefix>MODEL_KEY`, or else from that provider's usual variable."""
         url, model = os.environ.get(f"{prefix}MODEL_URL"), os.environ.get(f"{prefix}MODEL")
         label = os.environ.get(f"{prefix}MODEL_LABEL", "The model")
-        return cls(url.rstrip("/"), model, label) if url and model else None
+        if not url or not model:
+            return None
+        return cls(url.rstrip("/"), model, label, _key_for(prefix, url))
 
     def ask(self, messages: list[dict]) -> str:
         body = json.dumps({"model": self.model, "messages": messages, "temperature": 0.0,
-                           "max_tokens": MAX_REPLY_TOKENS}).encode()
-        request = urllib.request.Request(f"{self.url}/chat/completions", data=body, method="POST",
-                                         headers={"Content-Type": "application/json"})
+                           "max_tokens": MAX_REPLY_TOKENS, **REASONING_OFF.get(_host(self.url), {})}).encode()
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        request = urllib.request.Request(f"{self.url}/chat/completions", data=body, method="POST", headers=headers)
         with urllib.request.urlopen(request, timeout=REPLY_SECONDS) as response:
             reply = json.loads(response.read())
         return reply["choices"][0]["message"]["content"] or ""
