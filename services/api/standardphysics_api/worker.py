@@ -14,14 +14,24 @@ loop tries again after a wait that doubles up to a minute. Writing how a job
 ended waits out a locked database for SETTLE_PATIENCE_SECONDS at most and any
 other database error not at all; a job that can't be settled is left running
 for the next start to queue again, and /health/ready names it until then.
+
+On the server every job's heavy stage runs in a spawned child process
+(`in_own_process`): photo bakes when `bake_in_own_process` is on, the other
+kinds when `jobs_in_own_process` is on. The child gets the settings, never a
+live connection, and opens the database and the store itself; a child still
+running at its job's deadline is killed with everything it started, the job is
+failed, and the loop moves on to the next job.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import multiprocessing
+import os
 import pathlib
+import signal
 import sqlite3
 import threading
 import time
@@ -38,11 +48,11 @@ from . import evidence, guest_sweep
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
-from .notifications import LoggedNotifier, Notifier, Push
+from .notifications import LoggedNotifier, Notifier, Push, notifier_from
 from .settings import Settings
 from .simulations import SIMULATE, queue_simulation, run_simulation
-from .stages import DiscoveryOutcome, Stages
-from .store import ArtifactStore
+from .stages import DiscoveryOutcome, Stages, configured_stages
+from .store import ArtifactStore, ScanQuota
 from .textures import TEXTURE, maybe_queue_texture, run_texture
 from .worker_lock import WorkerLock
 
@@ -71,6 +81,9 @@ SETTLE_PATIENCE_SECONDS = 60.0
 TRANSIENT_ATTEMPTS = 3
 """How many times a job runs when it keeps meeting an error that goes away by itself: a
 database another writer holds past its busy timeout, or a provider request that timed out."""
+LONGEST_CHILD_ERROR = 2000
+"""How many characters of a child's error cross back to the worker. A pipe holds far more, so
+the child's last write never blocks waiting for a parent that is itself waiting for the child to exit."""
 
 
 class _Backoff:
@@ -105,10 +118,19 @@ class RunningJob:
     def overdue(self, now: float) -> bool:
         return self.running_seconds(now) > self.deadline_seconds
 
+    def seconds_left(self, now: float) -> float | None:
+        """How long the job may still run, or None when its kind has no deadline."""
+        if math.isinf(self.deadline_seconds):
+            return None
+        return max(self.deadline_seconds - self.running_seconds(now), 0.0)
+
+    def overran(self) -> JobOverran:
+        limit = _duration(self.deadline_seconds)
+        return JobOverran(f"The {self.kind} job did not finish within {limit} and was stopped")
+
     def stop_if_overdue(self) -> None:
         if self.overdue(time.monotonic()):
-            limit = _duration(self.deadline_seconds)
-            raise JobOverran(f"The {self.kind} job did not finish within {limit} and was stopped")
+            raise self.overran()
 
 
 @dataclass
@@ -188,6 +210,9 @@ class Worker:
         self._unsettled: dict[int, str] = {}
         """Jobs whose outcome could not be written, by id, with the error. Cleared by a restart,
         which queues them again."""
+        self.stages_in_child: Callable[[Settings], Stages] = configured_stages
+        """Builds the stages a job run in its own process uses. The child finds it by module and
+        name, so it must be a module-level function."""
 
     def start(self) -> None:
         if not self.lock.acquire():
@@ -296,6 +321,8 @@ class Worker:
 
         Python can't interrupt a thread from outside, so an in-thread job is
         stopped here, between stages, and what the late stage produced is not saved.
+        A job run in its own process has no job on its thread, so this does nothing
+        there: the worker kills the whole process at the deadline instead.
         """
         running: RunningJob | None = getattr(self._on_this_thread, "job", None)
         if running is not None:
@@ -531,7 +558,7 @@ class Worker:
         attempt = 1
         while True:
             try:
-                return self._call_handler(job, scan_id)
+                return self._call_handler(job)
             except Exception as error:
                 if attempt >= TRANSIENT_ATTEMPTS or not is_transient(error) or self._stop.is_set():
                     raise
@@ -541,8 +568,14 @@ class Worker:
             self._checkpoint()
             attempt += 1
 
-    def _call_handler(self, job, scan_id: uuid.UUID) -> bool:
-        revision = job["revision"]
+    def _call_handler(self, job) -> bool:
+        if job["kind"] != TEXTURE and self.settings.jobs_in_own_process:
+            return self._in_child(job)
+        return self.run_stage(job)
+
+    def run_stage(self, job) -> bool:
+        """Run the job's stage here and say whether a follow-up process job may be due."""
+        scan_id, revision = uuid.UUID(job["scan_id"]), job["revision"]
         handler: Callable[..., bool] = {
             PROCESS: self._process,
             ASSESS: self._assess,
@@ -553,6 +586,32 @@ class Worker:
         if job["kind"] == TEXTURE:
             return handler(scan_id=scan_id, build_id=revision, job=job)
         return handler(scan_id=scan_id, revision=revision, job=job)
+
+    def _in_child(self, job) -> bool:
+        """Run the job's stage in a process of its own, and kill it when the job reaches its deadline.
+
+        The child writes the job's results to the database itself and may queue
+        jobs of its own, so the loops are woken once it is done.
+        """
+        running = self._running_job(job)
+        try:
+            follow_up = in_own_process(
+                run_job,
+                self.settings,
+                self.stages_in_child,
+                dict(job),
+                timeout_seconds=running.seconds_left(time.monotonic()),
+            )
+        except ChildTimedOut:
+            raise running.overran() from None
+        self.wake()
+        return bool(follow_up)
+
+    def _running_job(self, job) -> RunningJob:
+        running: RunningJob | None = getattr(self._on_this_thread, "job", None)
+        if running is not None:
+            return running
+        return RunningJob(job["kind"], job["id"], time.monotonic(), self.settings.job_deadline_seconds(job["kind"]))
 
     def _texture(self, scan_id, build_id, job=None) -> bool:
         if self.settings.bake_in_own_process:
@@ -756,21 +815,87 @@ class ChildTimedOut(RuntimeError):
     """A child ran past its time limit and was killed."""
 
 
-def in_own_process(function, *args, timeout_seconds: float | None = None) -> None:
-    """Run a module-level function in a fresh interpreter and wait, raising if it did not finish cleanly.
+class ChildFailed(RuntimeError):
+    """A function run in its own process raised. What it raised crosses back as text, with
+    whether it goes away by itself, because an exception's cause and context don't pickle."""
 
-    A child still running after `timeout_seconds` is killed, so one hung bake
-    can't hold the texture loop, and every bake queued behind it, forever.
+    def __init__(self, description: str, transient: bool = False):
+        super().__init__(description)
+        self.transient = transient
+
+
+@dataclass(frozen=True)
+class _ChildReport:
+    value: object = None
+    failure: str | None = None
+    transient: bool = False
+
+
+def in_own_process(function: Callable[..., object], *args: object, timeout_seconds: float | None = None) -> object:
+    """Run a module-level function in a fresh interpreter, wait, and return what it returned.
+
+    A child still running after `timeout_seconds` is killed along with every
+    process it started, such as a Blender run, so one hung stage can't hold its
+    loop, and every job queued behind it, for ever. What the function raised is
+    raised here as `ChildFailed`; a child that died without a word, as `RuntimeError`.
     """
-    child = multiprocessing.get_context("spawn").Process(target=function, args=args, daemon=True)
+    context = multiprocessing.get_context("spawn")
+    receiver, sender = context.Pipe(duplex=False)
+    child = context.Process(target=_report_to_parent, args=(sender, function, *args), daemon=True)
     child.start()
-    child.join(timeout_seconds)
-    if timeout_seconds is not None and child.is_alive():
+    sender.close()
+    try:
+        child.join(timeout_seconds)
+        if child.is_alive():
+            _kill_with_everything_it_started(child)
+            raise ChildTimedOut(
+                f"{function.__name__} did not finish within {_duration(timeout_seconds or 0)} and was stopped"
+            )
+        report = _received(receiver)
+    finally:
+        receiver.close()
+    return _outcome(function, child.exitcode, report)
+
+
+def _report_to_parent(sender, function: Callable[..., object], *args: object) -> None:
+    """The child's side: lead a process group of its own, run the function, and send back how it went."""
+    os.setpgrp()
+    logging.basicConfig(level=logging.INFO)
+    try:
+        report = _ChildReport(value=function(*args))
+    except Exception as error:
+        log.exception("%s failed in its own process", function.__name__)
+        report = _ChildReport(
+            failure=f"{type(error).__name__}: {error}"[:LONGEST_CHILD_ERROR], transient=is_transient(error)
+        )
+    sender.send(report)
+    sender.close()
+
+
+def _kill_with_everything_it_started(child) -> None:
+    """Kill the child's process group, or only the child when it was killed before it could lead one."""
+    try:
+        os.killpg(child.pid, signal.SIGKILL)
+    except ProcessLookupError:
         child.kill()
-        child.join()
-        raise ChildTimedOut(f"{function.__name__} did not finish within {_duration(timeout_seconds)} and was stopped")
-    if child.exitcode != 0:
-        raise RuntimeError(f"{function.__name__} exited with code {child.exitcode}")
+    child.join()
+
+
+def _received(receiver) -> _ChildReport | None:
+    if not receiver.poll():
+        return None
+    try:
+        return receiver.recv()
+    except EOFError:
+        return None
+
+
+def _outcome(function: Callable[..., object], exitcode: int | None, report: _ChildReport | None) -> object:
+    if report is not None and report.failure is not None:
+        raise ChildFailed(report.failure, report.transient)
+    if exitcode != 0 or report is None:
+        raise RuntimeError(f"{function.__name__} exited with code {exitcode}")
+    return report.value
 
 
 def _duration(seconds: float) -> str:
@@ -787,6 +912,8 @@ def _job_error(kind: str, error: Exception) -> str:
         return str(error)
     if kind == SIMULATE:
         return "Simulation failed; check the server log and retry"
+    if isinstance(error, ChildFailed):
+        return str(error)
     return f"{type(error).__name__}: {error}"
 
 
@@ -815,6 +942,8 @@ def _unsettled_problem(job_id: int, error: str) -> str:
 
 
 def _transient_alone(error: BaseException) -> bool:
+    if isinstance(error, ChildFailed):
+        return error.transient
     if isinstance(error, sqlite3.OperationalError):
         return _is_lock_contention(error)
     if isinstance(error, urllib.error.URLError):
@@ -824,6 +953,21 @@ def _transient_alone(error: BaseException) -> bool:
 
 def bake_photos(settings: Settings, scan_id: uuid.UUID, build_id: int) -> None:
     """One photo build, run where its arithmetic cannot hold up the API's requests."""
-    logging.basicConfig(level=logging.INFO)
-    store = ArtifactStore(settings.data_dir, settings.max_artifact_bytes)
-    run_texture(Database(settings.database_path), store, Stages(), scan_id, build_id)
+    run_texture(Database(settings.database_path), _store_for(settings), Stages(), scan_id, build_id)
+
+
+def run_job(settings: Settings, stages_for: Callable[[Settings], Stages], job: dict) -> bool:
+    """One process, assess, display or simulate job, run in a process the worker can kill at its deadline.
+
+    The child opens its own database connections and store from the settings
+    and runs the same stage the worker thread would, on a worker that never
+    starts its loops, so the results land exactly where an in-thread run puts them.
+    """
+    worker = Worker(Database(settings.database_path), _store_for(settings), stages_for(settings), settings)
+    worker.notifier = notifier_from(settings)
+    return worker.run_stage(job)
+
+
+def _store_for(settings: Settings) -> ArtifactStore:
+    quota = ScanQuota(settings.max_scan_artifacts, settings.max_scan_bytes)
+    return ArtifactStore(settings.data_dir, settings.max_artifact_bytes, quota)

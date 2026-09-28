@@ -460,3 +460,8 @@ class Stages:
             return finding
         locus = finding.locus.model_copy(update={"render_url": url_for(finding.id)})
         return finding.model_copy(update={"locus": locus})
+
+
+def configured_stages(settings) -> Stages:
+    """The stages the server runs: every real lane, on unverified rules when SP_PREVIEW_UNVERIFIED_RULES is on."""
+    return Stages(ledger_factory=preview_ledger) if settings.preview_unverified_rules else Stages()

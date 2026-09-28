@@ -93,7 +93,7 @@ from .settings import Settings
 from .sharing import install_share_routes
 from .simulations import queue_simulation, simulation_status
 from .splats import install_splat_routes
-from .stages import Stages, preview_ledger
+from .stages import Stages, configured_stages
 from .store import ArtifactStore, ArtifactTooLarge, InvalidArtifactId, ScanQuota, StagedUpload
 from .team import adopt_allowlist
 from .textures import MAX_METADATA_BYTES, install_texture_routes, maybe_queue_texture, validate_manifest
@@ -170,7 +170,7 @@ def _install_error_handlers(app: FastAPI) -> None:
 def create_app(settings: Settings | None = None, stages: Stages | None = None, run_worker: bool = True) -> FastAPI:
     settings = settings or Settings.from_environment()
     if stages is None:
-        stages = Stages(ledger_factory=preview_ledger) if settings.preview_unverified_rules else Stages()
+        stages = configured_stages(settings)
     database = Database(settings.database_path)
     adopt_allowlist(database, settings.team_emails)
     revoke_passwords_left_on_apple_accounts(database)
