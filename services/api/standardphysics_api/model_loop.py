@@ -10,8 +10,9 @@ shifts are not, because the owner's plan cannot show a moved wall. Nothing is
 saved: the stream ends with every move the loop made, for the owner to open
 in the plan and keep or not.
 
-A preview, like the single proposal: the menu uses the training checker, which
-treats scan geometry marked "needs another look" as measured.
+The loop works on what the owner's report shows: an answer resting on scan
+geometry marked "needs another look" stays a question here too, so the loop
+never chases something the owner sees as still to check.
 
 A loop holds one of the owner's `ModelSlots` from the moment it is admitted
 until its stream ends, and may spend at most MODEL_LOOP_TURNS calls' worth of
@@ -193,7 +194,8 @@ def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: Mo
             wishes) -> Iterator[ModelLoopEvent]:
     """Turns until the room is clear, the menu runs dry, the model picks nothing, or the turns or time run out."""
     with stages.locked():
-        loop = ModelLoop(plan.start, stages.menu_checker(plan.start, scenario, typology, scope="fittings"),
+        checker = stages.menu_checker(plan.start, scenario, typology, scope="fittings", trust_unsure_geometry=False)
+        loop = ModelLoop(plan.start, checker,
                          stated_book(plan.start, list(wishes)), moves={move.node_id: move for move in plan.moves},
                          built_ins=set(plan.built_ins))
         open_problems = loop.open_problems()
