@@ -93,7 +93,7 @@ export function usePathEditor(scanId: string, starting: Scenario | null, picked:
 type SetScenario = (update: (current: Scenario | null) => Scenario | null) => void;
 
 /** The staff-only floor the owner moves, resizes, removes or marks, kept on the scenario the checks read. */
-function useStaffEditing(setScenario: SetScenario) {
+export function useStaffEditing(setScenario: SetScenario) {
   const changeAreas = useCallback((change: (areas: StaffArea[]) => StaffArea[]) => {
     setScenario((current) => (current ? { ...current, staff_only: change(current.staff_only ?? []) } : current));
   }, [setScenario]);
