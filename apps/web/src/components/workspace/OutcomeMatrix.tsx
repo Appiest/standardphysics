@@ -69,7 +69,7 @@ export function OutcomeMatrix({ scope, findings }: { scope: ScopeManifest; findi
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between gap-2 rounded-md px-1 py-1 text-left"
+        className="pressable-wide flex w-full items-center justify-between gap-2 rounded-md px-1 py-1 text-left"
       >
         <span className="flex items-center gap-2 text-sm font-semibold text-ink">
           Scoped checks

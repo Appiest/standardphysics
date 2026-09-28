@@ -2,7 +2,7 @@ import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "reac
 import { Tooltip, type TooltipSide } from "./Tooltip";
 
 const ICON_CONTROL_CLASS =
-  "group/icon relative grid size-9 shrink-0 place-items-center rounded-lg text-ink-muted transition-colors duration-150 hover:bg-ink/5 hover:text-ink active:scale-[0.96] aria-pressed:bg-ink aria-pressed:text-paper aria-disabled:cursor-not-allowed aria-disabled:opacity-40";
+  "group/icon relative grid size-9 shrink-0 place-items-center rounded-lg text-ink-muted pressable hover:bg-ink/5 hover:text-ink aria-pressed:bg-ink aria-pressed:text-paper aria-disabled:cursor-not-allowed aria-disabled:opacity-40";
 
 type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { label: string; tooltipSide?: TooltipSide; children: ReactNode };
 

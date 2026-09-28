@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
 
 type Mode = "sign-in" | "sign-up";
@@ -104,13 +105,9 @@ export function AuthForm({ initialMode }: { initialMode: Mode }) {
           {error}
         </p>
 
-        <button
-          type="submit"
-          disabled={working}
-          className="bg-ink px-5 py-3 text-base font-medium text-paper transition-colors hover:bg-ink/85 disabled:bg-ink/40"
-        >
+        <Button type="submit" variant="primary" squared disabled={working} className="justify-center">
           {working ? COPY[mode].working : COPY[mode].submit}
-        </button>
+        </Button>
       </form>
     </div>
   );

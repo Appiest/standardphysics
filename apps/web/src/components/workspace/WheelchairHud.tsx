@@ -148,7 +148,7 @@ export function VirtualButton({
       onLostPointerCapture={handlePointerUp}
       onPointerLeave={handlePointerUp}
       onClick={handleClick}
-      className={`flex touch-none select-none items-center justify-center bg-sheet/95 text-ink transition-colors hover:bg-sheet active:bg-ink active:text-sheet ${large ? "size-14 rounded-xl shadow-float" : "h-10 w-10 rounded-lg shadow-sm"} ${className}`}
+      className={`flex touch-none select-none items-center justify-center bg-sheet/95 text-ink pressable hover:bg-sheet active:bg-ink active:text-sheet ${large ? "size-14 rounded-xl shadow-float" : "h-10 w-10 rounded-lg shadow-sm"} ${className}`}
     >
       {children}
     </button>

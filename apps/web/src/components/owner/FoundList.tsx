@@ -34,7 +34,7 @@ function RowButton({ row, hovered, selected, moved, onHover, onToggle }: { row: 
       onPointerLeave={() => onHover(null)}
       onFocus={() => onHover(row.id)}
       onBlur={() => onHover(null)}
-      className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-2.5 py-1.5 text-left transition-colors duration-150 ${tone}`}
+      className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-2.5 py-1.5 text-left pressable-wide ${tone}`}
     >
       <span className="min-w-0 flex-1 text-pretty">{rowLabel(row)}</span>
       {moved > 0 && <MovedMark count={moved} total={row.nodeIds.length} />}

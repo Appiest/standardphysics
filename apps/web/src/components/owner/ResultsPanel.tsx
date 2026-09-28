@@ -116,7 +116,7 @@ function preview(rows: Row[]): string {
 function FolderLink({ title, fact, count, urgent = false, onOpen }: { title: string; fact: string; count?: number; urgent?: boolean; onOpen: () => void }) {
   return (
     <button type="button" onClick={onOpen}
-      className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 rounded-2xl bg-sheet p-4 text-start shadow-float transition-colors duration-150 hover:bg-ink/[0.03]">
+      className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 rounded-2xl bg-sheet p-4 text-start shadow-float pressable-wide hover:bg-ink/[0.03]">
       <span className="text-lg font-semibold">{title}</span>
       <span className="row-span-2 flex items-center gap-2">
         {count !== undefined && count > 0 && (

@@ -45,4 +45,4 @@ export function Menu({ label, icon, children, align = "end", side = "below" }: {
 }
 
 /** The one look every row in a menu shares, whether it is a link or a button. */
-export const MENU_ITEM = "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-ink hover:bg-ink/5";
+export const MENU_ITEM = "pressable-wide flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-ink hover:bg-ink/5";

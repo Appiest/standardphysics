@@ -4,7 +4,7 @@ import { CheckCircle, CircleNotch, Hammer, MagicWand, MinusCircle, Stop } from "
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import { type RefObject, useEffect, useReducer, useRef, useState } from "react";
 import { Explanation } from "@/components/proposal/ProposalReview";
-import { Button, buttonClassName } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import {
   finishedDetail,
   finishedHeadline,
@@ -91,10 +91,10 @@ function Idle({ label, onStart, onOneAtATime }: { label: string; onStart: () => 
   return (
     <motion.div className="flex flex-col items-start gap-3" exit={{ opacity: 0, transition: { duration: 0.15 } }}>
       <div className="flex flex-wrap items-center gap-3">
-        <motion.button type="button" className={buttonClassName("primary")} onClick={onStart} whileTap={{ scale: 0.96 }}>
+        <Button variant="primary" onClick={onStart}>
           <MagicWand size={18} weight="bold" aria-hidden />
           Fix room
-        </motion.button>
+        </Button>
         {onOneAtATime && <Button variant="quiet" onClick={onOneAtATime}>Fix one at a time</Button>}
       </div>
       <p className="text-pretty text-sm text-ink-muted">{idleDetail(label)}</p>

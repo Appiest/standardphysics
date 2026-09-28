@@ -13,7 +13,7 @@ const VARIANTS: Record<Variant, string> = {
 
 /** The button look on its own, for a link that should read as a button. */
 export function buttonClassName(variant: Variant = "quiet", squared = false): string {
-  return `inline-flex items-center gap-2 ${squared ? "rounded-none" : "rounded-lg"} font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${VARIANTS[variant]}`;
+  return `pressable inline-flex items-center gap-2 ${squared ? "rounded-none" : "rounded-lg"} font-medium disabled:cursor-not-allowed disabled:opacity-40 ${VARIANTS[variant]}`;
 }
 
 export function Button({

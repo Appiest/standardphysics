@@ -282,7 +282,7 @@ function NodeEntryCard({ scanId, scene, entry, selected, onSelect, onPersisted }
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
-        className={`flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition-colors ${
+        className={`flex w-full items-center gap-3 rounded-lg border p-2.5 text-left pressable-wide ${
           selected ? "border-sky-500 bg-sky-50/50 shadow-sm dark:bg-sky-950/20" : "border-rule/60 bg-sheet/80 hover:bg-sheet"
         }`}
       >
