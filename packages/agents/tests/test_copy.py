@@ -6,6 +6,8 @@ import re
 
 import pytest
 from standardphysics_agents import assess
+from standardphysics_contracts import Mat4, SceneNode, Vec3
+from standardphysics_fixtures.shop import node_id
 
 JARGON = (
     "node", "scene graph", "confidence", "evidence", "assessment", "revision",
@@ -114,3 +116,36 @@ def test_a_fix_that_needs_a_builder_says_so_as_an_action(graph, scenario, stub, 
         f for f in result.problems if f.check_id == "route_clear_width"
     )
     assert pinch.fix == "Ask a contractor about opening this gap to 36 inches."
+
+
+def _with_ramp_kiosk_and_straws(graph):
+    def piece(name, label, centre, dims, movable=False):
+        return SceneNode(id=node_id(name), kind="object", label=label, raw_category=label, movable=movable,
+                         dimensions=Vec3(x=dims[0], y=dims[1], z=dims[2]), transform=Mat4.translation(*centre))
+
+    return graph.model_copy(update={"nodes": [
+        *graph.nodes,
+        piece("copy_ramp", "Ramp", (2.2, -1.0, 0.15), (1.6, 0.8, 0.3)),
+        piece("copy_chair", "Chair", (2.2, 0.2, 0.45), (0.45, 0.45, 0.9), movable=True),
+        piece("copy_kiosk", "Self-order kiosk", (-2.6, -1.0, 0.8), (0.5, 0.5, 1.6)),
+        piece("copy_screen", "Touchscreen", (-2.8, 1.0, 1.5), (0.05, 0.5, 0.4)),
+        piece("copy_straws", "Straw dispenser", (-0.5, 3.6, 1.4), (0.15, 0.15, 0.25)),
+    ]})
+
+
+def test_ramp_kiosk_and_self_serve_copy_reads_the_same_way(graph, scenario, pipeline, ledger):
+    result = assess(_with_ramp_kiosk_and_straws(graph), scenario, pipeline, ledger=ledger)
+    new_checks = {"ramp_running_slope", "ramp_rise", "ramp_clear_width", "ramp_landing_length", "ramp_handrails",
+                  "kiosk_reach", "kiosk_clear_floor", "self_service_reach"}
+    findings = [f for f in result.findings if f.check_id in new_checks]
+    assert {f.check_id for f in findings} == new_checks
+    assert {f.outcome for f in findings} == {"problem", "question", "passes"}
+    for finding in findings:
+        assert not finding.title.endswith("."), finding.title
+        assert (finding.fix is not None) == (finding.outcome == "problem"), finding.title
+        for text in filter(None, (finding.title, finding.detail, finding.fix)):
+            lowered = text.casefold()
+            assert not any(word in lowered for word in JARGON), text
+            assert not any(phrase in lowered for phrase in DENIALS), text
+            assert not METRIC.search(text), text
+            assert not [w for w in re.findall(r"[A-Za-z]{3,}", text) if w.isupper()], text

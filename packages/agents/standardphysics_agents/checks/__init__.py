@@ -19,15 +19,20 @@ from .dining import dining_surface_height
 from .door_clearance import door_maneuvering_clearance, door_verdict
 from .door_width import door_clear_width
 from .exit_path import exit_path
+from .kiosks import RULE_IDS as KIOSK_RULE_IDS
+from .kiosks import kiosks
 from .observation import Observation, Unevaluated
 from .passing_space import passing_space
 from .protrusions import protruding_objects
 from .questions import RULE_IDS as QUESTION_RULE_IDS
 from .questions import scan_cannot_see
+from .ramps import RULE_IDS as RAMP_RULE_IDS
+from .ramps import ramps
 from .reach import reach_range
 from .restroom import restroom_turning_space
 from .result import CheckResult, as_result
 from .route_width import route_clear_width, route_width_verdict
+from .self_service import self_service_reach
 from .service_counter import (
     point_of_sale_height,
     service_counter_approach,
@@ -53,6 +58,9 @@ REGISTRY: tuple[tuple[frozenset[str], CheckFn], ...] = (
     (frozenset({"dining_surface_height"}), dining_surface_height),
     (frozenset({"reach_range"}), reach_range),
     (frozenset({"restroom_turning_space"}), restroom_turning_space),
+    (RAMP_RULE_IDS, ramps),
+    (KIOSK_RULE_IDS, kiosks),
+    (frozenset({"self_service_reach"}), self_service_reach),
     (QUESTION_RULE_IDS, scan_cannot_see),
 )
 
@@ -123,9 +131,9 @@ COVERED = frozenset().union(*[rule_ids for rule_ids, _ in REGISTRY])
 __all__ = [
     "COVERED", "CheckContext", "CheckResult", "Observation", "REGISTRY",
     "Unevaluated", "dedupe", "dining_surface_height", "door_clear_width",
-    "door_maneuvering_clearance", "door_verdict", "exit_path", "passing_space",
-    "point_of_sale_height", "protruding_objects", "reach_range", "restroom_turning_space", "route_clear_width",
-    "route_width_verdict", "run_checks", "scan_cannot_see",
+    "door_maneuvering_clearance", "door_verdict", "exit_path", "kiosks", "passing_space",
+    "point_of_sale_height", "protruding_objects", "ramps", "reach_range", "restroom_turning_space",
+    "route_clear_width", "route_width_verdict", "run_checks", "scan_cannot_see", "self_service_reach",
     "service_counter_approach", "service_counter_height", "turn_clear_width",
     "turn_verdict", "turning_space",
 ]

@@ -175,6 +175,105 @@
       "second_check_by": null,
       "second_check_at": null,
       "note": "902.3: the tops of dining surfaces and work surfaces shall be 28 inches (710 mm) minimum and 34 inches (865 mm) maximum above the finish floor."
+    },
+    {
+      "rule_id": "ramp_running_slope",
+      "section": "405.2",
+      "threshold": 12.0,
+      "unit": "in run per in rise",
+      "verified_by": "unverified preview (development only)",
+      "verified_at": "2026-09-28T10:38:20.062815Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "405.2 Slope. Ramp runs shall have a running slope not steeper than 1:12. EXCEPTION: In existing sites, buildings, and facilities, ramps shall be permitted to have running slopes steeper than 1:12 complying with Table 405.2 where such slopes are necessary due to space limitations."
+    },
+    {
+      "rule_id": "ramp_rise",
+      "section": "405.6",
+      "threshold": 30.0,
+      "unit": "in",
+      "verified_by": "unverified preview (development only)",
+      "verified_at": "2026-09-28T10:38:20.062815Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "405.6 Rise. The rise for any ramp run shall be 30 inches (760 mm) maximum."
+    },
+    {
+      "rule_id": "ramp_clear_width",
+      "section": "405.5",
+      "threshold": 36.0,
+      "unit": "in",
+      "verified_by": "unverified preview (development only)",
+      "verified_at": "2026-09-28T10:38:20.062815Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "405.5 Clear Width. The clear width of a ramp run and, where handrails are provided, the clear width between handrails shall be 36 inches (915 mm) minimum."
+    },
+    {
+      "rule_id": "ramp_landing_length",
+      "section": "405.7.3",
+      "threshold": 60.0,
+      "unit": "in",
+      "verified_by": "unverified preview (development only)",
+      "verified_at": "2026-09-28T10:38:20.062815Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "405.7.3: 405.7 Landings. Ramps shall have landings at the top and the bottom of each ramp run. 405.7.3 Length. Landings shall have a clear length of 60 inches (1525 mm) long minimum."
+    },
+    {
+      "rule_id": "ramp_handrails",
+      "section": "405.8",
+      "threshold": 6.0,
+      "unit": "in",
+      "verified_by": "unverified preview (development only)",
+      "verified_at": "2026-09-28T10:38:20.062815Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "405.8 Handrails. Ramp runs with a rise greater than 6 inches (150 mm) shall have handrails complying with 505."
+    },
+    {
+      "rule_id": "handrail_height",
+      "section": "505.4",
+      "threshold": 38.0,
+      "unit": "in",
+      "verified_by": "unverified preview (development only)",
+      "verified_at": "2026-09-28T10:38:20.062815Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "505.4 Height. Top of gripping surfaces of handrails shall be 34 inches (865 mm) minimum and 38 inches (965 mm) maximum vertically above walking surfaces, ramp surfaces, and stair nosings. Handrails shall be at a consistent height above walking surfaces, ramp surfaces, and stair nosings."
+    },
+    {
+      "rule_id": "kiosk_reach",
+      "section": "308.2.1",
+      "threshold": 48.0,
+      "unit": "in",
+      "verified_by": "unverified preview (development only)",
+      "verified_at": "2026-09-28T10:38:20.062815Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "308.2.1 Unobstructed. Where a forward reach is unobstructed, the high forward reach shall be 48 inches (1220 mm) maximum and the low forward reach shall be 15 inches (380 mm) minimum above the finish floor or ground. Referenced by 309.3, which places operable parts within one or more of the reach ranges specified in 308."
+    },
+    {
+      "rule_id": "kiosk_clear_floor",
+      "section": "305.3",
+      "threshold": 30.0,
+      "unit": "in",
+      "verified_by": "unverified preview (development only)",
+      "verified_at": "2026-09-28T10:38:20.062815Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "305.3 Size. The clear floor or ground space shall be 30 inches (760 mm) minimum by 48 inches (1220 mm) minimum. 305.5 Position. Unless otherwise specified, clear floor or ground space shall be positioned for either forward or parallel approach to an element."
+    },
+    {
+      "rule_id": "self_service_reach",
+      "section": "904.5.1",
+      "threshold": 48.0,
+      "unit": "in",
+      "verified_by": "unverified preview (development only)",
+      "verified_at": "2026-09-28T10:38:20.062815Z",
+      "second_check_by": null,
+      "second_check_at": null,
+      "note": "904.5.1 Self-Service Shelves and Dispensing Devices. Self-service shelves and dispensing devices for tableware, dishware, condiments, food and beverages shall comply with 308, which sets the high forward reach at 48 inches (1220 mm) maximum and the low forward reach at 15 inches (380 mm) minimum above the finish floor or ground."
     }
   ]
 }

@@ -7,14 +7,16 @@ turn a preview rule or an unsigned directive into a verified requirement.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Literal
+from typing import Callable, Literal
 
 from standardphysics_contracts import MeasurementProvider, Scenario, SceneGraph, to_inches
+from standardphysics_contracts.findings import Asks
 from standardphysics_contracts.precedents import PrecedentDirective, PrecedentQuerySpec, SpaceTypology
 from standardphysics_pipeline import footprint, gap_between
 
 from .checks import REGISTRY, CheckContext, Observation, roles
 from .checks.dining import required_count, surface_height_inches, within_range
+from .checks.door_clearance import latch_sides_clear
 from .checks.result import as_result
 from .checks.route_geometry import stops_needing_turning_space
 from .precedents import PrecedentCompiler, check_precedent_constraints
@@ -33,7 +35,83 @@ QUERY_IMPLEMENTATIONS = {
     "dining_surface_height_max": "dining_surface_geometry",
     "dining_surface_height_min": "dining_surface_geometry",
     "door_clear_width": "door_clear_width",
+    "service_counter_approach_width": "service_counter_approach",
+    "self_service_dispenser_reach": "self_service_reach",
+    "kiosk_operable_part_height": "kiosk_reach",
+    "kiosk_clear_floor_width": "kiosk_clear_floor",
+    "restroom_turning_circle": "restroom_turning_space",
+    "door_pull_side_latch_clearance": "door_latch_side_strips",
 }
+
+COMPARED_OBSERVATIONS = frozenset({"service_counter_height", "route_clear_width", "door_clear_width"})
+"""Adapters that compare a check's measurement against the query's own threshold."""
+
+JUDGED_OBSERVATIONS = frozenset(
+    {"service_counter_approach", "self_service_reach", "kiosk_reach", "kiosk_clear_floor", "restroom_turning_space"}
+)
+"""Adapters that take the check's own verdict, because its measurement is a tested size, not a free reading."""
+
+
+@dataclass(frozen=True)
+class QueryAsk:
+    """The one thing a person can send that settles a query the scan cannot."""
+
+    asks: Asks
+    request: str
+
+
+QUERY_ASKS: dict[str, QueryAsk] = {
+    "service_counter_height": QueryAsk(
+        "measurement", "Measure the height of the lowest part of the ordering counter; it needs to be 36 inches or lower."),
+    "service_counter_clear_length": QueryAsk(
+        "measurement", "Measure how much of the low counter is left clear of registers and displays; it needs 36 inches."),
+    "service_counter_approach_width": QueryAsk(
+        "photo", "Send a photo of the floor in front of the low part of the counter, showing a 30 by 48 inch space "
+        "to pull up alongside it."),
+    "service_counter_alcove_width": QueryAsk(
+        "measurement", "If displays or baskets in front of the counter make a nook more than 15 inches deep, measure "
+        "how wide it is; it needs 60 inches."),
+    "self_service_dispenser_reach": QueryAsk(
+        "measurement", "Measure from the floor to the highest straw, lid or napkin a customer reaches for; it needs to "
+        "be 48 inches or lower."),
+    "route_clear_width": QueryAsk(
+        "another_look", "Walk the phone along the path again so its narrowest point can be measured; it needs 36 inches."),
+    "dining_surface_height_max": QueryAsk(
+        "measurement", "Measure the height of the accessible table top; it needs to be 34 inches or lower."),
+    "dining_surface_height_min": QueryAsk(
+        "measurement", "Measure the height of the accessible table top; it needs to be 28 inches or higher."),
+    "dining_knee_clearance_height": QueryAsk(
+        "measurement", "Measure from the floor to the underside of the accessible table where knees go; it needs "
+        "27 inches."),
+    "dining_knee_clearance_width": QueryAsk(
+        "measurement", "Measure the clear width under the accessible table between its legs or base; it needs "
+        "30 inches."),
+    "door_clear_width": QueryAsk(
+        "measurement", "Open the door all the way and measure from the face of the door to the frame; it needs "
+        "32 inches."),
+    "door_pull_side_latch_clearance": QueryAsk(
+        "photo", "Send a photo of the pull side of the door showing the floor beside the handle; it needs 18 inches "
+        "clear past the latch edge."),
+    "door_threshold_height": QueryAsk(
+        "photo", "Send a low photo of the doorway threshold with a tape measure standing beside it; it can be half an "
+        "inch high at most."),
+    "restroom_turning_circle": QueryAsk(
+        "photo", "Send a photo of the restroom from the doorway with the whole floor in view, to check for a 60 inch "
+        "circle to turn in."),
+    "kiosk_operable_part_height": QueryAsk(
+        "measurement", "Measure from the floor to the kiosk's highest button, card slot or top of its touch screen; "
+        "it needs to be 48 inches or lower."),
+    "kiosk_clear_floor_width": QueryAsk(
+        "photo", "Send a photo of the floor in front of the kiosk, showing a clear 30 by 48 inch space to pull up "
+        "to it."),
+    "wheelchair_space_width": QueryAsk(
+        "measurement", "Measure the width of each wheelchair space in the seating; each needs 36 inches."),
+    "wheelchair_space_depth": QueryAsk(
+        "measurement", "Measure the depth of each wheelchair space in the seating; each needs 48 inches entered from "
+        "the front or back, and 60 inches from the side."),
+}
+"""What settles each corpus query when the scan cannot: a measured query whose target was not seen, or one the
+scan never carries, such as the knee space under a table or a threshold's height."""
 
 
 @dataclass(frozen=True)
@@ -62,6 +140,9 @@ class RequirementEntry:
     evidence: tuple[RequirementEvidence, ...] = ()
     measured: Outcome | None = None
     """What the room measurement says with legal sign-off set aside; never "unverified"."""
+
+    ask: QueryAsk | None = None
+    """For a query whose measurement is unknown, the one thing a person can send that settles it."""
 
 
 @dataclass(frozen=True)
@@ -95,6 +176,10 @@ def _applicable_rule(rule: RuleSpec, graph: SceneGraph, scenario: Scenario, typo
         "operable_part": any(any(name in f"{node.label} {node.raw_category}".lower() for name in operable_names)
                              for node in graph.nodes),
         "wall_mounted": any(node.attachment is not None for node in graph.nodes),
+        "ramp": bool(roles.ramps(graph)),
+        "handrail": bool(roles.ramps(graph)),
+        "kiosk": bool(roles.kiosks(graph)),
+        "self_service": bool(roles.self_service(graph)),
         "post_mounted": any("post" in node.label.lower() for node in graph.nodes),
     }
     return any(targets.get(target, True) for target in rule.applies_to)
@@ -188,20 +273,62 @@ def _rule_entry(rule: RuleSpec, ctx: CheckContext, observations: list[Observatio
     )
 
 
-def _query_values(query: PrecedentQuerySpec, graph: SceneGraph,
+def _compared_values(ctx: CheckContext, query: PrecedentQuerySpec,
+                     observations: dict[str, list[Observation]]) -> tuple[RequirementEvidence, ...]:
+    return tuple(RequirementEvidence(
+        _observation_target(item, query.target_role),
+        item.measured_inches, item.reason, _observation_outcome(item, ctx.graph) != "unknown",
+    ) for item in observations.get(query.rule_id or "", []))
+
+
+def _judged_values(ctx: CheckContext, rule_id: str,
+                   observations: dict[str, list[Observation]]) -> tuple[RequirementEvidence, ...]:
+    return tuple(RequirementEvidence(
+        _observation_target(item, rule_id), item.measured_inches, item.reason,
+        _observation_outcome(item, ctx.graph) != "unknown", measured=_observation_outcome(item, ctx.graph),
+    ) for item in observations.get(rule_id, []))
+
+
+def _dining_values(ctx: CheckContext) -> tuple[RequirementEvidence, ...]:
+    return tuple(RequirementEvidence(str(node.id), surface_height_inches(node),
+                                     "surface top from scan geometry", node.quality != "needs_another_look")
+                 for node in roles.dining_surfaces(ctx.graph))
+
+
+def _latch_side_values(ctx: CheckContext) -> tuple[RequirementEvidence, ...]:
+    """18 inches past the latch on the pull side. The scan knows neither the latch side nor the pull side, so
+    only floor clear on both sides of the opening settles it; anything else is a question."""
+    rule = ctx.rule("door_maneuvering_clearance")
+    latch = rule.parameter("front_approach_pull_latch_side_inches")
+    values = []
+    for door in roles.doors(ctx.graph):
+        both = all(latch_sides_clear(ctx, rule, door))
+        values.append(RequirementEvidence(
+            str(door.id), latch if both else None,
+            "floor clear beside both edges of the opening" if both else "latch side and swing are unknown",
+            both and door.quality != "needs_another_look", measured="pass" if both else "unknown",
+        ))
+    return tuple(values)
+
+
+GeometryAdapter = Callable[[CheckContext], tuple[RequirementEvidence, ...]]
+
+GEOMETRY_ADAPTERS: dict[str, GeometryAdapter] = {
+    "counter_section_geometry": lambda ctx: _counter_length_values(ctx.graph),
+    "dining_surface_geometry": _dining_values,
+    "door_latch_side_strips": _latch_side_values,
+}
+
+
+def _query_values(query: PrecedentQuerySpec, ctx: CheckContext,
                   observations: dict[str, list[Observation]]) -> tuple[RequirementEvidence, ...]:
     implementation = QUERY_IMPLEMENTATIONS.get(query.query_id)
-    if implementation == "counter_section_geometry":
-        return _counter_length_values(graph)
-    if implementation == "dining_surface_geometry":
-        return tuple(RequirementEvidence(str(node.id), surface_height_inches(node),
-                                         "surface top from scan geometry", node.quality != "needs_another_look")
-                     for node in roles.dining_surfaces(graph))
-    if implementation in {"service_counter_height", "route_clear_width", "door_clear_width"}:
-        return tuple(RequirementEvidence(
-            _observation_target(item, query.target_role),
-            item.measured_inches, item.reason, _observation_outcome(item, graph) != "unknown",
-        ) for item in observations.get(query.rule_id or "", []))
+    if implementation in GEOMETRY_ADAPTERS:
+        return GEOMETRY_ADAPTERS[implementation](ctx)
+    if implementation in COMPARED_OBSERVATIONS:
+        return _compared_values(ctx, query, observations)
+    if implementation in JUDGED_OBSERVATIONS:
+        return _judged_values(ctx, implementation, observations)
     return ()
 
 
@@ -219,27 +346,43 @@ def _counter_length_values(graph: SceneGraph) -> tuple[RequirementEvidence, ...]
     return tuple(values)
 
 
-def _query_entry(directive: PrecedentDirective, query: PrecedentQuerySpec, graph: SceneGraph,
+def _value_outcome(value: RequirementEvidence, query: PrecedentQuerySpec) -> Outcome:
+    if value.measured is not None:
+        return value.measured
+    if value.measured_value is None or not value.reliable:
+        return "unknown"
+    within = (value.measured_value <= query.threshold if query.comparison == "at_most"
+              else value.measured_value >= query.threshold)
+    return "pass" if within else "fail"
+
+
+def _query_reason(verified: bool, implementation: str | None, values: tuple, outcomes: list[Outcome],
+                  ask: QueryAsk | None) -> str:
+    if not verified:
+        return "human directive or linked rule review is missing"
+    if values and "unknown" not in outcomes:
+        return "metric-specific evidence recorded"
+    if ask is not None:
+        return f"needs a {ask.asks.replace('_', ' ')}: {ask.request}"
+    if implementation is None:
+        return "no metric-specific checker implementation"
+    return "required measurement is missing"
+
+
+def _query_entry(directive: PrecedentDirective, query: PrecedentQuerySpec, ctx: CheckContext,
                  observations: dict[str, list[Observation]], verified: bool) -> RequirementEntry:
     implementation = QUERY_IMPLEMENTATIONS.get(query.query_id)
-    values = _query_values(query, graph, observations)
-    outcomes: list[Outcome] = ["unknown" if value.measured_value is None or not value.reliable else
-                "pass" if (value.measured_value <= query.threshold if query.comparison == "at_most"
-                           else value.measured_value >= query.threshold) else "fail" for value in values]
-    outcome = _combined(outcomes)
-    measured = outcome
+    values = _query_values(query, ctx, observations)
+    outcomes = [_value_outcome(value, query) for value in values]
+    measured = _combined(outcomes)
+    ask = QUERY_ASKS.get(query.query_id) if measured == "unknown" else None
     values = tuple(replace(value, measured=result) for value, result in zip(values, outcomes))
-    if not verified:
-        outcome = "unverified"
-    reason = ("human directive or linked rule review is missing" if not verified else
-              "no metric-specific checker implementation" if implementation is None else
-              "required measurement is missing" if not values or "unknown" in outcomes else
-              "metric-specific evidence recorded")
     return RequirementEntry(
         id=f"query:{directive.directive_id}:{query.query_id}", source="query", citation=query.citation,
         target=query.target_role, threshold=query.threshold, comparison=query.comparison, unit="in",
-        applicable=True, outcome=outcome, reason=reason, implementation=implementation, evidence=values,
-        measured=measured,
+        applicable=True, outcome=measured if verified else "unverified",
+        reason=_query_reason(verified, implementation, values, outcomes, ask),
+        implementation=implementation, evidence=values, measured=measured, ask=ask,
     )
 
 
@@ -253,7 +396,10 @@ def _query_target_present(query: PrecedentQuerySpec, graph: SceneGraph) -> bool:
     if query.target_role == "door":
         return bool(roles.doors(graph))
     if query.target_role == "straw_dispenser":
-        return any("straw" in f"{node.label} {node.raw_category}".lower() for node in graph.nodes)
+        return bool(roles.self_service(graph)) or any(
+            "straw" in f"{node.label} {node.raw_category}".lower() for node in graph.nodes)
+    if query.target_role == "service_counter_alcove":
+        return bool(roles.service_counters(graph))
     return True
 
 
@@ -372,7 +518,7 @@ def evaluate_candidate_room(
                 entries.append(_inapplicable_query(directive, query))
                 continue
             linked = query.rule_id is None or reviewed_rules.personally_verified(pack.by_id(query.rule_id))
-            entries.append(_query_entry(directive, query, candidate, observations, verified and linked))
+            entries.append(_query_entry(directive, query, ctx, observations, verified and linked))
         entries.extend(_constraint_entry(directive, spec, base, candidate, verified, violations, pack)
                        for spec in _constraint_specs(directive))
     applicable = [entry for entry in entries if entry.applicable]
