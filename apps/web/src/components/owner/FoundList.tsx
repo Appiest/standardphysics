@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowsOutCardinal, CaretDown, CashRegister, Chair, Check, Cube, FireExtinguisher, SidebarSimple } from "@phosphor-icons/react";
+import { ArrowsOutCardinal, CaretDown, CashRegister, Chair, Check, Cube, FireExtinguisher, SidebarSimple, Stairs } from "@phosphor-icons/react";
 import { type ComponentType, useId, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
@@ -12,6 +12,7 @@ type IconType = ComponentType<{ size?: number; weight?: "regular" | "bold"; clas
 const GROUP_ICONS: Record<FoundGroupId, IconType> = {
   service: CashRegister,
   seating: Chair,
+  access: Stairs,
   safety: FireExtinguisher,
   other: Cube,
 };

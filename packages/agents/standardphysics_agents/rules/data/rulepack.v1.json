@@ -449,6 +449,213 @@
       "source_text": "902.3 Height. The tops of dining surfaces and work surfaces shall be 28 inches (710 mm) minimum and 34 inches (865 mm) maximum above the finish floor or ground. 226.1 requires that where dining surfaces are provided for the consumption of food or drink, at least 5 percent of the seating spaces and standing spaces at the dining surfaces shall comply with 902.",
       "review_note": "226.1 scopes a share of seats, not every seat. The share and the height are two separate checks and this entry only carries the height.",
       "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "ramp_running_slope",
+      "title": "The ramp is too steep",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "405.2",
+        "url": "https://www.access-board.gov/ada/#ada-405"
+      },
+      "tier": 1,
+      "threshold": 12.0,
+      "unit": "in run per in rise",
+      "comparison": "at_least",
+      "parameters": {},
+      "applies_to": [
+        "ramp"
+      ],
+      "evidence": "measured",
+      "source_text": "405.2 Slope. Ramp runs shall have a running slope not steeper than 1:12. EXCEPTION: In existing sites, buildings, and facilities, ramps shall be permitted to have running slopes steeper than 1:12 complying with Table 405.2 where such slopes are necessary due to space limitations.",
+      "review_note": "The threshold is the run the standard asks for per unit of rise, so 1:12 is 12 and an exact 1:12 ramp passes. The scan measures a ramp as a box: rise is its vertical extent and run its longest horizontal extent. Table 405.2's steeper slopes for existing buildings are not applied.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "ramp_rise",
+      "title": "The ramp climbs too far in one run",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "405.6",
+        "url": "https://www.access-board.gov/ada/#ada-405"
+      },
+      "tier": 1,
+      "threshold": 30.0,
+      "unit": "in",
+      "comparison": "at_most",
+      "parameters": {},
+      "applies_to": [
+        "ramp"
+      ],
+      "evidence": "measured",
+      "source_text": "405.6 Rise. The rise for any ramp run shall be 30 inches (760 mm) maximum.",
+      "review_note": "Rise is the vertical extent of the ramp's box, which slightly overstates it by the thickness of the ramp surface.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "ramp_clear_width",
+      "title": "The ramp is too narrow",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "405.5",
+        "url": "https://www.access-board.gov/ada/#ada-405"
+      },
+      "tier": 1,
+      "threshold": 36.0,
+      "unit": "in",
+      "comparison": "at_least",
+      "parameters": {},
+      "applies_to": [
+        "ramp"
+      ],
+      "evidence": "measured",
+      "source_text": "405.5 Clear Width. The clear width of a ramp run and, where handrails are provided, the clear width between handrails shall be 36 inches (915 mm) minimum.",
+      "review_note": "Width is the ramp box's shorter horizontal extent. Handrails that intrude over the run are not subtracted.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "ramp_landing_length",
+      "title": "There is no level landing at the end of the ramp",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "405.7.3",
+        "url": "https://www.access-board.gov/ada/#ada-405"
+      },
+      "tier": 1,
+      "threshold": 60.0,
+      "unit": "in",
+      "comparison": "at_least",
+      "parameters": {},
+      "applies_to": [
+        "ramp"
+      ],
+      "evidence": "measured",
+      "source_text": "405.7 Landings. Ramps shall have landings at the top and the bottom of each ramp run. 405.7.3 Length. Landings shall have a clear length of 60 inches (1525 mm) long minimum.",
+      "review_note": "Measured at both ends of the run as a patch of free floor as wide as the ramp and 60 inches long, or as the length of a node named as a landing that meets that end. Floor the scan did not cover is asked about, not passed.",
+      "resolved_by": "moving_things"
+    },
+    {
+      "id": "ramp_handrails",
+      "title": "The ramp needs handrails",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "405.8",
+        "url": "https://www.access-board.gov/ada/#ada-405"
+      },
+      "tier": 1,
+      "threshold": 6.0,
+      "unit": "in",
+      "comparison": "at_most",
+      "parameters": {},
+      "applies_to": [
+        "ramp"
+      ],
+      "evidence": "measured",
+      "source_text": "405.8 Handrails. Ramp runs with a rise greater than 6 inches (150 mm) shall have handrails complying with 505.",
+      "review_note": "The threshold is the rise above which handrails are required. A railing found along both sides of the run passes; a railing the scan did not find is asked about with a photo, never failed, because detection misses thin rails.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "handrail_height",
+      "title": "The ramp handrail is the wrong height",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "505.4",
+        "url": "https://www.access-board.gov/ada/#ada-505"
+      },
+      "tier": 1,
+      "threshold": 38.0,
+      "unit": "in",
+      "comparison": "at_most",
+      "parameters": {
+        "gripping_surface_min_inches": 34.0
+      },
+      "applies_to": [
+        "handrail"
+      ],
+      "evidence": "measured",
+      "source_text": "505.4 Height. Top of gripping surfaces of handrails shall be 34 inches (865 mm) minimum and 38 inches (965 mm) maximum vertically above walking surfaces, ramp surfaces, and stair nosings. Handrails shall be at a consistent height above walking surfaces, ramp surfaces, and stair nosings.",
+      "review_note": "Only railings beside a measured ramp are checked, as the railing's top less the ramp's rise, which is its height above the ramp surface at the high end. Guards and railings elsewhere may not be handrails and are left alone.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "kiosk_reach",
+      "title": "The kiosk is out of reach",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "308.2.1",
+        "url": "https://www.access-board.gov/ada/#ada-308"
+      },
+      "tier": 1,
+      "threshold": 48.0,
+      "unit": "in",
+      "comparison": "at_most",
+      "parameters": {
+        "unobstructed_low_inches": 15.0
+      },
+      "applies_to": [
+        "kiosk"
+      ],
+      "evidence": "measured",
+      "source_text": "308.2.1 Unobstructed. Where a forward reach is unobstructed, the high forward reach shall be 48 inches (1220 mm) maximum and the low forward reach shall be 15 inches (380 mm) minimum above the finish floor or ground. Referenced by 309.3, which places operable parts within one or more of the reach ranges specified in 308.",
+      "review_note": "A kiosk box whose top is within 15 to 48 inches passes, and one entirely above 48 or below 15 fails. A box that reaches past 48 inches may still carry its screen lower, so that case asks for the height of the highest control instead of failing.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "kiosk_clear_floor",
+      "title": "There is not enough room to use the kiosk",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "305.3",
+        "url": "https://www.access-board.gov/ada/#ada-305"
+      },
+      "tier": 1,
+      "threshold": 30.0,
+      "unit": "in",
+      "comparison": "at_least",
+      "parameters": {
+        "clear_width_min_inches": 30.0,
+        "clear_depth_min_inches": 48.0
+      },
+      "applies_to": [
+        "kiosk"
+      ],
+      "evidence": "measured",
+      "source_text": "305.3 Size. The clear floor or ground space shall be 30 inches (760 mm) minimum by 48 inches (1220 mm) minimum. 305.5 Position. Unless otherwise specified, clear floor or ground space shall be positioned for either forward or parallel approach to an element.",
+      "review_note": "The scan cannot say which face of a kiosk carries its screen, so each face is tried for a forward approach (30 wide, 48 deep) and a parallel one (48 wide, 30 deep). Any clear face passes; none clear fails.",
+      "resolved_by": "moving_things"
+    },
+    {
+      "id": "self_service_reach",
+      "title": "Self-serve items are out of reach",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "904.5.1",
+        "url": "https://www.access-board.gov/ada/#ada-904"
+      },
+      "tier": 1,
+      "threshold": 48.0,
+      "unit": "in",
+      "comparison": "at_most",
+      "parameters": {
+        "unobstructed_low_inches": 15.0
+      },
+      "applies_to": [
+        "self_service"
+      ],
+      "evidence": "measured",
+      "source_text": "904.5.1 Self-Service Shelves and Dispensing Devices. Self-service shelves and dispensing devices for tableware, dishware, condiments, food and beverages shall comply with 308, which sets the high forward reach at 48 inches (1220 mm) maximum and the low forward reach at 15 inches (380 mm) minimum above the finish floor or ground.",
+      "review_note": "Read the same way as kiosk_reach. The lower limits for reaching over an obstruction in 308.2.2 and 308.3.2 are not applied.",
+      "resolved_by": "changing_a_fixture"
     }
   ]
 }

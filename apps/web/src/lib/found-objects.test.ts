@@ -65,6 +65,28 @@ describe("foundGroups", () => {
   });
 });
 
+describe("groups for what the ADA checks look for", () => {
+  const upright: SceneNode["transform"]["m"] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0.6, 0, 0, 0, 1];
+  const pieces: Piece[] = [
+    ["kiosk", "Self-order kiosk"], ["touch", "Touchscreen"], ["pickup", "Pickup counter"], ["condiments", "Condiment station"],
+    ["tip", "Tip screen"], ["ramp", "Ramp"], ["rail", "Handrail"],
+  ].map(([id, label]) => ({ id, kind: "object", label, raw_category: "storage", dimensions: [0.6, 0.5, 1.2], m: upright }));
+  const groupOfEach = Object.fromEntries(
+    foundGroups({ ...scene, nodes: pieces.map(node) }).flatMap((group) => group.rows.map((row) => [row.name, group.title])),
+  );
+
+  it("puts kiosks, pickup counters, condiments and tip screens with counters and payment", () => {
+    for (const name of ["Self-order kiosk", "Touchscreen", "Pickup counter", "Condiment station", "Tip screen"]) {
+      expect(groupOfEach[name]).toBe("Counters and payment");
+    }
+  });
+
+  it("puts ramps and handrails in their own group", () => {
+    expect(groupOfEach.Ramp).toBe("Ramps and steps");
+    expect(groupOfEach.Handrail).toBe("Ramps and steps");
+  });
+});
+
 describe("foundMarks", () => {
   it("gives each piece its own height, so the 3D label says which counter is which", () => {
     const counters = foundMarks(scene, foundGroups(scene)).filter((mark) => mark.name === "Counter");

@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import standardphysics_agents.compliance as compliance
 from standardphysics_agents import VerificationLedger, evaluate_candidate_room
 from standardphysics_agents.precedents import PrecedentLedger, PrecedentVerification, load_precedents
-from standardphysics_contracts import Mat4
+from standardphysics_contracts import Mat4, SceneNode, Vec3
 from standardphysics_contracts.precedents import SpaceTypology
 from standardphysics_fixtures.shop import node_id
 
@@ -172,3 +172,71 @@ def test_incomplete_scan_evidence_never_claims_final_acceptance(graph, scenario,
     assert not result.all_verified_measurable_passed
     assert not result.accept_for_final_layout
     assert "query:accessible_dining_surfaces:dining_knee_clearance_height" in result.unknown
+
+
+def _piece(name, label, centre, dims):
+    return SceneNode(id=node_id(name), kind="object", label=label, raw_category=label,
+                     dimensions=Vec3(x=dims[0], y=dims[1], z=dims[2]), transform=Mat4.translation(*centre))
+
+
+def _shop_with_every_directive_target(graph):
+    counter_top = graph.by_id(node_id("counter")).dimensions.z
+    return graph.model_copy(update={"nodes": [
+        *graph.nodes,
+        _piece("corpus_kiosk", "Ordering kiosk", (-2.6, -1.0, 0.55), (0.4, 0.4, 1.1)),
+        _piece("corpus_straws", "Straw dispenser", (1.2, 3.6, counter_top + 0.125), (0.15, 0.15, 0.25)),
+        _piece("corpus_toilet", "Toilet", (2.6, -3.5, 0.4), (0.4, 0.7, 0.8)),
+        _piece("corpus_podium", "Podium", (2.6, 1.0, 0.55), (0.5, 0.5, 1.1)),
+    ]})
+
+
+def test_every_corpus_query_has_a_measured_implementation_or_an_ask():
+    """A query with neither reports "no metric-specific checker implementation", which tells nobody anything."""
+    for directive in CORPUS:
+        for query in directive.inspection_queries:
+            assert query.query_id in compliance.QUERY_ASKS, query.query_id
+            implementation = compliance.QUERY_IMPLEMENTATIONS.get(query.query_id)
+            assert implementation is None or implementation in (
+                compliance.GEOMETRY_ADAPTERS.keys() | compliance.COMPARED_OBSERVATIONS
+                | compliance.JUDGED_OBSERVATIONS
+            ), query.query_id
+
+
+def test_every_corpus_query_reports_a_pass_a_problem_or_a_specific_question(graph, scenario, pipeline, pack):
+    shop = _shop_with_every_directive_target(graph)
+    evaluated = set()
+    for typology in SpaceTypology:
+        result = evaluate_candidate_room(shop, scenario, pipeline, typology, rules=pack,
+                                         rule_ledger=_reviewed_rules(pack), directives=CORPUS,
+                                         directive_ledger=_directive_ledger())
+        for entry in result.entries:
+            if entry.source != "query" or not entry.applicable:
+                continue
+            evaluated.add(entry.id)
+            assert entry.measured in {"pass", "fail"} or entry.ask is not None, entry.id
+            assert "no metric-specific checker implementation" not in entry.reason, entry.id
+    expected = {f"query:{d.directive_id}:{q.query_id}" for d in CORPUS for q in d.inspection_queries}
+    assert evaluated == expected
+
+
+def test_kiosk_queries_are_measured(graph, scenario, pipeline, pack):
+    entries = _entries(_evaluate(_shop_with_every_directive_target(graph), scenario, pipeline, pack))
+    assert entries["query:self_service_kiosk:kiosk_operable_part_height"].outcome == "pass"
+    assert entries["query:self_service_kiosk:kiosk_clear_floor_width"].outcome == "pass"
+
+
+def test_knee_clearance_under_a_table_is_a_measurement_to_ask_for(graph, scenario, pipeline, pack):
+    entry = _entries(_evaluate(graph, scenario, pipeline, pack))[
+        "query:accessible_dining_surfaces:dining_knee_clearance_height"]
+    assert entry.outcome == "unknown"
+    assert entry.ask is not None and entry.ask.asks == "measurement"
+    assert "27 inches" in entry.ask.request
+
+
+def test_straws_that_run_past_reach_ask_for_a_measurement(graph, scenario, pipeline, pack):
+    entry = _entries(_evaluate(_shop_with_every_directive_target(graph), scenario, pipeline, pack))[
+        "query:service_counter:self_service_dispenser_reach"]
+    assert entry.applicable
+    assert entry.implementation == "self_service_reach"
+    assert entry.measured == "unknown"
+    assert entry.ask is not None and entry.ask.asks == "measurement"

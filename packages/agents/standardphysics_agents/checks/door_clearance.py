@@ -126,6 +126,35 @@ def measure_clearance(
     return DoorClearance(door_verdict(pull.fits, push.fits), pull, push)
 
 
+def latch_sides_clear(ctx: CheckContext, rule: RuleSpec, door: SceneNode) -> tuple[bool, bool]:
+    """Whether the strip of floor past each edge of the opening is clear for the pull-side latch clearance.
+
+    Table 404.2.4.1 wants 18 inches beyond the latch edge on the pull side, as
+    deep as the pull-side clearance. Which edge is the latch and which side is
+    pulled are both unknown, so each edge's strip is reported on its own.
+    """
+    opening = max(door.dimensions.x, door.dimensions.y)
+    latch = rule.parameter("front_approach_pull_latch_side_inches")
+    depth = rule.parameter("front_approach_pull_depth_inches")
+    inward = _interior_side(ctx.graph, door)
+    along = _across(inward)
+    base = _patch_centre(door, inward, depth)
+    offset = opening / 2 + to_meters(latch) / 2
+    strips = (
+        clear_floor(
+            ctx.graph,
+            Vec3(x=base.x + along[0] * offset * side, y=base.y + along[1] * offset * side, z=0.0),
+            latch,
+            depth,
+            along,
+            frozenset({door.id}),
+        )
+        for side in (1, -1)
+    )
+    first, second = strips
+    return first.fits, second.fits
+
+
 def approaches_head_on(ctx: CheckContext, door: SceneNode) -> bool:
     """Whether the route comes at this door from the front.
 
