@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import type { FoundHandles } from "@/components/workspace/FoundOutlines";
 import type { ArrangeHandlers } from "@/components/workspace/ShopModel";
 import type { RouteHandles } from "@/components/workspace/StopMarkers";
 import type { Arrangement } from "@/components/workspace/useArrangement";
-import { overviewPose, poseFromLocus, topDownPose } from "@/lib/camera";
+import { overviewPose, poseAtPoint, poseFromLocus, topDownPose, type ViewerPose } from "@/lib/camera";
 import { canBeCounter } from "@/lib/counter";
 import { type Panel, wheelchairStartFrom } from "@/lib/owner-journey";
 import { stopMarkers } from "@/lib/route";
@@ -41,6 +42,10 @@ type Mode = {
   arrangement: Arrangement | null; wheelchair: boolean; scenario: Scenario | null;
   /** The confirmed path's walking route, shown while driving the walk-through. */
   walkedLegs: Vec3[][];
+  /** The found pieces, when this step outlines them, and the one the owner asked to see. */
+  found: FoundHandles | null;
+  foundFocus: Vec3 | null;
+  frameShift: number;
 };
 
 const STAY_PUT = () => {};
@@ -58,6 +63,12 @@ function counterPicking(mode: Mode): { highlight: string[] | null; picking: bool
   return { highlight: mode.counter ? [mode.counter] : null, picking: true };
 }
 
+/** A picked finding's own view first, then the found piece the owner asked to see, then the whole shop. */
+function chosenPose(camera: Parameters<typeof poseFromLocus>[0] | undefined, focus: Vec3 | null, scene: SceneGraph, overview: ViewerPose): ViewerPose {
+  if (camera) return poseFromLocus(camera);
+  return focus ? poseAtPoint(focus, scene) : overview;
+}
+
 /** Where the camera sits and what the model lets the owner touch, for whichever step is on screen. */
 export function useOwnerModel(mode: Mode, onPickNode: (nodeId: string) => void, onClear: () => void): ModelSetup {
   const [dragging, setDragging] = useState(false);
@@ -68,7 +79,7 @@ export function useOwnerModel(mode: Mode, onPickNode: (nodeId: string) => void, 
   const fromAbove = mode.panel === "counter" || mode.panel === "path";
   const overview = useMemo(() => (fromAbove ? topDownPose(mode.scene) : overviewPose(mode.scene)), [fromAbove, mode.scene]);
   const camera = mode.selected?.locus?.camera;
-  const pose = useMemo(() => (camera ? poseFromLocus(camera) : overview), [camera, overview]);
+  const pose = useMemo(() => chosenPose(camera, mode.foundFocus, mode.scene, overview), [camera, mode.foundFocus, mode.scene, overview]);
   const pick = useCallback((nodeId: string) => onPickNode(nodeId), [onPickNode]);
   const wheelchairStart = useMemo(() => wheelchairStartFrom(mode.scenario), [mode.scenario]);
   return {
@@ -79,6 +90,8 @@ export function useOwnerModel(mode: Mode, onPickNode: (nodeId: string) => void, 
     wheelchair: mode.wheelchair,
     wheelchairStart,
     route,
+    found: mode.found,
+    frameShift: mode.frameShift,
     arrange,
     dragging,
     onSelectNode: pick,

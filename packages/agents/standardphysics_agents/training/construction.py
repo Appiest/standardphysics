@@ -30,6 +30,7 @@ from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3, lies_fl
 from standardphysics_pipeline.occupancy import reads_as_wall
 
 from ..checks.walls import is_room_shell
+from .fittings import HeightChange, LoweredSection, Replacement, fit
 
 MAX_WALL_SHIFT_INCHES = 12.0
 MAX_FIXTURE_MOVE_INCHES = 24.0
@@ -171,15 +172,37 @@ def _shifted_node(node: SceneNode, edge: FloorEdge, meters: float) -> SceneNode:
     return node
 
 
+def _walled(graph: SceneGraph, edge: FloorEdge) -> bool:
+    """Whether a scanned wall stands along this side, rather than the floor simply ending there."""
+    for node in graph.nodes:
+        if lies_flat(node) or not reads_as_wall(node):
+            continue
+        direction = _unit(*_axis(node, _long_axis(node))[:2])
+        parallel = abs(direction[0] * edge.outward[0] + direction[1] * edge.outward[1]) < PARALLEL_COSINE
+        if parallel and abs(_offset(node, edge) - edge.half_extent) <= EDGE_TOLERANCE_METERS:
+            return True
+    return False
+
+
+def walled_edges(graph: SceneGraph) -> list[FloorEdge]:
+    """The sides a wall shift may push: only where a real wall stands.
+
+    A room cut out of a larger scan ends at the cut, not at a wall, and pushing
+    that edge outward only borrows floor the scan already has; it is not
+    construction and never counts as one.
+    """
+    return [edge for edge in floor_edges(graph) if _walled(graph, edge)]
+
+
 def shift_walls(graph: SceneGraph, shifts: list[WallShift]) -> SceneGraph:
     """The room with each named side pushed outward; the original graph is never touched."""
     if not shifts:
         return graph
     for shift in shifts:
-        edges = {edge.side: edge for edge in floor_edges(graph)}
+        edges = {edge.side: edge for edge in walled_edges(graph)}
         edge = edges.get(shift.side)
         if edge is None:
-            raise ValueError(f"this room has no movable side {shift.side}")
+            raise ValueError(f"no wall stands on side {shift.side}")
         meters = to_meters(shift.inches)
         floor = graph.ground()
         assert floor is not None
@@ -210,9 +233,11 @@ def move_fixtures(graph: SceneGraph, moves: list[FixtureMove]) -> SceneGraph:
     return graph.model_copy(update={"nodes": nodes, "revision": graph.revision + 1, "base_hash": None})
 
 
-def build(graph: SceneGraph, shifts: list[WallShift], fixtures: list[FixtureMove]) -> SceneGraph:
-    """The room after all its construction: walls pushed out first, then fixtures relocated."""
-    return move_fixtures(shift_walls(graph, shifts), fixtures)
+def build(graph: SceneGraph, shifts: list[WallShift], fixtures: list[FixtureMove],
+          heights: list[HeightChange] = (), replacements: list[Replacement] = (),
+          sections: list[LoweredSection] = ()) -> SceneGraph:
+    """The room after all its construction: walls pushed out, fixtures relocated, then pieces refitted."""
+    return fit(move_fixtures(shift_walls(graph, shifts), fixtures), list(heights), list(replacements), list(sections))
 
 
 def construction_inches(shifts: list[WallShift], fixtures: list[FixtureMove] = ()) -> float:

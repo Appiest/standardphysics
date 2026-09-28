@@ -30,8 +30,16 @@ from standardphysics_pipeline.discovery.clusters import voxel_components, withou
 from standardphysics_pipeline.discovery.detect import Detection, EncodedFrame, _pixel_box
 from standardphysics_pipeline.discovery.discover import _viewpoints, _worth_keeping
 from standardphysics_pipeline.discovery.merge import Candidate, DiscoveredObject, merge_candidates
-from standardphysics_pipeline.discovery.people import without_people
+from standardphysics_pipeline.discovery.people import (
+    PersonVolume,
+    in_person_volumes,
+    is_a_body,
+    person_points,
+    person_volumes,
+    without_people,
+)
 from standardphysics_pipeline.textures.camera import PhotoCamera
+from standardphysics_pipeline.textures.project import depth_buffer
 
 
 def slab(centre, size, spacing=0.02) -> np.ndarray:
@@ -202,12 +210,83 @@ class TestTakingPeopleOut:
         assert removal.removed == 0
         assert len(removal.points) == len(wall)
 
+    def test_a_person_the_detector_is_unsure_of_deletes_nothing(self):
+        """A 0.5 "person" drawn round a whole frame once took half a fire extinguisher."""
+        extinguisher = slab((0.0, 1.0, 1.1), (0.14, 0.08, 0.6))
+        camera = camera_at((0.0, -0.5, 1.1), (0.0, 1.0, 1.1))
+        unsure = Detection("frame-0001", "person", (0.0, 0.0, camera.width, camera.height), True, 0.5)
+        assert without_people(extinguisher, graph_of(), [(camera, [unsure], None)]).removed == 0
+        sure = replace(unsure, confidence=0.9)
+        assert without_people(extinguisher, graph_of(), [(camera, [sure], None)]).removed > 0
+
     def test_a_frame_with_nobody_in_it_removes_nothing(self):
         points = slab((0.0, 1.0, 1.0), (0.4, 0.3, 0.4))
         camera = camera_at((0.0, -1.5, 1.0), (0.0, 1.0, 1.0))
         chair = Detection("frame-0001", "chair", (0.0, 0.0, camera.width, camera.height), True, 0.9)
         removal = without_people(points, graph_of(), [(camera, [chair], None)])
         assert removal.removed == 0 and removal.frames_with_people == 0
+
+
+class TestWherePeopleStood:
+    """A body scanned into the mesh is cleared from every photo, not only the ones that named it."""
+
+    BODY = ((2.0, 0.0, 0.85), (0.45, 0.3, 1.65))
+
+    def looking_at_the_body(self, frame_id: str, side: float) -> PhotoCamera:
+        return replace(camera_at((0.0, side, 1.2), self.BODY[0]), frame_id=frame_id)
+
+    def named_a_person_in(self, points: np.ndarray, *sides: float, seen: np.ndarray | None = None) -> list:
+        """Photos from the front that name `points` a person, each seeing only what faces it in `seen`."""
+        views = []
+        for index, side in enumerate(sides):
+            camera = self.looking_at_the_body(f"frame-{index:04d}", side)
+            person = Detection(camera.frame_id, "person", box_around(camera, points), True, 0.9)
+            views.append((camera, [person], None if seen is None else depth_buffer(camera, seen)))
+        return views
+
+    def test_two_photos_of_a_standing_body_make_one_volume(self):
+        body = slab(*self.BODY)
+        volumes = person_volumes(body, graph_of(), self.named_a_person_in(body, -0.3, 0.3, seen=body))
+        assert len(volumes) == 1
+        assert volumes[0].centre == pytest.approx((2.0, 0.0), abs=0.06)
+        assert volumes[0].top == pytest.approx(1.65 + 0.15, abs=0.1)
+
+    def test_the_whole_body_leaves_including_the_back_no_photo_saw(self):
+        body, stool = slab(*self.BODY), slab((2.0, 0.8, 0.35), (0.35, 0.35, 0.7))
+        points = np.vstack([body, stool])
+        views = self.named_a_person_in(body, -0.3, 0.3, seen=points)
+        surfaces, _ = person_points(points, graph_of(), views)
+        assert not surfaces[: len(body)].all()
+        removal = without_people(points, graph_of(), views)
+        assert len(removal.points) == len(stool)
+
+    def test_the_painted_scan_loses_the_same_body_at_full_resolution(self):
+        body, stool = slab(*self.BODY), slab((2.0, 0.8, 0.35), (0.35, 0.35, 0.7))
+        points = np.vstack([body, stool])
+        gone = in_person_volumes(points, graph_of(), self.named_a_person_in(body, -0.3, 0.3, seen=points))
+        assert gone[: len(body)].all() and not gone[len(body):].any()
+
+    def test_one_photo_is_not_enough(self):
+        body = slab(*self.BODY)
+        assert person_volumes(body, graph_of(), self.named_a_person_in(body, -0.3)) == []
+
+    def test_a_kiosk_behind_a_filtered_out_customer_is_not_a_body(self):
+        """ARKit already removed a passer-by; their rectangle carves the kiosk behind them instead."""
+        kiosk = slab((2.0, 0.0, 0.5), (0.6, 0.4, 1.0))
+        assert person_volumes(kiosk, graph_of(), self.named_a_person_in(kiosk, -0.3, 0.3)) == []
+
+    def test_a_body_is_tall_standing_on_the_floor_and_no_wider_than_a_person(self):
+        assert is_a_body(fit_box(slab(*self.BODY)))
+        assert not is_a_body(fit_box(slab((2.0, 0.0, 1.8), (0.45, 0.3, 1.65))))
+        assert not is_a_body(fit_box(slab((2.0, 0.0, 0.85), (1.9, 0.5, 1.65))))
+
+    def test_anything_carved_where_a_person_stood_is_not_an_object(self):
+        standing_there = PersonVolume(centre=(2.0, 0.0), top=1.8, frame_ids=("frame-0000", "frame-0001"))
+        leftover = DiscoveredObject("poster", fit_box(slab((2.1, 0.05, 1.5), (0.2, 0.4, 0.3))), False, 0.8, ("f",))
+        beside = DiscoveredObject("stool", fit_box(slab((2.0, 0.8, 0.35), (0.35, 0.35, 0.7))), True, 0.8, ("f",))
+        assert standing_there.holds(leftover.box) and not standing_there.holds(beside.box)
+        assert not _worth_keeping(leftover, graph_of(), 3, (), [standing_there])
+        assert _worth_keeping(beside, graph_of(), 3, (), [standing_there])
 
 
 class TestSeeingOneThingTwice:
@@ -232,6 +311,46 @@ class TestSeeingOneThingTwice:
 
     def test_two_laptops_on_one_desk_stay_two_laptops(self):
         assert len(merge_candidates(self._two_views("laptop", "laptop", centre_b=(1.2, 1.0, 1.0)))) == 2
+
+
+class TestNamingWhatWasSeen:
+    BOX = ((0.0, 1.0, 1.0), (0.3, 0.2, 0.2))
+
+    def _views(self, *names_and_frames):
+        box = fit_box(slab(*self.BOX))
+        return [Candidate(Detection(frame, name, (0, 0, 10, 10), True, 0.8), box) for name, frame in names_and_frames]
+
+    def test_three_wordings_of_one_thing_outvote_a_name_said_twice(self):
+        merged = merge_candidates(self._views(
+            ("payment terminal", "f1"), ("payment terminal", "f2"),
+            ("sanitizer", "f3"), ("hand sanitizer", "f4"), ("sanitizer dispenser", "f5"),
+        ))
+        assert len(merged) == 1 and merged[0].name == "sanitizer"
+
+    def test_views_reported_at_zero_confidence_keep_their_name_when_joined(self):
+        box = fit_box(slab(*self.BOX))
+        merged = merge_candidates([Candidate(Detection(frame, "tablet", (0, 0, 10, 10), True, 0.0), box)
+                                   for frame in ("f1", "f2")])
+        assert [object_.name for object_ in merged] == ["tablet"]
+
+    def test_a_view_inside_a_bigger_object_no_photo_drew_apart_is_that_object(self):
+        tablet = fit_box(slab((0.0, 1.0, 1.0), (0.4, 0.3, 0.6)))
+        slice_of_it = fit_box(slab((0.0, 1.0, 1.15), (0.3, 0.2, 0.25)))
+        merged = merge_candidates([
+            Candidate(Detection("f1", "card reader", (0, 0, 10, 10), True, 0.9), tablet),
+            Candidate(Detection("f2", "card reader", (0, 0, 10, 10), True, 0.9), tablet),
+            Candidate(Detection("f3", "hand dryer", (0, 0, 10, 10), False, 0.8), slice_of_it),
+        ])
+        assert [object_.name for object_ in merged] == ["payment terminal"]
+
+    def test_a_small_thing_named_beside_a_big_one_in_one_photo_stays_its_own(self):
+        cabinet = fit_box(slab((0.0, 1.0, 0.5), (0.8, 0.5, 1.0)))
+        box_on_shelf = fit_box(slab((0.0, 1.0, 0.6), (0.3, 0.2, 0.2)))
+        merged = merge_candidates([
+            Candidate(Detection("f1", "cabinet", (0, 0, 10, 10), False, 0.9), cabinet),
+            Candidate(Detection("f1", "cash box", (0, 0, 10, 10), True, 0.9), box_on_shelf),
+        ])
+        assert sorted(object_.name for object_ in merged) == ["cabinet", "cash box"]
 
 
 class TestReadingTheModelsBoxes:
@@ -344,6 +463,13 @@ class TestNotReDiscoveringTheRoom:
     def test_furniture_and_clutter_still_count(self):
         for name in ("laptop", "payment terminal", "kettlebell", "backpack", "desk"):
             assert _worth_keeping(self._object(name), graph_of(), viewpoints=9), name
+
+
+    def test_a_table_the_scanner_missed_needs_a_third_place_to_be_seen_from(self):
+        """Named from two places, an unboxed counter is more often the bench, ledge and kiosk along a wall."""
+        assert not _worth_keeping(self._object("counter"), graph_of(), viewpoints=2)
+        assert _worth_keeping(self._object("counter"), graph_of(), viewpoints=3)
+        assert _worth_keeping(self._object("payment terminal"), graph_of(), viewpoints=2)
 
 
 class TestLeavingBehindWhatAThingRestsOn:

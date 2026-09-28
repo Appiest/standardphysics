@@ -48,6 +48,7 @@ from shop_room import (
 from shop_service import build_counter, cashier, menu_board_on_the_route, menu_boards_behind, service_stops
 from shop_shells import RectShell, ScanShell
 from standardphysics_agents.fix.moves import RESTING_GAP
+from standardphysics_agents.training.checker import TrainingChecker
 from standardphysics_contracts import Mat4, Scenario, SceneGraph, SceneNode, Stop, Vec3
 from standardphysics_contracts.precedents import SpaceTypology
 from standardphysics_pipeline import gap_between
@@ -234,6 +235,19 @@ class ShopType:
     kiosks: float = 0.0
     registers: tuple[int, int] = (1, 1)
     menus: bool = False
+    counter_label: str = "Counter"
+    """What a customer calls their one stop at the counter."""
+    handoff_label: str | None = None
+    """A second stop where the counter hands something over at a separate spot, for
+    quick-service businesses with an order end and a pickup end. None everywhere else,
+    because most counters (check-in desks, checkout counters, sales counters) are a
+    single stop."""
+
+    @property
+    def browse_first(self) -> bool:
+        """Retail: the customer browses the floor before paying, rather than the
+        counter being the first thing they do."""
+        return self.visit[1] == "Browse"
 
 
 SEAT_VISIT = (frozenset({"Cafe table", "Table", "Bar table", "Accessible table"}), "Seat")
@@ -246,73 +260,77 @@ SHOP_TYPES = (
         Pattern(high_top, FLOOR, 1, early="high"),
         Pattern(lounge, FLOOR, 1, 1), Pattern(against_wall("condiments"), WALL, 1, 1),
         Pattern(against_wall("drink_station"), WALL, 1, 1), Pattern(against_wall("trash"), WALL, 1, 1),
-        Pattern(single("planter"), FLOOR, 1, 3)), SEAT_VISIT, restroom=1.0, dining=True, kiosks=0.2, menus=True),
+        Pattern(single("planter"), FLOOR, 1, 3)), SEAT_VISIT, restroom=1.0, dining=True, kiosks=0.2, menus=True,
+        counter_label="Order", handoff_label="Pickup"),
     ShopType("boba tea shop", "Order a drink", ("Ordering counter",), (4, 8, 5, 10), (
         Pattern(two_top, FLOOR, 3, early="low"), Pattern(bar_rail, WALL, 3, 2, early="high"),
         Pattern(high_top, FLOOR, 2, early="high"),
         Pattern(banquette, WALL, 1, 1), Pattern(against_wall("trash"), WALL, 1, 1),
-        Pattern(_row("cooler", 1, 2), WALL, 1, 1)), SEAT_VISIT, dining=True, kiosks=0.3, menus=True),
+        Pattern(_row("cooler", 1, 2), WALL, 1, 1)), SEAT_VISIT, dining=True, kiosks=0.3, menus=True,
+        counter_label="Order", handoff_label="Pickup"),
     ShopType("bakery", "Buy a loaf", ("Sales counter",), (5, 10, 5, 11), (
         Pattern(_row("bread_rack", 1, 3), WALL, 3, 2), Pattern(single("pastry_case"), FLOOR, 2, 2),
         Pattern(two_top, FLOOR, 3, early="low"), Pattern(bar_rail, WALL, 1, 1, early="high"),
         Pattern(high_top, FLOOR, 1, 1, early="high"),
         Pattern(_row("cooler", 1, 3), WALL, 1, 1), Pattern(single("display_table"), FLOOR, 1, 2)),
-        SEAT_VISIT, dining=True, menus=True),
+        SEAT_VISIT, dining=True, menus=True, counter_label="Counter"),
     ShopType("restaurant", "Eat dinner", ("Service counter", "Bar"), (7, 13, 8, 15), (
         Pattern(four_top, FLOOR, 4), Pattern(two_top, FLOOR, 3, early="low"), Pattern(banquette, WALL, 3, 3),
         Pattern(booths, WALL, 2, 2), Pattern(high_top, FLOOR, 1, 2, early="high"), Pattern(communal, FLOOR, 1, 1),
         Pattern(single("host_stand"), FLOOR, 1, 1), Pattern(single("planter"), FLOOR, 1, 4)),
-        SEAT_VISIT, (0.2, 0.34), restroom=1.0, dining=True, kiosks=0.15, menus=True),
+        SEAT_VISIT, (0.2, 0.34), restroom=1.0, dining=True, kiosks=0.15, menus=True, counter_label="Check in"),
     ShopType("fast food restaurant", "Order a burger", ("Ordering counter",), (8, 15, 8, 15), (
         Pattern(booths, WALL, 4, 3), Pattern(banquette, WALL, 2, 2), Pattern(two_top, FLOOR, 4, early="low"),
         Pattern(high_top, FLOOR, 2, 3, early="high"), Pattern(four_top, FLOOR, 2),
         Pattern(against_wall("trash"), WALL, 2, 2, early="trash"), Pattern(against_wall("tray_return"), WALL, 1, 1),
         Pattern(against_wall("drink_station"), WALL, 2, 1, early="drinks"),
         Pattern(against_wall("condiments"), WALL, 1, 1), Pattern(single("planter"), FLOOR, 1, 2)),
-        SEAT_VISIT, (0.2, 0.34), restroom=1.0, dining=True, kiosks=0.75, registers=(2, 4), menus=True),
+        SEAT_VISIT, (0.2, 0.34), restroom=1.0, dining=True, kiosks=0.75, registers=(2, 4), menus=True,
+        counter_label="Order", handoff_label="Pickup"),
     ShopType("ice cream parlor", "Get a scoop", ("Ordering counter",), (4, 9, 5, 10), (
         Pattern(single("freezer_case"), FLOOR, 2, 1), Pattern(two_top, FLOOR, 3, early="low"),
         Pattern(high_top, FLOOR, 2, early="high"), Pattern(_row("waiting_bench", 1, 2), WALL, 1, 1),
         Pattern(bar_rail, WALL, 1, 1, early="high")),
-        SEAT_VISIT, dining=True, menus=True),
+        SEAT_VISIT, dining=True, menus=True, counter_label="Order"),
     ShopType("boutique", "Try on a jacket", ("Cash wrap",), (5, 11, 6, 13), (
         Pattern(single("clothing_rack"), FLOOR, 4, 8), Pattern(merch_island, FLOOR, 2, 3),
         Pattern(_row("shelf", 2, 5), WALL, 2, 3), Pattern(_row("fitting_room", 1, 3, 0.0), WALL, 1, 1),
         Pattern(_row("waiting_bench", 1, 1), WALL, 1, 1), Pattern(single("mannequin"), FLOOR, 1, 3)),
-        (frozenset({"Clothing rack"}), "Browse")),
+        (frozenset({"Clothing rack"}), "Browse"), counter_label="Checkout"),
     ShopType("bookstore", "Find a book", ("Checkout counter",), (6, 12, 7, 14), (
         Pattern(_row("bookcase", 2, 6), WALL, 4, 4), Pattern(aisle_block("book_shelf", 3), FLOOR, 3, 2, True),
         Pattern(single("display_table"), FLOOR, 2, 3), Pattern(lounge, FLOOR, 1, 1),
         Pattern(_row("waiting_bench", 1, 1), WALL, 1, 1)),
-        (frozenset({"Double-sided bookshelf", "Bookcase"}), "Browse")),
+        (frozenset({"Double-sided bookshelf", "Bookcase"}), "Browse"), counter_label="Checkout"),
     ShopType("convenience store", "Buy snacks", ("Checkout counter", "Register counter"), (6, 12, 7, 13), (
         Pattern(aisle_block("gondola", 4), FLOOR, 5, 2, True),
         Pattern(aisle("gondola", 2, 4), FLOOR, 2, 3, True), Pattern(_row("cooler", 2, 6), WALL, 3, 2),
         Pattern(_row("shelf", 2, 5), WALL, 2, 3), Pattern(against_wall("atm"), WALL, 1, 1),
         Pattern(single("display_table"), FLOOR, 1, 1)), (frozenset({"Gondola shelf", "Shelving unit"}), "Browse"),
-        (0.22, 0.36)),
+        (0.22, 0.36), counter_label="Checkout"),
     ShopType("pharmacy", "Pick up a prescription", ("Service counter",), (6, 12, 7, 13), (
         Pattern(aisle_block("gondola", 3), FLOOR, 4, 2, True), Pattern(_row("shelf", 2, 5), WALL, 3, 3),
-        Pattern(waiting_row, WALL, 2, 1), Pattern(_row("cooler", 1, 3), WALL, 1, 1)), WAIT_VISIT),
+        Pattern(waiting_row, WALL, 2, 1), Pattern(_row("cooler", 1, 3), WALL, 1, 1)), WAIT_VISIT,
+        counter_label="Check in"),
     ShopType("salon", "Get a haircut", ("Service counter",), (5, 10, 6, 12), (
         Pattern(styling_stations, WALL, 4, 3), Pattern(_row("shampoo_sink", 2, 3, 0.1), WALL, 2, 1),
         Pattern(waiting_row, WALL, 2, 1), Pattern(_row("shelf", 1, 3), WALL, 1, 1),
-        Pattern(single("planter"), FLOOR, 1, 2)), (frozenset({"Chair"}), "Seat")),
+        Pattern(single("planter"), FLOOR, 1, 2)), (frozenset({"Chair"}), "Seat"), counter_label="Check in"),
     ShopType("small office", "Visit the front desk", ("Front desk", "Reception desk"), (5, 11, 6, 12), (
         Pattern(desk_pod, FLOOR, 3, 3), Pattern(waiting_row, WALL, 2, 1), Pattern(lounge, FLOOR, 1, 1),
         Pattern(_row("file_cabinet", 2, 4), WALL, 1, 2), Pattern(against_wall("printer"), WALL, 1, 1),
         Pattern(_row("bookcase", 1, 3), WALL, 1, 1), Pattern(single("planter"), FLOOR, 1, 2)),
-        WAIT_VISIT, restroom=1.0),
+        WAIT_VISIT, restroom=1.0, counter_label="Check in"),
     ShopType("clinic waiting room", "Check in for an appointment", ("Reception desk", "Front desk"),
              (5, 10, 5, 10), (
         Pattern(waiting_row, WALL, 4, 4), Pattern(lounge, FLOOR, 1, 1), Pattern(four_top, FLOOR, 1, 1),
         Pattern(_row("bookcase", 1, 2), WALL, 1, 1), Pattern(single("planter"), FLOOR, 1, 3)),
-        WAIT_VISIT, restroom=1.0),
+        WAIT_VISIT, restroom=1.0, counter_label="Check in"),
     ShopType("hotel lobby", "Check in at the front desk", ("Front desk",), (7, 14, 7, 14), (
         Pattern(lounge, FLOOR, 3, 3, early="lounge"), Pattern(_row("waiting_bench", 1, 2), WALL, 2, 2),
         Pattern(single("luggage_cart"), FLOOR, 1, 2), Pattern(single("planter"), FLOOR, 2, 4),
         Pattern(against_wall("trash"), WALL, 1, 1), Pattern(single("display_table"), FLOOR, 1, 1)),
-        LOUNGE_VISIT, (0.12, 0.24), restroom=1.0),
+        LOUNGE_VISIT, (0.12, 0.24), restroom=1.0, counter_label="Check in"),
 )
 FOOD_KINDS = frozenset(shop.name for shop in SHOP_TYPES if shop.menus)
 
@@ -545,7 +563,7 @@ def _restrooms(room: Room, hub: Point) -> list[Stop]:
 
 def _service(room: Room, entrance: Entrance) -> tuple[list[Stop], Point]:
     spot, lowered = build_counter(room, entrance, room.rng.choice(room.shop.counters))
-    service = service_stops(spot)
+    service = service_stops(spot, room.shop.counter_label, room.shop.handoff_label)
     hub = (service[0].position.x, service[0].position.y)
     cashier(room, spot, lowered, room.rng.randint(*room.shop.registers))
     if room.shop.menus:
@@ -588,7 +606,8 @@ def build_room(name: str, shop: ShopType, rng: random.Random,
     if visit is None or _movable_floor_pieces(room) < LEAST_MOVABLE_PIECES:
         return None
     arrive, leave = _entry_stops(entrance.door, entrance.inside)
-    room.stops = [arrive, *service, visit, *restrooms, leave]
+    journey = [visit, *service] if room.shop.browse_first else [*service, visit]
+    room.stops = [arrive, *journey, *restrooms, leave]
     _rotate_everything(room)
     return room.graph(), Scenario(name=shop.errand, stops=room.stops)
 
@@ -616,9 +635,25 @@ def space_typology_for(errand: str) -> SpaceTypology | None:
     shop = next((shop for shop in SHOP_TYPES if shop.errand == errand), None)
     return None if shop is None else SPACE_TYPOLOGIES.get(shop.name)
 
+
+CIRCULATION_RULES = frozenset({
+    "route_clear_width", "turn_clear_width", "passing_space", "turning_space",
+    "service_counter_approach", "exit_path", "restroom_turning_space",
+})
+"""Rules about getting around the room. A generated room is the owner's working layout, so it must pass
+these before any scramble; a counter or dispenser at the wrong height is left in on purpose."""
+
+
+def circulation_problems(graph: SceneGraph, scenario: Scenario) -> list[str]:
+    checker = TrainingChecker(scenario)
+    return sorted({finding.check_id for finding in checker.assess(graph).problems
+                   if finding.check_id in CIRCULATION_RULES})
+
 def generate(index: int, attempts: int = 30) -> tuple[SceneGraph, Scenario, ShopType]:
     """The room for this index. Whether it starts from a scan is settled once per index, so the scan
-    share holds even though scan shells fail more draws; after half the attempts it falls back to rectangles."""
+    share holds even though scan shells fail more draws; after half the attempts it falls back to rectangles.
+    A draw whose own layout already blocks a route or a turn is discarded, so every circulation problem a
+    scramble produces is one the scramble caused."""
     shop = SHOP_TYPES[index % len(SHOP_TYPES)]
     wants_scan = random.Random(index).random() < SCAN_SHARE
     for attempt in range(attempts):
@@ -627,6 +662,6 @@ def generate(index: int, attempts: int = 30) -> tuple[SceneGraph, Scenario, Shop
             made = build_room(f"generated-{index:05d}", shop, random.Random(index * 7919 + attempt), from_scan)
         except Unbuildable:
             continue
-        if made is not None:
+        if made is not None and not circulation_problems(*made):
             return (*made, shop)
     raise RuntimeError(f"could not generate a room for index {index}")

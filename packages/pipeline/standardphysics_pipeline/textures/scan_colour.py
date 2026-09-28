@@ -405,7 +405,7 @@ class DisplayGeometry:
 
 
 def _people_on(vertices: np.ndarray, graph: SceneGraph, cameras: list[PhotoCamera], people: dict) -> np.ndarray:
-    """The vertices that are mostly people.
+    """The vertices that are mostly people, and every loose vertex where a person stood.
 
     Each photo is asked only about the part of the scan inside its frame, and
     its depth buffer is made inside the vote, one photo per core at a time, and
@@ -413,11 +413,12 @@ def _people_on(vertices: np.ndarray, graph: SceneGraph, cameras: list[PhotoCamer
     floor through each one took minutes, and holding every buffer at once was
     over half a gigabyte.
     """
-    from ..discovery.people import mostly_people
+    from ..discovery.people import in_person_volumes, mostly_people
 
     blocks = PointBlocks(vertices)
     views = [(camera, people.get(camera.frame_id, []), None) for camera in cameras]
-    return mostly_people(vertices, graph, views, visible_to=blocks.seen_by, depth_buffer_of=depth_buffer)
+    voted = mostly_people(vertices, graph, views, visible_to=blocks.seen_by, depth_buffer_of=depth_buffer)
+    return voted | in_person_volumes(vertices, graph, views)
 
 
 def _depth_buffers(vertices: np.ndarray, cameras: list[PhotoCamera]) -> list[np.ndarray]:

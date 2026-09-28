@@ -48,6 +48,17 @@ POINT_OF_SALE_LABELS = frozenset(
     }
 )
 
+OPERABLE_PART_LABELS = frozenset(
+    {
+        "light switch", "switch", "thermostat", "soap dispenser", "paper towel dispenser",
+        "towel dispenser", "hand dryer", "hand sanitizer", "sanitizer", "coat hook",
+        "call button", "intercom", "door bell", "bell", "fire alarm", "fire extinguisher",
+    }
+)
+"""Things a customer works with a hand while standing or sitting where they are, ADA 2010 309 and 308."""
+HOUSINGS = frozenset({"dispenser", "station", "stand", "unit", "pump", "cabinet", "panel", "box"})
+"""Words a detector adds after an operable thing's name for what holds it: a sanitizer dispenser is a sanitizer."""
+
 
 def _normalized(label: str) -> str:
     return label.strip().casefold()
@@ -92,6 +103,30 @@ def lowered_sections(graph: SceneGraph) -> list[SceneNode]:
         for node in graph.nodes
         if not bounds_the_room(node) and _normalized(node.label) in LOWERED_SECTION_LABELS
     ]
+
+
+MAX_OPERABLE_EXTENT_METERS = 1.0
+"""A switch, dispenser or extinguisher fits in a metre; a 'dispenser' 1.2 m tall is a bad carve, not a control."""
+
+
+def operable_parts(graph: SceneGraph) -> list[SceneNode]:
+    return [
+        node for node in graph.nodes
+        if not bounds_the_room(node) and is_operable_part(node.label)
+        and max(node.dimensions.as_tuple()) <= MAX_OPERABLE_EXTENT_METERS
+    ]
+
+
+def is_operable_part(label: str) -> bool:
+    """Whether a free-text name ends in an operable thing's name, before at most one word for its housing.
+
+    A detector writes "wall mounted hand sanitizer", "hand sanitizer dispenser"
+    or "fire extinguisher cabinet" for the same few things. The name must come
+    last, so "fire extinguisher sign" is a sign and "bell pepper" is not a bell.
+    """
+    words = _normalized(label).replace("-", " ").split()
+    readings = [words, words[:-1]] if len(words) > 1 and words[-1] in HOUSINGS else [words]
+    return any(reading[-len(name.split()):] == name.split() for reading in readings for name in OPERABLE_PART_LABELS)
 
 
 def point_of_sale(graph: SceneGraph) -> list[SceneNode]:

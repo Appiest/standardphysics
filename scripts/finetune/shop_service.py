@@ -157,11 +157,22 @@ def _lowered_section(room: Room, spot: CounterSpot) -> Box | None:
     return None
 
 
-def service_stops(spot: CounterSpot) -> list[Stop]:
-    order_at, pickup_at = spot.at(-spot.length * 0.25, spot.front_edge + 0.6), spot.at(spot.length * 0.25,
-                                                                                       spot.front_edge + 0.6)
-    return [Stop(name="Counter", position=Vec3(x=order_at[0], y=order_at[1], z=0.0), anchor_node_id=spot.node.id),
-            Stop(name="Pickup", position=Vec3(x=pickup_at[0], y=pickup_at[1], z=0.0), anchor_node_id=spot.node.id)]
+def service_stops(spot: CounterSpot, counter_label: str, handoff_label: str | None) -> list[Stop]:
+    """The stops a customer makes at this counter.
+
+    Most businesses interact with the counter once: check in, pay, ask a
+    question. Only a business that actually hands something over at a
+    separate spot along the counter (a quick-service order-then-pickup
+    layout) gets a second stop.
+    """
+    if handoff_label is None:
+        at = spot.at(0.0, spot.front_edge + 0.6)
+        return [Stop(name=counter_label, position=Vec3(x=at[0], y=at[1], z=0.0), anchor_node_id=spot.node.id)]
+    order_at, handoff_at = spot.at(-spot.length * 0.25, spot.front_edge + 0.6), spot.at(spot.length * 0.25,
+                                                                                        spot.front_edge + 0.6)
+    return [Stop(name=counter_label, position=Vec3(x=order_at[0], y=order_at[1], z=0.0), anchor_node_id=spot.node.id),
+            Stop(name=handoff_label, position=Vec3(x=handoff_at[0], y=handoff_at[1], z=0.0),
+                 anchor_node_id=spot.node.id)]
 
 
 # Paying --------------------------------------------------------------------

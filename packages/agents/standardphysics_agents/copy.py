@@ -25,8 +25,14 @@ class FindingCopy:
 
 STOP_PHRASES = {
     "counter": "the counter",
-    "pickup": "where you pick up drinks",
+    "order": "the order counter",
+    "pickup": "the pickup spot",
+    "checkout": "the checkout",
+    "check in": "the check-in desk",
     "seat": "the seats",
+    "browse": "the shop floor",
+    "wait": "the waiting area",
+    "restroom": "the restroom",
     "exit": "the way out",
     "entrance": "the front door",
 }
@@ -345,7 +351,30 @@ def _count_phrase(complying: int, total: int, tables: str) -> str:
     return f"{complying} of your {total} {tables} are."
 
 
+def _reach(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    subject = str(observation.facts.get("subject", "control")).casefold()
+    high = inches(observation.facts.get("high", rule.threshold))
+    low = inches(observation.facts.get("low", 15.0))
+    if observation.satisfied:
+        return FindingCopy(
+            title=f"The {subject} is within reach",
+            detail=f"It sits between {low} and {high} up, where a seated person can reach it.",
+        )
+    if observation.reason == "too_low":
+        return FindingCopy(
+            title=f"The {subject} is too low to reach",
+            detail=f"Its bottom is {inches(observation.measured_inches)} up. A seated person reaches down to {low}.",
+            fix=f"Raise the {subject} so it sits between {low} and {high} up.",
+        )
+    return FindingCopy(
+        title=f"The {subject} is too high to reach",
+        detail=f"Its top is {inches(observation.measured_inches)} up. A seated person reaches up to {high}.",
+        fix=f"Lower the {subject} so its top is no more than {high} up.",
+    )
+
+
 WRITERS: dict[str, Callable[[Observation, RuleSpec], FindingCopy]] = {
+    "reach_range": _reach,
     "door_maneuvering_clearance": _door_clearance,
     "protruding_objects": _protrusion,
     "dining_surface_height": _dining,
@@ -517,7 +546,7 @@ def escalation_note(count: int) -> str:
 
 
 def describe(observation: Observation, rule: RuleSpec) -> FindingCopy:
-    if rule.id in QUESTIONS:
+    if rule.id in QUESTIONS and not (rule.measurable and rule.id in WRITERS):
         return QUESTIONS[rule.id]
     writer = WRITERS.get(rule.id)
     if writer is None:

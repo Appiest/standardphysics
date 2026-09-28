@@ -14,6 +14,7 @@ from standardphysics_agents.fix import (
     propose_fix,
     violations,
 )
+from standardphysics_agents.fix.moves import carried_by_hand
 from standardphysics_agents.training.prompt import room_view
 from standardphysics_contracts import (
     Mat4,
@@ -666,6 +667,21 @@ class TestDistanceFromWhereItWasMeasured:
     def test_moving_back_toward_where_it_was_measured_is_allowed(self):
         first = self._slide(self._room(), 1.0)
         assert violations(first, self._slide(first, -1.5)) == []
+
+    def test_a_sign_stand_staff_carry_may_go_anywhere_on_the_floor(self):
+        graph = self._room()
+        stand = _node("travel_stand", "object", "Sign stand", (-2.5, 2.0, 0.2), (0.33, 0.27, 0.39), True)
+        graph = graph.model_copy(update={"nodes": [*graph.nodes, stand]})
+        carried = apply_moves(graph, [NodeMove(node_id=stand.id, delta_translation=Vec3(x=5.0, y=-3.0, z=0.0))])
+        assert violations(graph, carried) == []
+
+    def test_what_counts_as_carried_by_hand_is_its_size(self):
+        stand = _node("stand", "object", "Sign stand", (0.0, 0.0, 0.2), (0.33, 0.27, 0.39), True)
+        case = _node("case", "object", "Display case", (0.0, 0.0, 0.45), (0.6, 0.6, 0.9), True)
+        booth = _node("booth", "object", "Sign stand", (0.0, 0.0, 0.6), (1.8, 0.7, 1.2), True)
+        bolted = _node("bolted", "object", "Sign stand", (0.0, 0.0, 0.2), (0.33, 0.27, 0.39), False)
+        assert carried_by_hand(stand)
+        assert not any(carried_by_hand(node) for node in (case, booth, bolted))
 
     def test_a_candidate_cannot_rewrite_where_it_was_measured(self):
         first = self._slide(self._room(), 1.0)

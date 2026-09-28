@@ -110,7 +110,7 @@ def _attempt(completion, baseline, current, checker, index, current_baseline_usa
 
 def _verdict_rank(verdict) -> tuple:
     return (verdict.gate_accepts, verdict.gate_accepts and verdict.fixable_left == 0,
-            -verdict.construction_inches, verdict.shortfall_recovered)
+            -verdict.construction_cost, verdict.shortfall_recovered)
 
 
 def _ask(sampler: Sampler | None, messages: list[dict]) -> tuple[str, dict]:
@@ -308,9 +308,12 @@ def evaluate_variant(data: MultiroomData, row: dict, sampler: Sampler | None, mo
         turns.observe(completion, attempt, feedback)
     current, current_baseline_usability = room.current, room.baseline_usability
 
-    construction = sum(a["verdict"]["construction_inches"] for a in record["attempts"] if a["accepted"])
+    accepted = [a["verdict"] for a in record["attempts"] if a["accepted"]]
+    construction = sum(verdict["construction_inches"] for verdict in accepted)
+    cost = sum(verdict.get("construction_cost", 0.0) for verdict in accepted)
     return {**record, "success": success, "checker_full_clear_within_five": success,
-            "construction_inches": round(construction, 2), "needs_construction": success and construction > 0,
+            "construction_inches": round(construction, 2), "construction_cost": round(cost, 6),
+            "needs_construction": success and (construction > 0 or cost > 0),
             "full_usability_preserved": success and current_baseline_usability == 1.0,
             "final_baseline_usability": current_baseline_usability,
             "abstained": not success,
@@ -479,8 +482,12 @@ def main() -> None:
     illustrate = _unchanged
     if args.plan_image:
         from plan_image import with_plan as illustrate
-    print(json.dumps(evaluate(data, _sampler(args), args.model, args.out, args.max_attempts, rows, solver,
-                              args.workers, args.limit, illustrate, _setup(args))))
+    sampler = _sampler(args)
+    try:
+        print(json.dumps(evaluate(data, sampler, args.model, args.out, args.max_attempts, rows, solver,
+                                  args.workers, args.limit, illustrate, _setup(args))))
+    finally:
+        getattr(sampler, "close", lambda: None)()
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ class FakeChecker:
     pinned = frozenset()
     measure = None
     owner_layout = None
+    scope = "layout"
 
     def assess(self, graph):
         return graph
@@ -44,7 +45,7 @@ def setup_loop(monkeypatch, baseline=2, *, low_usability=()):
     monkeypatch.setattr(evaluator, "apply_edits", lambda graph, edits: 0 if edits == "clear" else graph - 1)
     monkeypatch.setattr(evaluator, "usability", lambda _before, _after, _owner, _: 0.5
                         if scored[-1][0] in low_usability else 1.0)
-    monkeypatch.setattr(feedback, "room_view", lambda graph, _scenario, _problems: {"remaining": graph})
+    monkeypatch.setattr(feedback, "room_view", lambda graph, _scenario, _problems, _scope="layout": {"remaining": graph})
     monkeypatch.setattr(evaluator, "infer_wishes", lambda _graph, _measure: [])
     monkeypatch.setattr(evaluator, "explain_change", lambda *_args: SimpleNamespace(
         as_dict=lambda: {"moves": []}, text=lambda: "Here is what changed."))

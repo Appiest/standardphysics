@@ -10,6 +10,7 @@ from standardphysics_agents.training.reward import Verdict
 
 class FakeChecker:
     scenario = "route"
+    scope = "layout"
 
     def assess(self, graph):
         return graph
@@ -33,7 +34,7 @@ def test_correction_prefix_matches_live_feedback_contract(monkeypatch):
     monkeypatch.setattr(data, "node_moves", lambda edits: edits.moves)
     monkeypatch.setattr(data, "apply_moves", lambda graph, moves: moves[0])
     monkeypatch.setattr(data, "usability", lambda *_: 1.0)
-    monkeypatch.setattr(feedback, "room_view", lambda graph, _scenario, _problems: {"remaining": graph})
+    monkeypatch.setattr(feedback, "room_view", lambda graph, _scenario, _problems, _scope="layout": {"remaining": graph})
 
     rows = data.correction_rows({"variant_id": "v", "graph": {}}, SimpleNamespace(window_id="w"))
 
@@ -85,7 +86,7 @@ def test_rejected_model_attempt_gets_checked_search_target(monkeypatch):
     monkeypatch.setattr(data, "searched_layout", lambda graph, _checker, rounds: graph - 1)
     monkeypatch.setattr(data, "edits_between", lambda before, after: SimpleNamespace(moves=[after]))
     monkeypatch.setattr(data, "edits_json", lambda edits: str(edits.moves[0]))
-    monkeypatch.setattr(feedback, "room_view", lambda graph, _scenario, _problems: {"remaining": graph})
+    monkeypatch.setattr(feedback, "room_view", lambda graph, _scenario, _problems, _scope="layout": {"remaining": graph})
     checker_feedback = feedback.feedback_message(
         2, FakeChecker(), accepted=False, reason="unparseable", fixable_left=2,
         parsed=False, hard_constraints_pass=False, step_usability=None,

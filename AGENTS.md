@@ -1,1 +1,1 @@
-Commit to git whenever a feature is finished and verified (typecheck + tests pass), without waiting to be asked. One commit per feature, message describing the change. Use the default git user. Branch first if on the default branch. Never push unless asked.
+Commit to git whenever a feature is finished and verified (typecheck + tests pass), without waiting to be asked. One commit per feature, message describing the change. Use the default git user. Branch first if on the default branch.

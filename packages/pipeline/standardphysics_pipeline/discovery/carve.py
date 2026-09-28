@@ -65,6 +65,25 @@ class CarvedBox:
     def floor_clearance(self) -> float:
         return self.centre[2] - self.dimensions[2] / 2
 
+    def standing_on(self, height: float) -> CarvedBox:
+        """The same box with its underside moved to `height` and its top where it was."""
+        top = self.centre[2] + self.dimensions[2] / 2
+        return CarvedBox(
+            centre=(self.centre[0], self.centre[1], (top + height) / 2),
+            dimensions=(self.dimensions[0], self.dimensions[1], top - height),
+            yaw=self.yaw,
+            points=self.points,
+        )
+
+    def topped_at(self, height: float) -> CarvedBox:
+        """The same box with its top moved to `height` and its underside where it was."""
+        return CarvedBox(
+            centre=(self.centre[0], self.centre[1], (self.floor_clearance + height) / 2),
+            dimensions=(self.dimensions[0], self.dimensions[1], height - self.floor_clearance),
+            yaw=self.yaw,
+            points=self.points,
+        )
+
     def as_vec3(self) -> Vec3:
         return Vec3(x=self.dimensions[0], y=self.dimensions[1], z=self.dimensions[2])
 

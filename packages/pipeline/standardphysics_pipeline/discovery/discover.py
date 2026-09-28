@@ -26,10 +26,10 @@ import concurrent.futures
 import hashlib
 import json
 import logging
-import os
 import pathlib
 import uuid
-from dataclasses import dataclass, field
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
@@ -38,25 +38,34 @@ from ..lidar import LidarMeshError, room_cloud
 from ..textures.camera import CameraMetadataError, PhotoCamera, load_cameras
 from ..textures.project import depth_buffer, evenly_spread
 from . import taxonomy
-from .boxes import claimed_by_any, contained_fraction, resting_parent
+from .boxes import claimed_by_any, contained_fraction, resting_parent, structure_points
 from .cache import DetectionCache
 from .carve import FrameView, carve
 from .crops import save_crop
 from .detect import (
-    DEFAULT_MODEL,
-    MODEL_ENV,
     Detection,
     DetectionError,
     ModelRequestInfo,
     Transport,
+    answer_identity,
     detect_objects,
 )
+from .extent import MeshViews, measured_on_the_mesh
 from .grow import grown, regions_of, seen_from
 from .merge import Candidate, DiscoveredObject, merge_candidates
-from .people import without_people
+from .people import PeopleRemoval, PersonVolume, without_people
+from .placement import (
+    at_its_surface,
+    part_of_a_scanned_piece,
+    seated,
+    seen_through_the_shell,
+    standing_on_the_floor,
+)
 from .reconcile import reconcile_outlets
-from .semantic_corrections import apply_secondary_semantic_corrections
+from .second_look import Photos, second_look
+from .semantic_corrections import apply_secondary_semantic_corrections, is_work_surface
 from .surface_attach import attach_detection_to_surface
+from .worktops import measure_worktops
 
 log = logging.getLogger(__name__)
 
@@ -64,9 +73,15 @@ FRAME_LIMIT = 400
 """Every keyframe of a normal walk. A frame nobody reads is a person left in
 the mesh and an object that was never there: on a real 110-second capture,
 sampling 24 of 218 frames found half the laptops and a quarter of the people."""
-DETECTION_WORKERS = 5
-"""Enough to keep the walk short, few enough that a long capture does not trip
-the model host's rate limit and lose frames to it."""
+DETECTION_WORKERS = 16
+"""Photos in flight at once. The Fireworks account allows 87,890 generated
+tokens a minute and a photo read without reasoning costs about 370 of them in
+about 5.5 s. On Share-Tea sixteen at once read 400 photos in 110 s at about
+81,000 tokens a minute with no rate limit hit; twenty-eight at once took 98 s
+and drew 78 rate limits, all of them waited out. Past the budget, width buys
+nothing but waiting."""
+RETRY_WORKERS = 4
+"""Photos in flight when asking again for the ones the first pass could not read."""
 MIN_VOLUME = 0.0004
 """Forty cubic centimetres, about a card reader lying flat. Smaller is noise."""
 MAX_FLOOR_CLEARANCE = 2.4
@@ -146,49 +161,29 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
     points = _mesh_points(inputs)
     cameras = _cameras(inputs, graph)
     requests: list[ModelRequestInfo] = []
+    orientations = _orientations(inputs.poses_path)
     detections, failures = _detect_all(
-        cameras, inputs.frame_paths, transport, _cache_for(inputs), _orientations(inputs.poses_path),
-        recorded=requests,
+        cameras, inputs.frame_paths, transport, _cache_for(inputs), orientations, recorded=requests,
     )
     buffers = {camera.frame_id: depth_buffer(camera, points) for camera in cameras}
-    removal = without_people(
-        points, graph,
-        [(camera, detections.get(camera.frame_id, []), buffers[camera.frame_id]) for camera in cameras],
-    )
-    unclaimed = removal.points[~claimed_by_any(removal.points, graph)]
-    candidates = _carve_all(cameras, detections, unclaimed, buffers)
-    found = [
-        (object_, _viewpoints(object_, cameras, grew, buffers), grew)
-        for object_, grew in grown(merge_candidates(candidates), regions_of(unclaimed, graph))
-    ]
-    kept = [(object_, viewpoints) for object_, viewpoints, grew in found if _worth_keeping(object_, graph, viewpoints, grew)]
+    views = [(camera, detections.get(camera.frame_id, []), buffers[camera.frame_id]) for camera in cameras]
+    removal = without_people(points, graph, views)
+    worktops = measure_worktops(graph, removal.points)
+    graph = _with_replaced(graph, worktops)
+    renamed = _semantic_corrections(graph, detections, cameras)
+    graph = _with_replaced(graph, renamed)
+    kept = _carved_objects(graph, cameras, detections, removal, MeshViews(points, views))
+    looked = second_look([object_ for object_, _ in kept], Photos(cameras, inputs.frame_paths, orientations),
+                         transport=transport, cache_dir=inputs.cache_dir)
+    kept = [(object_, viewpoints) for object_, (_, viewpoints) in zip(looked, kept)]
     objects = [object_ for object_, _ in kept]
     carved_nodes = [_node_for(object_, graph, viewpoints) for object_, viewpoints in kept]
+    attached_nodes = _attached_targets(inputs, graph, cameras, detections, buffers)
 
-    # Surface-attached targets (outlets, televisions)
-    attached_nodes: list[SceneNode] = []
-    cam_by_id = {camera.frame_id: camera for camera in cameras}
-    for camera in cameras:
-        for det in detections.get(camera.frame_id, []):
-            if not det.is_attachable_target:
-                continue
-            image_url = None
-            if inputs.crop_dir is not None:
-                image_url = save_crop(
-                    inputs.frame_paths[camera.frame_id], det.frame_id, det.box, inputs.crop_dir
-                )
-            _, node = attach_detection_to_surface(
-                det, camera, graph, depth_buffer=buffers.get(camera.frame_id),
-                image_url=image_url,
-            )
-            attached_nodes.append(node)
+    existing_attachments = [n for n in inputs.graph.nodes if n.attachment is not None]
+    reconciled_nodes = reconcile_outlets(existing_attachments + attached_nodes, {c.frame_id: c for c in cameras})
 
-    existing_attachments = [n for n in graph.nodes if n.attachment is not None]
-    reconciled_nodes = reconcile_outlets(existing_attachments + attached_nodes, cam_by_id)
-
-    discovery_nodes = {node.id: node for node in [*carved_nodes, *reconciled_nodes]}
-    for node in _semantic_corrections(graph, carved_nodes, detections, cameras):
-        discovery_nodes[node.id] = node
+    discovery_nodes = {node.id: node for node in [*worktops, *renamed, *carved_nodes, *reconciled_nodes]}
 
     return DiscoveryResult(
         nodes=list(discovery_nodes.values()),
@@ -200,6 +195,81 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
         model_requests=requests,
     )
 
+
+def _with_replaced(graph: SceneGraph, nodes: list[SceneNode]) -> SceneGraph:
+    """The graph with these nodes swapped in by id, and any it did not hold added."""
+    replacing = {node.id: node for node in nodes}
+    kept = [replacing.pop(node.id, node) for node in graph.nodes]
+    return graph.model_copy(update={"nodes": [*kept, *replacing.values()]})
+
+
+def _carved_objects(
+    graph: SceneGraph,
+    cameras: list[PhotoCamera],
+    detections: dict[str, list[Detection]],
+    removal: PeopleRemoval,
+    mesh: MeshViews,
+) -> list[tuple[DiscoveredObject, int]]:
+    """Every object worth a node, with how many separate places it was seen from.
+
+    Carving looks through a depth buffer built from the mesh with the people
+    already taken out. A customer standing at the till leaves a body in the
+    mesh, and a buffer built with it hides the till behind that body in every
+    frame of the walk, including the frames the detector saw the till in
+    because the customer had stepped away. Whatever is still carved where a
+    person stood is a leftover piece of them, not an object.
+
+    A piece of something big grows to the whole mesh region it belongs to
+    before it is judged. The small objects kept are then measured on the mesh
+    itself, so their heights do not rest on which rectangles this run's
+    detector drew.
+    """
+    points, people = removal.points, removal.volumes
+    clear_view = {camera.frame_id: depth_buffer(camera, points) for camera in cameras}
+    unclaimed = points[~claimed_by_any(points, graph)]
+    candidates = _carve_all(cameras, detections, unclaimed, clear_view)
+    found = [
+        (object_, _viewpoints(object_, cameras, grew, clear_view), grew)
+        for object_, grew in grown(merge_candidates(candidates), regions_of(unclaimed, graph))
+    ]
+    loose = points[~structure_points(points, graph)]
+    kept = [(object_, viewpoints) for object_, viewpoints, grew in found
+            if _worth_keeping(object_, graph, viewpoints, cameras, people, loose, grew=grew)]
+    measured = measured_on_the_mesh([object_ for object_, _ in kept], mesh.loose_near([o for o, _ in kept], graph, people))
+    return [
+        (replace(standing, box=seated(standing.box, graph, loose)), viewpoints)
+        for object_, (_, viewpoints) in zip(measured, kept)
+        for standing in [_standing_at_its_surface(object_, graph, loose)]
+        if standing is not None
+    ]
+
+
+def _standing_at_its_surface(object_: DiscoveredObject, graph: SceneGraph, loose: np.ndarray) -> DiscoveredObject | None:
+    standing = standing_on_the_floor(object_, graph, loose)
+    return None if standing is None else at_its_surface(standing, graph, loose)
+
+
+def _attached_targets(
+    inputs: DiscoveryInputs,
+    graph: SceneGraph,
+    cameras: list[PhotoCamera],
+    detections: dict[str, list[Detection]],
+    buffers: dict[str, np.ndarray],
+) -> list[SceneNode]:
+    """Outlets and televisions placed on the measured surface each photo shows them on."""
+    attached: list[SceneNode] = []
+    for camera in cameras:
+        for det in detections.get(camera.frame_id, []):
+            if not det.is_attachable_target:
+                continue
+            image_url = None
+            if inputs.crop_dir is not None:
+                image_url = save_crop(inputs.frame_paths[camera.frame_id], det.frame_id, det.box, inputs.crop_dir)
+            _, node = attach_detection_to_surface(
+                det, camera, graph, depth_buffer=buffers.get(camera.frame_id), image_url=image_url,
+            )
+            attached.append(node)
+    return attached
 
 
 def _mesh_points(inputs: DiscoveryInputs) -> np.ndarray:
@@ -244,7 +314,7 @@ def known_detections(
     A texture build uses this to find the people in its photos without spending
     a request; a photo discovery has not read yet simply has no entry.
     """
-    cache = DetectionCache(cache_dir, os.environ.get(MODEL_ENV) or DEFAULT_MODEL)
+    cache = DetectionCache(cache_dir, answer_identity())
     orientations = _orientations(poses_path)
     known = {}
     for frame_id, path in frame_paths.items():
@@ -266,7 +336,7 @@ def detections_digest(cache_dir: pathlib.Path) -> str:
 def _cache_for(inputs: DiscoveryInputs) -> DetectionCache | None:
     if inputs.cache_dir is None:
         return None
-    return DetectionCache(inputs.cache_dir, os.environ.get(MODEL_ENV) or DEFAULT_MODEL)
+    return DetectionCache(inputs.cache_dir, answer_identity())
 
 
 def _detect_all(
@@ -278,30 +348,58 @@ def _detect_all(
     *,
     recorded: list[ModelRequestInfo] | None = None,
 ) -> tuple[dict[str, list[Detection]], list[str]]:
+    """What the model says about every photo, asked a second time for any the first pass lost.
+
+    A frame that fails is not an empty frame: the objects only it saw would
+    silently never exist. So the photos the first pass could not read are asked
+    for again, fewer at once, after the rest of the walk has finished with the
+    host. Only what still fails then is reported, and never silently.
+    """
     detections: dict[str, list[Detection]] = {}
-    failures: list[str] = []
     wanted = _not_already_read(cameras, frame_paths, cache, detections, orientations)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=DETECTION_WORKERS) as pool:
-        futures = {
-            pool.submit(
-                detect_objects, frame_paths[frame_id], frame_id,
-                orientation=orientations.get(frame_id, ""), transport=transport,
-                recorded=recorded,
-            ): frame_id
-            for frame_id in wanted
-        }
-        for future in concurrent.futures.as_completed(futures):
-            frame_id = futures[future]
-            try:
-                detections[frame_id] = future.result()
-            except DetectionError as error:
-                log.warning("no objects read from %s: %s", frame_id, error)
-                failures.append(f"{frame_id}: {error}")
-                continue
-            if cache is not None:
-                cache.put(frame_paths[frame_id], detections[frame_id], orientations.get(frame_id, ""))
+    ask = _Asker(frame_paths, transport, cache, orientations, recorded, detections)
+    unread = ask.all(wanted, DETECTION_WORKERS)
+    if unread:
+        log.info("asking again for %d photos the first pass could not read", len(unread))
+        unread = ask.all(list(unread), RETRY_WORKERS)
+    for frame_id, error in unread.items():
+        log.warning("no objects read from %s: %s", frame_id, error)
     log.info("read %d photos, %d already known", len(wanted), len(cameras) - len(wanted))
-    return detections, failures
+    return detections, [f"{frame_id}: {error}" for frame_id, error in unread.items()]
+
+
+@dataclass
+class _Asker:
+    """One detection pass over a set of photos, filling `into` and the cache as answers arrive."""
+
+    frame_paths: dict[str, pathlib.Path]
+    transport: Transport | None
+    cache: DetectionCache | None
+    orientations: dict[str, str]
+    recorded: list[ModelRequestInfo] | None
+    into: dict[str, list[Detection]]
+
+    def all(self, frame_ids: list[str], workers: int) -> dict[str, DetectionError]:
+        """The photos that could not be read, with why."""
+        unread: dict[str, DetectionError] = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(self.one, frame_id): frame_id for frame_id in frame_ids}
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()
+                except DetectionError as error:
+                    unread[futures[future]] = error
+        return unread
+
+    def one(self, frame_id: str) -> None:
+        orientation = self.orientations.get(frame_id, "")
+        found = detect_objects(
+            self.frame_paths[frame_id], frame_id,
+            orientation=orientation, transport=self.transport, recorded=self.recorded,
+        )
+        self.into[frame_id] = found
+        if self.cache is not None:
+            self.cache.put(self.frame_paths[frame_id], found, orientation)
 
 
 def _not_already_read(
@@ -366,50 +464,86 @@ def _apart(positions: list[np.ndarray]) -> int:
     return len(kept)
 
 
-def _worth_keeping(object_: DiscoveredObject, graph: SceneGraph, viewpoints: int, grew: bool = False) -> bool:
+def _worth_keeping(
+    object_: DiscoveredObject,
+    graph: SceneGraph,
+    viewpoints: int,
+    cameras: Sequence[PhotoCamera] = (),
+    people: Sequence[PersonVolume] = (),
+    loose: np.ndarray | None = None,
+    *,
+    grew: bool = False,
+) -> bool:
     """Whether a found object is worth a node.
 
     One place is enough for an object grown to its whole region: the rule that
-    asks for two exists to drop fragments of something else, and a whole
+    asks for more exists to drop fragments of something else, and a whole
     region is not one. It still comes back asking for another look.
     """
-    if object_.name.strip().lower() in ALREADY_THE_ROOM:
-        return False
-    if viewpoints < (1 if grew else MIN_VIEWS):
+    if object_.name.strip().lower() in ALREADY_THE_ROOM or viewpoints < (1 if grew else _views_needed(object_)):
         return False
     if object_.box.volume < MIN_VOLUME or object_.box.floor_clearance > MAX_FLOOR_CLEARANCE:
         return False
-    return not any(
+    return not (
+        _already_measured(object_, graph)
+        or part_of_a_scanned_piece(object_, graph, loose)
+        or seen_through_the_shell(object_.box, graph, _positions(object_, cameras))
+        or any(person.holds(object_.box) for person in people)
+    )
+
+
+def _views_needed(object_: DiscoveredObject) -> int:
+    """Separate places an object must be named from before it becomes a node.
+
+    A table or counter RoomPlan did not box is, more often than not, a mash of
+    what stands along a wall: on Share-Tea the photos called a bench, the bar
+    ledge above it and a kiosk behind both a counter from two places, and it
+    came out a floor-standing counter 80 inches tall. A real one is big
+    enough to be named from wherever the walk passes it.
+    """
+    return CONFIDENT_VIEWS if is_work_surface(object_.name) else MIN_VIEWS
+
+
+def _already_measured(object_: DiscoveredObject, graph: SceneGraph) -> bool:
+    return any(
         contained_fraction(object_.box, node) >= ALREADY_MEASURED
         for node in graph.nodes
         if not bounds_the_room(node)
     )
 
 
+def _positions(object_: DiscoveredObject, cameras: Sequence[PhotoCamera]) -> np.ndarray:
+    """Where the phone stood for each photo of this object."""
+    seen = set(object_.frame_ids)
+    return np.asarray([camera.position for camera in cameras if camera.frame_id in seen], dtype=np.float64)
+
+
 def _semantic_corrections(
     graph: SceneGraph,
-    carved_nodes: list[SceneNode],
     detections: dict[str, list[Detection]],
     cameras: list[PhotoCamera],
 ) -> list[SceneNode]:
-    """Existing and carved nodes relabelled by photographic evidence, and new whiteboards.
+    """Scanned nodes relabelled by photographic evidence, and new whiteboards.
 
-    The correction pass runs over the RoomPlan graph plus what discovery just
-    carved, and only what changed is returned, so the caller replaces graph
-    nodes by id without ever mutating an untouched one. Surface-attached
-    targets are excluded: nothing relabels an outlet or a television.
+    Only what changed is returned, so the caller replaces graph nodes by id
+    without ever mutating an untouched one. It runs before carving, so a
+    storage box the photos show is a counter is a counter by the time the
+    counter's own lid is carved and has to be recognised as part of it.
+    Carved objects are not revoted: they were named by these same detections.
     """
-    populated = graph.model_copy(update={"nodes": [*graph.nodes, *carved_nodes]})
-    corrected = apply_secondary_semantic_corrections(populated, _relevant_detections(detections), cameras)
-    by_id = {node.id: node for node in populated.nodes}
+    corrected = apply_secondary_semantic_corrections(graph, _relevant_detections(detections), cameras)
+    by_id = {node.id: node for node in graph.nodes}
     return [node for node in corrected.nodes if node.id not in by_id or by_id[node.id] != node]
 
 
 def _relevant_detections(detections: dict[str, list[Detection]]) -> dict[str, list[Detection]]:
-    """Only the findings the correction pass can act on, so it never scans the rest."""
-    wanted = {taxonomy.SOFA, taxonomy.TABLE, taxonomy.WHITEBOARD}
+    """The findings the correction pass weighs: the relabel targets, and the furniture that argues against them.
+
+    A chair must be able to vote for being a chair, or every table box it
+    stands inside outvotes it.
+    """
     return {
-        frame_id: [one for one in found if one.class_key in wanted]
+        frame_id: [one for one in found if one.class_key != taxonomy.PERSON and one.category == "object"]
         for frame_id, found in detections.items()
     }
 

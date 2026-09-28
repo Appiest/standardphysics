@@ -9,6 +9,7 @@ threshold check cannot afford that.
 from __future__ import annotations
 
 from collections import OrderedDict
+from dataclasses import dataclass, field
 from uuid import UUID
 
 import numpy as np
@@ -50,7 +51,16 @@ COUNTER_CLEAR_WIDTH = to_meters(48.0)
 COUNTER_CLEAR_DEPTH = to_meters(30.0)
 """ADA 2010 305.3 clear floor space, laid out for a parallel approach with the
 48 in side running along the counter."""
-MAX_CACHED_ROUTE_PATHS = 5_000
+COUNTER_SLIDE_STEP = to_meters(2.0)
+"""Spacing of the positions tried along a counter face for its clear floor space."""
+LAYOUTS_KEPT = 8
+"""Layouts whose grid and routes are kept.
+
+A repair search alternates between a room and its candidates, so keeping a few
+saves rebuilding the room's grid every other question. Routes belong to their
+layout and go with it: each one holds two grid-sized arrays, and a cache of
+routes across thousands of candidate layouts grew past 20 GB.
+"""
 
 MAX_SQUARE = 3.0
 """Metres of side past which a clear square stops being measured."""
@@ -125,29 +135,124 @@ def _rectangle(
     ]
 
 
+def _offsets_from_centre(slide: float) -> list[float]:
+    """Offsets along a counter face out to `slide` either way, nearest the centre first."""
+    steps = int(slide / COUNTER_SLIDE_STEP)
+    offsets = [0.0]
+    for index in range(1, steps + 1):
+        offsets += [index * COUNTER_SLIDE_STEP, -index * COUNTER_SLIDE_STEP]
+    if slide > steps * COUNTER_SLIDE_STEP:
+        offsets += [slide, -slide]
+    return offsets
+
+
+def _slid(origin: Vec3, along: tuple[float, float], offset: float) -> Vec3:
+    return Vec3(x=origin.x + along[0] * offset, y=origin.y + along[1] * offset, z=0.0)
+
+
+def _cells_free(grid: Grid, xs: np.ndarray, ys: np.ndarray) -> bool:
+    """Whether every sampled point lands on a free cell of the grid."""
+    cols = np.trunc((xs - grid.origin_x) / grid.cell_size).astype(int)
+    rows = np.trunc((ys - grid.origin_y) / grid.cell_size).astype(int)
+    rows_count, cols_count = grid.shape
+    inside = (rows >= 0) & (rows < rows_count) & (cols >= 0) & (cols < cols_count)
+    return bool(inside.all()) and not grid.occupied[rows, cols].any()
+
+
+def _band_clear(grid: Grid, origin: Vec3, outward, along, depth: float, half: float) -> bool:
+    """Whether a band `2 * half` wide stays clear from the face out to `depth`.
+
+    Sampling starts one cell out: the face itself is the counter, which is
+    solid by definition, so sampling from zero always fails on the object whose
+    space is being measured.
+    """
+    start = grid.cell_size
+    if depth < start:
+        return True
+    columns = max(int(half * 2 / grid.cell_size), 1)
+    rungs = max(int((depth - start) / grid.cell_size), 1)
+    offsets = np.linspace(-half, half, columns + 1)[:, None]
+    reaches = np.linspace(start, depth, rungs + 1)[None, :]
+    xs = origin.x + along[0] * offsets + outward[0] * reaches
+    ys = origin.y + along[1] * offsets + outward[1] * reaches
+    return _cells_free(grid, xs, ys)
+
+
+def _clear_depth(grid: Grid, origin: Vec3, outward, along) -> float:
+    """How far out the required-width band stays clear."""
+    step = grid.cell_size
+    half = COUNTER_CLEAR_WIDTH / 2
+    depth = 0.0
+    while depth < COUNTER_CLEAR_DEPTH * 2:
+        if not _band_clear(grid, origin, outward, along, depth + step, half):
+            break
+        depth += step
+    return depth
+
+
+def _clear_width(grid: Grid, origin: Vec3, outward, along) -> float:
+    """How wide the band stays clear across the required depth."""
+    step = grid.cell_size
+    half = 0.0
+    while half < COUNTER_CLEAR_WIDTH * 1.5:
+        if not _band_clear(grid, origin, outward, along, COUNTER_CLEAR_DEPTH, half + step):
+            break
+        half += step
+    return half * 2
+
+
+def _approach_at(grid: Grid, origin: Vec3, outward, along) -> ClearFloorResult:
+    """The clear floor measured out from one point on a counter face."""
+    depth = _clear_depth(grid, origin, outward, along)
+    width = _clear_width(grid, origin, outward, along)
+    return ClearFloorResult(
+        inches_wide=to_inches(width),
+        inches_deep=to_inches(depth),
+        center=Vec3(
+            x=origin.x + outward[0] * COUNTER_CLEAR_DEPTH / 2,
+            y=origin.y + outward[1] * COUNTER_CLEAR_DEPTH / 2,
+            z=0.0,
+        ),
+        fits=width >= COUNTER_CLEAR_WIDTH and depth >= COUNTER_CLEAR_DEPTH,
+    )
+
+
+@dataclass
+class _Layout:
+    grid: Grid
+    clearance: np.ndarray
+    paths: dict[tuple, PathResult] = field(default_factory=dict)
+
+
 class PipelineMeasurements:
     """Implements MeasurementProvider against real geometry."""
 
     def __init__(self, cell_size: float = CELL_SIZE) -> None:
         self.cell_size = cell_size
-        self._cache: dict[tuple, tuple[Grid, np.ndarray]] = {}
-        self._paths: OrderedDict[tuple, PathResult] = OrderedDict()
+        self._layouts: OrderedDict[tuple, _Layout] = OrderedDict()
+
+    def _layout(self, graph: SceneGraph) -> _Layout:
+        key = _signature(graph)
+        layout = self._layouts.get(key)
+        if layout is None:
+            grid = build_grid(graph, self.cell_size)
+            layout = _Layout(grid, clearance_map(grid))
+            self._layouts[key] = layout
+            if len(self._layouts) > LAYOUTS_KEPT:
+                self._layouts.popitem(last=False)
+        self._layouts.move_to_end(key)
+        return layout
 
     def _field(self, graph: SceneGraph) -> tuple[Grid, np.ndarray]:
-        key = _signature(graph)
-        if key not in self._cache:
-            grid = build_grid(graph, self.cell_size)
-            self._cache = {key: (grid, clearance_map(grid))}
-        return self._cache[key]
+        layout = self._layout(graph)
+        return layout.grid, layout.clearance
 
     def _widest(self, graph, grid, clearance, start, goal, anchors) -> PathResult:
-        key = (_signature(graph), start, goal, anchors)
-        if key not in self._paths:
-            self._paths[key] = widest_path(grid, clearance, start, goal, anchors=anchors)
-            if len(self._paths) > MAX_CACHED_ROUTE_PATHS:
-                self._paths.popitem(last=False)
-        self._paths.move_to_end(key)
-        return self._paths[key]
+        paths = self._layout(graph).paths
+        key = (start, goal, anchors)
+        if key not in paths:
+            paths[key] = widest_path(grid, clearance, start, goal, anchors=anchors)
+        return paths[key]
 
     def _leg(
         self, graph: SceneGraph, scenario: Scenario, leg_index: int
@@ -424,87 +529,42 @@ class PipelineMeasurements:
         )
 
     def counter_approach(
-        self, graph: SceneGraph, counter_id: UUID
+        self, graph: SceneGraph, counter_id: UUID, slide_meters: float = 0.0
     ) -> ClearFloorResult:
         """The clear floor space actually available in front of a counter.
 
         `inches_wide` and `inches_deep` are measurements of what is there, not
         restatements of what the rule wants; `fits` says whether they satisfy
-        the 48 by 30 inch forward approach in ADA 2010 305.3.
+        the 48 by 30 inch parallel approach in ADA 2010 305.3.
 
         Both saturate at twice the requirement. Past that the answer stops
         being about this counter and starts describing the room, and a check
         only needs to know the space is ample.
 
-        `center` stays where the required rectangle sits, against the counter
-        face and rotated with it, so it does not move as the measurement grows.
+        `slide_meters` lets the space sit up to that far off the face centre,
+        along the face, in steps of `COUNTER_SLIDE_STEP`. The clear position
+        nearest the centre is reported; when none is clear, the centred one,
+        where a repair clears the space whatever else stands along the face.
+        How far is the caller's to say, from the rule.
+
+        `center` is where the required rectangle sits, against the counter face
+        and rotated with it, so it does not move as the measurement grows.
         """
         counter = graph.by_id(counter_id)
         grid, _ = self._field(graph)
         outward = _outward_normal(counter)
         along = (-outward[1], outward[0])
-        origin = _front_face_centre(counter, outward)
-
-        depth = self._clear_depth(grid, origin, outward, along)
-        width = self._clear_width(grid, origin, outward, along)
-        return ClearFloorResult(
-            inches_wide=to_inches(width),
-            inches_deep=to_inches(depth),
-            center=Vec3(
-                x=origin.x + outward[0] * COUNTER_CLEAR_DEPTH / 2,
-                y=origin.y + outward[1] * COUNTER_CLEAR_DEPTH / 2,
-                z=0.0,
-            ),
-            fits=width >= COUNTER_CLEAR_WIDTH and depth >= COUNTER_CLEAR_DEPTH,
+        face = _front_face_centre(counter, outward)
+        positions = [_slid(face, along, offset) for offset in _offsets_from_centre(slide_meters)]
+        promising = (
+            origin for origin in positions
+            if _band_clear(grid, origin, outward, along, COUNTER_CLEAR_DEPTH, COUNTER_CLEAR_WIDTH / 2)
         )
-
-    def _clear_depth(self, grid: Grid, origin: Vec3, outward, along) -> float:
-        """How far out the required-width band stays clear."""
-        step = grid.cell_size
-        half = COUNTER_CLEAR_WIDTH / 2
-        depth = 0.0
-        while depth < COUNTER_CLEAR_DEPTH * 2:
-            if not self._band_clear(grid, origin, outward, along, depth + step, half):
-                break
-            depth += step
-        return depth
-
-    def _clear_width(self, grid: Grid, origin: Vec3, outward, along) -> float:
-        """How wide the band stays clear across the required depth."""
-        step = grid.cell_size
-        half = 0.0
-        while half < COUNTER_CLEAR_WIDTH * 1.5:
-            if not self._band_clear(
-                grid, origin, outward, along, COUNTER_CLEAR_DEPTH, half + step
-            ):
-                break
-            half += step
-        return half * 2
-
-    def _band_clear(self, grid: Grid, origin, outward, along, depth, half) -> bool:
-        steps = max(int(half * 2 / grid.cell_size), 1)
-        for index in range(steps + 1):
-            offset = -half + (index * half * 2 / steps if steps else 0.0)
-            if not self._column_clear(grid, origin, outward, along, offset, depth):
-                return False
-        return True
-
-    def _column_clear(self, grid, origin, outward, along, offset, depth) -> bool:
-        # Start one cell out. The face itself is the counter, which is solid by
-        # definition, so sampling from zero always fails on the object we are
-        # measuring the space in front of.
-        start = grid.cell_size
-        if depth < start:
-            return True
-        rungs = max(int((depth - start) / grid.cell_size), 1)
-        for index in range(rungs + 1):
-            reach = start + (depth - start) * index / rungs
-            x = origin.x + along[0] * offset + outward[0] * reach
-            y = origin.y + along[1] * offset + outward[1] * reach
-            row, col = grid.to_cell(x, y)
-            if not grid.contains(row, col) or grid.occupied[row, col]:
-                return False
-        return True
+        for origin in promising:
+            result = _approach_at(grid, origin, outward, along)
+            if result.fits:
+                return result
+        return _approach_at(grid, face, outward, along)
 
     def _intruders(
         self, graph: SceneGraph, counter_id: UUID, space: Polygon

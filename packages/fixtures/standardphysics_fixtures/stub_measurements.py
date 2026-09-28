@@ -155,7 +155,7 @@ class FixtureMeasurements:
         )
 
     def counter_approach(
-        self, graph: SceneGraph, counter_id: UUID
+        self, graph: SceneGraph, counter_id: UUID, slide_meters: float = 0.0
     ) -> ClearFloorResult:
         counter = graph.by_id(counter_id)
         p = counter.transform.position

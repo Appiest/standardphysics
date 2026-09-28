@@ -62,6 +62,9 @@ SYNONYMS = {
     "card reader": "payment terminal",
     "card machine": "payment terminal",
     "pos terminal": "payment terminal",
+    "pos system": "payment terminal",
+    "pos": "payment terminal",
+    "card_reader": "payment terminal",
     "till": "register",
     "cash register": "register",
     "cushion": "pillow",
@@ -133,15 +136,10 @@ def _where_it_belongs(candidate: Candidate, objects: list[DiscoveredObject]) -> 
 
 
 def _fold_duplicates(objects: list[DiscoveredObject]) -> list[DiscoveredObject]:
-    """Two objects each mostly inside the other are one thing seen under two names."""
+    """Two objects that are one thing seen under two names become one."""
     settled: list[DiscoveredObject] = []
     for object_ in sorted(objects, key=lambda one: -one.views):
-        twin = next(
-            (index for index, other in enumerate(settled)
-             if _share_inside(object_.box, other.box) >= SAME_THING
-             and _share_inside(other.box, object_.box) >= SAME_THING),
-            None,
-        )
+        twin = next((index for index, other in enumerate(settled) if _one_thing(object_, other)), None)
         if twin is None:
             settled.append(object_)
         else:
@@ -149,6 +147,56 @@ def _fold_duplicates(objects: list[DiscoveredObject]) -> list[DiscoveredObject]:
             if combined is not None:
                 settled[twin] = combined
     return settled
+
+
+def _one_thing(first: DiscoveredObject, second: DiscoveredObject) -> bool:
+    """Each mostly inside the other, or one mostly inside the other and never drawn apart.
+
+    A laptop on a desk sits inside the desk's box from some angles, but the
+    detector names both in the same photo, which says they are two things. A
+    self-order tablet carved once as a card reader and once, from other photos,
+    as a hand dryer was never named twice in one picture: the smaller view is
+    the same tablet.
+    """
+    inward = _share_inside(first.box, second.box) >= SAME_THING
+    outward = _share_inside(second.box, first.box) >= SAME_THING
+    if inward and outward:
+        return True
+    return (inward or outward) and not set(first.frame_ids) & set(second.frame_ids)
+
+
+def _pooled(tallies: list[Counter[str]]) -> Counter[str]:
+    """Every name any tally proposed, with its confidence summed.
+
+    Counter addition drops a name whose total is zero, and a detector does
+    report zero confidence; an object must never be left with no name at all.
+    """
+    pooled: Counter[str] = Counter()
+    for tally in tallies:
+        pooled.update(tally)
+    return pooled
+
+
+def _winning_name(weights: Counter[str]) -> str:
+    """The name with the most confidence behind it, counting every name that agrees with it.
+
+    "Sanitizer", "hand sanitizer" and "sanitizer dispenser" are one proposal in
+    three wordings; counted apart, a single "payment terminal" outvotes all of
+    them. A name's own weight breaks a tie between agreeing names.
+    """
+    return max(weights, key=lambda name: (_agreeing(weights, name), weights[name]))
+
+
+def name_support(weights: Counter[str]) -> float:
+    """The share of all naming confidence that agrees with the winning name; 1.0 when nothing was said."""
+    total = sum(weights.values())
+    if not weights or total <= 0:
+        return 1.0
+    return _agreeing(weights, _winning_name(weights)) / total
+
+
+def _agreeing(weights: Counter[str], name: str) -> float:
+    return sum(weight for other, weight in weights.items() if _names_agree(name, other))
 
 
 def _smaller_inside_larger(first: CarvedBox, second: CarvedBox) -> float:
@@ -204,7 +252,7 @@ def _first_view(candidate: Candidate) -> DiscoveredObject:
 
 def _joined(object_: DiscoveredObject, candidate: Candidate) -> DiscoveredObject | None:
     """The object with one more view of it folded in and its box refitted."""
-    weights = object_.weights + Counter({_settled(candidate.detection.name): candidate.detection.confidence})
+    weights = _pooled([object_.weights, Counter({_settled(candidate.detection.name): candidate.detection.confidence})])
     for_it, total = object_.movable_votes
     return _rebuilt(
         [object_.box, candidate.box],
@@ -217,10 +265,9 @@ def _joined(object_: DiscoveredObject, candidate: Candidate) -> DiscoveredObject
 
 def _combined(group: list[DiscoveredObject]) -> DiscoveredObject | None:
     """One object from two that turned out to be the same thing under two names."""
-    weights: Counter[str] = Counter()
+    weights = _pooled([object_.weights for object_ in group])
     votes = [0, 0]
     for object_ in group:
-        weights += object_.weights
         votes[0] += object_.movable_votes[0]
         votes[1] += object_.movable_votes[1]
     return _rebuilt(
@@ -245,7 +292,7 @@ def _rebuilt(
         return None
     for_it, total = movable_votes
     return DiscoveredObject(
-        name=weights.most_common(1)[0][0],
+        name=_winning_name(weights),
         box=box,
         movable=for_it * 2 >= total,
         confidence=confidence,

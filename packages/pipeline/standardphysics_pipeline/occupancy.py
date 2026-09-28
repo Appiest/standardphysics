@@ -7,11 +7,20 @@ rather than by an axis-aligned bounding box that would eat the corners.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from uuid import UUID
 
 import numpy as np
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, stands_upright, to_meters
+from standardphysics_contracts import (
+    SceneGraph,
+    SceneNode,
+    Vec3,
+    is_fixed_to_a_surface,
+    lies_flat,
+    stands_upright,
+    to_meters,
+)
 
 from .footprints import floor_polygon, polygon_bounds
 
@@ -237,9 +246,14 @@ def _measures_nothing(graph: SceneGraph) -> bool:
     real has no extent at all. One of those in the graph means the capture did
     not measure what it claims to describe, and a room whose shape is unknown
     has no walkable ground in it until somebody scans it again.
+
+    A photo candidate fixed to a surface is not the capture failing: discovery
+    gives a television or an outlet it could not place on a measured face no
+    size on purpose, so the zero is never read as a device. It blocks no floor
+    either way, and one of them used to close every route in the room.
     """
     return any(
-        max(node.dimensions.as_tuple()) <= 0 for node in graph.nodes
+        max(node.dimensions.as_tuple()) <= 0 for node in graph.nodes if not is_fixed_to_a_surface(node)
     )
 
 
@@ -268,9 +282,21 @@ def _mark(
     cell_size: float,
 ) -> None:
     """Occupy every cell whose centre lies inside this node's oriented box."""
-    inside = _solid_cells(node, world_x, world_y, cell_size)
-    owner[inside & ~occupied] = index
-    occupied |= inside
+    window = _node_window(node, world_x, world_y, cell_size)
+    if world_x[window].size == 0:
+        return
+    inside = _solid_cells(node, world_x[window], world_y[window], cell_size)
+    owner[window][inside & ~occupied[window]] = index
+    occupied[window] |= inside
+
+
+def _node_window(node: SceneNode, world_x: np.ndarray, world_y: np.ndarray, cell_size: float) -> tuple[slice, slice]:
+    """The rows and columns a node can fill, grown by the thickest barrier, so the rest of the grid is not tested."""
+    p = node.transform.position
+    reach = math.hypot(node.dimensions.x / 2, node.dimensions.y / 2) + THINNEST_WALL + THINNEST_BARRIER_CELLS * cell_size
+    cols = np.searchsorted(world_x[0], (p.x - reach, p.x + reach))
+    rows = np.searchsorted(world_y[:, 0], (p.y - reach, p.y + reach))
+    return slice(int(rows[0]), int(rows[1])), slice(int(cols[0]), int(cols[1]))
 
 
 def _solid_cells(

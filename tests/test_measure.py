@@ -10,7 +10,17 @@ import uuid
 import numpy as np
 import pytest
 from scipy import ndimage
-from standardphysics_contracts import Mat4, Scenario, SceneGraph, SceneNode, Stop, Vec3, to_inches, to_meters
+from standardphysics_contracts import (
+    Mat4,
+    Scenario,
+    SceneGraph,
+    SceneNode,
+    Stop,
+    SurfaceAttachment,
+    Vec3,
+    to_inches,
+    to_meters,
+)
 from standardphysics_fixtures import (
     FIX_SHIFT_INCHES,
     PINCH_INCHES,
@@ -152,6 +162,29 @@ def test_a_degenerate_floor_fails_closed_instead_of_opening_a_walkable_strip():
     floor = _test1_floor().model_copy(update={"dimensions": Vec3(x=0.0, y=0.0, z=0.0)})
     grid = build_grid(SceneGraph(scan_id=node_id("degenerate_floor"), nodes=[floor]))
     assert grid.occupied.all()
+
+
+def test_an_unsized_photo_candidate_on_a_surface_leaves_the_floor_walkable():
+    """Discovery gives a television it could not place no size on purpose; the room is still measured."""
+    floor = _test1_floor()
+    candidate = SceneNode(
+        id=node_id("unplaced_tv"), kind="candidate_television", label="Candidate television (tv)",
+        raw_category="tv", dimensions=Vec3(x=0.0, y=0.0, z=0.0), transform=Mat4.translation(0.0, 0.0, 1.5),
+        attachment=SurfaceAttachment(support_type="unanchored", localization_quality="unanchored",
+                                     review_status="candidate"),
+    )
+    grid = build_grid(SceneGraph(scan_id=node_id("unplaced_candidate"), nodes=[floor, candidate]))
+    assert not grid.occupied.all()
+
+
+def test_an_outline_with_no_area_contains_nothing():
+    """A photo candidate given no size has a point for a footprint, and must not stand over the whole room."""
+    point = [(1.0, 2.0)] * 4
+    line = [(0.0, 0.0), (1.0, 0.0), (1.0, 0.0), (0.0, 0.0)]
+    assert not contains_point(point, (1.0, 2.0))
+    assert not contains_point(point, (-3.0, 5.0))
+    assert not contains_point(line, (0.5, 0.0))
+    assert contains_point([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)], (0.5, 0.5))
 
 
 def test_occupied_cells_name_an_object_or_are_the_world_edge(shop):

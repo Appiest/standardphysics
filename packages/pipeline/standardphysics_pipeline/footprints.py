@@ -17,6 +17,9 @@ from standardphysics_contracts import SceneNode
 Point = tuple[float, float]
 Polygon = list[Point]
 
+DEGENERATE_AREA = 1e-9
+"""Square metres below which an outline is a point or a line, not a region."""
+
 
 def rotation_about_z(node: SceneNode) -> tuple[float, float]:
     """Cosine and sine of the node's rotation about Z, from its transform."""
@@ -76,10 +79,16 @@ def polygon_bounds(polygon: Polygon) -> tuple[float, float, float, float]:
 
 
 def contains_point(polygon: Polygon, point: Point, margin: float = 0.0) -> bool:
-    """Whether a point is inside a convex polygon, allowing a small edge slack."""
-    if len(polygon) < 3:
+    """Whether a point is inside a convex polygon, allowing a small edge slack.
+
+    An outline with no area contains nothing. Every edge of one lies on a
+    single point or line, so each edge test passes for every point in the
+    room, and a photo candidate given no size stood over the whole floor.
+    """
+    area = _signed_area(polygon) if len(polygon) >= 3 else 0.0
+    if abs(area) <= DEGENERATE_AREA:
         return False
-    direction = 1 if _signed_area(polygon) >= 0 else -1
+    direction = 1 if area >= 0 else -1
     x, y = point
     for start, end in _edges(polygon):
         edge_x, edge_y = end[0] - start[0], end[1] - start[1]
@@ -179,9 +188,14 @@ def surely_apart(a: Polygon, b: Polygon, by: float = 0.0) -> bool:
     return box_gap > by + BOUNDS_SLACK
 
 
+def bounds_meet(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> bool:
+    """Whether two `polygon_bounds` boxes touch or overlap."""
+    return a[0] <= b[2] and b[0] <= a[2] and a[1] <= b[3] and b[1] <= a[3]
+
+
 def touching(a: Polygon, b: Polygon) -> bool:
-    """`gap_between(a, b) == 0.0`, answered from the bounding boxes when they are clearly apart."""
-    return not surely_apart(a, b) and gap_between(a, b) == 0.0
+    """Whether two convex footprints touch or overlap: `gap_between(a, b) == 0`, without measuring the gap."""
+    return bounds_meet(polygon_bounds(a), polygon_bounds(b)) and not _separated(a, b)
 
 
 def closer_than(a: Polygon, b: Polygon, distance: float) -> bool:

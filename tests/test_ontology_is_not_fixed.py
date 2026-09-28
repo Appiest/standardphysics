@@ -24,7 +24,7 @@ ONTOLOGY_LITERAL = re.compile(
     r'^(?:NodeKind|Relation|QueryKind|Dimension|LabelSource)\s*(?::\s*\w+\s*)?=\s*Literal\[', re.M
 )
 
-BRANCHES_BASELINE = 39
+BRANCHES_BASELINE = 36
 """Places that ask what kind of thing something is. Target: nothing above the
 interpretation layer asks, because a name is for showing a person.
 
@@ -60,6 +60,12 @@ Audit 2026-09-27, merging feat/model-sees-the-room: 30 rose to 39.
   training/quality.py 1 and training/explain.py 1. They join the structural
   backlog above. prompt.py is the text the served fine-tune was trained on,
   so replacing those two with predicates means retraining or re-checking it.
+
+Audit 2026-09-27, merging feat/ada-precedent-corpus into unified: 39 fell to 36.
+That branch had already moved training/prompt.py (walls and doors) and
+training/quality.py onto checks.walls.standing_walls and checks.roles.doors,
+which select exactly the nodes the kind tests did on the 2,075 synthetic
+training graphs (commit 1ca5be72), so the served fine-tune reads the same room.
 """
 
 LITERALS_BASELINE = 0

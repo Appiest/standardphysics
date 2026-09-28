@@ -225,10 +225,15 @@ def run_windows(run: pathlib.Path, workers: int, progress: Progress) -> None:
     progress.finish("windows", kept=len(_rows(run / "windows.jsonl")))
 
 
+TRAINING_SCOPE = os.environ.get("TRAINING_SCOPE", "layout")
+"""`fittings` also asks about counter, table and reach heights; `layout` keeps the furniture-only checker."""
+
+
 def checker_for(window: Window) -> TrainingChecker:
     """The window's checker; a generated room also gets its shop's space type, so its ADA directives apply."""
     return TrainingChecker(window.scenario, pinned=frozenset(uuid.UUID(i) for i in window.pinned),
-                           owner_layout=window.graph, space_typology=space_typology_for(window.scenario.name))
+                           owner_layout=window.graph, space_typology=space_typology_for(window.scenario.name),
+                           scope=TRAINING_SCOPE)
 
 
 def _variant_task(row: dict) -> list[dict]:

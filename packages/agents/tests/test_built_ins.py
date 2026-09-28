@@ -2,6 +2,7 @@
 
 import json
 import math
+import uuid
 
 import pytest
 from standardphysics_agents import assess
@@ -12,12 +13,30 @@ from standardphysics_agents.training import menu as menu_module
 from standardphysics_agents.training.construction import build, fixture_ids
 from standardphysics_agents.training.edits import apply_edits
 from standardphysics_agents.training.menu import FIXTURE_TRIES, _fixture_guesses, build_menu
+from standardphysics_contracts import Mat4, SceneGraph
 from standardphysics_fixtures import build_lawsuit_graph, build_lawsuit_scenario
+
+
+def _crowded_counter() -> SceneGraph:
+    """The lawsuit shop with a display case parked in front of the lowered section.
+
+    The 48 in approach space may slide along the counter but must overlap 36 in
+    of the lowered section, so a case in front of that section blocks it everywhere.
+    """
+    graph = build_lawsuit_graph()
+    section = next(node for node in graph.nodes if node.label == "Lowered counter section")
+    case = next(node for node in graph.nodes if node.label == "Display case")
+    parked = case.model_copy(update={
+        "id": uuid.uuid5(uuid.NAMESPACE_URL, "test-built-ins/parked-case"),
+        "dimensions": case.dimensions.model_copy(update={"x": 0.5, "y": 0.5}),
+        "transform": Mat4.translation(section.transform.position.x, 2.87, case.transform.position.z),
+    })
+    return graph.model_copy(update={"nodes": [*graph.nodes, parked]})
 
 
 @pytest.fixture(scope="module")
 def shop(pipeline, ledger):
-    graph, scenario = build_lawsuit_graph(), build_lawsuit_scenario()
+    graph, scenario = _crowded_counter(), build_lawsuit_scenario()
     finding = next(f for f in assess(graph, scenario, pipeline, ledger=ledger).problems
                    if f.check_id == "service_counter_approach")
     return graph, scenario, finding
