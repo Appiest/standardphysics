@@ -70,7 +70,9 @@ struct ScanUploadClient {
         return try await send(request, expectedStatus: 201)
     }
 
-    func upload(_ artifact: CaptureArtifact, to scanID: UUID) async throws {
+    /// Sends one artifact. A frame sent during the walk carries its pose, so
+    /// the server can decide whether to read the photo before poses.json exists.
+    func upload(_ artifact: CaptureArtifact, to scanID: UUID, pose: PoseRecord? = nil) async throws {
         let url = baseURL
             .appendingPathComponent("api/scans")
             .appendingPathComponent(scanID.uuidString)
@@ -79,8 +81,19 @@ struct ScanUploadClient {
         var request = authorized(url, method: "PUT")
         request.setValue(try SHA256Digest.hexDigest(of: artifact.fileURL), forHTTPHeaderField: "X-Checksum-SHA256")
         request.setValue(artifact.kind.rawValue, forHTTPHeaderField: "X-Artifact-Kind")
+        if let pose {
+            request.setValue(try Self.poseHeader(for: pose), forHTTPHeaderField: Self.framePoseHeader)
+        }
         let (_, response) = try await session.upload(for: request, fromFile: artifact.fileURL)
         try validate(response, expectedStatus: 200...201)
+    }
+
+    static let framePoseHeader = "X-Frame-Pose"
+
+    static func poseHeader(for pose: PoseRecord) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return String(decoding: try encoder.encode(pose), as: UTF8.self)
     }
 
     func complete(scanID: UUID) async throws -> RemoteScan {
