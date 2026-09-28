@@ -94,13 +94,16 @@ class Settings:
     seed_owner_email: str = "demo@standardphysics.app"
     """The account the sample shop belongs to, when SP_SEED_SAMPLE_SHOP is on."""
     seed_owner_password: str = ""
-    """Set by SP_SEED_OWNER_PASSWORD, or generated at startup. It is used, and
-    logged, only when the demo account does not exist yet; an existing account
-    keeps the password it was created with.
+    """Set by SP_SEED_OWNER_PASSWORD, or generated at startup and written to a file.
+    It is used, and the file written, only when the demo account does not exist
+    yet; an existing account keeps the password it was created with.
 
     Generating it means the repository carries no password that works against
-    every deployment of this server.
+    every deployment of this server. It never goes to the log, because the log
+    reaches everyone who deploys and anything that collects it.
     """
+    seed_owner_password_generated: bool = False
+    """True when SP_SEED_OWNER_PASSWORD was unset and the password was made up at startup."""
     weave_project: str | None = None
     """Traces go to Weave when this is set, and nowhere when it is not. Only
     `from_environment` fills it in, so a server built in a test stays local."""
@@ -202,6 +205,7 @@ class Settings:
             seed_sample_shop=_flag("SP_SEED_SAMPLE_SHOP"),
             seed_owner_email=os.environ.get("SP_SEED_OWNER_EMAIL", "demo@standardphysics.app"),
             seed_owner_password=os.environ.get("SP_SEED_OWNER_PASSWORD") or secrets.token_urlsafe(12),
+            seed_owner_password_generated=not os.environ.get("SP_SEED_OWNER_PASSWORD"),
             weave_project=os.environ.get(PROJECT_ENV) or None,
             weave_entity=os.environ.get(ENTITY_ENV) or None,
             auto_deep_simulation=_flag("SP_AUTO_DEEP_SIMULATION"),
