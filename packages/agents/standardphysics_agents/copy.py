@@ -584,6 +584,22 @@ WRITERS: dict[str, Callable[[Observation, RuleSpec], FindingCopy]] = {
 
 
 REQUESTS = {
+    "service_counter_height": FindingCopy(
+        title="Measure how high the {counter} is where customers pay",
+        detail="Measure from the floor to the top of the counter at the lowest part customers use. At least 36 inches of its length needs to be 36 inches high or lower.",
+    ),
+    "point_of_sale_height": FindingCopy(
+        title="Measure how high the {reader} sits",
+        detail="Measure from the floor to the counter top under it. People need to be able to pay at a part of the counter 36 inches high or lower.",
+    ),
+    "dining_surface_height": FindingCopy(
+        title="Measure how high your tables are",
+        detail="Measure from the floor to the tabletop. At least one table in twenty needs a top between 28 and 34 inches high.",
+    ),
+    "reach_range": FindingCopy(
+        title="Measure how high the highest control is",
+        detail="Measure from the floor to the highest button, handle or card slot a customer uses. It needs to be 48 inches or lower.",
+    ),
     "door_maneuvering_clearance": FindingCopy(
         title="Tell us which way {door_name} opens",
         detail="Pushed outward or pulled inward, from where a customer stands. Pulling one open takes more room in front of it, so it decides whether this passes.",
@@ -617,10 +633,17 @@ GENERIC_REQUEST = FindingCopy(
 
 
 def request(rule: RuleSpec, facts: dict | None = None) -> FindingCopy:
-    """What to ask for when geometry cannot settle a rule on its own, naming the thing when there are several."""
+    """What to ask for when geometry cannot settle a rule on its own, naming the thing it is about."""
     template = REQUESTS.get(rule.id, GENERIC_REQUEST)
-    door_name = (facts or {}).get("door_name") or "the front door"
-    return replace(template, title=template.title.format(door_name=door_name))
+    return replace(template, title=template.title.format_map(_request_names(facts or {})))
+
+
+def _request_names(facts: dict) -> dict[str, str]:
+    return {
+        "door_name": facts.get("door_name") or "the front door",
+        "counter": (facts.get("counter") or "counter").lower(),
+        "reader": (facts.get("reader") or "card reader").lower(),
+    }
 
 
 def another_look(labels: list[str]) -> FindingCopy:

@@ -72,6 +72,7 @@ from .construction import MAX_FIXTURE_MOVE_INCHES, FixtureMove, build, construct
 from .edits import TrainingEdits, _json_text, combined, edits_json, node_moves, parse_edits
 from .fittings import HeightChange, LoweredSection, Replacement, height_range, rests_on, use_of
 from .owner import WishBook
+from .prices import construction_price
 from .prompt import room_view
 from .quality import seat_table_pairs
 from .reward import constrained, touched
@@ -111,7 +112,8 @@ MENU_INSTRUCTION = (
     "`last_result` says what happened to your previous answer, if any, including what the owner said. "
     "`owner_wishes` lists what the owner wants kept: stated ones are the owner's own words and no option breaks "
     "them; inferred ones are read from where things stand now, and `breaks_wishes` on an option names any it "
-    "would break. Prefer options that keep the owner's layout."
+    "would break. Prefer options that keep the owner's layout. An option marked (construction) needs a "
+    "contractor; `construction_cost` compares what each costs, so prefer a move, then the cheapest construction."
 )
 MENU_ANSWER_FORMAT = (
     'Answer with JSON only: {"choose":[<option numbers in the order to apply>],"why":"<one sentence>"}. '
@@ -440,6 +442,7 @@ def _effect(room, candidate, checker, before, after, problems: dict[UUID, str], 
         "usable": round(usability(room, candidate, owner, checker.scenario), 3),
         "inches_moved": round(to_inches(sum(math.hypot(move.dx, move.dy) for move in edits.moves)), 1),
         "construction_inches": round(construction_inches(edits.wall_shifts, edits.fixture_moves), 1),
+        "construction_cost": construction_price(room, edits),
         "ends_square": _ends_square(room, candidate, edits),
     }
 
@@ -474,8 +477,8 @@ def _ends_square(room: SceneGraph, candidate: SceneGraph, edits: TrainingEdits) 
 
 def _rank(effect: dict) -> tuple:
     return (-len(effect["clears"]), effect["fixable_left"], int(not effect.get("ends_square", True)),
-            len(effect.get("breaks_wishes", [])), effect["construction_inches"], -effect["usable"],
-            effect["inches_moved"])
+            len(effect.get("breaks_wishes", [])), effect.get("construction_cost", 0.0), effect["construction_inches"],
+            -effect["usable"], effect["inches_moved"])
 
 
 def _drop_covered_diagonals(measured: list) -> list:

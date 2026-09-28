@@ -23,7 +23,7 @@ import { SavePrompt } from "./SavePrompt";
 import { SharePanel } from "./SharePanel";
 import { StepHeading } from "./StepHeading";
 import { StillToCheck } from "./StillToCheck";
-import { stillToCheckCount, stillToCheckItems } from "@/lib/still-to-check";
+import { onePerTitle, stillToCheckCount, stillToCheckItems } from "@/lib/still-to-check";
 import { FixAll, useModelLabel } from "./FixAll";
 import { ToolsPanel } from "./ToolsPanel";
 import { FoundLegend, FoundSection } from "./FoundList";
@@ -420,7 +420,7 @@ function ResultsStep({ shop, groups, statuses, selectedId, fixingHere, onStartFi
 function FollowUpPanel({ scanId, journey, requests }: { scanId: string; journey: Journey; requests: OwnerRequest[] }) {
   const all = followUps(requests);
   const answerable = all.filter((request) => request.kind !== "another_look");
-  const lookAgain = all.filter((request) => request.kind === "another_look");
+  const lookAgain = onePerTitle(all.filter((request) => request.kind === "another_look"));
   return (
     <div className="flex flex-col gap-6">
       <StepHeading title={journey.next_step.title}>Your shop is measured. One more thing and we can finish checking it.</StepHeading>

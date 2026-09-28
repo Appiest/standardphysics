@@ -23,6 +23,13 @@ describe("stopMarkers", () => {
   });
 });
 
+describe("labels across a whole shop", () => {
+  it("stacks the labels of stops two metres apart, which overlap on screen when the whole shop is in view", () => {
+    const near: Scenario = { ...route, stops: [at("Entrance", 0, 0), at("Counter", 2, 0.4), at("Exit", 0, 0)] };
+    expect(stopMarkers(near).map((marker) => marker.labelTier)).toEqual([0, 1]);
+  });
+});
+
 describe("moveMarker", () => {
   it("moves every stop that shares the marker, and nothing else", () => {
     const moved = moveMarker(route, stopMarkers(route)[0], 0.5, 0.25);

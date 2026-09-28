@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Finding, OwnerRequest } from "@/types/contracts";
-import { stillToCheckCount, stillToCheckItems } from "./still-to-check";
+import { onePerTitle, stillToCheckCount, stillToCheckItems } from "./still-to-check";
 
 const question = (id: string, title: string) => ({ id, title, outcome: "question" }) as unknown as Finding;
 const request = (id: string, findingId: string, changes: Partial<OwnerRequest> = {}): OwnerRequest => ({
@@ -36,5 +36,10 @@ describe("what is still to check", () => {
     const items = stillToCheckItems([question("q", "Send a photo of the restroom")], [request("r", "q", { status: "not_applicable" })]);
     expect(items.sendable).toEqual([]);
     expect(items.lookAgain.map((finding) => finding.id)).toEqual(["q"]);
+  });
+
+  it("keeps the first of each title, in order", () => {
+    const cards = [{ title: "Point at the counter", id: 1 }, { title: "Point at the ramp", id: 2 }, { title: "Point at the counter", id: 3 }];
+    expect(onePerTitle(cards).map((card) => card.id)).toEqual([1, 2]);
   });
 });
