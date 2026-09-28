@@ -12,6 +12,9 @@
 # has moved to. The digest is the multi-platform index; move it on purpose,
 # with `docker buildx imagetools inspect node:22-bookworm-slim`.
 ARG NODE_IMAGE=node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
+# The notebook stage's base, pinned the same way; move it with
+# `docker buildx imagetools inspect python:3.12-slim`.
+ARG NOTEBOOK_IMAGE=python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
 
 FROM ${NODE_IMAGE} AS web
 WORKDIR /app/apps/web
@@ -40,7 +43,7 @@ RUN npm run build
 # out files. It builds in its own stage so marimo never enters the runtime venv,
 # whose versions requirements.lock pins; marimo's own pin comes from the dev lock.
 # marimo finds the notebook's stylesheet relative to where it runs, hence the cd.
-FROM python:3.12-slim AS notebook
+FROM ${NOTEBOOK_IMAGE} AS notebook
 WORKDIR /notebook
 COPY requirements-dev.lock /tmp/requirements-dev.lock
 # marimo shells out to uv to bundle the notebook's local imports for the browser.
@@ -105,7 +108,7 @@ WORKDIR /app
 # the observability extra: without weave in the image, WANDB_PROJECT would be
 # set in production and nothing would ever be traced.
 COPY requirements.lock ./
-RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
+RUN /opt/venv/bin/pip install --no-cache-dir pip==26.2.1 \
  && /opt/venv/bin/pip install --no-cache-dir -r requirements.lock
 
 COPY pyproject.toml ./
