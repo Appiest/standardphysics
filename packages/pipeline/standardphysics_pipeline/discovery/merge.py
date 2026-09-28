@@ -91,6 +91,8 @@ class DiscoveredObject:
     """How much detector confidence stood behind each name proposed for this object."""
     movable_votes: tuple[int, int] = (0, 0)
     """Views calling it movable, and views in total."""
+    name_settled: bool = True
+    """False when the photos never agreed what this is and no second look settled it."""
 
     @property
     def views(self) -> int:

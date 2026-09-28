@@ -45,13 +45,14 @@
           {"name": "scan_id", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
           {"name": "artifact_id", "in": "path", "required": true, "schema": {"type": "string"}},
           {"name": "X-Checksum-SHA256", "in": "header", "required": true, "schema": {"type": "string"}},
-          {"name": "X-Artifact-Kind", "in": "header", "required": true, "schema": {"$ref": "#/components/schemas/ArtifactKind"}}
+          {"name": "X-Artifact-Kind", "in": "header", "required": true, "schema": {"$ref": "#/components/schemas/ArtifactKind"}},
+          {"name": "X-Frame-Pose", "in": "header", "required": false, "description": "Only with X-Artifact-Kind: frames. This frame's own poses.json record as compact JSON (a PoseRecord whose frame_id is this artifact_id), at most 4096 bytes. Send it when uploading keyframes during the walk: the server reads the photos worth reading while the person is still walking, so the photo pass is mostly done when the walk ends. poses.json is still uploaded at the end and stays the record discovery measures from. A malformed pose, or one naming another frame, is a 400 and nothing is stored.", "schema": {"type": "string"}}
         ],
         "requestBody": {"required": true, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}},
         "responses": {
           "201": {"description": "Stored"},
           "200": {"description": "Already stored"},
-          "400": {"description": "Checksum mismatch"},
+          "400": {"description": "Checksum mismatch, or an X-Frame-Pose that is not this frame's pose"},
           "413": {"description": "Over a limit: the artifact size, its kind's cap, the scan's quota or the account's budget"},
           "507": {"description": "The data volume is below its free-space floor. Try again later"}
         }
