@@ -6,7 +6,7 @@ import { drawnNodes, footprint, planBounds } from "@/components/FloorPlan";
 import { displayName, floorHeight, isListed } from "@/lib/found-objects";
 import type { StaffHandles } from "@/lib/staff-areas";
 import type { Finding, SceneGraph, SceneNode, Vec3 } from "@/types/contracts";
-import { STAFF_AREA_ATTRIBUTE, StaffPlanAreas } from "./StaffPlanAreas";
+import { STAFF_AREA_ATTRIBUTE, StaffPlanAreas, StaffPlanLabels } from "./StaffPlanAreas";
 import { type PlanDragHandlers, usePlanDrag } from "./usePlanDrag";
 
 /** Pieces smaller than this are hard to catch with a thumb, so their grab area grows to it. */
@@ -79,6 +79,7 @@ export function LayoutPlan(props: PlanProps) {
         if (role === "fixed") return <FixedPiece key={node.id} node={node} hatch={`url(#${hatchId})`} onTap={props.onFixedTap} />;
         return <MovablePiece key={node.id} node={node} state={props} dragging={drag.draggingId === node.id} drag={drag} onKey={props.onKey} />;
       })}
+      {props.staff && <StaffPlanLabels areas={props.staff.areas} />}
       {props.cleared.map((finding) => <Dimension key={`cleared-${finding.id}`} finding={finding} tone="cleared" />)}
       {props.problems.map((finding) => <Dimension key={finding.id} finding={finding} tone="problem" />)}
     </svg>
