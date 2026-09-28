@@ -62,6 +62,12 @@ class OpenRouterRearrange:
             self._prices = self.price(self.model)
         return self._prices
 
+    def _client(self) -> Any:
+        client = self.router.client() if self.router is not None else None
+        if client is None:
+            raise ValueError("OpenRouter has no API key")
+        return client
+
     def _reserve(self, messages: list[dict]) -> None:
         prompt_price, completion_price = self._price()
         # UTF-8 byte count is a conservative upper bound for text tokens.
@@ -73,11 +79,7 @@ class OpenRouterRearrange:
     def complete(self, messages: list[dict], sampling: Sampling) -> list[str]:
         self._reserve(messages)
         try:
-            assert self.router is not None, "__post_init__ always makes the router"
-            client = self.router.client()
-            if client is None:
-                raise ModelFailed("OpenRouter is not configured")
-            response = client.chat.completions.create(
+            response = self._client().chat.completions.create(
                 model=self.model, messages=messages, temperature=sampling.temperature,
                 max_tokens=self.token_cap,
                 extra_body={"provider": provider_routing(self.model), "usage": {"include": True},

@@ -213,8 +213,8 @@ def _cut(path: pathlib.Path, rect: tuple[float, float, float, float], orientatio
     from PIL import Image
 
     try:
+        left, top, right, bottom = (int(round(value)) for value in rect)
         with Image.open(path) as opened:
-            left, top, right, bottom = (int(round(value)) for value in rect)
             image = opened.convert("RGB").crop((left, top, right, bottom))
     except (OSError, ValueError) as error:
         log.warning("could not cut a close-up from %s: %s", path.name, error)
