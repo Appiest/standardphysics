@@ -70,11 +70,21 @@ function PlanArea({ area, index, handles, hatch, svgRef }: { area: StaffArea; in
         <polygon points={points} fill={hatch} />
         <polygon points={points} fill="none" stroke="var(--color-ink)" strokeWidth={open ? 2.5 : 1.5} strokeDasharray={open ? undefined : "6 4"} vectorEffect="non-scaling-stroke" />
       </g>
-      <text x={area.centre.x} y={-area.centre.y} dy={LABEL_SIZE_METERS * 0.35} fontSize={LABEL_SIZE_METERS} textAnchor="middle" fontWeight={600} fill="var(--color-ink)" stroke="var(--color-paper)" strokeWidth={LABEL_SIZE_METERS * 0.25} paintOrder="stroke" className="pointer-events-none">
-        Staff only
-      </text>
       {open && CORNERS.map((corner) => (
         <PlanCorner key={`${corner.alongSign}${corner.acrossSign}`} area={area} corner={corner} index={index} handles={handles} svgRef={svgRef} />
+      ))}
+    </g>
+  );
+}
+
+/** Drawn above the furniture, so a counter standing in the area can't hide what the area is. */
+export function StaffPlanLabels({ areas }: { areas: StaffArea[] }) {
+  return (
+    <g className="pointer-events-none" aria-hidden>
+      {areas.map((area, index) => (
+        <text key={index} x={area.centre.x} y={-area.centre.y} dy={LABEL_SIZE_METERS * 0.35} fontSize={LABEL_SIZE_METERS} textAnchor="middle" fontWeight={600} fill="var(--color-ink)" stroke="var(--color-paper)" strokeWidth={LABEL_SIZE_METERS * 0.25} paintOrder="stroke">
+          Staff only
+        </text>
       ))}
     </g>
   );

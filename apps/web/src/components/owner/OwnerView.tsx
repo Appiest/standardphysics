@@ -9,7 +9,7 @@ import { useArrangement } from "@/components/workspace/useArrangement";
 import { canBeCounter } from "@/lib/counter";
 import { groupFindings } from "@/lib/findings";
 import { inApp, listenToApp, tellApp } from "@/lib/native-bridge";
-import { markStatus, savePlan, walkingRoute } from "@/lib/owner-client";
+import { latestPlan, markStatus, savePlan, walkingRoute } from "@/lib/owner-client";
 import { type ChecklistStatus, checklistRows, type Destination, isFixing, type Panel, panelFor, pieceToTry, requestsForStep } from "@/lib/owner-journey";
 import type { Assessment, Checklist, Finding, Journey, NodeMove, OwnerRequest, ProposalResult, Scan, Scenario, SceneGraph, SceneNode, Vec3 } from "@/types/contracts";
 import { CounterStep } from "./CounterStep";
@@ -232,8 +232,8 @@ function modelPanel(panel: Panel | Tool): Panel {
   return panel === "plan" || panel === "wheelchair" ? "results" : panel;
 }
 
-/** The two tools, started from the results: planning opens on the piece most worth moving, the walk-through fetches its route. */
-function useTools(scanId: string, scenario: Scenario | null, arrangement: ReturnType<typeof useArrangement>, tryPiece: SceneNode | null) {
+/** The two tools, started from the results: planning opens on the last saved plan or the piece most worth moving, the walk-through fetches its route. */
+function useTools(scanId: string, revision: number, scenario: Scenario | null, arrangement: ReturnType<typeof useArrangement>, tryPiece: SceneNode | null) {
   const [tool, setTool] = useState<Tool | null>(null);
   const [walkedLegs, setWalkedLegs] = useState<Vec3[][]>([]);
   const startWheelchair = () => {
@@ -245,6 +245,7 @@ function useTools(scanId: string, scenario: Scenario | null, arrangement: Return
     setTool("plan");
     arrangement.start();
     if (tryPiece) arrangement.setActiveId(tryPiece.id);
+    latestPlan(scanId, revision).then((plan) => plan && arrangement.restore(plan.moves)).catch(() => {});
   };
   return { tool, setTool, walkedLegs, startWheelchair, startPlanning };
 }
@@ -263,11 +264,11 @@ function OwnerShop(props: ShopProps) {
   const statuses = useStatuses(scan.id, guest, save.ask);
   const path = usePathEditor(scan.id, props.suggestedPath, props.defaultPlaces);
   const staff = useStaffAdjuster(scan.id, props.scenario);
-  const arrangement = useArrangement(scan.id, scene, savePlan);
+  const arrangement = useArrangement(scan.id, scene, savePlan, "keep");
   const groups = useMemo(() => groupFindings(assessment?.findings ?? []), [assessment]);
   const problems = groups.problems;
   const tryPiece = useMemo(() => pieceToTry(problems, scene), [problems, scene]);
-  const tools = useTools(scan.id, props.scenario, arrangement, tryPiece);
+  const tools = useTools(scan.id, scene.revision, props.scenario, arrangement, tryPiece);
   const proposed = useProposedPieces(arrangement);
   const panel = currentPanel(journey, counterSkipped, tools.tool, readOnly);
   const letGoOfFinding = useCallback(() => setSelected(null), []);

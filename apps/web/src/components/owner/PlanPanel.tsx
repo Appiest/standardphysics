@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowClockwise, ArrowCounterClockwise, ArrowUUpLeft, ArrowsLeftRight, CheckCircle, Lock, WarningCircle, Wrench } from "@phosphor-icons/react";
-import { type ComponentType, type ReactNode, useMemo, useState } from "react";
+import { type ComponentType, type ReactNode, useMemo } from "react";
 import { Button } from "@/components/ui/Button";
 import type { Arrangement } from "@/components/workspace/useArrangement";
 import { blockedSentence } from "@/lib/blocked-copy";
@@ -59,7 +59,6 @@ export function PlanPanel({ arrangement, scanned, pieceName, fixedNote, builtIn 
   onReset: () => void;
   onDone: () => void;
 }) {
-  const [saved, setSaved] = useState(false);
   const { piece, turnable } = pieceWords(pieceName, arrangement.activeId);
   const { before, left, changes, still } = usePlanFindings(arrangement, scanned);
   return (
@@ -72,8 +71,8 @@ export function PlanPanel({ arrangement, scanned, pieceName, fixedNote, builtIn 
       <Changes changes={changes} moved={arrangement.hasMoves} />
       <StillToFix findings={still} />
       {turnable && <PieceInHand piece={piece ?? ""} builtIn={builtIn} onTurn={(degrees) => arrangement.nudge(0, 0, degrees)} />}
-      {saved && <SavedNote />}
-      <PlanActions arrangement={arrangement} saved={saved} onSave={async () => setSaved(await arrangement.save())} onReset={onReset} onDone={onDone} />
+      {arrangement.saved && <SavedNote />}
+      <PlanActions arrangement={arrangement} onReset={onReset} onDone={onDone} />
     </div>
   );
 }
@@ -207,10 +206,10 @@ function SavedNote() {
   );
 }
 
-function PlanActions({ arrangement, saved, onSave, onReset, onDone }: { arrangement: Arrangement; saved: boolean; onSave: () => void; onReset: () => void; onDone: () => void }) {
+function PlanActions({ arrangement, onReset, onDone }: { arrangement: Arrangement; onReset: () => void; onDone: () => void }) {
   return (
     <ActionBar>
-      <Button variant="primary" className="justify-center" disabled={!arrangement.canSave} onClick={onSave}>
+      <Button variant="primary" className="justify-center" disabled={!arrangement.canSave} onClick={arrangement.save}>
         {arrangement.saving ? "Saving" : "Save this plan"}
       </Button>
       <div className="grid grid-cols-3 gap-2">
@@ -222,7 +221,7 @@ function PlanActions({ arrangement, saved, onSave, onReset, onDone }: { arrangem
           <ArrowCounterClockwise size={18} weight="bold" aria-hidden />
           Put back
         </Button>
-        <Button className="justify-center" onClick={onDone}>{arrangement.hasMoves && !saved ? "Leave" : "Done"}</Button>
+        <Button className="justify-center" onClick={onDone}>{arrangement.hasMoves && !arrangement.saved ? "Leave" : "Done"}</Button>
       </div>
     </ActionBar>
   );

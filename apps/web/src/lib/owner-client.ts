@@ -1,7 +1,7 @@
 import { ApiRefusal } from "@/lib/layout-client";
 import type { ChecklistStatus } from "@/lib/owner-journey";
 import type {
-  ChecklistItem, LayoutPlan, NodeMove, OwnerRequest, RouteLegs, Scenario, SceneGraph, Session, ShareLink,
+  ChecklistItem, LayoutPlan, NodeMove, OwnerRequest, PlanList, RouteLegs, Scenario, SceneGraph, Session, ShareLink,
 } from "@/types/contracts";
 
 async function send<T>(url: string, init: RequestInit): Promise<T> {
@@ -50,6 +50,12 @@ export const stopSharing = (scanId: string) => send<void>(`/api/scans/${scanId}/
 
 export const savePlan = (scanId: string, baseRevision: number, moves: NodeMove[]) =>
   send<LayoutPlan>(`/api/scans/${scanId}/plans`, json("POST", { base_revision: baseRevision, moves }));
+
+/** The plan saved most recently on this revision of the shop; an older revision's moves would land on the wrong pieces. */
+export const latestPlan = async (scanId: string, revision: number): Promise<LayoutPlan | null> => {
+  const { plans } = await send<PlanList>(`/api/scans/${scanId}/plans`, { method: "GET" });
+  return plans.findLast((plan) => plan.base_revision === revision) ?? null;
+};
 
 export const saveAccount = (email: string, password: string) =>
   send<Session>("/api/auth/save", json("POST", { email, password }));

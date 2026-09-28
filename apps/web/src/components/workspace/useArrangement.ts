@@ -19,6 +19,13 @@ export type Arrangement = ReturnType<typeof useArrangement>;
 /** Where a finished layout goes. The workspace saves it as the shop's record; the owner view saves it as a plan. */
 export type Persist = (scanId: string, baseRevision: number, moves: NodeMove[], suggestionId?: string) => Promise<unknown>;
 
+/**
+ * What the screen shows once a layout is saved. The shop's record comes back as
+ * a new revision with the moves already in it, so they are cleared; a plan
+ * leaves the shop as scanned, so its moves stay where the owner left them.
+ */
+export type AfterSave = "clear" | "keep";
+
 type Layout = {
   moves: MoveSet;
   check: LayoutCheckResult | null;
@@ -177,14 +184,16 @@ function useSuggestion(scanId: string, revision: number, setProblem: (problem: s
   return { source, puttingBack, suggestionId, mark, release };
 }
 
-function useSave(scanId: string, revision: number, persist: Persist, movesRef: { current: MoveSet }, suggestionId: { current: string | null }, reset: () => void, setProblem: (problem: string) => void) {
+function useSave(scanId: string, revision: number, persist: Persist, afterSave: AfterSave, movesRef: { current: MoveSet }, suggestionId: { current: string | null }, reset: () => void, setProblem: (problem: string) => void) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [savedKey, setSavedKey] = useState<string | null>(null);
   const save = useCallback(async () => {
     setSaving(true);
     try {
       await persist(scanId, revision, Object.values(movesRef.current), suggestionId.current ?? undefined);
-      reset();
+      setSavedKey(layoutKey(movesRef.current));
+      if (afterSave === "clear") reset();
       router.refresh();
       setTimeout(() => router.refresh(), 3000);
       return true;
@@ -201,11 +210,15 @@ function useSave(scanId: string, revision: number, persist: Persist, movesRef: {
     } finally {
       setSaving(false);
     }
-  }, [scanId, revision, persist, movesRef, suggestionId, reset, router, setProblem]);
-  return { save, saving };
+  }, [scanId, revision, persist, movesRef, suggestionId, afterSave, reset, router, setProblem]);
+  return { save, saving, savedKey, setSavedKey };
 }
 
-export function useArrangement(scanId: string, scene: SceneGraph, persist: Persist = saveLayout) {
+function movesOf(proposed: NodeMove[]): MoveSet {
+  return Object.fromEntries(proposed.map((move) => [move.node_id, move]));
+}
+
+export function useArrangement(scanId: string, scene: SceneGraph, persist: Persist = saveLayout, afterSave: AfterSave = "clear") {
   const state = useLayoutState();
   const { layout, setLayout, movesRef, legalRef, place } = state;
   const { cached: cachedCheck, checking, latencyMs, request, cancel } = useChecker(scanId, scene.revision, state);
@@ -266,7 +279,7 @@ export function useArrangement(scanId: string, scene: SceneGraph, persist: Persi
   }, [movesRef, legalRef, layout.history, jumpTo, mark]);
 
   const loadFrom = useCallback((proposed: NodeMove[], event: ArrangementEvent, id: string | null = null) => {
-    const moves = Object.fromEntries(proposed.map((move) => [move.node_id, move]));
+    const moves = movesOf(proposed);
     place(moves, { refused: NO_BLOCKS });
     mark(event, id);
     setActiveId(proposed[0]?.node_id ?? null);
@@ -278,7 +291,7 @@ export function useArrangement(scanId: string, scene: SceneGraph, persist: Persi
 
   const preview = useCallback((proposed: NodeMove[]) => {
     cancel();
-    place(Object.fromEntries(proposed.map((move) => [move.node_id, move])), { check: null, problem: null, refused: NO_BLOCKS });
+    place(movesOf(proposed), { check: null, problem: null, refused: NO_BLOCKS });
     mark("loaded");
   }, [cancel, place, mark]);
 
@@ -301,17 +314,26 @@ export function useArrangement(scanId: string, scene: SceneGraph, persist: Persi
     return true;
   }, [suggestionId, release, clearPending]);
 
-  const { save, saving } = useSave(scanId, scene.revision, persist, movesRef, suggestionId, clearPending, setProblem);
+  const { save, saving, savedKey, setSavedKey } = useSave(scanId, scene.revision, persist, afterSave, movesRef, suggestionId, clearPending, setProblem);
+
+  /** Brings back a layout saved earlier, unless the owner has already started moving pieces. */
+  const restore = useCallback((saved: NodeMove[]) => {
+    if (Object.keys(movesRef.current).length > 0 || saved.length === 0) return;
+    loadFrom(saved, "loaded");
+    setActiveId(null);
+    setSavedKey(layoutKey(movesOf(saved)));
+  }, [movesRef, loadFrom, setSavedKey]);
 
   const { moves, check } = layout;
   const hasMoves = Object.keys(moves).length > 0;
+  const saved = savedKey === layoutKey(moves);
   const blockedIds = useMemo(() => new Set(check?.blocked.map((b) => b.node_id) ?? []), [check]);
-  const canSave = hasMoves && !checking && !saving && check !== null && check.blocked.length === 0;
+  const canSave = hasMoves && !saved && !checking && !saving && check !== null && check.blocked.length === 0;
 
   return {
-    shown, moves, check, checking, saving, problem: layout.problem, activeId, hasMoves, blockedIds, canSave,
+    shown, moves, check, checking, saving, saved, problem: layout.problem, activeId, hasMoves, blockedIds, canSave,
     baseline: layout.baseline, refused: layout.refused, canUndo: layout.history.length > 0, latencyMs,
     source: suggestion.source, puttingBack: suggestion.puttingBack,
-    setActiveId, drag, drop, nudge, reset, clearPending, putBack, undo, start, save, load, loadSuggestion, preview,
+    setActiveId, drag, drop, nudge, reset, clearPending, putBack, undo, start, save, load, loadSuggestion, preview, restore,
   };
 }
