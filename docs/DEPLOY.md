@@ -538,6 +538,19 @@ carries one, and falls back to an address saved in `UserDefaults` only when
 it does not, so a shipped build always talks to production however the phone
 was pointed before.
 
+## Updating the pinned Caddy image
+
+Caddy is the only container that faces the internet, so the compose file pins it
+by digest rather than by the moving `2-alpine` tag. To take a newer release, look
+up the tag's current digest and replace the one in `docker-compose.yml`:
+
+```bash
+docker buildx imagetools inspect caddy:2-alpine --format '{{json .Manifest.Digest}}'
+```
+
+Then deploy as usual. The next `docker compose up -d` recreates only the Caddy
+container, which drops open connections for about a second.
+
 ## Cost
 
 | | |
