@@ -8,6 +8,8 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime
 
+from standardphysics_agents.checks_version import checks_version
+
 from standardphysics_contracts import (
     GEOMETRY_REQUIRED_ARTIFACT_KINDS,
     SEMANTIC_REQUIRED_ARTIFACT_KINDS,
@@ -695,12 +697,13 @@ def scenario_version(connection: sqlite3.Connection, scan_id: uuid.UUID) -> int 
 
 
 def save_assessment(connection: sqlite3.Connection, assessment: Assessment) -> None:
+    """Stored with the fingerprint of the checks that made it, so a deploy that changes them can check again."""
     connection.execute(
         "INSERT INTO assessments (id, scan_id, graph_revision, assessment_json,"
-        " created_at, scenario_version)"
-        " VALUES (?, ?, ?, ?, ?, (SELECT version FROM scenarios WHERE scan_id = ?))"
+        " created_at, scenario_version, checks_version)"
+        " VALUES (?, ?, ?, ?, ?, (SELECT version FROM scenarios WHERE scan_id = ?), ?)"
         " ON CONFLICT (id) DO UPDATE SET assessment_json = excluded.assessment_json,"
-        " scenario_version = excluded.scenario_version",
+        " scenario_version = excluded.scenario_version, checks_version = excluded.checks_version",
         (
             str(assessment.id),
             str(assessment.scan_id),
@@ -708,8 +711,25 @@ def save_assessment(connection: sqlite3.Connection, assessment: Assessment) -> N
             assessment.model_dump_json(),
             now(),
             str(assessment.scan_id),
+            checks_version(),
         ),
     )
+
+
+def results_made_under_other_checks(connection: sqlite3.Connection) -> list[tuple[uuid.UUID, int]]:
+    """Each ready shop whose current revision was last checked under different checks, with that revision."""
+    rows = connection.execute(
+        "SELECT scans.id AS scan_id, latest.revision AS revision FROM scans"
+        " JOIN (SELECT scan_id, MAX(revision) AS revision FROM revisions GROUP BY scan_id) AS latest"
+        "   ON latest.scan_id = scans.id"
+        " JOIN assessments ON assessments.scan_id = scans.id AND assessments.graph_revision = latest.revision"
+        " WHERE scans.state = 'ready' AND assessments.created_at = ("
+        "   SELECT MAX(created_at) FROM assessments AS newer"
+        "   WHERE newer.scan_id = scans.id AND newer.graph_revision = latest.revision)"
+        " AND (assessments.checks_version IS NULL OR assessments.checks_version != ?)",
+        (checks_version(),),
+    ).fetchall()
+    return [(uuid.UUID(row["scan_id"]), row["revision"]) for row in rows]
 
 
 def latest_revision_number(connection: sqlite3.Connection, scan_id: uuid.UUID) -> int | None:

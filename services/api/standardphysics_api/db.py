@@ -148,7 +148,8 @@ CREATE TABLE IF NOT EXISTS assessments (
     graph_revision INTEGER NOT NULL,
     assessment_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    scenario_version INTEGER
+    scenario_version INTEGER,
+    checks_version TEXT
 );
 CREATE TABLE IF NOT EXISTS evidence_bundles (
     scan_id TEXT NOT NULL REFERENCES scans(id),
@@ -253,7 +254,7 @@ ADDED_COLUMNS = {
         ("queued_at", "TEXT"),
     ),
     "scenarios": (("version", "INTEGER NOT NULL DEFAULT 0"),),
-    "assessments": (("scenario_version", "INTEGER"),),
+    "assessments": (("scenario_version", "INTEGER"), ("checks_version", "TEXT")),
     "rearrangements": (("phase_reason", "TEXT"),),
 }
 """Columns that arrived after a table shipped, by the table they belong to.

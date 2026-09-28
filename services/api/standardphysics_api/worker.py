@@ -264,9 +264,20 @@ class Worker:
                 self._take_the_queue()
                 return
 
+    def recheck_stale_results(self) -> int:
+        """Queue a check of every shop whose results older checks made; how many were queued."""
+        with self.database.transaction() as connection:
+            stale = repo.results_made_under_other_checks(connection)
+            for scan_id, revision in stale:
+                repo.queue_job_again(connection, scan_id, ASSESS, revision)
+        if stale:
+            log.warning("checking %d shops again: their results came from checks this deploy changed", len(stale))
+        return len(stale)
+
     def _take_the_queue(self) -> None:
         try:
             self._recover_interrupted_jobs()
+            self.recheck_stale_results()
         except Exception:
             self.lock.release()
             raise
