@@ -57,6 +57,13 @@ SCAN_SHARE = 0.4
 """The share of rooms built inside a real scan rather than generated rectangles."""
 LEAST_MOVABLE_PIECES = 3
 """A room with fewer movable pieces on the floor gives a rearrangement nothing to do."""
+DINING_TABLES = frozenset({"Cafe table", "Table", "Bar table", "Accessible table"})
+SEATED_TABLE_TOP = 0.765
+"""The highest top, in metres, that still counts as a seated-height table (the 0.74 to 0.76 m tables)."""
+HIGH_TABLE_TOP = 1.0
+"""The lowest top, in metres, that counts as a high table (the 1.05 m bar tables and ledges)."""
+LEAST_TABLES_FOR_A_HIGH_ONE = 3
+"""A dining room with this many tables or more has room for a high one as well as seated ones."""
 ACCESSIBLE_TABLE_TRY = 0.75
 """How often a dining room tries for an accessible table; about one try in five finds no site, leaving ~60%."""
 
@@ -250,7 +257,7 @@ class ShopType:
         return self.visit[1] == "Browse"
 
 
-SEAT_VISIT = (frozenset({"Cafe table", "Table", "Bar table", "Accessible table"}), "Seat")
+SEAT_VISIT = (DINING_TABLES, "Seat")
 WAIT_VISIT = (frozenset({"Chair", "Bench"}), "Wait")
 LOUNGE_VISIT = (frozenset({"Sofa", "Armchair", "Bench"}), "Wait")
 SHOP_TYPES = (
@@ -594,6 +601,19 @@ def _movable_floor_pieces(room: Room) -> int:
                and node.transform.m[11] - node.dimensions.z / 2 <= RESTING_GAP)
 
 
+def _lacks_table_heights(room: Room) -> bool:
+    """A dining room without a seated-height table, or with three or more tables and no high one.
+
+    The early "low" and "high" groups make this rare but do not rule it out: both can fail to find a
+    site in 25 tries and the weighted draw may never pick them afterwards."""
+    if not room.shop.dining:
+        return False
+    tops = [node.transform.m[11] + node.dimensions.z / 2 for node in room.nodes if node.label in DINING_TABLES]
+    has_seated = any(top <= SEATED_TABLE_TOP for top in tops)
+    has_high = len(tops) < LEAST_TABLES_FOR_A_HIGH_ONE or any(top >= HIGH_TABLE_TOP for top in tops)
+    return not (has_seated and has_high)
+
+
 def build_room(name: str, shop: ShopType, rng: random.Random,
                from_scan: bool = False) -> tuple[SceneGraph, Scenario] | None:
     room = Room(name, shop, rng, _shell(rng, shop, from_scan))
@@ -603,7 +623,7 @@ def build_room(name: str, shop: ShopType, rng: random.Random,
     _amenities(room, entrance, hub)
     _furnish(room)
     visit = _destination(room)
-    if visit is None or _movable_floor_pieces(room) < LEAST_MOVABLE_PIECES:
+    if visit is None or _movable_floor_pieces(room) < LEAST_MOVABLE_PIECES or _lacks_table_heights(room):
         return None
     arrive, leave = _entry_stops(entrance.door, entrance.inside)
     journey = [visit, *service] if room.shop.browse_first else [*service, visit]
