@@ -183,7 +183,7 @@ class Worker:
         self.lock = WorkerLock(database.path)
         self._standby = False
         self.notifier: Notifier = LoggedNotifier()
-        self._swept_at = 0.0
+        self._swept_at: float | None = None
         self._on_this_thread = threading.local()
         self._unsettled: dict[int, str] = {}
         """Jobs whose outcome could not be written, by id, with the error. Cleared by a restart,
@@ -453,7 +453,7 @@ class Worker:
 
     def _sweep_hourly(self) -> None:
         """Delete expired guest shops and staged uploads nothing is writing any more."""
-        if time.monotonic() - self._swept_at < SWEEP_SECONDS:
+        if self._swept_at is not None and time.monotonic() - self._swept_at < SWEEP_SECONDS:
             return
         self._swept_at = time.monotonic()
         try:

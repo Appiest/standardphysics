@@ -224,3 +224,12 @@ def test_the_worker_sweeps_abandoned_staging_files_hourly(make_client, tmp_path)
         abandoned = _staging_file(tmp_path / "var", 7200)
         client.app.state.worker._sweep_hourly()
     assert not abandoned.exists()
+
+
+def test_the_first_sweep_runs_even_on_a_machine_that_booted_minutes_ago(make_client, tmp_path, monkeypatch):
+    """time.monotonic counts from boot, so a first-sweep gate measured from zero skipped a fresh CI runner's sweep."""
+    with make_client(staging_max_age_seconds=3600) as client:
+        abandoned = _staging_file(tmp_path / "var", 7200)
+        monkeypatch.setattr("standardphysics_api.worker.time.monotonic", lambda: 600.0)
+        client.app.state.worker._sweep_hourly()
+    assert not abandoned.exists()
