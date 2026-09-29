@@ -532,6 +532,7 @@ timer that `setup.sh` installs. It checks five things and posts a message to
 | readiness | `/health/ready` answers anything but 200, or cannot be reached | none |
 | queue | `oldest_queued_job_seconds` in `/health/details` is over the limit | `SP_MONITOR_QUEUE_SECONDS=1800` |
 | disk | the scans volume has less free space than the limit, measured with `df` | `SP_MONITOR_MIN_FREE_PERCENT=15` |
+| system_disk | the Droplet's own disk, where Docker keeps its images, has less free space than the limit | `SP_MONITOR_SYSTEM_MIN_FREE_PERCENT=20` |
 | backup | the newest snapshot in `SP_BACKUP_DEST` is older than the limit, or there is none, or `SP_BACKUP_DEST` is empty. `SP_BACKUPS_NOT_WANTED=1` skips it on a box whose data nobody needs back. | `SP_MONITOR_BACKUP_HOURS=26` |
 | tracing | `WANDB_API_KEY` is set and `tracing` in `/health/details` says tracing is off, or counts a failed delivery | none |
 

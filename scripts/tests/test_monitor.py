@@ -24,8 +24,10 @@ KIB_PER_GIB = 1 << 20
 VOLUME_KIB = 100 * KIB_PER_GIB
 
 FAKE_DF = """#!/usr/bin/env bash
+available="$FAKE_DF_AVAILABLE"
+[ "${@: -1}" = "${SP_MONITOR_SYSTEM_PATH:-}" ] && available="${FAKE_DF_SYSTEM_AVAILABLE:-$available}"
 echo "Filesystem 1024-blocks Used Available Capacity Mounted on"
-echo "/dev/sda $FAKE_DF_SIZE 0 $FAKE_DF_AVAILABLE 0% ${@: -1}"
+echo "/dev/sda $FAKE_DF_SIZE 0 $available 0% ${@: -1}"
 """
 
 
@@ -89,6 +91,7 @@ class Monitor:
         df.write_text(FAKE_DF)
         df.chmod(0o755)
         (tmp_path / "scans").mkdir()
+        (tmp_path / "system").mkdir()
         self.backups = tmp_path / "backups"
         url = f"http://127.0.0.1:{server.server_port}"
         self.environment = {
@@ -100,6 +103,7 @@ class Monitor:
             "SP_MONITOR_STATE": str(tmp_path / "state/failing"),
             "SP_MONITOR_PYTHON": sys.executable,
             "SCANS_PATH": str(tmp_path / "scans"),
+            "SP_MONITOR_SYSTEM_PATH": str(tmp_path / "system"),
             "SP_BACKUP_DEST": "",
             "SP_BACKUPS_NOT_WANTED": "1",
             "WANDB_API_KEY": "",
@@ -230,3 +234,11 @@ def test_an_alert_the_webhook_refused_is_sent_again_on_the_next_run(monitor, ser
     server.hook_status = 200
     monitor.run_ok()
     assert len(monitor.alert_texts()) == 1
+
+
+def test_a_full_system_disk_is_reported_while_the_scans_volume_has_room(monitor):
+    monitor.environment["FAKE_DF_SYSTEM_AVAILABLE"] = str(VOLUME_KIB * 4 // 100)
+    monitor.run_ok()
+    (alert,) = monitor.alert_texts()
+    assert "Failing: system_disk:" in alert and "4% free" in alert
+    assert "Failing: disk:" not in alert

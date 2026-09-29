@@ -5,7 +5,7 @@
 #
 #   ./monitor.sh
 #
-# Five checks, each against a threshold or a setting in .env:
+# Six checks, each against a threshold or a setting in .env:
 #
 #   readiness  /health/ready answers 200. It fails while a worker loop has
 #              died, stalled, or run a job past its deadline, which /health,
@@ -16,6 +16,10 @@
 #              or far behind.
 #   disk       the scans volume has at least SP_MONITOR_MIN_FREE_PERCENT free,
 #              15 by default. SQLite fails every write once it is full.
+#   system_disk  the Droplet's own disk, SP_MONITOR_SYSTEM_PATH (/ by default),
+#              has at least SP_MONITOR_SYSTEM_MIN_FREE_PERCENT free, 20 by
+#              default. Docker keeps its images there, and a day of deploys
+#              once filled it to 96% while the scans volume stayed half empty.
 #   backup     the newest snapshot in SP_BACKUP_DEST is at most
 #              SP_MONITOR_BACKUP_HOURS old, 26 by default, which is one nightly
 #              run plus its randomised delay and some slack. An empty
@@ -62,6 +66,8 @@ BACKUPS_NOT_WANTED="$(setting SP_BACKUPS_NOT_WANTED)"
 WANDB_KEY="$(setting WANDB_API_KEY)"
 QUEUE_LIMIT_SECONDS="$(setting SP_MONITOR_QUEUE_SECONDS 1800)"
 MIN_FREE_PERCENT="$(setting SP_MONITOR_MIN_FREE_PERCENT 15)"
+SYSTEM_DISK="$(setting SP_MONITOR_SYSTEM_PATH /)"
+SYSTEM_MIN_FREE_PERCENT="$(setting SP_MONITOR_SYSTEM_MIN_FREE_PERCENT 20)"
 BACKUP_LIMIT_HOURS="$(setting SP_MONITOR_BACKUP_HOURS 26)"
 STATE="$(setting SP_MONITOR_STATE /var/lib/standardphysics-monitor/failing)"
 PYTHON="$(setting SP_MONITOR_PYTHON python3)"
@@ -129,15 +135,24 @@ check_queue() {
   return 1
 }
 
+# Fails, saying why, when the filesystem holding $1 has less than $2 percent free.
+enough_free_space() {
+  local path="$1" limit="$2" size available free_percent
+  read -r size available < <(df -Pk "$path" 2>/dev/null | awk 'NR == 2 {print $2, $4}')
+  [[ "${size:-}" =~ ^[1-9][0-9]*$ ]] || { echo "df could not measure $path"; return 1; }
+  free_percent=$((available * 100 / size))
+  [ "$free_percent" -ge "$limit" ] && return 0
+  echo "$path has ${free_percent}% free ($((available / 1048576)) GB), under the ${limit}% limit"
+  return 1
+}
+
 check_disk() {
   [ -n "$SCANS" ] || { echo "SCANS_PATH is not set, so the scans volume cannot be measured"; return 1; }
-  local size available free_percent
-  read -r size available < <(df -Pk "$SCANS" 2>/dev/null | awk 'NR == 2 {print $2, $4}')
-  [[ "${size:-}" =~ ^[1-9][0-9]*$ ]] || { echo "df could not measure $SCANS"; return 1; }
-  free_percent=$((available * 100 / size))
-  [ "$free_percent" -ge "$MIN_FREE_PERCENT" ] && return 0
-  echo "$SCANS has ${free_percent}% free ($((available / 1048576)) GB), under the ${MIN_FREE_PERCENT}% limit"
-  return 1
+  enough_free_space "$SCANS" "$MIN_FREE_PERCENT"
+}
+
+check_system_disk() {
+  enough_free_space "$SYSTEM_DISK" "$SYSTEM_MIN_FREE_PERCENT"
 }
 
 check_backup() {
@@ -168,7 +183,7 @@ check_tracing() {
 # One line per failing check: its name, a tab, and why.
 failing_checks() {
   local name reason
-  for name in readiness queue disk backup tracing; do
+  for name in readiness queue disk system_disk backup tracing; do
     reason="$("check_$name")" || printf '%s\t%s\n' "$name" "$reason"
   done
 }
