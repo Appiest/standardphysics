@@ -91,6 +91,33 @@ Docker and SSH still have room. The comment at the top of
 `docker-compose.yml` has the arithmetic. On a bigger Droplet, raise them
 there.
 
+### Offloading bakes and renders to another machine
+
+A machine with more memory can run the photo bakes and Blender steps instead
+(`services/api/standardphysics_api/offload.py`). The Droplet sends each call's
+files over Tailscale and gets the results back. The other machine refuses any
+call whose commit or Blender version differs from its own, and then the
+Droplet does the work itself, so a stale or switched-off offload box only
+makes jobs slower.
+
+On the offload machine, a clean checkout of the deployed commit, a venv built
+the way the Dockerfile builds one, and the Dockerfile's Blender version:
+
+```sh
+cd ~/sp-offload/repo && git status --porcelain   # must print nothing
+SP_OFFLOAD_TOKEN=<secret> BLENDER=<path to Blender 5.2.1> \
+  caffeinate -i -s ../venv/bin/python -m standardphysics_api.offload --host <its Tailscale IP> --port 8790
+```
+
+On the Droplet, join the same tailnet (`curl -fsSL https://tailscale.com/install.sh | sh`,
+then `tailscale up`), check the API container can reach it with
+`docker compose exec -T api /opt/venv/bin/python -c "import urllib.request; print(urllib.request.urlopen('http://<IP>:8790/v1/health').read())"`,
+and add
+`SP_OFFLOAD_URL=http://<IP>:8790` and the same `SP_OFFLOAD_TOKEN` to `.env`.
+A job that ran here because the box refused or was unreachable logs
+`ran here because the offload box ... did not`, with the reason. Every deploy
+means checking the offload machine out at the new commit and restarting it.
+
 Logs are capped too, so a chatty week cannot fill the Droplet disk. Docker
 keeps each container's output in at most five 20 MB files, which is as far
 back as `docker compose logs` can reach. `setup.sh` installs
