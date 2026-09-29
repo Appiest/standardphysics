@@ -22,6 +22,8 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from standardphysics_pipeline.astra_transport import provider_routing
+
 from .router.decision import Rejected
 from .tracing import traced
 
@@ -32,17 +34,6 @@ BASE_URL_ENV = "OPENROUTER_BASE_URL"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL = "anthropic/claude-opus-5.5"
 
-
-def provider_routing(model: str) -> dict:
-    """Pin the request to the provider that makes the model, and retain nothing.
-
-    OpenRouter names a model "<provider>/<model>", so the provider comes from the
-    name: pinning OpenAI while asking for an Anthropic model fails every request.
-    Pinning keeps a rehearsal and the live run on the same backend.
-    `data_collection: deny` is the per-request half of zero data retention; the
-    account setting is the other half and a person sets that one.
-    """
-    return {"order": [model.split("/")[0]], "allow_fallbacks": False, "data_collection": "deny"}
 
 REQUEST_TIMEOUT_SECONDS = 30.0
 """Long enough for one structured answer about a room.

@@ -33,6 +33,11 @@ FALLBACK_BASE_URL_ENV = "OPENROUTER_BASE_URL"
 DEFAULT_MODEL = "google/gemini-3.8-flash"
 DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_HOST = "openrouter.ai"
+FIREWORKS_HOST = "api.fireworks.ai"
+HOST_KEYS = {FIREWORKS_HOST: "FIREWORKS_API_KEY", OPENROUTER_HOST: FALLBACK_KEY_ENV}
+"""Each host's usual key, used when DISCOVERY_API_KEY is unset, so a Fireworks endpoint never gets the OpenRouter key."""
+HOST_DEFAULT_MODELS = {FIREWORKS_HOST: "accounts/fireworks/models/deepseek-v4p1-flash"}
+"""The model a host serves when DISCOVERY_MODEL is blank; DEFAULT_MODEL is an OpenRouter name Fireworks answers 404 to."""
 PROVIDER_ROUTING = {"data_collection": "deny"}
 """OpenRouter's own routing rules. Every other host rejects or ignores them, so
 they travel only when the request is going to OpenRouter."""
@@ -160,7 +165,7 @@ def _backoff(attempt: int) -> float:
 
 
 def configured_api_key() -> str:
-    return os.environ.get(API_KEY_ENV) or os.environ.get(FALLBACK_KEY_ENV) or ""
+    return os.environ.get(API_KEY_ENV) or os.environ.get(HOST_KEYS.get(endpoint_host(), FALLBACK_KEY_ENV)) or ""
 
 
 def base_url() -> str:
@@ -181,7 +186,7 @@ def request_options() -> dict[str, Any]:
 
 
 def answer_model() -> str:
-    return os.environ.get(MODEL_ENV) or DEFAULT_MODEL
+    return os.environ.get(MODEL_ENV) or HOST_DEFAULT_MODELS.get(endpoint_host(), DEFAULT_MODEL)
 
 
 def answer_identity() -> str:
@@ -190,7 +195,7 @@ def answer_identity() -> str:
     The cache is keyed by this, so an answer given with reasoning on is never
     served as one given with it off.
     """
-    model = os.environ.get(MODEL_ENV) or DEFAULT_MODEL
+    model = answer_model()
     reasoning = REASONING_OFF_BY_HOST.get(endpoint_host())
     return model if not reasoning else f"{model}|{json.dumps(reasoning, sort_keys=True)}"
 

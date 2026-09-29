@@ -142,12 +142,18 @@ STEPS: tuple[Callable[[ShopState], Step | None], ...] = (
 )
 
 
+TOOLS_OPEN_FROM = STEPS.index(_follow_ups)
+"""The tools open with the results: an owner still owed follow-up measurements can already try a layout."""
+
+
 def journey(state: ShopState) -> Journey:
-    stage, next_step = next((step for check in STEPS if (step := check(state))), None) or _fixing(state)
+    reached, (stage, next_step) = next(
+        ((index, step) for index, check in enumerate(STEPS) if (step := check(state))), None
+    ) or (len(STEPS), _fixing(state))
     return Journey(
         scan_id=state.scan.id,
         shop_name=state.shop_name,
         stage=stage,
         next_step=next_step,
-        tools_unlocked=stage in {"results", "fix", "tools"},
+        tools_unlocked=reached >= TOOLS_OPEN_FROM,
     )

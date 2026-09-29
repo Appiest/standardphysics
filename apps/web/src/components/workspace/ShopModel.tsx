@@ -5,7 +5,7 @@ import { useThree, type ThreeEvent } from "@react-three/fiber";
 import { Wrench } from "@phosphor-icons/react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { BoxGeometry, Matrix4, Mesh, MeshStandardMaterial, Plane, Raycaster, Vector3, type BufferGeometry, type Intersection, type Material } from "three";
-import { canUseCapturedGlbGeometry, displayScale, MAX_DISPLAY_WALL_HEIGHT } from "@/lib/display-geometry";
+import { canUseCapturedGlbGeometry, displayScale, drawnInModel, MAX_DISPLAY_WALL_HEIGHT } from "@/lib/display-geometry";
 import { groupGlbPrimitives } from "@/lib/glb-parts";
 import { displayMatrix, toViewerMatrix } from "@/lib/scene-matrix";
 import type { SceneGraph, SceneNode } from "@/types/contracts";
@@ -374,7 +374,7 @@ function ModelNodes({ placements, ...props }: { placements: Placed[] } & Omit<Mo
 }
 
 function visibleNodes(scene: SceneGraph, includeFloors = false): SceneNode[] {
-  return scene.nodes.filter((node) => !HIDDEN_KINDS.has(node.kind) && (includeFloors || node.kind !== "floor"));
+  return drawnInModel(scene.nodes).filter((node) => !HIDDEN_KINDS.has(node.kind) && (includeFloors || node.kind !== "floor"));
 }
 
 const glbPlacementCache = new WeakMap<SceneNode, { stale: boolean; placed: Placed[] }>();

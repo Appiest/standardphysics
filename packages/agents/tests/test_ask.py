@@ -206,6 +206,10 @@ class TestTheModelCall:
         assert provider_routing("openai/gpt-6-astra")["order"] == ["openai"]
         assert provider_routing("anthropic/claude-opus-5.5")["data_collection"] == "deny"
 
+    def test_gemini_is_pinned_to_the_endpoints_openrouter_names_for_google(self):
+        assert provider_routing("google/gemini-3.8-flash")["order"] == ["google-vertex", "google-ai-studio"]
+        assert provider_routing("google/gemini-3.8-flash")["allow_fallbacks"] is False
+
     def test_the_prompt_carries_no_key_and_no_transforms(self, graph, scenario):
         client = FakeModel('{"kind": "COUNT", "subject_labels": ["x"], "restated": "y"}')
         ModelResolver(OpenRouter(api_key="secret-key", client=client)).resolve(

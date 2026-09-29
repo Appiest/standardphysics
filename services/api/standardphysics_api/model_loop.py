@@ -2,7 +2,8 @@
 
 Set SP_LOOP_MODEL_URL and SP_LOOP_MODEL (an OpenAI-compatible server, such as
 the Fireworks fine-tune behind scripts/finetune/fireworks_chat_server.py) and
-SP_LOOP_MODEL_LABEL (what the owner's button calls it). Each turn builds the
+SP_LOOP_MODEL_LABEL (what the owner's button calls it); without them the loop
+takes the menu's best-ranked option each turn. Each turn builds the
 menu for every problem still left, asks the model, applies its pick and
 re-checks, for at most MODEL_LOOP_TURNS turns, each menu built within LOOP_MENU_SECONDS. Furniture and built-in
 moves are offered (a slid counter is construction, reported as such); wall
@@ -49,7 +50,7 @@ from standardphysics_contracts import (
 
 from .db import Database
 from .layout import plan_candidate
-from .model_chooser import ModelChooser, ModelReplyError, ModelSlots, without_wall_shifts
+from .model_chooser import REPLY_SECONDS, ModelChooser, ModelReplyError, ModelSlots, without_wall_shifts
 from .proposals import fix_inputs, owner_wishes_of, space_typology_of
 from .stages import Stages
 
@@ -64,13 +65,39 @@ UNEXPECTED_FAILURE = "Something went wrong on our side while fixing the room. No
 clock: Callable[[], float] = time.monotonic
 
 
-def loop_chooser() -> ModelChooser | None:
-    return ModelChooser.from_environment(LOOP_ENVIRONMENT)
+@dataclass(frozen=True)
+class RankedMenuChooser:
+    """Runs the loop with no model: each turn takes the option the menu ranked first.
+
+    The menu ranks by problems cleared, then construction, then inches moved. On
+    the 30 validation rooms of 2026-09-28 this cleared 27, the same as Kimi K3,
+    Jev and the fine-tune, so a server without a model still offers Fix room.
+    """
+
+    label: str = "Standard Physics"
+    reply_seconds: float = REPLY_SECONDS
+
+    def ask(self, messages: list[dict], seconds: float | None = None) -> str:
+        best = json.loads(messages[-1]["content"])["options"][0]
+        return json.dumps({"choose": [best["option"]], "why": _ranked_first_because(best.get("clears", []))})
+
+
+def _ranked_first_because(clears: list[str]) -> str:
+    """The reason in problem labels, which the loop turns into the owner's titles."""
+    if not clears:
+        return "No move clears a problem outright yet, and this one gets closest with the least building and moving."
+    return f"It clears {' and '.join(clears)} with the least building and moving."
+
+
+Chooser = ModelChooser | RankedMenuChooser
+
+
+def loop_chooser() -> Chooser:
+    return ModelChooser.from_environment(LOOP_ENVIRONMENT) or RankedMenuChooser()
 
 
 def loop_info() -> ModelLoopInfo:
-    chooser = loop_chooser()
-    return ModelLoopInfo(available=chooser is not None, label=chooser.label if chooser else "")
+    return ModelLoopInfo(available=True, label=loop_chooser().label)
 
 
 def _combined(moves: dict[uuid.UUID, NodeMove], added: list[NodeMove]) -> dict[uuid.UUID, NodeMove]:
@@ -196,7 +223,7 @@ def _proposed(loop: ModelLoop, plan: Plan) -> list[uuid.UUID]:
     return [node_id for node_id, move in loop.moves.items() if started.get(node_id) != move]
 
 
-def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: ModelChooser, typology,
+def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: Chooser, typology,
             wishes) -> Iterator[ModelLoopEvent]:
     """Turns until the room is clear, the menu runs dry, the model picks nothing, or the turns or time run out."""
     with stages.locked():
@@ -236,7 +263,7 @@ def _line(event: ModelLoopEvent) -> str:
     return json.dumps(event.model_dump(mode="json")) + "\n"
 
 
-def _failure(chooser: ModelChooser, error: Exception) -> str:
+def _failure(chooser: Chooser, error: Exception) -> str:
     if isinstance(error, TimeoutError):
         return f"{chooser.label} took longer than {_in_words(chooser.reply_seconds)} to answer. Try again."
     if isinstance(error, ModelReplyError):
@@ -244,7 +271,7 @@ def _failure(chooser: ModelChooser, error: Exception) -> str:
     return f"Unable to reach {chooser.label}: {error}. Try again."
 
 
-def _streamed(events: Iterator[ModelLoopEvent], chooser: ModelChooser, release: Callable[[], None]) -> Iterator[str]:
+def _streamed(events: Iterator[ModelLoopEvent], chooser: Chooser, release: Callable[[], None]) -> Iterator[str]:
     try:
         yield from (_line(event) for event in events)
     except (OSError, ModelReplyError) as error:
@@ -267,8 +294,6 @@ def stream_model_loop(
     stream has started, and its slot comes back when it ends or is dropped.
     """
     chooser = loop_chooser()
-    if chooser is None:
-        return iter([_line(ModelLoopEvent(kind="failed", message="No model is set up to run the loop."))])
     graph, scenario, _ = fix_inputs(database, scan_id, body.base_revision)
     plan = _plan(graph, body.moves)
     if isinstance(plan, str):

@@ -40,11 +40,20 @@ def _first_option(self, messages, seconds=None):
     return json.dumps({"choose": [options[0]["option"]], "why": "It clears P1 with the least moving."})
 
 
-def test_the_button_is_hidden_until_a_model_is_set_up(make_client, monkeypatch):
+def test_without_a_model_the_loop_takes_the_menus_best_ranked_move_each_turn(make_client, monkeypatch):
     monkeypatch.delenv("SP_LOOP_MODEL_URL", raising=False)
+    monkeypatch.delenv("SP_LOOP_MODEL", raising=False)
     client, scan_id = _sample(make_client)
-    assert client.get("/api/model-loop").json() == {"available": False, "label": ""}
-    assert _events(client, scan_id)[-1]["kind"] == "failed"
+    assert client.get("/api/model-loop").json() == {"available": True, "label": "Standard Physics"}
+    events = _events(client, scan_id)
+    assert events[0]["kind"] == "started" and events[-1]["kind"] == "finished"
+    turns = [event for event in events if event["kind"] == "turn"]
+    assert turns and all(turn["picked"] and turn["why"] for turn in turns)
+    before = [events[0], *turns]
+    cleared = [(set(earlier["working_on"]) - set(turn["working_on"]), turn["why"]) for earlier, turn in zip(before, turns)]
+    assert any(titles for titles, _ in cleared)
+    assert all(title in why for titles, why in cleared for title in titles)
+    assert events[-1]["moves"] and events[-1]["fixable_left"] < events[0]["fixable_left"]
 
 
 def test_the_model_takes_turns_until_it_stops_and_the_moves_add_up(make_client, monkeypatch):

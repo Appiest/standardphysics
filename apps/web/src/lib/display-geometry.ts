@@ -47,3 +47,42 @@ export function canUseCapturedGlbGeometry(node: SceneNode, geometry: BufferGeome
   if (stale) return false;
   return node.kind === "floor" ? hasUsableFloorMesh(geometry, matrix) : !needsDisplayBoxFallback(node, geometry, matrix);
 }
+
+/** `occupancy.UNCLAIMED_SURFACE`: a box the scan drew round LiDAR faces nothing claimed, which marks where a surface was seen. */
+const UNCLAIMED_SURFACE = "lidar_candidate";
+/** `bounds_the_room` in the contracts: how thin, and how broad or long, a region is to read as a sheet of the room. */
+const SHEET_THICKNESS = 0.05;
+const SHEET_AREA = 1.0;
+const SHEET_REACH = 2.0;
+
+function uprightExtent(node: SceneNode): number {
+  const m = node.transform.m;
+  const { x, y, z } = node.dimensions;
+  return Math.abs(m[8]) * x + Math.abs(m[9]) * y + Math.abs(m[10]) * z;
+}
+
+function boundsTheRoom(node: SceneNode): boolean {
+  const [thinnest, middle, longest] = [node.dimensions.x, node.dimensions.y, node.dimensions.z].sort((a, b) => a - b);
+  if (thinnest > SHEET_THICKNESS || middle <= SHEET_THICKNESS) return false;
+  return middle * longest >= SHEET_AREA || longest >= SHEET_REACH;
+}
+
+function wallMiddle(nodes: SceneNode[]): number | null {
+  const upright = nodes.filter((node) => boundsTheRoom(node) && uprightExtent(node) > SHEET_THICKNESS);
+  return upright.length ? Math.max(...upright.map((node) => node.transform.m[11])) : null;
+}
+
+function isALid(node: SceneNode, lidHeight: number | null): boolean {
+  const flat = boundsTheRoom(node) && uprightExtent(node) <= SHEET_THICKNESS;
+  return lidHeight !== null && flat && node.transform.m[11] - uprightExtent(node) / 2 > lidHeight;
+}
+
+/**
+ * The regions the model draws, as `blender.display_graph` exports them: none of the boxes round unclaimed
+ * LiDAR, which on a real scan span the whole room, and no flat sheet above the middle of the walls, which
+ * roofs the room over for a camera looking in from above.
+ */
+export function drawnInModel(nodes: SceneNode[]): SceneNode[] {
+  const lidHeight = wallMiddle(nodes);
+  return nodes.filter((node) => node.raw_category !== UNCLAIMED_SURFACE && !isALid(node, lidHeight));
+}

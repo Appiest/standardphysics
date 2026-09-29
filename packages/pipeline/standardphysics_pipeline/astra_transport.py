@@ -42,11 +42,15 @@ REASONING_OFF_BY_HOST: dict[str, dict[str, Any]] = {FIREWORKS_HOST: {"reasoning_
 
 MAKER_PROVIDERS = {"google": ["google-vertex", "google-ai-studio"], "qwen": ["alibaba"]}
 """OpenRouter names some makers' own endpoints differently from the maker prefix in the model id. Pinning to the
-bare prefix matched no endpoint for Gemini and Qwen, so every request 404ed and labelling fell back to the phone."""
+bare prefix matched no endpoint for Gemini and Qwen, so every request answered 404."""
 
 
 def provider_routing(model: str) -> dict:
-    """Pin the request to the provider that makes the model, and retain nothing."""
+    """Pin the request to the provider that makes the model, and retain nothing.
+
+    `data_collection: deny` is the per-request half of zero data retention; the
+    account setting is the other half and a person sets that one.
+    """
     maker = model.split("/")[0]
     return {"order": MAKER_PROVIDERS.get(maker, [maker]), "allow_fallbacks": False, "data_collection": "deny"}
 
