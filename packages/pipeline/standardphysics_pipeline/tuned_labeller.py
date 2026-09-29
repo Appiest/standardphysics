@@ -6,8 +6,9 @@ saved state, exports a sampling checkpoint, and sends plain completions requests
 template with thinking switched off, and the photos as data URLs. The transport takes astra's chat body and returns
 a chat-shaped payload, so astra's parsing and every check on the answer stay the same.
 
-On the held-out Moffett and Share Tea scans the epoch-1 adapter matched Opus's ADA role on 68 of 74 objects and
-found both ordering counters, against 49 of 57 answered by the untrained model.
+Trained on Opus answers corrected to an answer key (Claude Fable 5.1, GPT-6 Astra, Gemini 3.8 Flash, adjudicated),
+public kiosk, terminal and seating photos, and several views of every real scan. In cross-validation it named 82 of
+93 held-out objects right against production Opus's 91, level with Opus in rooms whose furniture it had seen.
 """
 
 from __future__ import annotations

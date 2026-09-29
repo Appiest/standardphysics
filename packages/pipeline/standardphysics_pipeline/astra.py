@@ -131,8 +131,12 @@ THIN_METERS = 0.04
 
 INSTRUCTION = (
     "Label every supplied object in this shop scan with an ordinary name such as "
-    "Ordering counter, Display case, Table, or Chair. Counters and plumbed-in "
-    "fixtures are not movable. Do not change sizes. You may add a display-only appearance "
+    "Ordering counter, Display case, Table, or Chair. Counters, plumbed-in fixtures, "
+    "and seating fixed to a floor or wall, such as booths, banquettes, built-in benches, "
+    "pews and bolted seat rows, are not movable. raw_category and label are the phone's "
+    "coarse guess and are often wrong: name what the photos show, such as Ordering kiosk, "
+    "Card reader or Payment terminal, even when the guess says Chair. "
+    "Do not change sizes. You may add a display-only appearance "
     "with a six-digit base color and broad material when the frame evidence is "
     "clear; when images_provided is false, appearance must be null. For each "
     "object, return reconstruction only when its calibrated photo crop evidence "
