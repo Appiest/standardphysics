@@ -181,17 +181,77 @@ The containers run as a non-root user with memory and CPU limits and rotated log
 
 ## Observability with W&B Weave
 
-Every ADA check and every model call is a Weave op ([`tracing.py`](packages/agents/standardphysics_agents/tracing.py)). The API traces the checks it runs for a request, and every worker child process starts its own tracing and flushes it before it exits, so a scan's processing appears in Weave end to end. `/health/details` reports whether the API process's tracing started, why not when it did not, and how many of its sends to W&B have failed.
+Everything in this section lives in one public W&B project, [imhaohao-university-of-california-berkeley/physics](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave), and every link opens without a W&B account. On 28 September 2026 at 10:42pm PT the project held 8,350 traced calls recorded since 13 September, and none of them raised an error. It also holds one Weave Evaluation with its 39-case dataset, the model that evaluation scores, and six evaluation runs. The project has no classic W&B training runs; the post-training results above are recorded in [`runs/finetune`](runs/finetune/synthetic/STATUS.txt).
 
-The checks are also scored as a [Weave Evaluation](packages/agents/standardphysics_agents/evaluation/weave_eval.py) over 39 labelled cases: the sample shop as shipped, and variants that move its walls, fixtures and doors so the right answer changes. Each configuration of the system is one run, tagged with the commit it scored. The latest, at commit `5ce8e53`:
+`@traced` in [`tracing.py`](packages/agents/standardphysics_agents/tracing.py) makes a function a Weave op. The API traces the checks it runs for a request, and every worker child process starts its own tracing and flushes it before it exits, so a scan's processing appears in Weave end to end. `/health/details` reports whether the API process's tracing started, why not when it did not, and how many of its sends to W&B have failed. The hosted model calls the Fix room makes through [`fireworks.py`](services/api/standardphysics_api/fireworks.py) are not traced yet, so they do not appear in the project.
 
-| Configuration | Finding precision | Finding recall | Fix resolves finding | Mean measurement error |
-|---|---|---|---|---|
-| [Measured pipeline, fixes on](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e705-edda-7723-b498-6e7dbd09b111) | 0.972 | 0.924 | 1.000 | 0.0008 in |
-| [Simplified stand-in measurements](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e707-23af-7205-91be-c9e9c1f1e0d8) | 0.380 | 0.924 | 0.800 | 8.57 in |
-| [Measured pipeline, fixes off](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e708-c957-76ce-8422-dbab54f22ed8) | 0.972 | 0.924 | not scored | 0.0008 in |
+### Traced operations
 
-The stand-in row is the control: swapping the measured geometry for merged boxes keeps recall but loses most of the precision in this suite. These 39 cases are synthetic variants of one modeled shop, not a measure of accuracy on independent field captures. Reproduce them with `standardphysics-agents weave-eval`.
+| Operation | What one call is | Calls | Example |
+|---|---|---|---|
+| `assess` | One assessment of a scene graph; every check below runs inside it | 546 | [Latest](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0eba2-a789-70bc-b324-16f1174d4777) |
+| `checks.run` and `checks.<rule>` | One accessibility rule measured against the scene graph; 17 rules, counted below | 1 to 545 per rule | Inside any `assess` call |
+| `router.local_policy` | The router choosing the loop's next action: `FIX`, `RESCAN_AREA`, `ASK_OWNER`, `ESCALATE` or `DONE` | 238 | [An `ASK_OWNER` decision](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e709-7332-71fd-bf7f-e497d0f0d2e8) |
+| `loop.pass` | One pass of the agent loop, which measures, lets the router decide, and then does only the action it chose | 4 | [The pass that ends a run](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e521-98a4-76af-8d93-5bc4a4b11ef9) |
+| `loop.rescan`, `loop.ask`, `loop.escalate`, `loop.done` | The action a pass carried out | 1 each | [Rescan](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e520-f214-782a-8452-b26c22c4d1d8), [ask](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e521-40ad-7ca6-a893-a811a242a60b), [escalate](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e521-8c7a-7e6a-99ba-4996e7eb3237), [done](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e521-dd51-71b2-9696-a6e498083319) |
+| `fix.propose` | A search for a furniture rearrangement that clears the targeted findings | 45 | [Latest](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0eb86-8de9-7d51-9f26-b5d44fd2b829) |
+| `evaluation.case`, `ShopReview.predict` | One labelled case run through one configuration of the system | 234 each | [A case from the fixes-off run](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e709-4b7f-75b9-bf91-0b2f0e76e429) |
+| `Evaluation.evaluate`, `Evaluation.predict_and_score`, `Evaluation.summarize` and the seven scorers | Weave's evaluation harness | 6, 234, 6, and 234 per scorer | The runs are listed below |
+
+<details>
+<summary>Calls per check</summary>
+
+| Check | Calls |
+|---|---|
+| `checks.run` (the parent of the rules below) | 546 |
+| `door_clear_width`, `service_counter_height`, `service_counter_approach`, `point_of_sale_height`, `scan_cannot_see` | 545 each |
+| `route_clear_width`, `passing_space`, `turning_space` | 530 each |
+| `restroom_turning_space`, `ramps`, `kiosks`, `self_service_reach` | 47 each |
+| `door_maneuvering_clearance`, `protruding_objects` | 37 each |
+| `dining_surface_height` | 36 |
+| `turn_clear_width`, `exit_path` | 1 each, the first traces on 13 September |
+
+</details>
+
+### Evaluation
+
+The checks are scored as a [Weave Evaluation](packages/agents/standardphysics_agents/evaluation/weave_eval.py) over 39 labelled cases: the sample shop as shipped, and variants that move its walls, fixtures and doors so the right answer changes.
+
+| Weave object | What it holds |
+|---|---|
+| [`shop-review`](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/objects/shop-review/versions/ZHLZ0hlA4XxRioekC5syJ4YMbsfQhI4XXUXft9RQECs) (Evaluation) | The dataset below and the seven scorers |
+| [`shop-review-cases`](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/objects/shop-review-cases/versions/ElXNXBRd5Ul77c9Np2AxQVZJm7g6nDgKX3yaOowqTpY) (Dataset, 39 rows) | Per case: its name and description, the problems it expects and forbids, the owner questions it expects, the router action it expects, whether it expects a fix, and its tier |
+| [`ShopReview`](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/objects/ShopReview/versions/7xS5OkSSeP7YvbnJPvJzAPYV4WNF7Nw2H0CVSeUlAME) (Model) | The system under test. Its fields are the configuration: where measurements come from (`pipeline` or `stub`), whether fixes run, the router, the number of fix candidates, and the grid cell size |
+
+<details>
+<summary>The 39 cases</summary>
+
+`aisle_31`, `aisle_24`, `aisle_36`, `aisle_35_9`, `aisle_33_long_run`, `aisle_60`, `door_30`, `door_32`, `no_door`, `street_approach`, `counter_43`, `counter_36`, `counter_blocked`, `counter_mislabelled`, `counter_labelled_bar`, `lawsuit_counter`, `thin_case_east`, `thin_counter`, `thin_and_narrow`, `confirmed_by_hand`, `dead_end_tight`, `dead_end_roomy`, `no_dead_end`, `tight_alcove`, `passing_space_absent`, `blocked_solid`, `blocked_but_movable`, `clean_shop`, `clean_shop_already_asked`, `empty_room`, `fixture_as_shipped`, `tables_crowd_the_aisle`, `one_chair_out`, `door_clearance_clear`, `door_clearance_blocked`, `protrusion_sticks_out`, `protrusion_tucked_in`, `tables_are_a_usable_height`, `tables_are_bar_height`
+
+</details>
+
+| Scorer | What it measures |
+|---|---|
+| `finding_precision` | Of the problems reported, the share the case expected |
+| `finding_recall` | Of the problems the case expected, the share reported |
+| `question_recall` | Of the owner questions the case expected, the share asked |
+| `measurement_error_in` | Mean inches between what was measured and what the case says is there |
+| `label_accuracy` | Whether each check attached to the object its rule is about |
+| `router_action_match` | Whether the router picked the action the case calls for |
+| `fix_resolves_finding` | Whether a rearrangement cleared the findings it targeted |
+
+Each configuration of the system is one run. The three runs on 28 September are tagged with commit `5ce8e53`; the three on 27 September came before runs carried a commit, so the code they scored is not recorded. Latency is the mean seconds per case.
+
+| Run (UTC) | Configuration | Precision | Recall | Question recall | Measurement error | Label accuracy | Router match | Fix resolves | Latency |
+|---|---|---|---|---|---|---|---|---|---|
+| [28 Sep 07:58](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e705-edda-7723-b498-6e7dbd09b111) | Measured pipeline, fixes on | 0.972 | 0.924 | 1.000 | 0.0008 in | 1.000 | 1.000 | 1.000 | 28.2 s |
+| [28 Sep 07:59](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e707-23af-7205-91be-c9e9c1f1e0d8) | Stand-in measurements, fixes on | 0.380 | 0.924 | 0.997 | 8.57 in | 1.000 | 0.923 | 0.800 | 27.8 s |
+| [28 Sep 08:01](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e708-c957-76ce-8422-dbab54f22ed8) | Measured pipeline, fixes off | 0.972 | 0.924 | 1.000 | 0.0008 in | 1.000 | 1.000 | not scored | 16.8 s |
+| [27 Sep 22:03](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e4e5-29ca-7354-bc03-6f71e8500d41) | Measured pipeline, fixes on | 0.986 | 0.924 | 1.000 | 0.0008 in | 1.000 | 1.000 | 1.000 | 31.5 s |
+| [27 Sep 22:05](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e4e6-7ee1-73fe-9526-fbc2304fd925) | Stand-in measurements, fixes on | 0.384 | 0.924 | 0.997 | 8.57 in | 1.000 | 0.923 | 0.800 | 13.6 s |
+| [27 Sep 22:06](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e4e7-a314-7c0a-92bb-6335acf40564) | Measured pipeline, fixes off | 0.986 | 0.924 | 1.000 | 0.0008 in | 1.000 | 1.000 | not scored | 13.9 s |
+
+The stand-in rows are the control. Swapping the measured geometry for merged boxes keeps recall but loses most of the precision and adds about 8.6 inches of measurement error. These 39 cases are synthetic variants of one modeled shop, not a measure of accuracy on independent field captures. Reproduce them with `standardphysics-agents weave-eval`.
 
 ## More
 
