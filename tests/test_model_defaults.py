@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import standardphysics_agents.models as agent_models
-import standardphysics_pipeline.astra as labelling
+import standardphysics_pipeline.astra_transport as labelling
 
 ROOT = Path(__file__).resolve().parents[1]
 RETIRED = "gpt-6-astra"
