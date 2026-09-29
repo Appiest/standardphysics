@@ -1,5 +1,5 @@
-from .accessibility_intelligence import (
-    AccessibilityIntelligence,
+from .accessibility_intelligence import AccessibilityIntelligence
+from .accessibility_judgments import (
     ChoiceJudgment,
     ClaimVerification,
     ConfidenceThresholds,
