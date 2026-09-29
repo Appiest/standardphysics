@@ -12,7 +12,7 @@ import uuid
 import child_stages
 import hanging_child
 import pytest
-from test_job_lifecycle import _complete_geometry, _complete_semantics
+from evidence_uploads import complete_geometry, complete_semantics
 
 from conftest import create_scan, drain
 from standardphysics_api import repository_jobs as jobs_repo
@@ -76,8 +76,8 @@ def jobs_client(make_client):
 
 def _queue_process_job(client) -> str:
     scan_id = create_scan(client)
-    _complete_geometry(client, scan_id)
-    _complete_semantics(client, scan_id)
+    complete_geometry(client, scan_id)
+    complete_semantics(client, scan_id)
     client.post(f"/api/scans/{scan_id}/complete")
     return scan_id
 
