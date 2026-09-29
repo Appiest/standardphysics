@@ -89,10 +89,10 @@ def shrink(url: str) -> str:
     from PIL import Image
 
     header, data = url.split(",", 1)
-    with Image.open(io.BytesIO(base64.b64decode(data))) as image:
-        if max(image.size) <= IMAGE_SIDE:
+    with Image.open(io.BytesIO(base64.b64decode(data))) as source:
+        if max(source.size) <= IMAGE_SIDE:
             return url
-        image = image.convert("RGB")
+        image = source.convert("RGB")
         image.thumbnail((IMAGE_SIDE, IMAGE_SIDE))
         buffer = io.BytesIO()
         image.save(buffer, format="JPEG", quality=85)
