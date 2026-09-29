@@ -15,7 +15,8 @@ from .checks.protrusions import is_mounted
 from .mesh_collision import MeshCollisionIndex
 from .redesign import propose_redesign
 from .router import SystemOneClient, SystemOneError, TypeSafeCallBudget
-from .workflows import FunctionalProfile, Workflow, evaluate_workflow
+from .workflow_definitions import FunctionalProfile, Workflow
+from .workflow_evaluation import evaluate_workflow
 
 MAX_FAILURE_EVIDENCE = 64
 

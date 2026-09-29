@@ -23,7 +23,7 @@ from scipy import ndimage
 from standardphysics_contracts import to_meters
 from standardphysics_pipeline import Grid, clearance_map, widest_path
 
-from ..workflows import DEFAULT_PROFILES, FunctionalProfile
+from ..workflow_definitions import DEFAULT_PROFILES, FunctionalProfile
 from .sweep_replay import ReplayCollector, SweepReplay
 
 DEFAULT_EVALUATIONS = 1_000_000

@@ -16,7 +16,7 @@ from .precedents import PrecedentCompiler, precedent_rejection_for
 from .precedents.checker import check_precedent_constraints
 from .router import Rejected
 from .snap import snap
-from .workflows import workflow_candidate_rejection
+from .workflow_evaluation import workflow_candidate_rejection
 
 
 class FurnitureMove(BaseModel):

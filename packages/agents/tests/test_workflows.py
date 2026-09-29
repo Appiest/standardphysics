@@ -9,20 +9,21 @@ from uuid import uuid4
 import pytest
 from standardphysics_agents.router import LocalPolicyRouter, parse_decision
 from standardphysics_agents.rules import VerificationLedger
-from standardphysics_agents.workflows import (
+from standardphysics_agents.workflow_definitions import (
     DEFAULT_PROFILES,
     LOW_REACH_PROFILE,
     WHEELCHAIR_PROFILE,
     Interaction,
-    TypeSafeWorkflowConfigurationError,
     Workflow,
-    WorkflowBatchResult,
     build_entrance_object_workflows,
     build_workflow_suite,
-    evaluate_workflow,
+)
+from standardphysics_agents.workflow_evaluation import evaluate_workflow, workflow_candidate_rejection
+from standardphysics_agents.workflows import (
+    TypeSafeWorkflowConfigurationError,
+    WorkflowBatchResult,
     run_typesafe_workflow_batch,
     run_workflow_batch,
-    workflow_candidate_rejection,
 )
 from standardphysics_contracts import LidarMesh, LidarMeshPart, Mat4, WidthResult
 from standardphysics_fixtures import node_id

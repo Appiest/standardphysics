@@ -12,13 +12,8 @@ from standardphysics_contracts import LidarMesh, Scenario, SceneGraph
 from ..router import LocalPolicyRouter
 from ..rules import load_ledger, load_pack
 from ..simulation_report import simulation_result
-from ..workflows import (
-    DEFAULT_PROFILES,
-    TypeSafeWorkflowConfigurationError,
-    build_workflow_suite,
-    run_typesafe_workflow_batch,
-    run_workflow_batch,
-)
+from ..workflow_definitions import DEFAULT_PROFILES, build_workflow_suite
+from ..workflows import TypeSafeWorkflowConfigurationError, run_typesafe_workflow_batch, run_workflow_batch
 
 DEFAULT_SIMULATION_PATH = "runs/simulation.json"
 
