@@ -100,13 +100,14 @@ LOOP_NAMES: dict[bool | str, str] = {
     FURNITURE: "furniture",
     SIMULATE: "simulate",
 }
-"""Each worker loop by its lane: False takes every job but the laned kinds, True takes texture bakes,
+"""Each worker loop by its lane: False takes every job but the laned kinds, True takes the Blender jobs
+(texture bakes and display renders, one at a time, so a new scan's measuring never waits behind a render),
 REARRANGE takes layout suggestions, whose provider calls can wait on a cold deployment, FURNITURE
 takes furniture refinement, whose model trials run long after a scan's render is ready, and SIMULATE
 takes simulations, which may run for hours and would otherwise hold every new scan's measuring
 behind them. A simulation works on the graph saved on its own row and writes only that row, so it
-is safe beside a check of the same scan. Display stays on the jobs lane: it saves the assessment it
-read, so beside a re-check of the same revision it could put back the findings the re-check replaced."""
+is safe beside a check of the same scan. Display can finish beside a re-check of the same revision,
+so it draws again when the findings it drew were replaced while it ran (`_render_until_current`)."""
 MAX_CLAIMS_BEFORE_START = 3
 """How many times a job may be claimed and put back because of an error before it ran."""
 SETTLE_PATIENCE_SECONDS = 60.0
@@ -890,17 +891,28 @@ class Worker:
             lidar_path = self.store.artifact_path(scan_id, lidar.id) if lidar is not None else None
             self._store_geometry(scan_id, graph, revision_dir, usdz, mapping, lidar_path)
         if assessment is not None:
+            self._render_until_current(scan_id, revision, graph, assessment, revision_dir / "renders")
+        return False
+
+    def _render_until_current(self, scan_id, revision, graph, assessment, renders_dir) -> None:
+        """Draw each finding's still and save them with the findings they were drawn for.
+
+        A re-check can finish while the stills are drawn, since display runs on
+        the Blender lane. It cannot queue display again while this job runs, so
+        this job draws again for the newer findings instead of leaving them bare.
+        """
+        while True:
             self._checkpoint()
             rendered = self.stages.renders(
-                graph,
-                assessment,
-                revision_dir / "renders",
-                lambda finding_id: f"/api/scans/{scan_id}/renders/{finding_id}.png",
+                graph, assessment, renders_dir, lambda finding_id: f"/api/scans/{scan_id}/renders/{finding_id}.png"
             )
             self._checkpoint()
             with self.database.transaction() as connection:
-                repo.save_assessment(connection, rendered)
-        return False
+                latest = repo.assessment_for_revision(connection, scan_id, revision)
+                if latest is None or latest.id == assessment.id:
+                    repo.save_assessment(connection, rendered)
+                    return
+            assessment = latest
 
     def _store_geometry(self, scan_id, graph, revision_dir, usdz, mapping, lidar_mesh=None) -> None:
         inputs = revision_dir / "inputs"

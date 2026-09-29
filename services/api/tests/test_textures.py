@@ -132,11 +132,12 @@ def test_separate_workers_claim_only_their_job_kind(client):
         repo.enqueue_job(c,graph.scan_id,'display',0)
         repo.enqueue_job(c,graph.scan_id,'texture',99)
         repo.enqueue_job(c,graph.scan_id,'furniture',98)
+        assert repo.claim_job(c,True)['kind']=='display'
         assert repo.claim_job(c,True)['kind']=='texture'
         assert repo.claim_job(c,True) is None
         assert repo.claim_job(c,kind='furniture')['kind']=='furniture'
         assert repo.claim_job(c,kind='furniture') is None
-        assert repo.claim_job(c,False)['kind']=='display'
+        assert repo.claim_job(c,False) is None
 
 
 def test_asset_paths_require_published_build_and_safe_names(client):

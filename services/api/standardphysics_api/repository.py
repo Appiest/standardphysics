@@ -490,7 +490,9 @@ def oldest_queued_job_seconds(connection: sqlite3.Connection) -> float | None:
     return round((datetime.now(UTC) - datetime.fromisoformat(row["since"])).total_seconds(), 1)
 
 
-LANED_KINDS = ("texture", "rearrange", "furniture", "simulate")
+BLENDER_KINDS = ("texture", "display")
+"""The kinds that run Blender, which share one lane so a 4 GB machine never holds two Blenders at once."""
+LANED_KINDS = (*BLENDER_KINDS, "rearrange", "furniture", "simulate")
 """Job kinds that run on a worker thread of their own, never the main one."""
 
 
@@ -498,7 +500,7 @@ def _lane_filter(texture_only: bool | None, kind: str | None) -> tuple[str, tupl
     if kind is not None:
         return "kind = ?", (kind,)
     if texture_only:
-        return "kind = ?", ("texture",)
+        return "kind IN (" + ", ".join("?" for _ in BLENDER_KINDS) + ")", BLENDER_KINDS
     if texture_only is False:
         return "kind NOT IN (" + ", ".join("?" for _ in LANED_KINDS) + ")", LANED_KINDS
     return "1=1", ()
