@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 import pathlib
 from dataclasses import dataclass
 from typing import Any
@@ -53,10 +52,9 @@ from .detection_boxes import map_crop_box_to_sensor, map_crop_point_to_sensor, p
 from .detection_errors import DetectionAuthError, DetectionSchemaError
 from .detector_transport import (
     API_KEY_ENV,
-    DEFAULT_MODEL,
     FALLBACK_KEY_ENV,
-    MODEL_ENV,
     Transport,
+    answer_model,
     configured_api_key,
     endpoint_host,
     model_answer,
@@ -248,7 +246,7 @@ def detect_objects(
     frame = encode_frame(image_path, orientation)
     api_key = configured_api_key()
     if transport is None and not api_key:
-        raise DetectionAuthError(f"neither {API_KEY_ENV} nor {FALLBACK_KEY_ENV} is set, so no frame can be read")
+        raise DetectionAuthError(f"neither {API_KEY_ENV} nor {FALLBACK_KEY_ENV} (or FIREWORKS_API_KEY for Fireworks) is set, so no frame can be read")
     payload = model_answer(transport, _request_body(frame), api_key, urgent)
     if recorded is not None:
         recorded.append(_request_info(payload, frame_id, orientation))
@@ -266,7 +264,7 @@ def _request_info(payload: dict[str, Any], frame_id: str, orientation: str) -> M
     return ModelRequestInfo(
         frame_id=frame_id,
         provider=host,
-        model=os.environ.get(MODEL_ENV) or DEFAULT_MODEL,
+        model=answer_model(),
         orientation=orientation,
         request_id=payload.get("id"),
         usage=usage,
@@ -276,7 +274,7 @@ def _request_info(payload: dict[str, Any], frame_id: str, orientation: str) -> M
 def _request_body(frame: EncodedFrame) -> dict[str, Any]:
     data_url = "data:image/jpeg;base64," + base64.b64encode(frame.jpeg).decode("ascii")
     body: dict[str, Any] = {
-        "model": os.environ.get(MODEL_ENV) or DEFAULT_MODEL,
+        "model": answer_model(),
         "max_tokens": MAX_OUTPUT_TOKENS,
         "messages": [
             {"role": "system", "content": INSTRUCTION},
