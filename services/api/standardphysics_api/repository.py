@@ -507,12 +507,17 @@ def _lane_filter(texture_only: bool | None, kind: str | None) -> tuple[str, tupl
 def claim_job(
     connection: sqlite3.Connection, texture_only: bool | None = None, *, kind: str | None = None
 ) -> sqlite3.Row | None:
-    """The oldest queued job on a lane: textures, one kind, everything but the laned kinds, or anything."""
+    """The job queued longest ago on a lane: textures, one kind, everything but the laned kinds, or anything.
+
+    Ordered by when it was queued, not by its id: queueing a job again reuses
+    its row, and a render re-queued on a row from last week must not go ahead
+    of a shop uploaded a minute ago.
+    """
     lane, parameters = _lane_filter(texture_only, kind)
     return connection.execute(
         "UPDATE jobs SET state = 'running', attempts = attempts + 1"
         " WHERE id = (SELECT id FROM jobs WHERE state = 'queued'"
-        f" AND {lane} ORDER BY id LIMIT 1)"
+        f" AND {lane} ORDER BY COALESCE(queued_at, created_at), id LIMIT 1)"
         " RETURNING id, scan_id, kind, revision, attempts",
         parameters,
     ).fetchone()
