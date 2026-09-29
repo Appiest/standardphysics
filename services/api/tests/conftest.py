@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
-from standardphysics_pipeline import blender
+from standardphysics_pipeline import blender, tuned_labeller
 
 from standardphysics_api import team as team_role
 from standardphysics_api.app import create_app
@@ -15,6 +15,12 @@ from standardphysics_api.stages import Stages, preview_ledger
 REPO = pathlib.Path(__file__).resolve().parents[3]
 FIXTURE_DATA = REPO / "packages/fixtures/standardphysics_fixtures/data"
 PNG = b"\x89PNG\r\n\x1a\n"
+
+
+@pytest.fixture(autouse=True)
+def no_paid_labeller(monkeypatch):
+    """A LABEL_STATE loaded from the repo .env must not send test scans to the paid Fireworks pool."""
+    monkeypatch.delenv(tuned_labeller.STATE_ENV, raising=False)
 
 
 def no_blender_stages(**overrides) -> Stages:

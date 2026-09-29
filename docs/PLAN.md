@@ -223,6 +223,7 @@ Every key lives in a gitignored `.env` on the API server, listed in `.env.exampl
 | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Every model call through OpenRouter except labelling and discovery; `OPENROUTER_MODEL` picks the model |
 | `FIREWORKS_API_KEY` | Labelling, object discovery, and the rearrangement model, all called directly on Fireworks |
 | `LABEL_MODEL` | The model that labels scanned objects from the photos; unset means DeepSeek v4.1 Flash on Fireworks, about $0.04 a shop; an unusable answer falls back to the local labels |
+| `LABEL_STATE` | The fine-tuned labeller's saved Fireworks training state (`account/run/name`); when set it labels instead of `LABEL_MODEL`, about $0.10 a shop. On the held-out Moffett and Share Tea scans it matched Opus's ADA role on 68 of 74 objects and found both ordering counters |
 | `DISCOVERY_API_KEY`, `DISCOVERY_BASE_URL`, `DISCOVERY_MODEL` | Object discovery's own model call; unset means the same DeepSeek model on Fireworks, falling back to the `OPENROUTER_*` values above |
 | `WANDB_API_KEY`, `WANDB_ENTITY`, `WANDB_PROJECT` | Weave tracing and evaluation; ARIA uses the same team project |
 | `TYPESAFE_API_KEY` | The router |

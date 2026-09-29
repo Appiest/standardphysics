@@ -34,6 +34,7 @@ from standardphysics_contracts import (
     stands_upright,
 )
 
+from . import tuned_labeller
 from .footprints import covered_fraction, footprint, gap_between
 from .ingest import FIXED_CATEGORIES
 from .mesh_evidence import object_mesh_profiles
@@ -90,6 +91,8 @@ def _request_options(model: str, host: str) -> dict[str, Any]:
 
 
 def _label_model() -> str:
+    if tuned_labeller.configured():
+        return tuned_labeller.model_name()
     return os.environ.get(MODEL_ENV) or DEFAULT_MODEL
 
 
@@ -379,6 +382,8 @@ def _remote_patches(
     poses_path: pathlib.Path | None = None,
     lidar_mesh_path: pathlib.Path | None = None,
 ) -> list[LabelPatch] | None:
+    if transport is None and tuned_labeller.configured():
+        transport = tuned_labeller.transport
     api_key = os.environ.get(_api_key_env())
     if transport is None and not api_key:
         return None

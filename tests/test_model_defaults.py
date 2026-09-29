@@ -29,3 +29,10 @@ def test_the_example_settings_leave_the_labelling_model_blank_so_the_fallback_ru
     for name in SHIPPED_SETTINGS:
         lines = (ROOT / name).read_text().splitlines()
         assert "LABEL_MODEL=" in lines, name
+
+
+def test_the_example_settings_ship_the_fine_tuned_labeller_switched_on():
+    for name in SHIPPED_SETTINGS:
+        lines = (ROOT / name).read_text().splitlines()
+        states = [line.split("=", 1)[1] for line in lines if line.startswith("LABEL_STATE=")]
+        assert len(states) == 1 and states[0].count("/") == 2, name
