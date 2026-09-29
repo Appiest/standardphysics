@@ -17,6 +17,7 @@ from typing import Any, Iterable, Sequence
 
 from standardphysics_contracts import SceneGraph, SceneNode
 
+from . import tuned_labeller
 from .astra_frames import MAX_IMAGE_COUNT
 from .astra_patches import LabelPatch, ReconstructionSource, apply_patches, local_patches
 from .astra_prompt import chat_body
@@ -112,6 +113,8 @@ def _remote_patches(
     poses_path: pathlib.Path | None = None,
     lidar_mesh_path: pathlib.Path | None = None,
 ) -> list[LabelPatch] | None:
+    if transport is None and tuned_labeller.configured():
+        transport = tuned_labeller.transport
     api_key = os.environ.get(api_key_env())
     if transport is None and not api_key:
         return None

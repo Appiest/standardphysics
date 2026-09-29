@@ -18,8 +18,12 @@ MAX_OUTPUT_TOKENS = 8_192
 
 INSTRUCTION = (
     "Label every supplied object in this shop scan with an ordinary name such as "
-    "Ordering counter, Display case, Table, or Chair. Counters and plumbed-in "
-    "fixtures are not movable. Do not change sizes. You may add a display-only appearance "
+    "Ordering counter, Display case, Table, or Chair. Counters, plumbed-in fixtures, "
+    "and seating fixed to a floor or wall, such as booths, banquettes, built-in benches, "
+    "pews and bolted seat rows, are not movable. raw_category and label are the phone's "
+    "coarse guess and are often wrong: name what the photos show, such as Ordering kiosk, "
+    "Card reader or Payment terminal, even when the guess says Chair. "
+    "Do not change sizes. You may add a display-only appearance "
     "with a six-digit base color and broad material when the frame evidence is "
     "clear; when images_provided is false, appearance must be null. For each "
     "object, return reconstruction only when its calibrated photo crop evidence "
@@ -86,6 +90,24 @@ LABEL_SCHEMA = {
 }
 
 
+SCHEMA_LIMITS = frozenset({"minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems"})
+MAKERS_WITHOUT_SCHEMA_LIMITS = frozenset({"google"})
+"""Google rejects a response schema carrying numeric or length limits (HTTP 400, invalid argument). The limits are
+dropped for those makers only; every answer is re-checked against them when it is parsed regardless."""
+
+
+def _without_limits(node: Any) -> Any:
+    if isinstance(node, dict):
+        return {key: _without_limits(value) for key, value in node.items() if key not in SCHEMA_LIMITS}
+    if isinstance(node, list):
+        return [_without_limits(value) for value in node]
+    return node
+
+
+def schema_for(model: str) -> dict[str, Any]:
+    return _without_limits(LABEL_SCHEMA) if model.split("/")[0] in MAKERS_WITHOUT_SCHEMA_LIMITS else LABEL_SCHEMA
+
+
 def chat_body(
     graph: SceneGraph,
     *,
@@ -112,7 +134,8 @@ def chat_body(
         "model": chosen_model,
         "max_tokens": MAX_OUTPUT_TOKENS,
         "messages": [{"role": "system", "content": INSTRUCTION}, {"role": "user", "content": content}],
-        "response_format": {"type": "json_schema", "json_schema": {"name": "astra_labels", "strict": True, "schema": LABEL_SCHEMA}},
+        "response_format": {"type": "json_schema", "json_schema": {"name": "astra_labels", "strict": True,
+                                                                   "schema": schema_for(chosen_model)}},
     }
     body.update(request_options(chosen_model, endpoint_host(base_url())))
     return body

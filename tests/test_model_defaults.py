@@ -15,8 +15,8 @@ def test_the_example_settings_production_copies_never_name_gpt_6_astra():
         assert RETIRED not in (ROOT / name).read_text(), name
 
 
-def test_labelling_defaults_to_open_weights_on_fireworks_and_every_other_call_to_opus():
-    assert labelling.DEFAULT_MODEL == "accounts/fireworks/models/deepseek-v4p1-flash"
+def test_labelling_defaults_to_gemini_flash_and_every_other_call_to_opus():
+    assert labelling.DEFAULT_MODEL == "google/gemini-3.8-flash"
     assert not hasattr(labelling, "FALLBACK_MODEL")
     assert agent_models.DEFAULT_MODEL == "anthropic/claude-opus-5.5"
 
@@ -29,3 +29,9 @@ def test_the_example_settings_leave_the_labelling_model_blank_so_the_fallback_ru
     for name in SHIPPED_SETTINGS:
         lines = (ROOT / name).read_text().splitlines()
         assert "LABEL_MODEL=" in lines, name
+
+
+def test_the_example_settings_leave_the_tuned_backup_switched_off_so_gemini_labels():
+    for name in SHIPPED_SETTINGS:
+        lines = (ROOT / name).read_text().splitlines()
+        assert "LABEL_STATE=" in lines, name
