@@ -15,7 +15,7 @@ The model view keeps measured geometry selectable while the side panel lists fin
 
 ## How the product grew
 
-The project began as a hackathon-scale traced loop: scan a room, measure it, check the constraints, propose a change, then check the result again. [`tools/loopforge`](tools/loopforge) preserves the small agent-loop starter. The early plan called for an iPhone LiDAR capture, a Blender-backed scene pipeline, and a reviewable result by the end of the weekend ([original build plan](docs/PLAN.md)).
+The project began as a hackathon-scale traced loop: scan a room, measure it, check the constraints, propose a change, then check the result again. [`tools/loopforge`](tools/loopforge) preserves the small agent-loop starter. The early plan called for an iPhone LiDAR capture, a Blender-backed scene pipeline, and a reviewable result by the end of the weekend ([original build plan](docs/archive/PLAN.md)).
 
 That first loop exposed the important split in the product. Room dimensions must come from geometry, while a model can help interpret a request or rank a layout proposal. The system therefore keeps the measurement pipeline, cited checks, and model proposal path separate. Proposals are measured again under the same hard constraints before they can be accepted.
 
@@ -25,9 +25,9 @@ The first room representation was a scene graph of measured walls, openings, and
 
 The public sample-shop fixture includes downloadable [GLB](packages/fixtures/standardphysics_fixtures/data/shop.glb) and [USDZ](packages/fixtures/standardphysics_fixtures/data/shop.usdz) models. They let a reviewer inspect demo geometry without access to private captures.
 
-The reconstruction work grew beyond the demo shop. Four Moffitt Library captures were aligned into a published floor revision ([progress record](docs/progress/PROGRESS_MOFFETT.json)). A later read-only audit counted 284 nodes in a subsequent A-102 revision ([implementation audit](docs/research/moffett-outlet-implementation-audit.txt)). This establishes that a larger multi-region capture can pass through reconstruction and publication. It is not an independent measurement study.
+The reconstruction work grew beyond the demo shop. Four Moffitt Library captures were aligned into a published floor revision ([progress record](docs/archive/progress/PROGRESS_MOFFETT.json)). A later read-only audit counted 284 nodes in a subsequent A-102 revision ([implementation audit](docs/archive/research/moffett-outlet-implementation-audit.txt)). This establishes that a larger multi-region capture can pass through reconstruction and publication. It is not an independent measurement study.
 
-We also tested photo-supported rendering on Moffitt views. One center-room pilot was rejected after eight validation images scored 5.42 dB masked PSNR and 0.025 masked SSIM, with visible gaps. A historical Brush control scored 11.90 dB and 0.329, but the masks were not matched, so this is not a controlled comparison. The [rendering audit](docs/research/deepseek-render-r003-audit.txt) records both the failure and its limits. The measured room model remains useful while photographic reconstruction stays experimental.
+We also tested photo-supported rendering on Moffitt views. One center-room pilot was rejected after eight validation images scored 5.42 dB masked PSNR and 0.025 masked SSIM, with visible gaps. A historical Brush control scored 11.90 dB and 0.329, but the masks were not matched, so this is not a controlled comparison. The [rendering audit](docs/archive/research/deepseek-render-r003-audit.txt) records both the failure and its limits. The measured room model remains useful while photographic reconstruction stays experimental.
 
 ![Live marimo notebook sweeping aisle, counter, and doorway dimensions through the same evaluation checks](apps/web/public/deck/scenario-sweep-notebook.png)
 
@@ -259,3 +259,4 @@ The stand-in rows are the control. Swapping the measured geometry for merged box
 - [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md): running each part, the phone build, and how the team works
 - [`docs/MISSION.md`](docs/MISSION.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): what the reasoning layer is for and how it is designed
 - [`docs/UX.md`](docs/UX.md): the owner's experience, screen by screen
+- [`docs/archive/`](docs/archive): the hackathon build record, with the original plan, lane documents, handoffs, progress logs and research notes

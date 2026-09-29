@@ -1,6 +1,6 @@
 # Audit to D: two contract fields the measurements need
 
-Both come from findings in `docs/progress/PROGRESS.md`. Each is an optional field whose default keeps today's behaviour for every existing caller. Nothing in `packages/contracts/` has been edited; the protocol leaves that to you and your person.
+Both come from findings in `docs/archive/progress/PROGRESS.md`. Each is an optional field whose default keeps today's behaviour for every existing caller. Nothing in `packages/contracts/` has been edited; the protocol leaves that to you and your person.
 
 ## A-6: a stop needs to say which fixture it is at
 
@@ -22,7 +22,7 @@ Both landed in `b5306c8`.
 
 ## The API in `a260626`
 
-The upload contract matches what Lane A's app sends: paths, both headers, snake_case bodies, artifact IDs and kinds, the coverage dictionary, and 200 or 201 on upload. `services/api/tests` passes, 23 of 23. Three findings, details and repros in `docs/progress/PROGRESS.md`:
+The upload contract matches what Lane A's app sends: paths, both headers, snake_case bodies, artifact IDs and kinds, the coverage dictionary, and 200 or 201 on upload. `services/api/tests` passes, 23 of 23. Three findings, details and repros in `docs/archive/progress/PROGRESS.md`:
 
 - **A-29, medium.** A scan that fails processing stays `failed` for good. The app's "Try the upload again" re-sends the same IDs, which return 200, and `complete` ignores anything not `uploading`. A corrected `room.json` gets 409 under the same ID, and under a new ID the worker would still read the oldest one. Pinned as a strict expected failure in `tests/test_audit_open_findings.py` using the new ID path. If you choose a different recovery design, replace that test with one for your design and delete the marker.
 - **A-30, low.** `Worker.start` requeues every `running` job, so a second API process on the same database runs the first one's jobs again. That contradicts the docstring in `worker.py`.
@@ -34,7 +34,7 @@ The upload contract matches what Lane A's app sends: paths, both headers, snake_
 
 ## Rearranging in `a9ce65c`
 
-- **A-35, medium, pinned.** `save_layout` checks the base revision outside its write transaction and inserts with `INSERT OR IGNORE`, so a save that loses a race to another save on the same base returns 201 while its layout is dropped. Reproduced at `9be20af`; details in `docs/progress/PROGRESS.md`. Checking the latest revision inside the transaction and treating an ignored insert as a 409 would fix it.
+- **A-35, medium, pinned.** `save_layout` checks the base revision outside its write transaction and inserts with `INSERT OR IGNORE`, so a save that loses a race to another save on the same base returns 201 while its layout is dropped. Reproduced at `9be20af`; details in `docs/archive/progress/PROGRESS.md`. Checking the latest revision inside the transaction and treating an ignored insert as a 409 would fix it.
 - **A-31 is now reachable, pinned.** Saved layouts pass revision 9, and after eleven saves on the sample shop the render route serves revision 9's image for a revision 11 assessment. Sorting the revision directories as numbers fixes it.
 
 ## Dragging in `945b8a4`

@@ -1,7 +1,7 @@
 """Download a promoted Fireworks LoRA model's files once it is READY.
 
     python scripts/finetune/download_adapter.py accounts/<account>/models/<id> runs/finetune/room6/qwen3p8-27b/sft
-    python scripts/finetune/download_adapter.py --progress docs/progress/PROGRESS_FINETUNE.json runs/finetune/room6/qwen3p8-27b
+    python scripts/finetune/download_adapter.py --progress runs/finetune/progress.json runs/finetune/room6/qwen3p8-27b
 
 Uses the REST API's model download endpoint (signed URLs). Files already on
 disk at the expected size are skipped, so a rerun only fetches what is missing.
@@ -51,7 +51,7 @@ def download(model: str, destination: pathlib.Path) -> list[str]:
 
 
 def download_promoted(progress_path: pathlib.Path, out: pathlib.Path) -> None:
-    """Every promoted adapter recorded in docs/progress/PROGRESS_FINETUNE.json that is not downloaded yet."""
+    """Every promoted adapter recorded in runs/finetune/progress.json that is not downloaded yet."""
     from progress import Progress
 
     progress = Progress(progress_path)

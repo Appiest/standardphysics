@@ -11,7 +11,7 @@ from scripts.shop_pilot.evidence import canonical_dirty_digest, sha256_bytes, sh
 from scripts.shop_pilot.freeze import build_freeze
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
-POLICY = REPO_ROOT / "docs" / "research" / "deepseek-shop-pilot" / "04-hard-gates.json"
+POLICY = REPO_ROOT / "docs" / "archive" / "research" / "deepseek-shop-pilot" / "04-hard-gates.json"
 
 
 def test_freeze_records_policy_hash_and_holdout(tmp_path):
@@ -19,7 +19,7 @@ def test_freeze_records_policy_hash_and_holdout(tmp_path):
     assert freeze["policy_hash"] == sha256_file(POLICY)
     assert freeze["holdout_policy"]["frozen_before_any_tuning"] is True
     assert freeze["holdout_policy"]["g12_holdout"]["minimum_distinct_sites"] == 3
-    assert "docs/research/deepseek-shop-pilot/01-coordinator.txt" in freeze["contract_hashes"]
+    assert "docs/archive/research/deepseek-shop-pilot/01-coordinator.txt" in freeze["contract_hashes"]
     assert freeze["test_inventory"]
 
 

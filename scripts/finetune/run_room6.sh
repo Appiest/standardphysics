@@ -5,7 +5,7 @@
 #
 # Needs $SP_FINETUNE_HOME/venv (cookbook + fireworks-ai[training]) and
 # $SP_FINETUNE_HOME/fireworks.env (chmod 600, FIREWORKS_API_KEY=...).
-# Each attempt resumes from docs/progress/PROGRESS_FINETUNE.json. A budget stop is final.
+# Each attempt resumes from runs/finetune/progress.json. A budget stop is final.
 set -u
 cd "$(dirname "$0")/../.."
 
@@ -33,7 +33,7 @@ done
 
 for attempt in $(seq 1 $MAX_ATTEMPTS); do
   echo "$(date -u +%FT%TZ) download attempt $attempt"
-  "$PYTHON" scripts/finetune/download_adapter.py --progress docs/progress/PROGRESS_FINETUNE.json "$RUN_DIR/adapters" && break
+  "$PYTHON" scripts/finetune/download_adapter.py --progress runs/finetune/progress.json "$RUN_DIR/adapters" && break
   sleep $((attempt * 60))
 done
 echo "$(date -u +%FT%TZ) finished"

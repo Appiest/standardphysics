@@ -8,7 +8,7 @@
 
 - All 263 tests pass locally, in 3 min 41 s.
 - On the fixture shop, with every rule previewed and the local policy, the loop runs the five passes the commit describes: two accepted fixes taking the shortfall from 18.5 to 12.3 to 7.3 in, a question, an escalation, and the report.
-- CI already runs `pytest packages/agents` as its own step, so the `pytest.ini` item in `docs/progress/PROGRESS_C.json` and `C-to-D.md` can go.
+- CI already runs `pytest packages/agents` as its own step, so the `pytest.ini` item in `docs/archive/progress/PROGRESS_C.json` and `C-to-D.md` can go.
 
 ## `022004d` keeps your evaluation red until the label changes (A-41)
 

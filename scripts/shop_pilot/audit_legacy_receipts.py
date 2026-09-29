@@ -1,4 +1,4 @@
-"""Audit the legacy G9 receipts in docs/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json.
+"""Audit the legacy G9 receipts in docs/archive/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json.
 
 Extracts REAL-01..REAL-04 exactly as stored, redacts any secret-printing
 command (the originals materially print an API key; we never repeat it),
@@ -18,7 +18,7 @@ import sys
 
 from .receipt_verifier import verify_receipt
 
-PROGRESS_SOURCE = "docs/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json"
+PROGRESS_SOURCE = "docs/archive/progress/PROGRESS_MOFFETT_OUTLET_REPAIR.json"
 LEGACY_CASES = ("REAL-01", "REAL-02", "REAL-03", "REAL-04")
 REDACTED_COMMAND = "[REDACTED: original command printed an API key; not reproduced]"
 

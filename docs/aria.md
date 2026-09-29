@@ -162,7 +162,7 @@ geometric turn detection at about 122 degrees.
 Two things follow, and neither is an agent's to decide. Whether those two shops
 contain a 180 degree turn is a question for Lane B and the person holding the
 rule pack. Whether the labels or the check are right decides which one changes.
-It is written up in [`handoffs/C-to-B.md`](handoffs/C-to-B.md).
+It is written up in [`handoffs/C-to-B.md`](archive/handoffs/C-to-B.md).
 
 ## The improvement we shipped
 
@@ -207,4 +207,4 @@ call reads a clearance field the provider already built and indexes one cell, so
 taking the duplicated field lookup out of it moved a 39-case run from 16.99 to
 16.95 seconds.
 
-Everything ARIA said is in [`aria_responses.md`](aria_responses.md).
+Everything ARIA said is in [`aria_responses.md`](archive/research/aria_responses.md).

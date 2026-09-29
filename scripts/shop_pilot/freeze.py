@@ -16,12 +16,12 @@ from typing import Any
 
 from .evidence import sha256_file
 
-POLICY_DOC = "docs/research/deepseek-shop-pilot/04-hard-gates.json"
+POLICY_DOC = "docs/archive/research/deepseek-shop-pilot/04-hard-gates.json"
 CONTRACT_DOCS = (
-    "docs/research/deepseek-shop-pilot/01-coordinator.txt",
-    "docs/research/deepseek-shop-pilot/02-contracts-and-ownership.txt",
-    "docs/research/deepseek-shop-pilot/05-adversarial-tests.txt",
-    "docs/research/deepseek-shop-pilot/06-phone-and-field-handoff.txt",
+    "docs/archive/research/deepseek-shop-pilot/01-coordinator.txt",
+    "docs/archive/research/deepseek-shop-pilot/02-contracts-and-ownership.txt",
+    "docs/archive/research/deepseek-shop-pilot/05-adversarial-tests.txt",
+    "docs/archive/research/deepseek-shop-pilot/06-phone-and-field-handoff.txt",
 )
 TEST_ROOTS = ("tests", "services/api/tests", "packages/agents/tests", "packages/pipeline/tests", "scripts/tests")
 

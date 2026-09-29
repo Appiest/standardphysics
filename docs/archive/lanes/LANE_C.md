@@ -2,20 +2,20 @@
 
 **You decide what counts as a problem and what the loop does next.** Rules with real citations, checks that run on real geometry, TypeSafe choosing the next action, and Weave evaluations that gate whether a fix is accepted.
 
-Read `docs/PLAN.md` section 8. Read `docs/AGENT_PROTOCOL.md` before your first commit.
+Read `docs/archive/PLAN.md` section 8. Read `docs/archive/AGENT_PROTOCOL.md` before your first commit.
 
 ## You own
 
 ```
 packages/agents/**
-docs/progress/PROGRESS_C.json
-docs/handoffs/C-to-*.md
+docs/archive/progress/PROGRESS_C.json
+docs/archive/handoffs/C-to-*.md
 ```
 
 ## You can rely on today
 
 - `packages/contracts/` — `RulePack`, `Finding`, `Locus`, `Proposal`, `Assessment`, and the `MeasurementProvider` protocol
-- `packages/fixtures/standardphysics_fixtures/stub_measurements.py` — a working `MeasurementProvider` returning known values from the fixture shop, including the 31-inch pinch. Build every check against this. Swap to Lane B's real implementation when their `docs/progress/PROGRESS_B.json` lists it in `ready_for_others`; nothing in your code changes but the constructor argument.
+- `packages/fixtures/standardphysics_fixtures/stub_measurements.py` — a working `MeasurementProvider` returning known values from the fixture shop, including the 31-inch pinch. Build every check against this. Swap to Lane B's real implementation when their `docs/archive/progress/PROGRESS_B.json` lists it in `ready_for_others`; nothing in your code changes but the constructor argument.
 - `packages/fixtures/standardphysics_fixtures/data/shop.scene_graph.json` — the same synthetic shop
 
 ## Human tasks — flag these to your person
@@ -74,7 +74,7 @@ traced twice.
 
 **7. Weave tracing.** `weave.init()` at startup, `@weave.op` on every agent call and check. The whole loop should read as one trace tree.
 
-**7b. The experiment grid.** `cli experiments` scores the same cases against nine configurations and logs each one as a W&B run, which is the form ARIA reads. Cost travels with the scores: every measurement asked for, counted. See [`docs/aria.md`](../aria.md).
+**7b. The experiment grid.** `cli experiments` scores the same cases against nine configurations and logs each one as a W&B run, which is the form ARIA reads. Cost travels with the scores: every measurement asked for, counted. See [`docs/aria.md`](../../aria.md).
 
 **8. Evaluation.** About 25 labeled cases: fixture variants plus real scans as they arrive. Cover clean passes, real violations, ambiguous objects, thin coverage, and cases where the right answer is to ask rather than guess. Scorers: `finding_precision`, `finding_recall`, `measurement_error_in`, `label_accuracy`, `router_action_match`, `fix_resolves_finding`.
 

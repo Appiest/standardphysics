@@ -2,14 +2,14 @@
 
 **You build the iPhone app that scans the shop.** One pass records LiDAR and video together, and the app tells the owner where to point next until the room is covered.
 
-Read `docs/PLAN.md` sections 1, 2 and 3. Read `docs/AGENT_PROTOCOL.md` before your first commit.
+Read `docs/archive/PLAN.md` sections 1, 2 and 3. Read `docs/archive/AGENT_PROTOCOL.md` before your first commit.
 
 ## You own
 
 ```
 apps/ios/**
-docs/progress/PROGRESS_A.json
-docs/handoffs/A-to-*.md
+docs/archive/progress/PROGRESS_A.json
+docs/archive/handoffs/A-to-*.md
 ```
 
 Nothing else. The results screens inside the app are Lane D's web build in a WebView — you own the shell and the handoff, not the screens.
@@ -29,7 +29,7 @@ Nothing else. The results screens inside the app are Lane D's web build in a Web
 | Walking the shop and the venue to record real scans | Someone has to hold the phone and walk | By 2:00 PM |
 | Handing the phone to a stranger to test the coverage guidance | The whole point is whether a person understands it | By 6:00 PM |
 
-Put each in `needs_human` in `docs/progress/PROGRESS_A.json` the moment you reach it, then keep building against fixtures.
+Put each in `needs_human` in `docs/archive/progress/PROGRESS_A.json` the moment you reach it, then keep building against fixtures.
 
 ## Build order
 

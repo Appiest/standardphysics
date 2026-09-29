@@ -21,7 +21,7 @@ Shop tools unlock when the results first appear. That is when the first report c
 
 ## Screens
 
-The copy is draft. It follows section 2 of [`PLAN.md`](PLAN.md) and is there to be rewritten.
+The copy is draft. It follows section 2 of [`PLAN.md`](archive/PLAN.md) and is there to be rewritten.
 
 | # | Screen | What it says | The one action | Where |
 | --- | --- | --- | --- | --- |

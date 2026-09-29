@@ -273,7 +273,7 @@ def _write_receipt(report: dict, log_path: pathlib.Path, head: str) -> None:
         "dirty_source_digest": _sha256(b"{}"),
         "dirty_source_files": {},
         "contract_hash": _sha256(b"unfrozen-contracts"),
-        "policy_hash": _sha256(pathlib.Path("docs/research/deepseek-shop-pilot/04-hard-gates.json").read_bytes()),
+        "policy_hash": _sha256(pathlib.Path("docs/archive/research/deepseek-shop-pilot/04-hard-gates.json").read_bytes()),
         "input_artifacts": [],
         "output_artifacts": [{
             "path": log_path.name,
@@ -504,7 +504,7 @@ def _write_receipt_i2(report: dict, log_path: pathlib.Path, head: str) -> None:
         "dirty_source_digest": _sha256(b"{}"),
         "dirty_source_files": {},
         "contract_hash": _sha256(b"unfrozen-contracts"),
-        "policy_hash": _sha256(pathlib.Path("docs/research/deepseek-shop-pilot/04-hard-gates.json").read_bytes()),
+        "policy_hash": _sha256(pathlib.Path("docs/archive/research/deepseek-shop-pilot/04-hard-gates.json").read_bytes()),
         "input_artifacts": [],
         "output_artifacts": [{
             "path": log_path.name,
@@ -736,7 +736,7 @@ def _write_receipt_i3(report: dict, log_path: pathlib.Path, head: str) -> None:
         "dirty_source_digest": _sha256(b"{}"),
         "dirty_source_files": {},
         "contract_hash": _sha256(b"unfrozen-contracts"),
-        "policy_hash": _sha256(pathlib.Path("docs/research/deepseek-shop-pilot/04-hard-gates.json").read_bytes()),
+        "policy_hash": _sha256(pathlib.Path("docs/archive/research/deepseek-shop-pilot/04-hard-gates.json").read_bytes()),
         "input_artifacts": [],
         "output_artifacts": [{
             "path": log_path.name,

@@ -1,6 +1,6 @@
 # Audit to B: fixes landed in your files
 
-These fix findings in `docs/progress/PROGRESS.md`. Each has a regression test in `tests/test_audit_lane_b.py` that fails on `d1cd65a`. Pull before you edit these files again.
+These fix findings in `docs/archive/progress/PROGRESS.md`. Each has a regression test in `tests/test_audit_lane_b.py` that fails on `d1cd65a`. Pull before you edit these files again.
 
 | Finding | File | Change |
 |---|---|---|
@@ -19,7 +19,7 @@ The audit no longer edits your files while your agent is active. Each finding be
 - **A-14, A-15:** 403.5.2 widths come from grid clearance at points on the route. At a turn that is the distance to the pivot's corner, so a 43/49/43 in turn reads 0.00/43.31/43.31 in and a 61 in turn reads 35.43 in. The audit's fix, which conflicted with `fd43203`: for the approach point, the apex and the leaving point, take the nearest point on the pivot, then the footprint gap from the pivot to the nearest blocking node within about 45 degrees of that direction, skipping nodes that touch the pivot. That returned exactly 43, 49 and 43 in.
 - **A-6:** route width still ignores everything near a stop instead of only its `anchor_node_id`, so a 20 in gap 0.2 m inside the entrance reads 31 in. You found that exempting the anchor's clear space regressed leg 1; the pinned test only asks that the entrance gap reads 20 in.
 - **A-9:** `door_clear_width` should set `needs_measurement=True`. Lane C's door check already turns it into a request.
-- **A-22:** leg 1's 29.79 in is not a pinch the route crosses. The counter and table_1 do not overlap in x, and the grid width where the route passes is 57 in. Details in `docs/progress/PROGRESS.md`.
+- **A-22:** leg 1's 29.79 in is not a pinch the route crosses. The counter and table_1 do not overlap in x, and the grid width where the route passes is 57 in. Details in `docs/archive/progress/PROGRESS.md`.
 
 ## `0f0e01b` turned CI red (A-32)
 

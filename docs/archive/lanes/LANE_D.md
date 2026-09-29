@@ -2,7 +2,7 @@
 
 **You own the seams and the screens.** Everyone codes against your contracts, every artifact lands in your API, and the thing judges actually look at is your viewer.
 
-Read `docs/PLAN.md` sections 5, 6, 9, 10 and 11. Read `docs/AGENT_PROTOCOL.md` before your first commit.
+Read `docs/archive/PLAN.md` sections 5, 6, 9, 10 and 11. Read `docs/archive/AGENT_PROTOCOL.md` before your first commit.
 
 ## You own
 
@@ -12,8 +12,8 @@ packages/fixtures/**
 services/api/**
 apps/web/**
 .github/**
-docs/progress/PROGRESS_D.json
-docs/handoffs/D-to-*.md
+docs/archive/progress/PROGRESS_D.json
+docs/archive/handoffs/D-to-*.md
 ```
 
 You are the only lane that writes `packages/contracts/`. Three other lanes read it, so a change there is a change to everyone's work: announce it in a handoff before you make it.
@@ -32,7 +32,7 @@ Contracts and fixtures are already committed, including a synthetic boba shop wi
 | Keep the demo machine stable and awake | Physical machine | Continuous |
 | Submit a working version by noon Sunday | Someone clicks submit | **Sun 12:00** |
 | Three timed rehearsals | People talking | Sun 11:00 |
-| A team project on W&B with Smart features on, then an ARIA session ([`docs/aria.md`](../aria.md)) | ARIA only answers in a team project, and an org admin turns the feature on | **Sun 09:00** |
+| A team project on W&B with Smart features on, then an ARIA session ([`docs/aria.md`](../../aria.md)) | ARIA only answers in a team project, and an org admin turns the feature on | **Sun 09:00** |
 
 ## Build order
 
@@ -47,7 +47,7 @@ you holding it.
 
 **3. Artifact store.** Local filesystem keyed by validated IDs, never by a user-supplied path. Keep the raw capture and every revision.
 
-**4. Web shell.** Next.js, TypeScript, Tailwind. Responsive, because this same build runs inside Lane A's WebView on a phone. Follow `CLAUDE.md`: neutral surfaces, one calm accent, red reserved for failures only.
+**4. Web shell.** Next.js, TypeScript, Tailwind. Responsive, because this same build runs inside Lane A's WebView on a phone. Follow `.claude/CLAUDE.md`: neutral surfaces, one calm accent, red reserved for failures only.
 
 **5. Viewer.** React Three Fiber loading the GLB. Orbit, pan, zoom, top-down toggle. Select a mesh, get back a SceneGraph node ID — Lane B keeps those IDs stable through export, and if selection breaks, that is a handoff to B, not a workaround here.
 
@@ -71,7 +71,7 @@ The measurement label is what sells this. Project the 3D midpoint to screen spac
 
 **12. CI.** Typecheck, pytest, contract generation. Clean-clone startup with one command, tested on a machine that has never run it.
 
-**13. The reactive notebook.** `notebooks/scenario_sweep.py`, described in [`docs/marimo.md`](../marimo.md). Sliders set the shop's dimensions and the routine walked through it, and the same `run_case` the evaluation grid calls reads the room they build. The notebook draws findings and reads scorers; it measures nothing itself. *Done when moving a slider changes a finding, and the sweep chart's sampled boundary lands on the number the check cites.*
+**13. The reactive notebook.** `notebooks/scenario_sweep.py`, described in [`docs/marimo.md`](../../marimo.md). Sliders set the shop's dimensions and the routine walked through it, and the same `run_case` the evaluation grid calls reads the room they build. The notebook draws findings and reads scorers; it measures nothing itself. *Done when moving a slider changes a finding, and the sweep chart's sampled boundary lands on the number the check cites.*
 
 ## Copy
 

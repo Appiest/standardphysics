@@ -2,14 +2,14 @@
 
 **You turn a scan into a measured 3D model that other agents can query.** Astra labels what things are, Blender renders them, and your measurement functions answer every geometric question the checks ask.
 
-Read `docs/PLAN.md` sections 6 and 7. Read `docs/AGENT_PROTOCOL.md` before your first commit.
+Read `docs/archive/PLAN.md` sections 6 and 7. Read `docs/archive/AGENT_PROTOCOL.md` before your first commit.
 
 ## You own
 
 ```
 packages/pipeline/**
-docs/progress/PROGRESS_B.json
-docs/handoffs/B-to-*.md
+docs/archive/progress/PROGRESS_B.json
+docs/archive/handoffs/B-to-*.md
 ```
 
 ## You can rely on today

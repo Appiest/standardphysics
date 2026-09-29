@@ -16,7 +16,7 @@ import pathlib
 import sys
 
 MATRIX = pathlib.Path("scripts/shop_pilot/assets/certificate-matrix-opencode-20260921-170615.json")
-POLICY = pathlib.Path("docs/research/deepseek-shop-pilot/04-hard-gates.json")
+POLICY = pathlib.Path("docs/archive/research/deepseek-shop-pilot/04-hard-gates.json")
 
 PASS_STATUSES = {
     "passed",

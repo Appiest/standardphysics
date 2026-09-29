@@ -1,6 +1,6 @@
 # Audit log
 
-Every push to `master` is audited against its lane document, the plan's invariants, `packages/contracts`, CI on the pushed commit, path ownership in `docs/AGENT_PROTOCOL.md`, and whether `docs/progress/PROGRESS_<LANE>.json` matches the code. A finding is recorded only after it is reproduced by running code or read directly from the diff.
+Every push to `master` is audited against its lane document, the plan's invariants, `packages/contracts`, CI on the pushed commit, path ownership in `docs/archive/AGENT_PROTOCOL.md`, and whether `docs/archive/progress/PROGRESS_<LANE>.json` matches the code. A finding is recorded only after it is reproduced by running code or read directly from the diff.
 
 Status is one of `open`, `fixed in <commit>`, or `blocked` with the person or lane it waits on.
 
@@ -81,7 +81,7 @@ The audit fixes code only in files no lane agent is actively changing. For lanes
 | Fixture pinch comes back as 31 in with the right coordinate | Met |
 | Lane C calls the real functions instead of stubs | Met in `9ced7bc` |
 
-Tasks 8 (Astra label) and 9 (Astra clean) wait on an OpenRouter key. Task 4 is covered by `usdz_to_glb`, which has not met a real RoomPlan export. `docs/progress/PROGRESS_B.json` lists the 403.5.2 turn rule as done, which A-14 and A-15 contradicted until the audit fix.
+Tasks 8 (Astra label) and 9 (Astra clean) wait on an OpenRouter key. Task 4 is covered by `usdz_to_glb`, which has not met a real RoomPlan export. `docs/archive/progress/PROGRESS_B.json` lists the 403.5.2 turn rule as done, which A-14 and A-15 contradicted until the audit fix.
 
 ## Findings
 
@@ -98,7 +98,7 @@ Low. `fixed in 2a5f763`.
 ### A-3 Lane B pushes edit files outside Lane B's paths
 Low. `blocked` on Boris agreeing who owns root files and `tests/`.
 
-Lane B owns `packages/pipeline/**`, `docs/progress/PROGRESS_B.json` and `docs/handoffs/B-to-*.md`. Its pushes also changed `pytest.ini` (`a95c77e`), `.gitignore` and `.env.example` (`bb6e303`), `docs/lanes/LANE_C.md`, `docs/lanes/LANE_D.md` and Lane D's `packages/fixtures/standardphysics_fixtures/data/shop.glb` (`d0d0ea5`), and `.github/workflows/ci.yml` and `pyproject.toml` (`d2a982a`). No damage found, but the protocol says to write a handoff instead.
+Lane B owns `packages/pipeline/**`, `docs/archive/progress/PROGRESS_B.json` and `docs/archive/handoffs/B-to-*.md`. Its pushes also changed `pytest.ini` (`a95c77e`), `.gitignore` and `.env.example` (`bb6e303`), `docs/archive/lanes/LANE_C.md`, `docs/archive/lanes/LANE_D.md` and Lane D's `packages/fixtures/standardphysics_fixtures/data/shop.glb` (`d0d0ea5`), and `.github/workflows/ci.yml` and `pyproject.toml` (`d2a982a`). No damage found, but the protocol says to write a handoff instead.
 
 ### A-4 CI was red from `1a6487e` through `1a06655`
 High. `fixed in d2a982a`.
@@ -143,7 +143,7 @@ Reproduced: the fixture's 0.900 m door reports 35.43 in with no deduction. `Widt
 ### A-10 The 180 degree turn width is the route width
 Medium. Superseded by `28e64c1`, which measures the turn; see A-14 and A-15.
 
-Build task 7 requires clear width at a 180 degree turn, which is a tier 1 check in `LANE_C.md` (ADA 2010 403.5.2). `turn_clear_width` returns `route_clear_width`. `B-to-C.md` discloses this, but `docs/progress/PROGRESS_B.json` marks the provider done.
+Build task 7 requires clear width at a 180 degree turn, which is a tier 1 check in `LANE_C.md` (ADA 2010 403.5.2). `turn_clear_width` returns `route_clear_width`. `B-to-C.md` discloses this, but `docs/archive/progress/PROGRESS_B.json` marks the provider done.
 
 ### A-11 Ingest invents a confidence when the export has none
 Medium. `fixed in 77dd362`.
@@ -165,7 +165,7 @@ High. `fixed in 1d6a685`. Pinned by `tests/test_audit_open_findings.py`.
 
 `28e64c1` measured each 403.5.2 width as grid clearance times two at points on the route. At a turn that is the distance to the pivot's corner rather than to the wall across from it, and the approach zone can start inside an occupied cell.
 
-Reproduced on a room with 42 in lanes and a 48 in turn, which meets the rule: approaching **0.00**, at the turn **41.34**, leaving **41.34**, and `turn_clear_width` returns **0 in**. In `tests/test_turns.py`'s own U-shaped shop the leaving width reads 37.40 in against a real 149.61 in. Still reproduced at `01582fd`: a turn with 43 in lanes and 49 in at the turn reads 0.00, 43.31 and 43.31 in. The audit's fix measured each width as the exact footprint gap from the pivot to the obstacle facing it; it conflicted with `fd43203`'s rewrite of `turns.py` and is described in `docs/handoffs/audit-to-B.md` for Lane B to apply.
+Reproduced on a room with 42 in lanes and a 48 in turn, which meets the rule: approaching **0.00**, at the turn **41.34**, leaving **41.34**, and `turn_clear_width` returns **0 in**. In `tests/test_turns.py`'s own U-shaped shop the leaving width reads 37.40 in against a real 149.61 in. Still reproduced at `01582fd`: a turn with 43 in lanes and 49 in at the turn reads 0.00, 43.31 and 43.31 in. The audit's fix measured each width as the exact footprint gap from the pivot to the obstacle facing it; it conflicted with `fd43203`'s rewrite of `turns.py` and is described in `docs/archive/handoffs/audit-to-B.md` for Lane B to apply.
 
 ### A-15 The 60 inch exemption never applies
 High. `fixed in 1d6a685`. Pinned by `tests/test_audit_open_findings.py`.
@@ -359,7 +359,7 @@ No policy that needs every surface finished completes either scan. What stops it
 
 `test1` ran 239.58 s, hitting the four minute cap, and finished with 2 of 26 surfaces done. Two of its walls sit at `observed_fraction 0.000, viewpoint_count 0` while RoomPlan reconstructed them at high confidence, so the frustum, normal and distance test rejected all 440 poses for them. No object in `test1` passes 0.660, so the gate is unreachable however long the owner walks. Neither scan could have shown "You've got the whole shop", and the lane document's criterion that walking half a room marks exactly that half done reads the other way: a fully walked room marks 8% done.
 
-`CoveragePolicy` has since moved to 0.90 observed, three viewpoints, 3 m and 50 degrees, which takes `test1` to 0 of 26 and away from the 70%, two viewpoint, 5 m, 60 degree rule in `LANE_A.md` and `docs/PLAN.md` section 3. Either the documents or the policy is wrong.
+`CoveragePolicy` has since moved to 0.90 observed, three viewpoints, 3 m and 50 degrees, which takes `test1` to 0 of 26 and away from the 70%, two viewpoint, 5 m, 60 degree rule in `LANE_A.md` and `docs/archive/PLAN.md` section 3. Either the documents or the policy is wrong.
 
 ### A-48 A scan manifest claims an artifact kind the contract did not define
 Medium. `fixed in 6f704a5`. Lane A raises it, Lane D owns the contract.
@@ -397,7 +397,7 @@ test1:  doors=0 openings=0 windows=0
 ravida: doors=0 openings=0 windows=1
 ```
 
-`docs/PLAN.md` section 1 measures the path in the door, and Lane C's tier 1 includes ADA 2010 404.2.3 door clear width. With no door node neither check has an input, and Lane B's outstanding criterion that a tape-measured doorway match the SceneGraph within 3 cm is still blocked after the scan arrived. The doorway subtraction in `occupancy.CUTS_THROUGH_WALLS` and the A-20 fix have nothing to act on.
+`docs/archive/PLAN.md` section 1 measures the path in the door, and Lane C's tier 1 includes ADA 2010 404.2.3 door clear width. With no door node neither check has an input, and Lane B's outstanding criterion that a tape-measured doorway match the SceneGraph within 3 cm is still blocked after the scan arrived. The doorway subtraction in `occupancy.CUTS_THROUGH_WALLS` and the A-20 fix have nothing to act on.
 
 The walls also do not enclose either room: summing wall lengths against the floor extent gives `test1` 11.23 m of wall around a 43.6 m perimeter, and `ravida` 18.15 m around 36.4 m. Seven of `test1`'s nine walls are 0.36 to 0.48 m slivers, 4.4 m tall, and they are the same walls A-47 shows were never observed.
 
@@ -409,12 +409,12 @@ The two mesh blobs are 31,840,294 and 26,631,156 bytes, and `du -sh .git` is 17M
 ### A-52 A hand-written manifest mirrors a contract model
 Low. `open`. Lane A.
 
-`datasets/phone/*/scan.json` uses `scan_id`, `captured_at` and `files[].file/kind/artifact_id/sha256/bytes`; `contracts.Scan` uses `id`, `created_at`, `artifacts[]`, `coverage[]` and `content_hash`. `docs/PLAN.md` section 5 makes `packages/contracts` the only source of truth for a shape. The manifest is useful and should either take the contract shape or become a model in contracts.
+`datasets/phone/*/scan.json` uses `scan_id`, `captured_at` and `files[].file/kind/artifact_id/sha256/bytes`; `contracts.Scan` uses `id`, `created_at`, `artifacts[]`, `coverage[]` and `content_hash`. `docs/archive/PLAN.md` section 5 makes `packages/contracts` the only source of truth for a shape. The manifest is useful and should either take the contract shape or become a model in contracts.
 
 ### A-53 A new top-level `datasets/` tree belongs to no lane
 Low. `open`. Lane A and the humans.
 
-All 14 files in `a6e14f7` land under `datasets/phone/`, which no lane document claims: Lane A owns `apps/ios/**`, B `packages/pipeline/**`, C `packages/agents/**`, D contracts, fixtures, api and web. No handoff, README or lane document says what the tree is or that it is now the canonical place for a real scan. `docs/handoffs/B-to-A.md` had asked for the export at `packages/fixtures/standardphysics_fixtures/data/real/`, where the existing `tests/test_real_ingest.py` parameterisation already looks, so the real-export suite did not pick these up and Lane B wrote fresh cases instead. The commit also carries no lane prefix, which the protocol asks for. This is the Lane A analogue of A-3.
+All 14 files in `a6e14f7` land under `datasets/phone/`, which no lane document claims: Lane A owns `apps/ios/**`, B `packages/pipeline/**`, C `packages/agents/**`, D contracts, fixtures, api and web. No handoff, README or lane document says what the tree is or that it is now the canonical place for a real scan. `docs/archive/handoffs/B-to-A.md` had asked for the export at `packages/fixtures/standardphysics_fixtures/data/real/`, where the existing `tests/test_real_ingest.py` parameterisation already looks, so the real-export suite did not pick these up and Lane B wrote fresh cases instead. The commit also carries no lane prefix, which the protocol asks for. This is the Lane A analogue of A-3.
 
 ### A-54 Setting the OpenRouter key breaks every model call
 Medium. `open`. Lane C.

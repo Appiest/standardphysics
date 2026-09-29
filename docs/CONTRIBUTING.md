@@ -4,18 +4,18 @@ How to run, change, test and deploy each part of the system. The [README](../REA
 
 ## Start here
 
-The team built the first version in four lanes, each with its own document under `docs/lanes/`, and several AI coding agents still follow that split. The lane documents and `docs/handoffs/` record how the work was divided and what each lane promised the others. For what the system does today, the code, the [README](../README.md) and [`DEPLOY.md`](DEPLOY.md) are the current sources.
+The team built the first version in four lanes, and several AI coding agents still follow that split. [`docs/archive/`](archive) keeps that build record: the original plan, the lane documents, the handoffs between lanes, each lane's progress log, and the research notes the README cites. For what the system does today, the code, the [README](../README.md) and [`DEPLOY.md`](DEPLOY.md) are the current sources.
 
 | You are | Read |
 |---|---|
 | Anyone, before branching or merging | [`AGENTS.md`](../AGENTS.md), which is the one place the branch workflow is written down |
-| Any agent, before your first commit | [`docs/AGENT_PROTOCOL.md`](AGENT_PROTOCOL.md) |
-| Anyone, for what we're building | [`docs/PLAN.md`](PLAN.md) |
-| Lane A, capture | [`docs/lanes/LANE_A.md`](lanes/LANE_A.md) |
-| Lane B, model and measurement | [`docs/lanes/LANE_B.md`](lanes/LANE_B.md) |
-| Lane C, checks and evaluation | [`docs/lanes/LANE_C.md`](lanes/LANE_C.md) |
-| Lane D, contracts, API, web | [`docs/lanes/LANE_D.md`](lanes/LANE_D.md) |
-| Anyone writing UI or copy | [`CLAUDE.md`](../CLAUDE.md), then section 2 of the plan |
+| Any agent, before your first commit | [`docs/archive/AGENT_PROTOCOL.md`](archive/AGENT_PROTOCOL.md) |
+| Anyone, for what we're building | [`docs/archive/PLAN.md`](archive/PLAN.md) |
+| Lane A, capture | [`docs/archive/lanes/LANE_A.md`](archive/lanes/LANE_A.md) |
+| Lane B, model and measurement | [`docs/archive/lanes/LANE_B.md`](archive/lanes/LANE_B.md) |
+| Lane C, checks and evaluation | [`docs/archive/lanes/LANE_C.md`](archive/lanes/LANE_C.md) |
+| Lane D, contracts, API, web | [`docs/archive/lanes/LANE_D.md`](archive/lanes/LANE_D.md) |
+| Anyone writing UI or copy | [`.claude/CLAUDE.md`](../.claude/CLAUDE.md), then section 2 of the plan |
 | Anyone touching a screen an owner sees | [`docs/UX.md`](UX.md) |
 | Anyone pointing ARIA at the evaluation | [`docs/aria.md`](aria.md) |
 | Anyone putting this in front of a real shop | [`docs/DEPLOY.md`](DEPLOY.md), then [`docs/APP_STORE.md`](APP_STORE.md) |

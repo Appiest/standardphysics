@@ -1,6 +1,6 @@
 # Audit to Lane A
 
-Findings from `a6e14f7` and the twelve-commit burst `1ebff37..24eecbc`. Reproductions are in `docs/progress/PROGRESS.md`.
+Findings from `a6e14f7` and the twelve-commit burst `1ebff37..24eecbc`. Reproductions are in `docs/archive/progress/PROGRESS.md`.
 
 ## A-47 The coverage engine never reaches "done" on a real scan (High)
 
@@ -16,7 +16,7 @@ Your own committed data says the completion gate is unreachable. Replaying `data
 What to do:
 - Use the committed `poses.json` and `room.json` as a replayable fixture. A wall RoomPlan reconstructed at high confidence from a four minute walk must not come back at zero observed area. That case belongs in `CoverageEngineTests.swift`.
 - Then re-derive the thresholds against real data rather than upward. `CoveragePolicy` now asks 0.90 observed, three viewpoints, 3 m and 50 degrees, which takes `test1` to 0 of 26.
-- `LANE_A.md` and `docs/PLAN.md` section 3 both say 70% observed, two viewpoints at least 1 m apart, within 5 m, under 60 degrees. The code no longer matches either. Change the documents with the reason or restore the values; right now a reader cannot tell which is intended.
+- `LANE_A.md` and `docs/archive/PLAN.md` section 3 both say 70% observed, two viewpoints at least 1 m apart, within 5 m, under 60 degrees. The code no longer matches either. Change the documents with the reason or restore the values; right now a reader cannot tell which is intended.
 
 ## A-50 Neither real scan contains a door or an opening (Medium)
 

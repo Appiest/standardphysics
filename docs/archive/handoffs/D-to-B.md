@@ -279,7 +279,7 @@ width problem. You already tried that and held it in `B-to-C.md`, because it
 fails 15 of Lane C's tests. That call belongs to Lane C, and I have moved the
 ask to `D-to-C.md`. Nothing new for you here until they decide.
 
-`docs/handoffs/D-to-C-rule-review.md` also notes that `service_counter_approach`
+`docs/archive/handoffs/D-to-C-rule-review.md` also notes that `service_counter_approach`
 centres its rectangle on the high counter (x = 0.46 m on the sample shop)
 instead of on the lowered section beside it (x = -1.14 m). 904.4.1 places the
 clear floor space "adjacent to the 36 inch (915 mm) minimum length of counter".

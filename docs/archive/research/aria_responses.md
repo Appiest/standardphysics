@@ -1,6 +1,6 @@
 # What ARIA said
 
-ARIA's answers to the six questions in [`aria.md`](aria.md), asked against the
+ARIA's answers to the six questions in [`aria.md`](../../aria.md), asked against the
 nine runs of the first grid: three cell sizes (15, 25 and 50 mm) crossed with
 three ladder depths (4, 8 and 16 candidates), 39 cases each.
 
@@ -189,4 +189,4 @@ field the provider already built and indexes one cell, so the count is high and
 the cost is not: taking the duplicated field lookup out of it moved a 39-case
 run from 16.99 to 16.95 seconds.
 
-What shipped is in the last section of [`aria.md`](aria.md).
+What shipped is in the last section of [`aria.md`](../../aria.md).

@@ -114,7 +114,7 @@ class TestHardConstraints:
     def test_the_documented_five_inch_fix_is_a_legal_move(self, graph):
         """It was not, until Lane D left six inches beside each case.
 
-        See docs/handoffs/C-to-D.md. The case used to end flush against the
+        See docs/archive/handoffs/C-to-D.md. The case used to end flush against the
         wall, so the one move the demo script called for was the one the room
         forbade.
         """

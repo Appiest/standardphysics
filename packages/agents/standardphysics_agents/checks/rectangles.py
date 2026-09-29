@@ -6,7 +6,7 @@ answers circles through `turning_space` and one particular rectangle through
 `counter_approach`, so this composes Lane B's published footprint helpers into
 the general question.
 
-Asked for as `clear_floor` in docs/handoffs/C-to-B.md. It belongs beside the
+Asked for as `clear_floor` in docs/archive/handoffs/C-to-B.md. It belongs beside the
 other measurements and this goes when it lands.
 """
 

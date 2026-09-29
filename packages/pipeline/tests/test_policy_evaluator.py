@@ -21,7 +21,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[3]
 CLI = REPO / "scripts/evaluate_candidate.py"
 
-BASELINE_POLICY = REPO / "docs/research/deepseek-lidar-experiment-policy-v2.json"
+BASELINE_POLICY = REPO / "docs/archive/research/deepseek-lidar-experiment-policy-v2.json"
 
 VIEW_IDS = [f"image-{n:06d}.jpg" for n in range(100, 108)]
 

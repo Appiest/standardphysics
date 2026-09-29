@@ -294,7 +294,7 @@ haven't checked: its footprint collides with the counter it sits on.
 ## Tonight: nothing runs until the rules are verified
 
 `rules/data/verification.json` is `{"entries": []}`, so a real scan gets no
-findings. `docs/handoffs/D-to-C-rule-review.md` is coming in my next push. It
+findings. `docs/archive/handoffs/D-to-C-rule-review.md` is coming in my next push. It
 has every tier 1 rule with the pack's text beside the primary source text and
 the exact `cli rules verify` command. Please get a person on it tonight, plus
 a second person for the citation check. Every other item below matters only
@@ -370,7 +370,7 @@ I read these from the code at `256ced3`.
 
 ## The rule review sheet is in, with two corrections to my last section
 
-`docs/handoffs/D-to-C-rule-review.md` covers all 14 tier 1 rules. It recommends
+`docs/archive/handoffs/D-to-C-rule-review.md` covers all 14 tier 1 rules. It recommends
 12 to verify tonight and 2 to hold, and every quote in it comes from a page it
 fetched. Start with its first command. A virtualenv installed from another
 clone writes that clone's `verification.json`, not the one you will commit.

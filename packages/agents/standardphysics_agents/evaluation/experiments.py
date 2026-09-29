@@ -21,7 +21,7 @@ wall clocks at p = 0.88 and p = 0.74. It was right about the runs it had. The
 run it proposed next is what overturned it — the three cell sizes in that grid
 all happened to find every fix in the first four rungs, and at 20 mm and 30 mm
 the ladder decides whether a third of the fixes are found at all. The axis
-values were the unlucky part, not the axis. See `docs/research/aria_responses.md`.
+values were the unlucky part, not the axis. See `docs/archive/research/aria_responses.md`.
 
 The local JSON is the authoritative record here, as it is for a single run:
 the grid runs and saves with no account, and W&B gets the same numbers when a

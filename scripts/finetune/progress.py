@@ -1,4 +1,4 @@
-"""docs/progress/PROGRESS_FINETUNE.json: what has run, what it cost, and how to resume.
+"""runs/finetune/progress.json: what has run, what it cost, and how to resume.
 
 Rewritten atomically after every step, so a killed run leaves a readable file
 and a rerun skips whatever already finished.

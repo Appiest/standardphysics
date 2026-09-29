@@ -423,7 +423,7 @@ One responsive React build, used inside the native shell and in a browser. Perso
 
 **Report.** Print-ready. One block per finding with its render, the measurement, the fix and the citation. Then open questions as next steps. Then **What we checked** — the paths measured, the rules checked, who reviewed it and when.
 
-Design follows the repo `CLAUDE.md`. Neutral surfaces, one calm accent, red reserved for failures only.
+Design follows the repo `.claude/CLAUDE.md`. Neutral surfaces, one calm accent, red reserved for failures only.
 
 ---
 
@@ -476,7 +476,7 @@ Venue closes 9:00 PM Saturday, reopens 9:00 AM Sunday, submissions due 1:00 PM.
 | Sun 12:00-12:30 | Submit a working version. |
 | Sun 12:30-13:00 | Buffer. Verified fixes only. |
 
-Integrate at 14:00, 16:00, 18:00, 21:00, then hourly Sunday. Each lane keeps `docs/progress/PROGRESS.json` with status, commits, blockers and next handoff.
+Integrate at 14:00, 16:00, 18:00, 21:00, then hourly Sunday. Each lane keeps `docs/archive/progress/PROGRESS.json` with status, commits, blockers and next handoff.
 
 ---
 

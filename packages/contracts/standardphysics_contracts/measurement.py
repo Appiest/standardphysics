@@ -2,7 +2,7 @@
 
 Lane B implements this against real geometry. Lane C codes against it from the
 first hour using packages/fixtures/stub_measurements.py, and swaps the
-constructor argument when Lane B's docs/progress/PROGRESS_B.json lists it ready.
+constructor argument when Lane B's docs/archive/progress/PROGRESS_B.json lists it ready.
 """
 
 from __future__ import annotations

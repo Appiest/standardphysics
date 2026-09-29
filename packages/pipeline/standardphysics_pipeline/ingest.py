@@ -7,7 +7,7 @@ three rather than guessing which one a given SDK produces.
 
 **This is written against the documented shape, not a real export.** Until a
 real `room.json` lands from Lane A, treat a parse of it as unverified: see
-docs/handoffs/B-to-A.md. `parse_room_json` raises rather than inventing a value
+docs/archive/handoffs/B-to-A.md. `parse_room_json` raises rather than inventing a value
 whenever a field it needs is missing or shaped unexpectedly.
 """
 

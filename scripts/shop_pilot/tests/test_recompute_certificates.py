@@ -10,7 +10,7 @@ import pathlib
 from scripts.shop_pilot.recompute_certificates import compute
 
 POLICY = json.loads(
-    (pathlib.Path("docs/research/deepseek-shop-pilot/04-hard-gates.json")).read_text(encoding="utf-8")
+    (pathlib.Path("docs/archive/research/deepseek-shop-pilot/04-hard-gates.json")).read_text(encoding="utf-8")
 )
 
 BASE_STATUSES = {
