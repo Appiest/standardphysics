@@ -162,6 +162,20 @@ release_drain() {
   echo 'I could not turn the drain off, so the API is refusing new work. On the box run:' >&2
   echo \"  cd '$DIR/deploy/digitalocean' && docker compose exec api /opt/venv/bin/python -m standardphysics_api.drain off\" >&2
 }
+# Each deploy leaves a 6 GB image behind, and a day of them filled the 77 GB
+# disk. The image now serving and the last one that came up, which is the
+# rollback, stay; the rest and the build cache go. A failure here is not a
+# failed deploy, because the new commit is already serving.
+remove_old_images() {
+  docker images --format '{{.Repository}}:{{.Tag}}' | grep -E '^(standardphysics|$IMAGE):[0-9a-f]{40}\$' | while read -r ref; do
+    case \${ref##*:} in
+      \"\$1\"|\"\$2\") ;;
+      *) docker rmi \"\$ref\" >/dev/null 2>&1 || true ;;
+    esac
+  done || true
+  docker image prune -f >/dev/null 2>&1 || true
+  docker builder prune -af >/dev/null 2>&1 || true
+}
 # The drain stops new work being queued or started, and the trap turns it off
 # on any way out. A worker that read the flag a moment before it was set may
 # still be claiming a job, so the first look at the queue waits a beat.
@@ -228,7 +242,9 @@ done
 echo \"\$verdict\"
 release_drain
 trap - EXIT
+rollback=\$(cat '$HISTORY.1' '$HISTORY' 2>/dev/null | tail -n 1 | cut -d ' ' -f 2) || true
 echo \"\$(date -u +%Y-%m-%dT%H:%M:%SZ) \$GIT_SHA \$origin\" >> '$HISTORY'
+remove_old_images \"\$GIT_SHA\" \"\$rollback\"
 ./doctor.sh"
 }
 

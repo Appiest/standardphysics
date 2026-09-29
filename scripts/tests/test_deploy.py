@@ -44,6 +44,7 @@ esac
     "docker": """echo "docker $* GIT_SHA=${GIT_SHA:-}" >> "$STAND_IN_LOG"
 [ "$1" = pull ] && [ -z "${FAKE_PUBLISHED:-}" ] && exit 1
 [ "$1" = image ] && echo "$FAKE_DIGEST"
+[ "$1" = images ] && printf '%s\n' ${FAKE_IMAGES:-}
 if [ "$2" = exec ] && [ "${@: -3:1}" = - ]; then
   exec "$STAND_IN_PYTHON" - "${@: -2}" "$FAKE_ORIGIN" "$FAKE_ORIGIN"
 fi
@@ -394,3 +395,35 @@ def test_a_failure_with_no_earlier_deploy_says_there_is_nothing_to_roll_back_to(
     assert result.returncode == 70
     assert "No earlier deploy" in result.stderr
     assert not (box / "deploys.log").exists()
+
+
+OLDER = "1111111111111111111111111111111111111111"
+
+
+def test_a_deploy_that_comes_up_removes_every_image_but_the_one_serving_and_the_rollback(box):
+    (box / "deploys.log").write_text(f"2026-09-28T00:00:00Z {PREVIOUS} {DIGEST}\n")
+    images = [f"standardphysics:{sha}" for sha in (COMMIT, PREVIOUS, OLDER)] + [f"ghcr.io/imhaohao/standardphysics:{OLDER}", "standardphysics:latest", "caddy:2-alpine"]
+
+    result = deploy(box, FAKE_IMAGES=" ".join(images))
+
+    assert result.returncode == 0, result.stderr
+    removed = [line.split()[2] for line in calls(box) if line.startswith("docker rmi")]
+    assert sorted(removed) == sorted([f"standardphysics:{OLDER}", f"ghcr.io/imhaohao/standardphysics:{OLDER}"])
+    assert any(line.startswith("docker builder prune -af") for line in calls(box))
+
+
+def test_a_first_deploy_with_no_old_images_still_succeeds(box):
+    result = deploy(box, FAKE_IMAGES="")
+
+    assert result.returncode == 0, result.stderr
+    assert not any(line.startswith("docker rmi") for line in calls(box))
+
+
+def test_a_deploy_that_never_comes_up_removes_nothing(box, stack):
+    FakeStack.answers = {**healthy_answers(), "/health/ready": lambda asked: (503, {"status": "starting"})}
+    images = [f"standardphysics:{sha}" for sha in (COMMIT, PREVIOUS, OLDER)]
+
+    result = deploy(box, FAKE_IMAGES=" ".join(images), SP_DEPLOY_READY_SECONDS="0")
+
+    assert result.returncode != 0
+    assert not any(line.startswith("docker rmi") for line in calls(box))
