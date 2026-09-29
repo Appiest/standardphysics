@@ -1,12 +1,14 @@
-"""The menu's second tier: a turning circle emptied at once, a table carried with its seats, and short nudges."""
+"""The menu's second tier: a turning circle or a counter's clear floor emptied at once, a table carried with its
+seats, and short nudges."""
 
 import json
 import math
 from dataclasses import replace
 
 import pytest
+from standardphysics_agents.checks.rectangles import EDGE_TOLERANCE, rectangle
 from standardphysics_agents.fix import apply_moves, relocation_violations, violations
-from standardphysics_agents.fix.clearing import _centres, _reaches_inside, circle_clearing_moves
+from standardphysics_agents.fix.clearing import _centres, _reaches_inside, circle_clearing_moves, space_clearing_moves
 from standardphysics_agents.fix.groups import group_moves
 from standardphysics_agents.fix.nudges import NUDGE_INCHES, nudge_moves
 from standardphysics_agents.training import TrainingChecker, score_completion
@@ -17,7 +19,9 @@ from standardphysics_agents.training.owner import WishBook
 from standardphysics_agents.training.quality import seat_table_pairs
 from standardphysics_agents.training.wishes import infer_wishes, kept
 from standardphysics_contracts import to_meters
-from standardphysics_pipeline import PipelineMeasurements
+from standardphysics_pipeline import PipelineMeasurements, footprint
+from standardphysics_pipeline.footprints import rotation_about_z, touching
+from standardphysics_pipeline.measure import COUNTER_CLEAR_DEPTH, COUNTER_CLEAR_WIDTH
 
 from conftest import captured_room
 
@@ -69,6 +73,29 @@ def test_a_circle_a_pinned_piece_reaches_into_is_left_alone(room, problems):
 
 def test_only_a_turning_space_is_pushed_clear(room, problems):
     assert circle_clearing_moves(room[0], problems["service_counter_approach"]) == []
+
+
+def _clear_floor(graph, finding):
+    against = graph.by_id(finding.locus.node_ids[0])
+    return rectangle(finding.locus.point, COUNTER_CLEAR_WIDTH - 2 * EDGE_TOLERANCE,
+                     COUNTER_CLEAR_DEPTH - 2 * EDGE_TOLERANCE, rotation_about_z(against))
+
+
+def test_a_counters_clear_floor_is_emptied_by_pushing_every_piece_out_at_once(room, problems):
+    graph, _ = room
+    finding = problems["service_counter_approach"]
+    found = space_clearing_moves(graph, finding)
+    assert found
+    assert [move.disruption for move in found] == sorted(move.disruption for move in found)
+    space = _clear_floor(graph, finding)
+    for candidate in found:
+        moved = apply_moves(graph, candidate.moves)
+        assert not violations(graph, moved)
+        assert not any(touching(footprint(moved.by_id(move.node_id)), space) for move in candidate.moves)
+
+
+def test_only_a_counters_clear_floor_is_pushed_out_as_a_rectangle(room, problems):
+    assert space_clearing_moves(room[0], problems["turning_space"]) == []
 
 
 def test_nudges_are_short_slides_of_a_named_piece_that_never_head_into_the_problem(room, problems):

@@ -59,7 +59,7 @@ from ..evaluation.gate import accepts
 from ..fix import CandidateRejection, candidates, combine_rejections, pinch_from, room_heading, snap_moves
 from ..fix.budget import out_of_time
 from ..fix.built_ins import built_in_set_moves
-from ..fix.clearing import circle_clearing_moves
+from ..fix.clearing import circle_clearing_moves, space_clearing_moves
 from ..fix.groups import group_moves
 from ..fix.nudges import nudge_moves
 from ..fix.placement import placements
@@ -276,7 +276,8 @@ def _set_words(graph: SceneGraph, candidate: Candidate, finding: Finding) -> str
 
 
 def _clearing_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:
-    """A turning circle emptied at once, a table moved with its seats, and short nudges, taken in turn."""
+    """A turning circle or a counter's clear floor emptied at once, a table moved with its seats, and short nudges,
+    taken in turn."""
     pinned = frozenset(checker.pinned)
 
     def worded(candidate: Candidate, words: str) -> _Guess:
@@ -287,6 +288,7 @@ def _clearing_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChec
 
     families = [
         [worded(found, slides(found)) for found in circle_clearing_moves(graph, finding, pinned)],
+        [worded(found, slides(found)) for found in space_clearing_moves(graph, finding, pinned)],
         _varied([worded(found, _set_words(graph, found, finding))
                  for found in group_moves(graph, finding, _groups(graph), pinned)]),
         _varied([worded(found, slides(found)) for found in nudge_moves(graph, finding, pinned)]),

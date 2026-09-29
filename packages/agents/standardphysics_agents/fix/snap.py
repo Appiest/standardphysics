@@ -19,6 +19,8 @@ import math
 from dataclasses import dataclass, field
 
 from standardphysics_contracts import NodeMove, SceneGraph, Vec3, to_meters
+from standardphysics_pipeline import footprint
+from standardphysics_pipeline.footprints import Polygon, touching
 
 from .constraints import violations
 from .moves import apply_moves
@@ -52,23 +54,31 @@ def _nudged(move: NodeMove, dx: float, dy: float) -> NodeMove:
     return move.model_copy(update={"delta_translation": Vec3(x=delta.x + dx, y=delta.y + dy, z=delta.z)})
 
 
-def nearest_legal(base: SceneGraph, kept: list[NodeMove], move: NodeMove) -> tuple[NodeMove, float] | None:
-    """The legal move closest to `move`, given the moves already kept, and how far it was nudged."""
+def nearest_legal(base: SceneGraph, kept: list[NodeMove], move: NodeMove,
+                  avoid: Polygon | None = None) -> tuple[NodeMove, float] | None:
+    """The legal move closest to `move`, given the moves already kept, and how far it was nudged.
+
+    With `avoid`, a spot reaching into that patch of floor is not a place to land, so a piece pushed out of a space
+    to clear it is never nudged back in.
+    """
     for dx, dy in _offsets():
         trial = _nudged(move, dx, dy)
-        if not violations(base, apply_moves(base, [*kept, trial])):
+        candidate = apply_moves(base, [*kept, trial])
+        if avoid is not None and touching(footprint(candidate.by_id(move.node_id)), avoid):
+            continue
+        if not violations(base, candidate):
             return trial, math.hypot(dx, dy)
     return None
 
 
-def snap_moves(base: SceneGraph, moves: list[NodeMove]) -> Snapped:
-    """Each move kept as asked, nudged to legal floor, or dropped when nothing legal is near."""
+def snap_moves(base: SceneGraph, moves: list[NodeMove], avoid: Polygon | None = None) -> Snapped:
+    """Each move kept as asked, nudged to legal floor outside `avoid`, or dropped when nothing legal is near."""
     snapped = Snapped(kept=[])
     for move in moves:
         if any(kept.node_id == move.node_id for kept in snapped.kept):
             snapped.dropped.append(move)
             continue
-        found = nearest_legal(base, snapped.kept, move)
+        found = nearest_legal(base, snapped.kept, move, avoid)
         if found is None:
             snapped.dropped.append(move)
             continue

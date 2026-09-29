@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 from standardphysics_agents.fix import apply_moves, snap_moves, violations
 from standardphysics_contracts import NodeMove, SceneGraph, Vec3
+from standardphysics_pipeline import footprint
+from standardphysics_pipeline.footprints import touching
 
 
 @pytest.fixture(scope="module")
@@ -42,6 +44,18 @@ def test_a_move_into_another_piece_is_nudged_to_legal_floor(room):
     assert len(snapped.kept) == 1 and not snapped.dropped
     assert not violations(room, apply_moves(room, snapped.kept))
     assert snapped.nudged_meters[piece.id] > 0
+
+
+def test_a_nudge_never_lands_in_a_patch_it_must_avoid(room):
+    chair = next(node for node in _movable(room) if node.label == "Chair")
+    stay = NodeMove(node_id=chair.id, delta_translation=Vec3(x=0.0, y=0.0, z=0.0))
+    here = chair.transform.position
+    avoid = [(here.x - 0.01, here.y - 0.01), (here.x + 0.01, here.y - 0.01),
+             (here.x + 0.01, here.y + 0.01), (here.x - 0.01, here.y + 0.01)]
+    snapped = snap_moves(room, [stay], avoid=avoid)
+    assert len(snapped.kept) == 1 and snapped.nudged_meters[chair.id] > 0
+    landed = apply_moves(room, snapped.kept)
+    assert not touching(footprint(landed.by_id(chair.id)), avoid) and not violations(room, landed)
 
 
 def test_a_legal_move_is_kept_exactly_as_asked(room):
