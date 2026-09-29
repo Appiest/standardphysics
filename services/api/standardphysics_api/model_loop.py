@@ -78,9 +78,15 @@ class RankedMenuChooser:
     reply_seconds: float = REPLY_SECONDS
 
     def ask(self, messages: list[dict], seconds: float | None = None) -> str:
-        options = json.loads(messages[-1]["content"])["options"]
-        return json.dumps({"choose": [options[0]["option"]],
-                           "why": "It fixes the most problems with the least building and moving."})
+        best = json.loads(messages[-1]["content"])["options"][0]
+        return json.dumps({"choose": [best["option"]], "why": _ranked_first_because(best.get("clears", []))})
+
+
+def _ranked_first_because(clears: list[str]) -> str:
+    """The reason in problem labels, which the loop turns into the owner's titles."""
+    if not clears:
+        return "No move clears a problem outright yet, and this one gets closest with the least building and moving."
+    return f"It clears {' and '.join(clears)} with the least building and moving."
 
 
 Chooser = ModelChooser | RankedMenuChooser
