@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 from standardphysics_pipeline.ingest import parse_room_json
 from standardphysics_pipeline.lidar import load_mesh, triangles_in_arkit_world
-from standardphysics_pipeline.textures import project
+from standardphysics_pipeline.textures import depth_buffers, visibility_blocks
 from standardphysics_pipeline.textures.camera import load_cameras
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -50,12 +50,12 @@ def camera_and_faces():
 
 
 def _buffer_with_chunk(camera, triangles, chunk: int) -> np.ndarray:
-    was = project.DEPTH_TRIANGLE_CHUNK
-    project.DEPTH_TRIANGLE_CHUNK = chunk
+    was = depth_buffers.DEPTH_TRIANGLE_CHUNK
+    depth_buffers.DEPTH_TRIANGLE_CHUNK = chunk
     try:
-        return project.triangle_depth_buffer(camera, triangles)
+        return depth_buffers.triangle_depth_buffer(camera, triangles)
     finally:
-        project.DEPTH_TRIANGLE_CHUNK = was
+        depth_buffers.DEPTH_TRIANGLE_CHUNK = was
 
 
 def test_the_batch_size_changes_nothing(camera_and_faces):
@@ -86,13 +86,13 @@ def test_a_mesh_larger_than_any_old_limit_is_not_refused(camera_and_faces):
 def test_drawing_small_faces_together_matches_drawing_them_one_by_one(camera_and_faces):
     """The batched path must write the buffer the per-face loop writes, pixel for pixel, for faces of every size."""
     camera, triangles = camera_and_faces
-    fast = project.triangle_depth_buffer(camera, triangles)
-    was = project.SMALL_TRIANGLE_SIDES
-    project.SMALL_TRIANGLE_SIDES = (0,)
+    fast = depth_buffers.triangle_depth_buffer(camera, triangles)
+    was = depth_buffers.SMALL_TRIANGLE_SIDES
+    depth_buffers.SMALL_TRIANGLE_SIDES = (0,)
     try:
-        one_by_one = project.triangle_depth_buffer(camera, triangles)
+        one_by_one = depth_buffers.triangle_depth_buffer(camera, triangles)
     finally:
-        project.SMALL_TRIANGLE_SIDES = was
+        depth_buffers.SMALL_TRIANGLE_SIDES = was
     assert np.isfinite(fast).any()
     assert np.array_equal(fast, one_by_one)
 
@@ -101,8 +101,8 @@ def test_drawing_the_nearest_cubes_first_and_skipping_hidden_ones_draws_the_same
     """Dozens of layers of shelving were drawn into each photo's buffer; skipping the hidden ones must change no pixel."""
     camera, triangles = camera_and_faces
     triangles = triangles.astype(np.float32)
-    blocks = project.TriangleBlocks(triangles)
-    everything = project.triangle_depth_buffer(camera, triangles)
-    nearest_first = project.occluder_depth_buffer(camera, triangles, blocks)
+    blocks = visibility_blocks.TriangleBlocks(triangles)
+    everything = depth_buffers.triangle_depth_buffer(camera, triangles)
+    nearest_first = depth_buffers.occluder_depth_buffer(camera, triangles, blocks)
     assert np.isfinite(everything).any()
     assert np.array_equal(everything, nearest_first)

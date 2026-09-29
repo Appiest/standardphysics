@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from standardphysics_pipeline.textures.atlas_texels import sample_surface
 from standardphysics_pipeline.textures.camera import PhotoCamera
 from standardphysics_pipeline.textures.furniture_experiment import (
     MeasuredBox,
@@ -12,7 +13,6 @@ from standardphysics_pipeline.textures.furniture_experiment import (
     spar_point_cloud,
     yawed,
 )
-from standardphysics_pipeline.textures.project import sample_surface
 from standardphysics_pipeline.textures.scan_colour import ColouredScan
 
 

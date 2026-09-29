@@ -11,8 +11,8 @@ import pytest
 from standardphysics_pipeline.check_blender import blender_path
 from standardphysics_pipeline.coords import capture_to_room
 from standardphysics_pipeline.ingest import parse_room_json
+from standardphysics_pipeline.textures.atlas_texels import face_normals, rasterize_atlas
 from standardphysics_pipeline.textures.hole_patches import with_holes_patched
-from standardphysics_pipeline.textures.project import face_normals, rasterize_atlas
 from standardphysics_pipeline.textures.scan_atlas import (
     TEXEL_METRES,
     _corner_weights,
@@ -155,7 +155,7 @@ def test_a_budget_packed_into_two_atlases_gives_every_face_at_least_twice_the_te
 
 def _rasterized_face_by_face(world, uv, owners, size):
     """The atlas rasterizer as it was: one call per face, the later face winning each texel."""
-    from standardphysics_pipeline.textures.project import _triangle_texels
+    from standardphysics_pipeline.textures.atlas_texels import _triangle_texels
 
     normals, areas = face_normals(world)
     colours = np.full((len(world), 3), 0.65, dtype=np.float32)
@@ -200,7 +200,7 @@ def _padded_whole_image(image, filled, passes):
 
 @pytest.mark.skipif(_blender_missing(), reason="Blender not installed")
 def test_padding_only_the_frontier_matches_padding_the_whole_image(tmp_path):
-    from standardphysics_pipeline.textures.project import GUTTER_PASSES, pad_gutters
+    from standardphysics_pipeline.textures.atlas_texels import GUTTER_PASSES, pad_gutters
 
     vertices, triangles = scan_geometry(REPO / "datasets/phone/test1/lidar-mesh.json", capture_to_room(0.0))
     scan = ColouredScan(vertices, triangles, np.zeros((len(vertices), 3)), np.zeros(len(vertices), bool))

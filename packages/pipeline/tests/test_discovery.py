@@ -41,7 +41,7 @@ from standardphysics_pipeline.discovery.people import (
     without_people,
 )
 from standardphysics_pipeline.textures.camera import PhotoCamera
-from standardphysics_pipeline.textures.project import depth_buffer
+from standardphysics_pipeline.textures.depth_buffers import depth_buffer
 
 
 def slab(centre, size, spacing=0.02) -> np.ndarray:
@@ -145,7 +145,7 @@ class TestSeparatingWhatIsInFrontOfWhat:
         front, behind = slab((0.0, 1.0, 1.0), (0.6, 0.1, 0.6)), slab((0.0, 2.0, 1.0), (0.3, 0.1, 0.3))
         camera = camera_at((0.0, -1.0, 1.0), (0.0, 1.0, 1.0))
         both = np.vstack([front, behind])
-        from standardphysics_pipeline.textures.project import depth_buffer
+        from standardphysics_pipeline.textures.depth_buffers import depth_buffer
 
         view = FrameView.of(both, camera, depth_buffer(camera, both))
         seen = view.points[view.through(Detection("frame-0001", "screen", box_around(camera, behind), True, 0.9))]

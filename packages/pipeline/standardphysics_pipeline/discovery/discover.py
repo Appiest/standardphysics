@@ -36,7 +36,8 @@ from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
 
 from ..lidar import LidarMeshError, room_cloud, room_faces
 from ..textures.camera import CameraMetadataError, PhotoCamera, load_cameras
-from ..textures.project import depth_buffer, evenly_spread
+from ..textures.depth_buffers import depth_buffer
+from ..textures.project import evenly_spread
 from . import taxonomy
 from .boxes import claimed_by_any, contained_fraction, resting_parent, structure_points
 from .cache import DetectionCache

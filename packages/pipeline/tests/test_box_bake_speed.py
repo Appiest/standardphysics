@@ -18,7 +18,8 @@ from standardphysics_pipeline.ingest import parse_room_json
 from standardphysics_pipeline.lidar import load_mesh, triangles_in_arkit_world
 from standardphysics_pipeline.textures import bake
 from standardphysics_pipeline.textures.camera import load_cameras
-from standardphysics_pipeline.textures.project import TriangleBlocks, triangle_depth_buffer
+from standardphysics_pipeline.textures.depth_buffers import triangle_depth_buffer
+from standardphysics_pipeline.textures.visibility_blocks import TriangleBlocks
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 CAMERAS_COMPARED = 20

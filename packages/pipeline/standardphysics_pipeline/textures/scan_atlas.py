@@ -34,29 +34,24 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 from standardphysics_contracts import SceneGraph
 
+from .atlas_texels import face_normals, pad_gutters, rasterize_atlas
 from .camera import PhotoCamera
+from .depth_buffers import DepthPyramid, occluder_depth_buffer, sphere_footprints
 from .hole_patches import hidden_behind_objects
 from .object_holes import people_masks
 from .project import (
     MAX_EXPOSURE_POINTS,
-    DepthPyramid,
-    PointBlocks,
     TopViews,
-    TriangleBlocks,
     bilinear,
     evenly_spread,
     exposure_gains,
-    face_normals,
     in_parallel,
-    occluder_depth_buffer,
-    pad_gutters,
-    rasterize_atlas,
-    sphere_footprints,
     to_linear,
     to_srgb,
 )
 from .scan_colour import BLEND_SHARPNESS, ColouredScan, PickedRows, _small_static_mask, _weights_from, _widest_tolerance
 from .stages import timed
+from .visibility_blocks import PointBlocks, TriangleBlocks
 
 TEXEL_METRES = 0.02
 MIN_ATLAS_SIZE = 512

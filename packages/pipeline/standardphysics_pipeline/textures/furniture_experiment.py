@@ -15,10 +15,10 @@ from PIL import Image
 from scipy.spatial import KDTree
 from standardphysics_contracts import SceneGraph, SceneNode
 
+from .atlas_texels import sample_surface
 from .camera import PhotoCamera
 from .material_references import ReferenceCrop, reference_crops
 from .object_holes import people_masks
-from .project import sample_surface
 from .scan_colour import ColouredScan
 
 

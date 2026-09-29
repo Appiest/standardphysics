@@ -25,9 +25,9 @@ import numpy as np
 from scipy.spatial import cKDTree
 from standardphysics_contracts import SceneGraph, SceneNode, bounds_the_room
 
-from .project import CameraArray
 from .regions import TrianglesByCorner, VertexIndex
 from .stages import advanced
+from .visibility_blocks import CameraArray
 
 OBJECT_REACH = 0.03
 """How far outside its box a scanned vertex may sit and still belong to the object."""

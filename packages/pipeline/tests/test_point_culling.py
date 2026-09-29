@@ -17,8 +17,9 @@ import pytest
 from standardphysics_pipeline.ingest import parse_room_json
 from standardphysics_pipeline.textures import symmetry
 from standardphysics_pipeline.textures.camera import load_cameras
-from standardphysics_pipeline.textures.project import PointBlocks, depth_buffer
+from standardphysics_pipeline.textures.depth_buffers import depth_buffer
 from standardphysics_pipeline.textures.scan_colour import scan_geometry
+from standardphysics_pipeline.textures.visibility_blocks import PointBlocks
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 CAMERAS_COMPARED = 40
@@ -82,16 +83,16 @@ def test_seen_through_asks_only_the_cameras_that_frame_the_points_and_agrees(ver
 
 def _sorted_depth_buffer(camera, points):
     """The depth buffer as it was built before: every point written in far-to-near order, so the nearest lands last."""
-    from standardphysics_pipeline.textures import project
+    from standardphysics_pipeline.textures import depth_buffers
 
-    small = camera.resized(max(1, camera.width // project.DEPTH_BUFFER_DIVISOR), max(1, camera.height // project.DEPTH_BUFFER_DIVISOR))
+    small = camera.resized(max(1, camera.width // depth_buffers.DEPTH_BUFFER_DIVISOR), max(1, camera.height // depth_buffers.DEPTH_BUFFER_DIVISOR))
     u, v, depth = small.project(points)
     columns, rows = np.rint(u).astype(np.int64), np.rint(v).astype(np.int64)
-    valid = (depth > project.NEAR_LIMIT) & (columns >= 0) & (columns < small.width) & (rows >= 0) & (rows < small.height)
+    valid = (depth > depth_buffers.NEAR_LIMIT) & (columns >= 0) & (columns < small.width) & (rows >= 0) & (rows < small.height)
     buffer = np.full(small.width * small.height, np.inf, dtype=np.float32)
     order = np.argsort(-depth[valid])
     buffer[(rows[valid] * small.width + columns[valid])[order]] = depth[valid][order]
-    return project._erode(buffer.reshape(small.height, small.width))
+    return depth_buffers._erode(buffer.reshape(small.height, small.width))
 
 
 def test_keeping_the_nearest_depth_per_pixel_matches_writing_every_point_far_to_near(vertices_and_cameras):
@@ -160,10 +161,10 @@ def test_testing_only_the_boxes_near_the_sight_lines_blocks_what_testing_every_b
 
 def test_a_cube_found_wholly_behind_the_depth_buffer_holds_only_points_that_weigh_nothing(scanned):
     """Skipping hidden cubes must never skip a point a photo would have painted."""
-    from standardphysics_pipeline.textures.project import PointBlocks
     from standardphysics_pipeline.textures.scan_atlas import unhidden_members
     from standardphysics_pipeline.textures.scan_colour import _weights_from
     from standardphysics_pipeline.textures.surface_materials import vertex_normals
+    from standardphysics_pipeline.textures.visibility_blocks import PointBlocks
 
     vertices, triangles, cameras = scanned
     normals = vertex_normals(vertices, triangles)
