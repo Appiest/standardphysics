@@ -31,6 +31,7 @@ from standardphysics_contracts import (
 )
 
 from . import repository as repo
+from . import repository_revisions as revisions_repo
 from .db import Database
 from .errors import ApiProblem
 
@@ -664,16 +665,16 @@ def install_architecture_export_routes(app: FastAPI, database: Database) -> None
             scan = repo.get_scan(connection, scan_id)
             if scan is None:
                 raise ApiProblem(404, "no scan")
-            row = repo.get_revision(connection, scan_id, revision)
+            row = revisions_repo.get_revision(connection, scan_id, revision)
             if row is None:
                 raise ApiProblem(404, "not ready")
-            graph = repo.graph_of(row)
-            assessment = repo.assessment_for_revision(connection, scan_id, graph.revision)
-            source_row = repo.get_revision(connection, scan_id, 0)
-            source_capture = repo.graph_of(source_row) if source_row is not None else None
+            graph = revisions_repo.graph_of(row)
+            assessment = revisions_repo.assessment_for_revision(connection, scan_id, graph.revision)
+            source_row = revisions_repo.get_revision(connection, scan_id, 0)
+            source_capture = revisions_repo.graph_of(source_row) if source_row is not None else None
             source_capture_raw_graph = json.loads(source_row["graph_json"]) if source_row is not None else None
-            scenario = repo.get_scenario(connection, scan_id)
-            scenario_version = repo.scenario_version(connection, scan_id)
+            scenario = revisions_repo.get_scenario(connection, scan_id)
+            scenario_version = revisions_repo.scenario_version(connection, scan_id)
             evidence_bundle = repo.latest_bundle(connection, scan_id)
         archive = build_architecture_zip(
             scan_id,

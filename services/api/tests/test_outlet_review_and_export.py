@@ -19,7 +19,7 @@ from standardphysics_contracts import (
 )
 
 from conftest import drain
-from standardphysics_api import repository as repo
+from standardphysics_api import repository_revisions as revisions_repo
 from standardphysics_api.architecture_export import build_architecture_zip
 
 
@@ -81,9 +81,9 @@ def test_persist_01_owner_outlet_review_increments_revision_and_updates_status(m
         app = client.app
         database = app.state.database
         with database.connect() as conn:
-            row = repo.get_revision(conn, scan_id)
+            row = revisions_repo.get_revision(conn, scan_id)
             base_rev = row["revision"]
-            base_graph = repo.graph_of(row)
+            base_graph = revisions_repo.graph_of(row)
 
         wall = next(n for n in base_graph.nodes if n.kind == "wall")
         outlet = SceneNode(
@@ -118,7 +118,7 @@ def test_persist_01_owner_outlet_review_increments_revision_and_updates_status(m
 
 
         with database.transaction() as conn:
-            repo.save_revision(conn, outlet_graph, source="owner", base_revision=base_rev)
+            revisions_repo.save_revision(conn, outlet_graph, source="owner", base_revision=base_rev)
 
         # Call review endpoint against base_rev + 1
         url = f"/api/scans/{scan_id}/revisions/{base_rev + 1}/outlets/{outlet.id}/review"
@@ -133,7 +133,7 @@ def test_persist_01_owner_outlet_review_increments_revision_and_updates_status(m
 
         # Verify DB persisted
         with database.connect() as conn:
-            latest_row = repo.get_revision(conn, scan_id)
+            latest_row = revisions_repo.get_revision(conn, scan_id)
             assert latest_row["revision"] == base_rev + 2
             assert latest_row["source"] == "owner"
 
@@ -147,9 +147,9 @@ def test_rev_01_stale_revision_returns_409_conflict(make_client):
         app = client.app
         database = app.state.database
         with database.connect() as conn:
-            row = repo.get_revision(conn, scan_id)
+            row = revisions_repo.get_revision(conn, scan_id)
             base_rev = row["revision"]
-            base_graph = repo.graph_of(row)
+            base_graph = revisions_repo.graph_of(row)
 
         wall = next(n for n in base_graph.nodes if n.kind == "wall")
         outlet = SceneNode(
@@ -183,7 +183,7 @@ def test_rev_01_stale_revision_returns_409_conflict(make_client):
 
 
         with database.transaction() as conn:
-            repo.save_revision(conn, outlet_graph, source="owner", base_revision=base_rev)
+            revisions_repo.save_revision(conn, outlet_graph, source="owner", base_revision=base_rev)
 
         # Advance revision to base_rev + 2
         url = f"/api/scans/{scan_id}/revisions/{base_rev + 1}/outlets/{outlet.id}/review"

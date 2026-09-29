@@ -19,7 +19,7 @@ from fastapi import Path as PathParameter
 from fastapi.responses import FileResponse
 from standardphysics_contracts import SimulationReplay, graph_hash
 
-from . import repository as repo
+from . import repository_revisions as revisions_repo
 from .db import Database
 from .errors import ApiProblem
 from .settings import Settings
@@ -40,10 +40,10 @@ def _directory(store: ArtifactStore, scan_id: UUID, revision: int) -> Path:
 
 def _check_revision(database: Database, replay: SimulationReplay) -> None:
     with database.connect() as connection:
-        row = repo.get_revision(connection, replay.scan_id, replay.revision)
+        row = revisions_repo.get_revision(connection, replay.scan_id, replay.revision)
     if row is None:
         raise ApiProblem(404, "no recorded revision")
-    if graph_hash(repo.graph_of(row)) != replay.graph_hash:
+    if graph_hash(revisions_repo.graph_of(row)) != replay.graph_hash:
         raise ApiProblem(409, "recording does not match the stored room")
 
 

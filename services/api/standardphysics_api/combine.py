@@ -27,6 +27,8 @@ from standardphysics_pipeline.registration import PlaneAlignment, align_points
 from standardphysics_pipeline.substrate.regions import Region, bounds, overlap_fraction, region_of, volume
 
 from . import repository as repo
+from . import repository_jobs as jobs_repo
+from . import repository_revisions as revisions_repo
 from .budgets import admit_new_job
 from .db import Database
 from .errors import ApiProblem
@@ -116,18 +118,18 @@ def save_combine(database: Database, worker: Worker, scan_id: uuid.UUID, body: S
     with database.connect() as connection:
         if not repo.scan_exists(connection, scan_id):
             raise ApiProblem(404, "no scan")
-        row = repo.get_revision(connection, scan_id, body.base_revision)
+        row = revisions_repo.get_revision(connection, scan_id, body.base_revision)
     if row is None:
         raise ApiProblem(404, "no such revision")
-    base = repo.graph_of(row)
+    base = revisions_repo.graph_of(row)
     combined = apply_room_placements(base, body.rooms)
     saved = combined.model_copy(update={"revision": body.base_revision + 1})
     with database.transaction() as connection:
-        if repo.latest_revision_number(connection, scan_id) != body.base_revision:
+        if revisions_repo.latest_revision_number(connection, scan_id) != body.base_revision:
             raise ApiProblem(409, "a newer layout was saved since this one started")
         admit_new_job(connection, worker.settings.max_queued_jobs)
-        repo.save_revision(connection, saved, source="owner", base_revision=body.base_revision)
-        repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
+        revisions_repo.save_revision(connection, saved, source="owner", base_revision=body.base_revision)
+        jobs_repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
     worker.wake()
     return saved
 
@@ -188,10 +190,10 @@ def rooms_of(database: Database, store: ArtifactStore, scan_id: uuid.UUID, revis
         return {"rooms": []}
     rooms = json.loads(manifest.read_text())["rooms"]
     with database.connect() as connection:
-        row = repo.get_revision(connection, scan_id, revision)
+        row = revisions_repo.get_revision(connection, scan_id, revision)
     if row is None:
         return {"rooms": rooms}
-    placed = repo.graph_of(row)
+    placed = revisions_repo.graph_of(row)
     return {"rooms": [{**room, "capture_pose": _capture_pose(store, room, placed)} for room in rooms]}
 
 

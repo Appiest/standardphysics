@@ -27,6 +27,8 @@ from standardphysics_contracts.textures import FRAME_ID_PATTERN
 from standardphysics_pipeline.discovery.crops import save_crop
 
 from . import repository as repo
+from . import repository_jobs as jobs_repo
+from . import repository_revisions as revisions_repo
 from .budgets import admit_new_job
 from .db import Database
 from .errors import ApiProblem
@@ -264,13 +266,13 @@ def _save_owner_revision(
     """Save the owner's revision on top of `base_revision`, refusing if someone saved since, and check it again."""
     scan_id = saved.scan_id
     with database.transaction() as connection:
-        if repo.latest_revision_number(connection, scan_id) != base_revision:
+        if revisions_repo.latest_revision_number(connection, scan_id) != base_revision:
             raise ApiProblem(409, STALE_LAYOUT)
         admit_new_job(connection, worker.settings.max_queued_jobs)
-        repo.save_revision(connection, saved, source="owner", base_revision=base_revision)
+        revisions_repo.save_revision(connection, saved, source="owner", base_revision=base_revision)
         if correction is not None:
             record_correction(connection, scan_id, base_revision, correction)
-        repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
+        jobs_repo.enqueue_job(connection, scan_id, ASSESS, saved.revision)
     worker.wake()
 
 
@@ -294,10 +296,10 @@ def _base_graph(database: Database, scan_id: uuid.UUID, base_revision: int) -> S
     with database.connect() as connection:
         if not repo.scan_exists(connection, scan_id):
             raise ApiProblem(404, "no scan")
-        row = repo.get_revision(connection, scan_id, base_revision)
+        row = revisions_repo.get_revision(connection, scan_id, base_revision)
     if row is None:
         raise ApiProblem(404, "no such revision")
-    return repo.graph_of(row)
+    return revisions_repo.graph_of(row)
 
 
 def _object_node(graph: SceneGraph, node_id: uuid.UUID) -> SceneNode:

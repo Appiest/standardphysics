@@ -34,7 +34,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "services" 
 from standardphysics_contracts import CreateScanRequest, SceneGraph  # noqa: E402
 from standardphysics_pipeline.ingest import parse_room_json  # noqa: E402
 
-from standardphysics_api import repository  # noqa: E402
+from standardphysics_api import (
+    repository,  # noqa: E402
+    repository_revisions,  # noqa: E402
+)
 from standardphysics_api.db import Database  # noqa: E402
 
 GAP_METRES = 4.0
@@ -162,7 +165,7 @@ def main() -> int:
             scan_id=scan_id,
             state="ready",
         )
-        repository.save_revision(connection, graph, source="owner")
+        repository_revisions.save_revision(connection, graph, source="owner")
 
     directory = args.scans / str(scan_id)
     directory.mkdir(parents=True, exist_ok=True)

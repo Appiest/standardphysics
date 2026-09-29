@@ -9,7 +9,7 @@ import hanging_child
 import pytest
 
 from conftest import create_scan
-from standardphysics_api import repository as repo
+from standardphysics_api import repository_jobs as jobs_repo
 from standardphysics_api import worker_handlers
 from standardphysics_api.settings import Settings
 from standardphysics_api.textures import TEXTURE
@@ -57,7 +57,7 @@ def test_a_hung_bake_fails_its_job_with_a_clear_error(make_client, monkeypatch):
     with make_client(bake_in_own_process=True, bake_timeout_seconds=1.0) as client:
         scan_id = create_scan(client)
         with client.app.state.database.transaction() as connection:
-            repo.enqueue_job(connection, uuid.UUID(scan_id), TEXTURE, 1)
+            jobs_repo.enqueue_job(connection, uuid.UUID(scan_id), TEXTURE, 1)
         client.app.state.worker.run_once(True)
         with client.app.state.database.connect() as connection:
             job = connection.execute("SELECT state, error FROM jobs WHERE scan_id = ?", (scan_id,)).fetchone()

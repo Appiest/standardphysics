@@ -43,6 +43,8 @@ FLOORS: dict[str, int] = {
     # The child's own side runs in a spawned process the API suite does not trace.
     f"{API}/worker_child.py": 80,
     f"{API}/repository.py": 95,
+    f"{API}/repository_jobs.py": 95,
+    f"{API}/repository_revisions.py": 90,
     f"{API}/request_size.py": 95,
     f"{API}/usdz_validation.py": 90,
 }

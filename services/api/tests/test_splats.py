@@ -6,7 +6,7 @@ import uuid
 import pytest
 from standardphysics_contracts import SceneGraph, graph_hash
 
-from standardphysics_api import repository as repo
+from standardphysics_api import repository_revisions as revisions_repo
 
 IDENTITY = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
@@ -95,4 +95,4 @@ def test_manifest_rejects_path_escape_symlink_and_nonrigid_transform(make_client
         assert client.get(f"/api/scans/{scan_id}/splats?revision=0").status_code == 404
 
         with client.app.state.database.connect() as connection:
-            assert repo.get_revision(connection, uuid.UUID(scan_id), 0) is not None
+            assert revisions_repo.get_revision(connection, uuid.UUID(scan_id), 0) is not None

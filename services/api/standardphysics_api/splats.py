@@ -15,7 +15,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 from standardphysics_contracts import graph_hash
 
-from . import repository as repo
+from . import repository_revisions as revisions_repo
 from .db import Database
 from .errors import ApiProblem
 from .store import ArtifactStore
@@ -103,11 +103,11 @@ def _proper_rotation(rotation: list[list[float]]) -> bool:
 
 def _saved_graph_hash(database: Database, scan_id: uuid.UUID, revision: int) -> str | None:
     with database.connect() as connection:
-        row = repo.get_revision(connection, scan_id, revision)
+        row = revisions_repo.get_revision(connection, scan_id, revision)
         if row is None:
             return None
         try:
-            computed = graph_hash(repo.graph_of(row))
+            computed = graph_hash(revisions_repo.graph_of(row))
         except (TypeError, ValueError):
             return None
         return computed if row["graph_hash"] == computed else None

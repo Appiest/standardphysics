@@ -155,7 +155,7 @@ An upload lands in the artifact store and queues a `process` job. The worker tur
 
 Dependencies point one way: `contracts` at the bottom, `pipeline` and `agents` above it, `services/api` above those, and the two apps talk to the API over HTTP only. [`tests/test_layering.py`](tests/test_layering.py) fails the build if a package imports upward or imports a sibling its `pyproject.toml` does not declare, and [`tests/test_test_names.py`](tests/test_test_names.py) fails it if any test file sits outside a collected directory.
 
-The API is one service with one SQLite database, which is the right size for a 2 vCPU droplet: WAL mode, `BEGIN IMMEDIATE` transactions and atomic job claims make it safe. Scans, artifacts, revisions and the job queue are written through [`repository.py`](services/api/standardphysics_api/repository.py).
+The API is one service with one SQLite database, which is the right size for a 2 vCPU droplet: WAL mode, `BEGIN IMMEDIATE` transactions and atomic job claims make it safe. Scans and artifacts are written through [`repository.py`](services/api/standardphysics_api/repository.py), the job queue through [`repository_jobs.py`](services/api/standardphysics_api/repository_jobs.py), and revisions and assessments through [`repository_revisions.py`](services/api/standardphysics_api/repository_revisions.py).
 
 ## What CI enforces on every push
 

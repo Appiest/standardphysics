@@ -40,6 +40,8 @@ from standardphysics_pipeline.textures.stages import StepProgress, listening, ti
 from standardphysics_pipeline.textures.surface_materials import materials_digest
 
 from . import repository as repo
+from . import repository_jobs as jobs_repo
+from . import repository_revisions as revisions_repo
 from .budgets import admit_new_job
 from .errors import ApiProblem
 
@@ -171,14 +173,14 @@ def _inputs(connection, store, scan_id):
 def _graphs(connection, store, scan_id, revision):
     if not repo.scan_exists(connection, scan_id):
         raise ApiProblem(404, "no scan")
-    row = repo.get_revision(connection, scan_id, revision)
+    row = revisions_repo.get_revision(connection, scan_id, revision)
     if row is None:
         raise ApiProblem(409, "room geometry is not ready")
-    shown = repo.graph_of(row)
-    capture_row = repo.get_revision(connection, scan_id, 0)
+    shown = revisions_repo.graph_of(row)
+    capture_row = revisions_repo.get_revision(connection, scan_id, 0)
     if capture_row is None:
         raise ApiProblem(409, "captured room is not ready")
-    capture = repo.graph_of(capture_row)
+    capture = revisions_repo.graph_of(capture_row)
     if capture.capture_to_room is None:
         room = repo.artifact_of_kind(connection, scan_id, "room_json")
         if room:
@@ -263,7 +265,7 @@ def queue_texture(database, store, worker, scan_id, revision=None, *, retry=Fals
             "SELECT id FROM texture_builds WHERE scan_id=? AND build_key=?", (str(scan_id), key)
         ).fetchone()
         admit_new_job(connection, max_queued_jobs)
-        repo.queue_job_again(connection, scan_id, TEXTURE, row["id"])
+        jobs_repo.queue_job_again(connection, scan_id, TEXTURE, row["id"])
     worker.wake()
     return texture_status(database, store, scan_id, revision)
 
@@ -501,7 +503,7 @@ def retry_furniture(database, store, worker, scan_id, revision):
         inputs = json.loads(row["inputs_json"])
         if not inputs.get("lidar") or not inputs.get("frames") or not status.build.scan_glb_url:
             raise ApiProblem(409, "this scan has no linked LiDAR and photo evidence")
-        repo.queue_job_again(connection, scan_id, FURNITURE, row["id"])
+        jobs_repo.queue_job_again(connection, scan_id, FURNITURE, row["id"])
     worker.wake()
     return read_furniture_status(database, store, scan_id, revision)
 

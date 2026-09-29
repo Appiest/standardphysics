@@ -17,7 +17,7 @@ from standardphysics_agents.env_file import load_dotenv
 from standardphysics_agents.tracing import ENTITY_ENV, PROJECT_ENV
 
 from .receive_deadlines import ReceiveDeadlines
-from .repository import MAX_INTERRUPTIONS
+from .repository_jobs import MAX_INTERRUPTIONS
 from .store import ScanQuota
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]

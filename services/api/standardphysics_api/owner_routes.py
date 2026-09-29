@@ -40,6 +40,7 @@ from standardphysics_contracts import (
 from . import checklist as checklists
 from . import owner_requests as asks
 from . import repository as repo
+from . import repository_revisions as revisions_repo
 from .answered_findings import apply_answers
 from .auth import owner_of, signed_in, team_member
 from .budgets import Budgets, InFlight, PhotoAdmission, Reservation, UploadReservations
@@ -68,24 +69,24 @@ def load_shop(connection: sqlite3.Connection, stages: Stages, scan_id: uuid.UUID
     scan = repo.get_scan(connection, scan_id)
     if scan is None:
         raise ApiProblem(404, "no scan")
-    measured = repo.latest_assessment(connection, scan_id)
+    measured = revisions_repo.latest_assessment(connection, scan_id)
     requests = asks.owner_requests(connection, scan_id, asks.enabled_rule_ids(stages.ledger_factory()), measured)
     return Shop(scan, requests, apply_answers(measured, requests) if measured else None)
 
 
 def answered(connection: sqlite3.Connection, stages: Stages, scan_id: uuid.UUID, found: Assessment) -> Assessment:
     """Any assessment of this shop, with the owner's answers laid over it."""
-    measured = repo.latest_assessment(connection, scan_id)
+    measured = revisions_repo.latest_assessment(connection, scan_id)
     requests = asks.owner_requests(connection, scan_id, asks.enabled_rule_ids(stages.ledger_factory()), measured)
     return apply_answers(found, requests)
 
 
 def _counter_marked(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
-    row = repo.get_revision(connection, scan_id)
+    row = revisions_repo.get_revision(connection, scan_id)
     if row is None:
         return False
     return any(
-        node.labeled_by == "owner" and node.label == SERVICE_COUNTER for node in repo.graph_of(row).nodes
+        node.labeled_by == "owner" and node.label == SERVICE_COUNTER for node in revisions_repo.graph_of(row).nodes
     )
 
 
@@ -96,9 +97,9 @@ def journey_of(connection: sqlite3.Connection, stages: Stages, scan_id: uuid.UUI
         shop_name=shop.scan.name,
         requests=shop.requests,
         assessment=shop.assessment,
-        measured=repo.get_revision(connection, scan_id) is not None,
+        measured=revisions_repo.get_revision(connection, scan_id) is not None,
         counter_marked=_counter_marked(connection, scan_id),
-        path_confirmed=repo.get_scenario(connection, scan_id) is not None,
+        path_confirmed=revisions_repo.get_scenario(connection, scan_id) is not None,
         checklist=checklists.checklist(connection, scan_id, shop.assessment),
     ))
 

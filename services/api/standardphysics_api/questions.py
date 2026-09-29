@@ -8,6 +8,7 @@ from standardphysics_agents.scenario_suggestion import suggest_scenario
 from standardphysics_contracts import AskAnswer, AskRequest
 
 from . import repository as repo
+from . import repository_revisions as revisions_repo
 from .db import Database
 from .errors import ApiProblem
 from .rearrangement_base import rearrangement_base
@@ -18,8 +19,8 @@ def answer_question(database: Database, stages: Stages, scan_id: uuid.UUID, body
     with database.connect() as connection:
         if not repo.scan_exists(connection, scan_id):
             raise ApiProblem(404, "no scan")
-        row = repo.get_revision(connection, scan_id, body.base_revision)
-        scenario = repo.get_scenario(connection, scan_id)
+        row = revisions_repo.get_revision(connection, scan_id, body.base_revision)
+        scenario = revisions_repo.get_scenario(connection, scan_id)
         if row is None:
             raise ApiProblem(404, "not ready")
         graph = rearrangement_base(connection, row)

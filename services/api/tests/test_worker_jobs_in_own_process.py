@@ -15,7 +15,7 @@ import pytest
 from test_job_lifecycle import _complete_geometry, _complete_semantics
 
 from conftest import create_scan, drain
-from standardphysics_api import repository as repo
+from standardphysics_api import repository_jobs as jobs_repo
 from standardphysics_api import worker as worker_module
 from standardphysics_api.furniture import FURNITURE
 from standardphysics_api.rearrangement import REARRANGE
@@ -113,7 +113,7 @@ def test_a_hung_furniture_or_rearrange_job_is_killed_at_its_deadline(
         with jobs_client(seed=True, **{deadline_setting: 5.0}) as client:
             scan_id = _seeded_shop(client)
             with client.app.state.database.transaction() as connection:
-                repo.enqueue_job(connection, uuid.UUID(scan_id), kind, 1)
+                jobs_repo.enqueue_job(connection, uuid.UUID(scan_id), kind, 1)
             finished = _finishes_within(client.app.state.worker, kind, 60)
             job = _job(client, scan_id, kind)
     finally:

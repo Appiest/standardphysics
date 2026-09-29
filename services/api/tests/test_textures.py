@@ -9,7 +9,8 @@ from standardphysics_fixtures import build_graph
 from standardphysics_pipeline.textures import BakeResult
 
 from conftest import FIXTURE_DATA, create_scan, drain, no_blender_stages, put_artifact
-from standardphysics_api import repository as repo
+from standardphysics_api import repository_jobs as jobs_repo
+from standardphysics_api import repository_revisions as revisions_repo
 
 
 def _bake(inputs):
@@ -32,7 +33,7 @@ def _room(client):
     from uuid import UUID
     graph = build_graph().model_copy(update={'scan_id': UUID(scan_id), 'capture_to_room': Mat4.identity()})
     with client.app.state.database.transaction() as connection:
-        repo.save_revision(connection, graph, source='ingest')
+        revisions_repo.save_revision(connection, graph, source='ingest')
     return scan_id, graph
 
 
@@ -74,7 +75,7 @@ def test_complete_manifest_autoqueues_once_and_publishes_immutable_asset(make_cl
         response=client.get(status['build']['glb_url'])
         assert response.status_code==200 and 'immutable' in response.headers['cache-control']
         with client.app.state.database.connect() as c:
-            assert repo.graph_of(repo.get_revision(c,graph.scan_id,0))==graph
+            assert revisions_repo.graph_of(revisions_repo.get_revision(c,graph.scan_id,0))==graph
             assert c.execute('SELECT COUNT(*) FROM assessments').fetchone()[0]==0
 
 
@@ -117,11 +118,11 @@ def test_moved_furniture_reuses_texture_build_and_new_shape_is_stale(make_client
         node=next(n for n in graph.nodes if n.kind=='object')
         matrix=node.transform.model_copy(deep=True);matrix.m[3]+=0.1
         moved=graph.model_copy(update={'revision':1,'nodes':[n.model_copy(update={'transform':matrix}) if n.id==node.id else n for n in graph.nodes]})
-        with client.app.state.database.transaction() as c: repo.save_revision(c,moved,source='owner')
+        with client.app.state.database.transaction() as c: revisions_repo.save_revision(c,moved,source='owner')
         status=client.get(f'/api/scans/{scan}/textures?revision=1').json()
         assert status['state']=='complete' and status['exact'] and status['stale_node_ids']==[]
         resized=moved.model_copy(update={'revision':2,'nodes':[n.model_copy(update={'dimensions':n.dimensions.model_copy(update={'x':n.dimensions.x+1})}) if n.id==node.id else n for n in moved.nodes]})
-        with client.app.state.database.transaction() as c: repo.save_revision(c,resized,source='owner')
+        with client.app.state.database.transaction() as c: revisions_repo.save_revision(c,resized,source='owner')
         status=client.get(f'/api/scans/{scan}/textures?revision=2').json()
         assert status['state']=='queued' and str(node.id) in status['stale_node_ids']
 
@@ -129,15 +130,15 @@ def test_moved_furniture_reuses_texture_build_and_new_shape_is_stale(make_client
 def test_separate_workers_claim_only_their_job_kind(client):
     scan,graph=_room(client)
     with client.app.state.database.transaction() as c:
-        repo.enqueue_job(c,graph.scan_id,'display',0)
-        repo.enqueue_job(c,graph.scan_id,'texture',99)
-        repo.enqueue_job(c,graph.scan_id,'furniture',98)
-        assert repo.claim_job(c,True)['kind']=='display'
-        assert repo.claim_job(c,True)['kind']=='texture'
-        assert repo.claim_job(c,True) is None
-        assert repo.claim_job(c,kind='furniture')['kind']=='furniture'
-        assert repo.claim_job(c,kind='furniture') is None
-        assert repo.claim_job(c,False) is None
+        jobs_repo.enqueue_job(c,graph.scan_id,'display',0)
+        jobs_repo.enqueue_job(c,graph.scan_id,'texture',99)
+        jobs_repo.enqueue_job(c,graph.scan_id,'furniture',98)
+        assert jobs_repo.claim_job(c,True)['kind']=='display'
+        assert jobs_repo.claim_job(c,True)['kind']=='texture'
+        assert jobs_repo.claim_job(c,True) is None
+        assert jobs_repo.claim_job(c,kind='furniture')['kind']=='furniture'
+        assert jobs_repo.claim_job(c,kind='furniture') is None
+        assert jobs_repo.claim_job(c,False) is None
 
 
 def test_asset_paths_require_published_build_and_safe_names(client):
@@ -157,7 +158,7 @@ def test_published_files_recover_after_interruption_without_rebaking(make_client
         with client.app.state.database.transaction() as c:
             c.execute('UPDATE texture_builds SET result_json=NULL')
             c.execute("UPDATE jobs SET state='running' WHERE kind='texture'")
-            repo.requeue_interrupted_jobs(c)
+            jobs_repo.requeue_interrupted_jobs(c)
         drain(client)
         after=client.get(f'/api/scans/{scan}/textures').json()
         assert after['state']=='complete' and after['build']['glb_url']==before
@@ -269,7 +270,7 @@ def _furniture_runs_and_publishes_only_accepted_mesh(client, monkeypatch):
     failed = client.get(f'/api/scans/{scan_id}/furniture').json()
     assert failed['state'] == 'failed' and failed['report']['accepted'] == 0
     with client.app.state.database.transaction() as connection:
-        repo.queue_job_again(connection, graph.scan_id, furniture.FURNITURE, build_id)
+        jobs_repo.queue_job_again(connection, graph.scan_id, furniture.FURNITURE, build_id)
     drain(client)
     updated = client.get(f'/api/scans/{scan_id}/textures').json()
     assert '/scan-furniture.glb?v=' in updated['build']['scan_glb_url']

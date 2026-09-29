@@ -13,7 +13,7 @@ from standardphysics_contracts import AdaptiveRoundResult, Scenario, SimulationR
 from standardphysics_fixtures import build_graph, build_scenario
 
 from conftest import drain, no_blender_stages
-from standardphysics_api import repository as repo
+from standardphysics_api import repository_revisions as revisions_repo
 from standardphysics_api.simulations import _progress_stride, _run_accessibility_loop
 from standardphysics_api.stages import preview_ledger
 
@@ -487,7 +487,7 @@ def test_rebuild_keeps_measured_geometry_and_rejects_stale_revision(make_client)
         assert client.post(f'/api/scans/{scan_id}/rebuild', json={'base_revision': 0}).status_code == 409
         drain(client)
         with client.app.state.database.connect() as connection:
-            assert repo.get_revision(connection, __import__('uuid').UUID(scan_id), 1)['glb_path'] is not None
+            assert revisions_repo.get_revision(connection, __import__('uuid').UUID(scan_id), 1)['glb_path'] is not None
 
 
 def test_deleting_room_cleans_queued_simulation(make_client):
@@ -542,7 +542,7 @@ def test_auto_deep_campaign_waits_for_route_and_is_idempotent(
             ).fetchone() is None
 
         with database.transaction() as connection:
-            repo.save_scenario(connection, UUID(scan_id), build_scenario())
+            revisions_repo.save_scenario(connection, UUID(scan_id), build_scenario())
         worker._assess(UUID(scan_id), 0)
         worker._assess(UUID(scan_id), 0)
         with database.connect() as connection:

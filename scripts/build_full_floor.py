@@ -59,7 +59,11 @@ from standardphysics_pipeline.registration import PlaneAlignment  # noqa: E402
 from standardphysics_pipeline.textures import texture_build_key  # noqa: E402
 from standardphysics_pipeline.textures.library_scan import painted_scans_joined  # noqa: E402
 
-from standardphysics_api import repository  # noqa: E402
+from standardphysics_api import (
+    repository,  # noqa: E402
+    repository_jobs,  # noqa: E402
+    repository_revisions,  # noqa: E402
+)
 from standardphysics_api.combine import (  # noqa: E402
     captured_graph,
     placement_matrix,
@@ -110,10 +114,10 @@ class Walk:
 
 
 def _latest_graph(connection, scan_id: uuid.UUID) -> SceneGraph:
-    row = repository.get_revision(connection, scan_id, None)
+    row = repository_revisions.get_revision(connection, scan_id, None)
     if row is None:
         raise SystemExit(f"nothing saved on {scan_id}")
-    return repository.graph_of(row)
+    return repository_revisions.graph_of(row)
 
 
 def _walk(store: ArtifactStore, room: dict, placed: SceneGraph, index: int) -> Walk:
@@ -161,8 +165,8 @@ def _regraph(database: Database, floor_id: uuid.UUID, joined: SceneGraph, dry_ru
         print(f"{floor_id}: {len(latest.nodes)} nodes at revision {latest.revision}, {len(graph.nodes)} in the next")
         if dry_run:
             return
-        repository.save_revision(connection, graph, source="rebuild", base_revision=latest.revision)
-        repository.enqueue_job(connection, floor_id, ASSESS, graph.revision)
+        repository_revisions.save_revision(connection, graph, source="rebuild", base_revision=latest.revision)
+        repository_jobs.enqueue_job(connection, floor_id, ASSESS, graph.revision)
 
 
 def _mesh_parts(store: ArtifactStore, walk: Walk) -> list[dict]:
@@ -250,8 +254,8 @@ def _insert_scan(database: Database, args: argparse.Namespace, scan_id: uuid.UUI
         )
         for artifact in artifacts:
             repository.insert_artifact(connection, scan_id, artifact)
-        repository.save_revision(connection, graph, source="owner")
-        repository.enqueue_job(connection, scan_id, ASSESS, 0)
+        repository_revisions.save_revision(connection, graph, source="owner")
+        repository_jobs.enqueue_job(connection, scan_id, ASSESS, 0)
 
 
 def _parse_args() -> argparse.Namespace:

@@ -15,6 +15,7 @@ import pytest
 
 from conftest import create_scan
 from standardphysics_api import repository as repo
+from standardphysics_api import repository_jobs as jobs_repo
 from standardphysics_api import worker as worker_module
 from standardphysics_api import worker_handlers, worker_pulse
 from standardphysics_api.textures import TEXTURE
@@ -33,7 +34,7 @@ def _wait_for(condition, seconds: float = 10.0) -> bool:
 
 def _queue(client, scan_id: str, kind: str, revision: int = 1) -> None:
     with client.app.state.database.transaction() as connection:
-        repo.enqueue_job(connection, uuid.UUID(scan_id), kind, revision)
+        jobs_repo.enqueue_job(connection, uuid.UUID(scan_id), kind, revision)
 
 
 def _job(client, scan_id: str, kind: str):
@@ -56,7 +57,7 @@ def _quick_stall_detection(monkeypatch) -> None:
 
 def test_the_loop_survives_a_locked_database_and_keeps_claiming(make_client, monkeypatch, caplog):
     _fast_retries(monkeypatch)
-    real_claim = repo.claim_job
+    real_claim = jobs_repo.claim_job
     calls = {"claim": 0}
 
     def locked_twice(connection, texture_only=None, *, kind=None):
@@ -65,7 +66,7 @@ def test_the_loop_survives_a_locked_database_and_keeps_claiming(make_client, mon
             raise sqlite3.OperationalError("database is locked")
         return real_claim(connection, texture_only, kind=kind)
 
-    monkeypatch.setattr(worker_module.repo, "claim_job", locked_twice)
+    monkeypatch.setattr(worker_module.jobs_repo, "claim_job", locked_twice)
     with make_client() as client:
         worker = client.app.state.worker
         with caplog.at_level(logging.ERROR, logger=worker_module.__name__):
@@ -80,7 +81,7 @@ def test_the_loop_survives_a_locked_database_and_keeps_claiming(make_client, mon
 
 def test_a_finished_job_is_recorded_even_when_the_first_write_is_locked(make_client, monkeypatch):
     _fast_retries(monkeypatch)
-    real_finish = repo.finish_job
+    real_finish = jobs_repo.finish_job
     calls = {"finish": 0}
 
     def locked_once(connection, job_id, error=None):
@@ -89,7 +90,7 @@ def test_a_finished_job_is_recorded_even_when_the_first_write_is_locked(make_cli
             raise sqlite3.OperationalError("database is locked")
         return real_finish(connection, job_id, error)
 
-    monkeypatch.setattr(worker_module.repo, "finish_job", locked_once)
+    monkeypatch.setattr(worker_module.jobs_repo, "finish_job", locked_once)
     monkeypatch.setattr(Worker, "_simulate", lambda self, scan_id, revision, job=None: False)
     with make_client() as client:
         scan_id = create_scan(client)
@@ -368,8 +369,8 @@ def test_a_failure_while_marking_the_scan_failed_still_fails_the_job(make_client
 def test_an_unexpected_error_while_recording_the_outcome_fails_the_job(make_client, monkeypatch):
     monkeypatch.setattr(Worker, "_simulate", _succeeds)
     with _one_queued_job(make_client) as (client, scan_id):
-        broken = _fails_on_calls(repo.record_job_attempt, {1}, KeyError("attempt"))
-        monkeypatch.setattr(worker_module.repo, "record_job_attempt", broken)
+        broken = _fails_on_calls(jobs_repo.record_job_attempt, {1}, KeyError("attempt"))
+        monkeypatch.setattr(worker_module.jobs_repo, "record_job_attempt", broken)
         with pytest.raises(KeyError):
             client.app.state.worker.run_once()
         job = _job_row(client, scan_id)
@@ -414,7 +415,7 @@ def test_settling_an_interrupted_job_waits_out_a_locked_database(make_client, mo
     monkeypatch.setattr(Worker, "_simulate", _interrupted)
     with _one_queued_job(make_client) as (client, scan_id):
         locked = sqlite3.OperationalError("database is locked")
-        monkeypatch.setattr(worker_module.repo, "fail_running_job", _fails_on_calls(repo.fail_running_job, {1, 2}, locked))
+        monkeypatch.setattr(worker_module.jobs_repo, "fail_running_job", _fails_on_calls(jobs_repo.fail_running_job, {1, 2}, locked))
         with pytest.raises(KeyboardInterrupt):
             client.app.state.worker.run_once()
         assert _job_row(client, scan_id)["state"] == "failed"
@@ -512,8 +513,8 @@ def _run_once_off_thread(worker, seconds: float = 5.0) -> tuple[bool, BaseExcept
 def _break_settlement(monkeypatch, error: BaseException) -> tuple[dict, dict]:
     finish, finish_calls = _always_raises(error)
     fail, fail_calls = _always_raises(error)
-    monkeypatch.setattr(worker_module.repo, "finish_job", finish)
-    monkeypatch.setattr(worker_module.repo, "fail_running_job", fail)
+    monkeypatch.setattr(worker_module.jobs_repo, "finish_job", finish)
+    monkeypatch.setattr(worker_module.jobs_repo, "fail_running_job", fail)
     return finish_calls, fail_calls
 
 
@@ -644,6 +645,6 @@ def test_asking_for_a_derived_job_again_clears_its_count(make_client):
         for _ in range(3):
             _restart_during_run(client, scan_id, "display")
         with client.app.state.database.transaction() as connection:
-            repo.queue_job_again(connection, uuid.UUID(scan_id), "display", 1)
+            jobs_repo.queue_job_again(connection, uuid.UUID(scan_id), "display", 1)
         assert _job(client, scan_id, "display")["state"] == "queued"
         assert _interruptions(client, scan_id, "display") == 0

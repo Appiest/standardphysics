@@ -529,7 +529,7 @@ def publish_proposal(db_path: pathlib.Path, output_dir: pathlib.Path) -> pathlib
         shutil.copyfile(source_glb, temporary)
         temporary.replace(destination)
 
-        from standardphysics_api.repository import save_revision
+        from standardphysics_api.repository_revisions import save_revision
 
         save_revision(
             connection,

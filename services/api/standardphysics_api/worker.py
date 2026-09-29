@@ -5,10 +5,10 @@ an exclusive lock on a file beside the database; a second process finds the
 lock held, says so in the log, and serves requests without running any job.
 Jobs are claimed atomically, and at startup every job left running is queued
 again, except a simulation, which is failed so that a restart never spends a
-second budget of paid model calls (`repo.fail_interrupted_simulations`), and a
+second budget of paid model calls (`jobs_repo.fail_interrupted_simulations`), and a
 job whose runs `max_job_interruptions` restarts in a row have cut short, which
 is failed so that an input that kills the server can't bring it down for ever
-(`repo.requeue_interrupted_jobs`). The lock is what makes that safe: no other
+(`jobs_repo.requeue_interrupted_jobs`). The lock is what makes that safe: no other
 live process can be running one of them.
 
 Neither loop stops on an error. A job's own failure is recorded on its row; an
@@ -45,6 +45,8 @@ from standardphysics_agents.tracing import tracing_for_this_process
 from . import drain as deploy_drain
 from . import evidence, guest_sweep
 from . import repository as repo
+from . import repository_jobs as jobs_repo
+from . import repository_revisions as revisions_repo
 from .db import Database
 from .furniture import FURNITURE
 from .notifications import notifier_from
@@ -144,9 +146,9 @@ class Worker(JobHandlers):
     def recheck_stale_results(self) -> int:
         """Queue a check of every shop whose results older checks made; how many were queued."""
         with self.database.transaction() as connection:
-            stale = repo.results_made_under_other_checks(connection)
+            stale = revisions_repo.results_made_under_other_checks(connection)
             for scan_id, revision in stale:
-                repo.queue_job_again(connection, scan_id, ASSESS, revision)
+                jobs_repo.queue_job_again(connection, scan_id, ASSESS, revision)
         if stale:
             log.warning("checking %d shops again: their results came from checks this deploy changed", len(stale))
         return len(stale)
@@ -170,11 +172,11 @@ class Worker(JobHandlers):
 
     def _recover_interrupted_jobs(self) -> None:
         with self.database.transaction() as connection:
-            repo.fail_interrupted_simulations(connection)
+            jobs_repo.fail_interrupted_simulations(connection)
             connection.execute(
                 "UPDATE jobs SET state='failed', error=? WHERE kind=? AND state='running'", (INTERRUPTED, REARRANGE)
             )
-            stopped = repo.requeue_interrupted_jobs(connection, self.settings.max_job_interruptions)
+            stopped = jobs_repo.requeue_interrupted_jobs(connection, self.settings.max_job_interruptions)
         for job in stopped:
             log.error(
                 "job %s (%s, scan %s) was stopped after %s interrupted runs instead of being queued again",
@@ -234,7 +236,7 @@ class Worker(JobHandlers):
         if deploy_drain.is_draining(self.settings.data_dir):
             return False
         with self.database.transaction() as connection:
-            job = repo.claim_job(connection, texture_only, kind=kind)
+            job = jobs_repo.claim_job(connection, texture_only, kind=kind)
         if job is None:
             return False
         lane = kind if kind is not None else texture_only
@@ -285,7 +287,9 @@ class Worker(JobHandlers):
         claim and release the same job for ever.
         """
         if job["attempts"] < MAX_CLAIMS_BEFORE_START:
-            self._settle_or_leave_for_restart(job, lambda connection: repo.requeue_running_job(connection, job["id"]))
+            self._settle_or_leave_for_restart(
+                job, lambda connection: jobs_repo.requeue_running_job(connection, job["id"])
+            )
             return
         self._fail_unrecorded(job, scan_id, error)
 
@@ -293,8 +297,8 @@ class Worker(JobHandlers):
         message = f"{type(error).__name__}: {error}"
 
         def fail(connection) -> None:
-            if repo.fail_running_job(connection, job["id"], message):
-                repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
+            if jobs_repo.fail_running_job(connection, job["id"], message):
+                jobs_repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
 
         self._settle_or_leave_for_restart(job, fail)
 
@@ -313,8 +317,8 @@ class Worker(JobHandlers):
 
     def _record_outcome(self, job, scan_id: uuid.UUID, outcome: _JobOutcome) -> None:
         def record(connection) -> None:
-            repo.finish_job(connection, job["id"], outcome.error)
-            repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
+            jobs_repo.finish_job(connection, job["id"], outcome.error)
+            jobs_repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
 
         self._write_through_locks(record, f"job {job['id']}")
 
@@ -350,8 +354,8 @@ class Worker(JobHandlers):
             if not repo.marked_for_deletion(connection, scan_id):
                 return False
             if claimed_job is not None:
-                repo.finish_job(connection, claimed_job, "The shop was deleted")
-            if repo.other_running_job(connection, scan_id):
+                jobs_repo.finish_job(connection, claimed_job, "The shop was deleted")
+            if jobs_repo.other_running_job(connection, scan_id):
                 return True
             repo.delete_scan(connection, scan_id)
         self.store.remove_scan(scan_id)
@@ -366,9 +370,9 @@ class Worker(JobHandlers):
                 return
             if latest.semantic_processed_hash == latest.manifest_hash:
                 return
-            if repo.has_pending_process_job(connection, scan_id):
+            if jobs_repo.has_pending_process_job(connection, scan_id):
                 return
-            repo.queue_job_again(connection, scan_id, PROCESS, 0)
+            jobs_repo.queue_job_again(connection, scan_id, PROCESS, 0)
             self.wake()
 
     def _loop(self, lane: bool | str = False) -> None:

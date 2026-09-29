@@ -8,6 +8,7 @@ from standardphysics_agents import VerificationLedger, load_pack
 from standardphysics_contracts import Report, ReviewedRule
 
 from . import repository as repo
+from . import repository_revisions as revisions_repo
 from .db import Database
 from .errors import ApiProblem
 from .stages import PREVIEW_REVIEWER
@@ -32,12 +33,12 @@ def build_report(database: Database, ledger: VerificationLedger, scan_id: uuid.U
         scan = repo.get_scan(connection, scan_id)
         if scan is None:
             raise ApiProblem(404, "no scan")
-        revision = repo.get_revision(connection, scan_id)
-        scenario = repo.get_scenario(connection, scan_id)
-        assessment = repo.latest_assessment(connection, scan_id)
+        revision = revisions_repo.get_revision(connection, scan_id)
+        scenario = revisions_repo.get_scenario(connection, scan_id)
+        assessment = revisions_repo.latest_assessment(connection, scan_id)
     return Report(
         scan=scan,
-        scene=repo.graph_of(revision) if revision else None,
+        scene=revisions_repo.graph_of(revision) if revision else None,
         scenario=scenario,
         assessment=assessment,
         rules=reviewed_rules(ledger),

@@ -7,7 +7,7 @@ from standardphysics_contracts import NodeMove, Vec3, to_meters
 from standardphysics_fixtures import FIX_SHIFT_INCHES, node_id
 
 from conftest import drain
-from standardphysics_api import repository as repo
+from standardphysics_api import repository_revisions as revisions_repo
 
 CASE_EAST = str(node_id("case_east"))
 COUNTER = str(node_id("counter"))
@@ -158,13 +158,13 @@ def _save_as_before_origins_were_recorded(client, scan_id: str, step: dict) -> V
     Returns where the scan found the moved piece.
     """
     with client.app.state.database.transaction() as connection:
-        scanned = repo.graph_of(repo.get_revision(connection, uuid.UUID(scan_id), 0))
+        scanned = revisions_repo.graph_of(revisions_repo.get_revision(connection, uuid.UUID(scan_id), 0))
         moved = apply_moves(scanned, [NodeMove.model_validate(step)])
         unrecorded = moved.model_copy(update={
             "revision": 1,
             "nodes": [node.model_copy(update={"measured_position": None}) for node in moved.nodes],
         })
-        repo.save_revision(connection, unrecorded, source="owner", base_revision=0)
+        revisions_repo.save_revision(connection, unrecorded, source="owner", base_revision=0)
         return scanned.by_id(uuid.UUID(step["node_id"])).transform.position
 
 

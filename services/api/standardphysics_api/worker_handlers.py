@@ -26,6 +26,8 @@ from standardphysics_pipeline.floor_coverage import with_floor_coverage
 
 from . import evidence
 from . import repository as repo
+from . import repository_jobs as jobs_repo
+from . import repository_revisions as revisions_repo
 from .db import Database
 from .errors import ApiProblem
 from .furniture import FURNITURE, furniture_runtime, queue_furniture, run_furniture
@@ -147,7 +149,7 @@ class JobHandlers:
             consumed = (bundle.version, bundle.manifest_hash) if bundle else None
         if consumed is not None:
             with self.database.transaction() as connection:
-                repo.set_job_binding(connection, job["id"], consumed[1], None)
+                jobs_repo.set_job_binding(connection, job["id"], consumed[1], None)
         association_state, association_failure, declared = evidence.association_state(
             self.database, self.store, scan_id
         )
@@ -177,12 +179,12 @@ class JobHandlers:
         self._checkpoint()
         graph = self._with_floor_coverage(scan_id, graph)
         with self.database.transaction() as connection:
-            repo.save_revision(connection, graph, source="ingest")
+            revisions_repo.save_revision(connection, graph, source="ingest")
             if run_discovery:
                 self._mark_consumed_if_due(connection, scan_id, consumed)
-            repo.set_job_binding(connection, job["id"], consumed[1] if consumed else None, outcome.note())
+            jobs_repo.set_job_binding(connection, job["id"], consumed[1] if consumed else None, outcome.note())
             if outcome.model_requests:
-                repo.set_job_requests(
+                jobs_repo.set_job_requests(
                     connection,
                     job["id"],
                     json.dumps(
@@ -238,18 +240,18 @@ class JobHandlers:
     def _assess(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
         with self.database.transaction() as connection:
             repo.set_state(connection, scan_id, "checking")
-            graph = repo.graph_of(repo.require_revision(connection, scan_id, revision))
-            scenario = repo.get_scenario(connection, scan_id)
+            graph = revisions_repo.graph_of(revisions_repo.require_revision(connection, scan_id, revision))
+            scenario = revisions_repo.get_scenario(connection, scan_id)
         assessment = self.stages.assess(graph, scenario, pass_number=revision + 1)
         self._checkpoint()
         with self.database.transaction() as connection:
-            repo.save_assessment(connection, assessment)
+            revisions_repo.save_assessment(connection, assessment)
         with self.database.transaction() as connection:
             repo.set_state(connection, scan_id, "ready")
             # A fresh assessment has fresh finding ids, so the stills drawn for
             # the last one no longer belong to anything. Queueing this again
             # rather than once means a re-check redraws them.
-            repo.queue_job_again(connection, scan_id, DISPLAY, revision)
+            jobs_repo.queue_job_again(connection, scan_id, DISPLAY, revision)
         self._tell_results_ready(scan_id)
         maybe_queue_texture(self.database, self.store, self, scan_id, revision)
         self._maybe_queue_deep_simulation(scan_id, revision, scenario is not None)
@@ -309,10 +311,10 @@ class JobHandlers:
 
     def _display(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
         with self.database.connect() as connection:
-            revision_row = repo.require_revision(connection, scan_id, revision)
-            graph = repo.graph_of(revision_row)
+            revision_row = revisions_repo.require_revision(connection, scan_id, revision)
+            graph = revisions_repo.graph_of(revision_row)
             has_glb = revision_row["glb_path"] is not None
-            assessment = repo.assessment_for_revision(connection, scan_id, revision)
+            assessment = revisions_repo.assessment_for_revision(connection, scan_id, revision)
             usdz = repo.artifact_of_kind(connection, scan_id, "room_usdz")
             mapping = repo.artifact_of_kind(connection, scan_id, "room_metadata")
             lidar = repo.artifact_of_kind(connection, scan_id, "lidar_mesh")
@@ -338,9 +340,9 @@ class JobHandlers:
             )
             self._checkpoint()
             with self.database.transaction() as connection:
-                latest = repo.assessment_for_revision(connection, scan_id, revision)
+                latest = revisions_repo.assessment_for_revision(connection, scan_id, revision)
                 if latest is None or latest.id == assessment.id:
-                    repo.save_assessment(connection, rendered)
+                    revisions_repo.save_assessment(connection, rendered)
                     return
             assessment = latest
 
@@ -351,7 +353,7 @@ class JobHandlers:
         glb = self.stages.geometry(graph, revision_dir / "scene.glb", usdz_path, mapping_path, lidar_mesh)
         if glb is not None:
             with self.database.transaction() as connection:
-                repo.set_glb_path(connection, scan_id, graph.revision, str(glb))
+                revisions_repo.set_glb_path(connection, scan_id, graph.revision, str(glb))
 
     def _named_input(self, scan_id, artifact, directory, name):
         """Blender's USD importer reads the file extension, and uploads are stored by artifact ID."""

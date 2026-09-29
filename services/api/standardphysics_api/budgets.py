@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 
 from . import drain
 from . import repository as repo
+from . import repository_jobs as jobs_repo
 from .accounts import Owner
 from .errors import ApiProblem
 from .store import ArtifactStore, ScanFull
@@ -76,7 +77,7 @@ def admit_new_job(connection: sqlite3.Connection, max_queued_jobs: int | None, r
     if max_queued_jobs is None:
         return
     drain.refuse_new_work(connection)
-    if repo.queued_job_count(connection) >= max_queued_jobs:
+    if jobs_repo.queued_job_count(connection) >= max_queued_jobs:
         raise ApiProblem(503, refusal, headers={"Retry-After": str(QUEUE_RETRY_SECONDS)})
 
 

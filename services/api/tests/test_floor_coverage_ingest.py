@@ -9,7 +9,7 @@ from standardphysics_pipeline.discovery import DiscoveryResult
 from standardphysics_pipeline.floor_coverage import ObservedFloor
 
 from conftest import create_scan, drain, no_blender_stages, put_artifact, usdz_fixture
-from standardphysics_api import repository as repo
+from standardphysics_api import repository_revisions as revisions_repo
 from standardphysics_api.rearrangement_base import rearrangement_base
 from standardphysics_api.simulations import _rearranging_limitations
 
@@ -58,7 +58,7 @@ def _ingested(make_client, mesh: bytes | None):
     assert client.post(f"/api/scans/{scan_id}/complete").status_code == 200
     drain(client)
     with client.app.state.database.connect() as connection:
-        graph = repo.graph_of(repo.get_revision(connection, uuid.UUID(scan_id), 0))
+        graph = revisions_repo.graph_of(revisions_repo.get_revision(connection, uuid.UUID(scan_id), 0))
     return client, scan_id, graph
 
 
@@ -89,8 +89,8 @@ def test_a_revision_saved_before_coverage_was_measured_gets_it_from_the_scan(mak
     client, scan_id, graph = _ingested(make_client, _floor_mesh())
     older = graph.model_copy(update={"revision": 1, "floor_coverage": []})
     with client.app.state.database.transaction() as connection:
-        repo.save_revision(connection, older, source="owner", base_revision=0)
+        revisions_repo.save_revision(connection, older, source="owner", base_revision=0)
     with client.app.state.database.connect() as connection:
-        base = rearrangement_base(connection, repo.get_revision(connection, uuid.UUID(scan_id), 1))
+        base = rearrangement_base(connection, revisions_repo.get_revision(connection, uuid.UUID(scan_id), 1))
     assert base.floor_coverage == graph.floor_coverage
     assert _rearranging_limitations(base, None) == []

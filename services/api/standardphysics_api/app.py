@@ -64,6 +64,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import accounts, drain
 from . import repository as repo
+from . import repository_jobs as jobs_repo
+from . import repository_revisions as revisions_repo
 from .approach import evaluate as evaluate_approach
 from .architecture_export import install_architecture_export_routes
 from .auth import install_auth, owner_of
@@ -302,7 +304,7 @@ def _install_health_routes(app: FastAPI, database: Database, worker: Worker, com
         which commit this server was built from, whether tracing came up, the send failures Weave
         logged, whether a deploy is draining it, and whether furniture refinement can run here."""
         with database.connect() as connection:
-            oldest = repo.oldest_queued_job_seconds(connection)
+            oldest = jobs_repo.oldest_queued_job_seconds(connection)
         problems = worker.problems()
         return {
             "status": "degraded" if problems else "ok",
@@ -373,7 +375,7 @@ def _install_scan_routes(app: FastAPI, database: Database, store: ArtifactStore,
         """
         with database.transaction() as connection:
             _scan_or_404(connection, scan_id)
-            if repo.other_running_job(connection, scan_id):
+            if jobs_repo.other_running_job(connection, scan_id):
                 repo.mark_for_deletion(connection, scan_id)
                 return Response(status_code=204)
             repo.delete_scan(connection, scan_id)
@@ -438,7 +440,7 @@ def _finalize(database: Database, store: ArtifactStore, budgets: Budgets, scan_i
         if scan.state in ("failed", "uploading"):
             budgets.admit_queued_work(connection)
         if scan.state == "failed":
-            repo.retry_failed_jobs(connection, scan_id)
+            jobs_repo.retry_failed_jobs(connection, scan_id)
             return _scan_or_404(connection, scan_id), True
         if scan.state != "uploading":
             return scan, False
@@ -447,7 +449,7 @@ def _finalize(database: Database, store: ArtifactStore, budgets: Budgets, scan_i
             raise ApiProblem(409, "missing artifacts", need=missing)
         repo.mark_finalized(connection, scan, _coverage_of(store, scan))
         record_closure(connection, scan)
-        repo.enqueue_job(connection, scan_id, PROCESS, 0)
+        jobs_repo.enqueue_job(connection, scan_id, PROCESS, 0)
         return _scan_or_404(connection, scan_id), True
 
 
@@ -628,10 +630,10 @@ def _install_workspace_routes(app: FastAPI, database: Database, store: ArtifactS
     def scene(scan_id: uuid.UUID, revision: int | None = None) -> SceneGraph:
         with database.connect() as connection:
             _scan_or_404(connection, scan_id)
-            row = repo.get_revision(connection, scan_id, revision)
+            row = revisions_repo.get_revision(connection, scan_id, revision)
         if row is None:
             raise ApiProblem(404, "not ready")
-        return repo.graph_of(row)
+        return revisions_repo.graph_of(row)
 
     @app.get("/api/scans/{scan_id}/scenario", response_model=Scenario)
     def scenario(scan_id: uuid.UUID) -> Scenario:
@@ -642,9 +644,9 @@ def _install_workspace_routes(app: FastAPI, database: Database, store: ArtifactS
         with database.connect() as connection:
             _scan_or_404(connection, scan_id)
             found = (
-                repo.latest_assessment(connection, scan_id)
+                revisions_repo.latest_assessment(connection, scan_id)
                 if revision is None
-                else repo.assessment_for_revision(connection, scan_id, revision)
+                else revisions_repo.assessment_for_revision(connection, scan_id, revision)
             )
             if found is None:
                 raise ApiProblem(404, "not ready")
@@ -843,8 +845,8 @@ def _scene_glb_response(database: Database, scan_id: uuid.UUID, revision: int | 
     """
     with database.connect() as connection:
         _scan_or_404(connection, scan_id)
-        found = repo.display_geometry(connection, scan_id, revision)
-        pending = repo.display_pending(connection, scan_id)
+        found = revisions_repo.display_geometry(connection, scan_id, revision)
+        pending = jobs_repo.display_pending(connection, scan_id)
     response = _file_or_404(found[0], "model/gltf-binary") if found else Response(status_code=404)
     if found:
         response.headers["X-Exported-Revision"] = str(found[1])
@@ -893,7 +895,7 @@ def _render_response(
     store: ArtifactStore, database: Database, scan_id: uuid.UUID, finding_id: uuid.UUID
 ) -> FileResponse:
     with database.connect() as connection:
-        revision = repo.get_revision(connection, scan_id)
+        revision = revisions_repo.get_revision(connection, scan_id)
     if revision is None:
         raise ApiProblem(404, "not ready")
     directory = store.scan_dir(scan_id) / "revisions"
@@ -996,17 +998,17 @@ def _install_simulation_routes(app: FastAPI, database: Database, stages: Stages,
             raise ApiProblem(409, STALE_LAYOUT)
         frame_paths, poses_path, lidar_mesh_path = worker.label_inputs(scan_id)
         with database.connect() as connection:
-            captured_row = repo.get_revision(connection, scan_id, 0)
-        captured = repo.graph_of(captured_row) if captured_row else None
+            captured_row = revisions_repo.get_revision(connection, scan_id, 0)
+        captured = revisions_repo.graph_of(captured_row) if captured_row else None
         rebuilt = stages.label_scan(
             base, frame_paths=frame_paths, poses_path=poses_path,
             lidar_mesh_path=lidar_mesh_path, capture_graph=captured,
         ).model_copy(update={"revision": base.revision + 1, "base_hash": graph_hash(base)})
         with database.transaction() as connection:
-            if repo.latest_revision_number(connection, scan_id) != base.revision:
+            if revisions_repo.latest_revision_number(connection, scan_id) != base.revision:
                 raise ApiProblem(409, STALE_LAYOUT)
             admit_new_job(connection, worker.settings.max_queued_jobs)
-            repo.save_revision(connection, rebuilt, source="rebuild", base_revision=base.revision)
-            repo.enqueue_job(connection, scan_id, ASSESS, rebuilt.revision)
+            revisions_repo.save_revision(connection, rebuilt, source="rebuild", base_revision=base.revision)
+            jobs_repo.enqueue_job(connection, scan_id, ASSESS, rebuilt.revision)
         worker.wake()
         return rebuilt
