@@ -40,7 +40,9 @@ def test_ingest_passes_uploaded_frames_to_the_default_astra_labeler(client, monk
         }]}
         return {"choices": [{"message": {"content": json.dumps(response)}}]}
 
-    monkeypatch.setenv("FIREWORKS_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.delenv("LABEL_MODEL", raising=False)
+    monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
     monkeypatch.setattr("standardphysics_pipeline.astra._openrouter_post", transport)
     scan_id = create_scan(client)
     put_artifact(client, scan_id, "room-json", json.dumps({"objects": [room_object]}).encode(), "room_json")
@@ -53,6 +55,8 @@ def test_ingest_passes_uploaded_frames_to_the_default_astra_labeler(client, monk
     scene = client.get(f"/api/scans/{scan_id}/scene").json()
     node = scene["nodes"][0]
 
+    assert captured["url"] == "https://openrouter.ai/api/v1/chat/completions"
+    assert captured["body"]["model"] == "google/gemini-3.8-flash"
     content = captured["body"]["messages"][1]["content"]
     image_url = next(item["image_url"]["url"] for item in content if item["type"] == "image_url")
     encoded = base64.b64decode(image_url.split(",", 1)[1])
