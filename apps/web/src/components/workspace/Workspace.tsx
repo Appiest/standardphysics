@@ -44,7 +44,8 @@ import { showsSplats, viewerSourcePlan } from "@/lib/viewer-source";
 import type { TextureStatus } from "@/types/contracts";
 
 import type { CapturedSplats } from "@/lib/captured-splats";
-import { DEFAULT_WHEELCHAIR_PROFILE, wheelchairProfile, type MotionPoint, type WheelchairProfile } from "@/lib/wheelchair-motion";
+import type { MotionPoint } from "@/lib/motion-vector";
+import { DEFAULT_WHEELCHAIR_PROFILE, wheelchairProfile, type WheelchairProfile } from "@/lib/wheelchair-profile";
 import { ReviewPanel } from "./ReviewPanel";
 import { EvidencePanel } from "./EvidencePanel";
 import { OutcomeMatrix } from "./OutcomeMatrix";

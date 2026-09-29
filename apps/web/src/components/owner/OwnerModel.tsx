@@ -8,7 +8,7 @@ import type { RouteHandles } from "@/components/workspace/StopMarkers";
 import type { WheelchairStart } from "@/components/workspace/Viewer";
 import type { ViewerPose } from "@/lib/camera";
 import type { Focus } from "@/lib/findings";
-import { DEFAULT_WHEELCHAIR_PROFILE } from "@/lib/wheelchair-motion";
+import { DEFAULT_WHEELCHAIR_PROFILE } from "@/lib/wheelchair-profile";
 import type { SceneGraph } from "@/types/contracts";
 
 const Viewer = dynamic(() => import("@/components/workspace/Viewer"), {

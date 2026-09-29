@@ -22,7 +22,7 @@ import {
   inspectionLimitations,
   isDockableInspectionTarget,
 } from "@/lib/wheelchair-inspection";
-import { WHEELCHAIR_PROFILE_LIMITS, type WheelchairProfile } from "@/lib/wheelchair-motion";
+import { WHEELCHAIR_PROFILE_LIMITS, type WheelchairProfile } from "@/lib/wheelchair-profile";
 import type { SceneNode } from "@/types/contracts";
 import type { WheelchairState } from "./WheelchairController";
 
