@@ -55,6 +55,14 @@ def test_the_results_are_ready_once_the_gaps_are_filled(make_client):
     assert journey["tools_unlocked"] is True
 
 
+def test_the_tools_open_with_the_results_while_follow_up_measurements_are_still_owed(make_client):
+    client, scan_id = _sample(make_client)
+    _answer_everything(client, scan_id)
+    journey = _journey(client, scan_id)
+    assert journey["next_step"]["kind"] == "follow_ups"
+    assert journey["tools_unlocked"] is True
+
+
 def test_the_checklist_counts_what_the_owner_has_dealt_with(make_client):
     client, scan_id = _sample(make_client)
     checklist = client.get(f"/api/scans/{scan_id}/checklist").json()
