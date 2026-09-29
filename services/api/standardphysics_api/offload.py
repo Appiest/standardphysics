@@ -130,6 +130,8 @@ class _Operation:
     pack: Callable[..., dict[str, Any]]
     serve: Callable[[Any, dict[str, Any], pathlib.Path, pathlib.Path], dict[str, Any]]
     unpack: Callable[..., Any]
+    runs_blender: bool = True
+    """A Blender step is held to Blender's own limit, so a lost answer falls back after minutes, not a bake's hour."""
 
 
 def _pack_export(parcel: _Parcel, graph: SceneGraph, out_path: pathlib.Path, lidar_mesh=None) -> dict[str, Any]:
@@ -225,7 +227,7 @@ OPERATIONS: dict[str, _Operation] = {
     "export_glb": _Operation(_pack_export, _serve_export, _unpack_export),
     "usdz_to_glb": _Operation(_pack_conversion, _serve_conversion, _unpack_conversion),
     "render_finding": _Operation(_pack_render, _serve_render, _unpack_render),
-    "bake_textures": _Operation(_pack_bake, _serve_bake, _unpack_bake),
+    "bake_textures": _Operation(_pack_bake, _serve_bake, _unpack_bake, runs_blender=False),
 }
 
 
@@ -281,7 +283,7 @@ class Offload:
             "X-SP-Blender": self.blender_version(),
         }
         with (
-            self._client() as client,
+            self._client(self._read_seconds(operation)) as client,
             client.stream(
                 "POST", f"{self.url}/v1/stages/{operation}", content=_chunks(sent), headers=headers
             ) as response,
@@ -292,10 +294,17 @@ class Offload:
                     file.write(chunk)
         return received
 
-    def _client(self) -> httpx.Client:
+    def _read_seconds(self, operation: str) -> float:
+        """How long the answer may go quiet. Over Tailscale a connection can close on the far side and never
+        say so here, and without this a render waited the whole bake timeout, holding up every display job."""
+        if OPERATIONS[operation].runs_blender:
+            return min(self.timeout_seconds, blender.TIMEOUT_SECONDS)
+        return self.timeout_seconds
+
+    def _client(self, read_seconds: float) -> httpx.Client:
         if self.client is not None:
             return self.client()
-        timeout = httpx.Timeout(10.0, read=self.timeout_seconds, write=self.timeout_seconds)
+        timeout = httpx.Timeout(10.0, read=read_seconds, write=read_seconds)
         return httpx.Client(timeout=timeout)
 
 

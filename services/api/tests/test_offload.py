@@ -1,5 +1,8 @@
 import io
+import socket
 import tarfile
+import threading
+import time
 from types import SimpleNamespace
 
 import httpx
@@ -276,6 +279,41 @@ def test_the_stage_runs_locally_when_the_client_cannot_connect(tmp_path):
     stages = _stages(offload, export_glb=_local_export)
 
     assert stages.export_glb(build_graph(), tmp_path / "m.glb", None).read_bytes() == b"local glb"
+
+
+def _answers_then_goes_silent(listener: socket.socket, stop: threading.Event) -> None:
+    """The half-open connection seen over Tailscale: the headers of a 200 arrive, then nothing ever does."""
+    connection, _ = listener.accept()
+    connection.settimeout(0.2)
+    while not stop.is_set():
+        try:
+            if not connection.recv(65536):
+                break
+        except TimeoutError:
+            connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/x-tar\r\nContent-Length: 4096\r\n\r\n")
+            break
+    stop.wait()
+    connection.close()
+
+
+def test_a_blender_step_whose_answer_stalls_runs_locally_after_blenders_own_limit(tmp_path, monkeypatch):
+    monkeypatch.setattr(blender, "TIMEOUT_SECONDS", 1)
+    listener = socket.create_server(("127.0.0.1", 0))
+    stop = threading.Event()
+    threading.Thread(target=_answers_then_goes_silent, args=(listener, stop), daemon=True).start()
+    offload = Offload(url=f"http://127.0.0.1:{listener.getsockname()[1]}", token=TOKEN, commit=COMMIT,
+                      timeout_seconds=600, blender_version=lambda: BLENDER)
+    stages = _stages(offload, export_glb=_local_export)
+
+    started = time.monotonic()
+    try:
+        result = stages.export_glb(build_graph(), tmp_path / "m.glb", None)
+    finally:
+        stop.set()
+        listener.close()
+
+    assert result.read_bytes() == b"local glb"
+    assert time.monotonic() - started < 10
 
 
 def test_a_bake_falls_back_to_the_local_baker_with_the_original_inputs(tmp_path):
