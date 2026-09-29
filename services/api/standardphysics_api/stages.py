@@ -70,6 +70,7 @@ from standardphysics_pipeline.lidar import LidarMeshError, room_faces
 from standardphysics_pipeline.textures import BakeInputs, BakeResult, bake_textures
 
 from .model_chooser import ModelChooser, menu_for_findings, picked_outcome
+from .offload import Offload, offloaded
 from .scope_manifest import build_scope_manifest
 
 log = logging.getLogger(__name__)
@@ -509,5 +510,7 @@ class Stages:
 
 
 def configured_stages(settings) -> Stages:
-    """The stages the server runs: every real lane, on unverified rules when SP_PREVIEW_UNVERIFIED_RULES is on."""
-    return Stages(ledger_factory=preview_ledger) if settings.preview_unverified_rules else Stages()
+    """The stages the server runs: every real lane, on unverified rules when SP_PREVIEW_UNVERIFIED_RULES is on,
+    with photo bakes and Blender steps tried on the offload machine first when SP_OFFLOAD_URL names one."""
+    stages = Stages(ledger_factory=preview_ledger) if settings.preview_unverified_rules else Stages()
+    return offloaded(stages, Offload.from_settings(settings))

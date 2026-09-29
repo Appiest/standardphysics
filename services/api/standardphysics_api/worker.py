@@ -1107,7 +1107,8 @@ def _transient_alone(error: BaseException) -> bool:
 def bake_photos(settings: Settings, scan_id: uuid.UUID, build_id: int) -> None:
     """One photo build, run where its arithmetic cannot hold up the API's requests."""
     with tracing_for_this_process(settings.weave_project, settings.weave_entity):
-        run_texture(Database(settings.database_path), _store_for(settings), Stages(), scan_id, build_id)
+        stages = configured_stages(settings)
+        run_texture(Database(settings.database_path), _store_for(settings), stages, scan_id, build_id)
 
 
 def run_job(settings: Settings, stages_for: Callable[[Settings], Stages], job: dict) -> bool:
