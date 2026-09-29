@@ -41,7 +41,7 @@ from typing import Any
 import numpy as np
 
 from ..textures.camera import PhotoCamera
-from . import detect
+from . import detection_errors, detector_transport, frame_encoding
 from .carve import CarvedBox
 from .merge import DiscoveredObject, name_support
 from .semantic_corrections import is_work_surface
@@ -107,7 +107,7 @@ def second_look(
     objects: list[DiscoveredObject],
     photos: Photos,
     *,
-    transport: detect.Transport | None = None,
+    transport: detector_transport.Transport | None = None,
     cache_dir: pathlib.Path | None = None,
 ) -> list[DiscoveredObject]:
     """Every object, those the photos never agreed on renamed by one look at their best close-ups.
@@ -128,14 +128,14 @@ def second_look(
 
 
 def _looked_at(
-    object_: DiscoveredObject, photos: Photos, transport: detect.Transport | None, cache_dir: pathlib.Path | None,
+    object_: DiscoveredObject, photos: Photos, transport: detector_transport.Transport | None, cache_dir: pathlib.Path | None,
 ) -> DiscoveredObject | None:
     close_ups = _close_ups(object_, photos)
     if not close_ups:
         return None
     try:
         answer = _answer(close_ups, transport, cache_dir)
-    except detect.DetectionError as error:
+    except detection_errors.DetectionError as error:
         log.warning("second look at %s failed, keeping the photos' name: %s", object_.name, error)
         return None
     name = answer["name"].strip().lower()
@@ -219,7 +219,7 @@ def _cut(path: pathlib.Path, rect: tuple[float, float, float, float], orientatio
     except (OSError, ValueError) as error:
         log.warning("could not cut a close-up from %s: %s", path.name, error)
         return None
-    for _ in range(detect.QUARTER_TURNS_CLOCKWISE.get(orientation, 0)):
+    for _ in range(frame_encoding.QUARTER_TURNS_CLOCKWISE.get(orientation, 0)):
         image = image.transpose(Image.Transpose.ROTATE_270)
     image.thumbnail((CLOSE_UP_EDGE, CLOSE_UP_EDGE), Image.Resampling.LANCZOS)
     buffer = io.BytesIO()
@@ -228,15 +228,15 @@ def _cut(path: pathlib.Path, rect: tuple[float, float, float, float], orientatio
 
 
 def _answer(
-    close_ups: list[bytes], transport: detect.Transport | None, cache_dir: pathlib.Path | None,
+    close_ups: list[bytes], transport: detector_transport.Transport | None, cache_dir: pathlib.Path | None,
 ) -> dict[str, Any]:
     entry = _cache_entry(close_ups, cache_dir)
     if entry is not None and entry.is_file():
         return json.loads(entry.read_text())
-    api_key = detect._api_key()
+    api_key = detector_transport.configured_api_key()
     if transport is None and not api_key:
-        raise detect.DetectionAuthError("no key for the vision model, so no second look")
-    answer = _parsed(detect._answer(transport, _request_body(close_ups), api_key))
+        raise detection_errors.DetectionAuthError("no key for the vision model, so no second look")
+    answer = _parsed(detector_transport.model_answer(transport, _request_body(close_ups), api_key))
     if entry is not None:
         entry.parent.mkdir(parents=True, exist_ok=True)
         entry.write_text(json.dumps(answer))
@@ -247,7 +247,7 @@ def _cache_entry(close_ups: list[bytes], cache_dir: pathlib.Path | None) -> path
     if cache_dir is None:
         return None
     digest = hashlib.sha256()
-    for part in (PROMPT_VERSION, _model(), detect.answer_identity()):
+    for part in (PROMPT_VERSION, _model(), detector_transport.answer_identity()):
         digest.update(part.encode())
     for jpeg in close_ups:
         digest.update(jpeg)
@@ -255,7 +255,7 @@ def _cache_entry(close_ups: list[bytes], cache_dir: pathlib.Path | None) -> path
 
 
 def _model() -> str:
-    return os.environ.get(MODEL_ENV) or detect.answer_model()
+    return os.environ.get(MODEL_ENV) or detector_transport.answer_model()
 
 
 def _request_body(close_ups: list[bytes]) -> dict[str, Any]:
@@ -273,7 +273,7 @@ def _request_body(close_ups: list[bytes]) -> dict[str, Any]:
             "name": "second_look", "strict": True, "schema": ANSWER_SCHEMA,
         }},
     }
-    body.update(detect._request_options())
+    body.update(detector_transport.request_options())
     return body
 
 
@@ -281,7 +281,7 @@ def _parsed(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         answer = json.loads(payload["choices"][0]["message"]["content"])
     except (KeyError, IndexError, TypeError, ValueError) as error:
-        raise detect.DetectionSchemaError(f"the second look came back unreadable: {error}") from error
+        raise detection_errors.DetectionSchemaError(f"the second look came back unreadable: {error}") from error
     if not isinstance(answer, dict) or not isinstance(answer.get("name"), str):
-        raise detect.DetectionSchemaError("the second look named nothing")
+        raise detection_errors.DetectionSchemaError("the second look named nothing")
     return {"name": answer["name"], "movable": bool(answer.get("movable", False))}

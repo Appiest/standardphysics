@@ -27,8 +27,10 @@ from standardphysics_pipeline.discovery.boxes import (
 )
 from standardphysics_pipeline.discovery.carve import FrameView, carve, fit_box
 from standardphysics_pipeline.discovery.clusters import voxel_components, without_the_surface_beneath
-from standardphysics_pipeline.discovery.detect import Detection, EncodedFrame, _pixel_box
+from standardphysics_pipeline.discovery.detect import Detection
+from standardphysics_pipeline.discovery.detection_boxes import pixel_box
 from standardphysics_pipeline.discovery.discover import _viewpoints, _worth_keeping
+from standardphysics_pipeline.discovery.frame_encoding import EncodedFrame
 from standardphysics_pipeline.discovery.merge import Candidate, DiscoveredObject, merge_candidates
 from standardphysics_pipeline.discovery.people import (
     PersonVolume,
@@ -359,21 +361,21 @@ class TestReadingTheModelsBoxes:
 
     def test_a_box_arrives_as_top_left_bottom_right_in_stored_pixels(self):
         """Gemini writes [ymin, xmin, ymax, xmax] out of 1000, against each edge."""
-        assert _pixel_box([100, 200, 300, 600], self._frame()) == pytest.approx((200.0, 50.0, 600.0, 150.0))
+        assert pixel_box([100, 200, 300, 600], self._frame()) == pytest.approx((200.0, 50.0, 600.0, 150.0))
 
     def test_corners_given_the_wrong_way_round_are_still_read(self):
-        assert _pixel_box([300, 600, 100, 200], self._frame()) == pytest.approx((200.0, 50.0, 600.0, 150.0))
+        assert pixel_box([300, 600, 100, 200], self._frame()) == pytest.approx((200.0, 50.0, 600.0, 150.0))
 
     def test_a_box_off_the_edge_is_pulled_back_onto_the_picture(self):
-        left, top, right, bottom = _pixel_box([-50, -50, 1200, 1200], self._frame())
+        left, top, right, bottom = pixel_box([-50, -50, 1200, 1200], self._frame())
         assert (left, top) == (0.0, 0.0) and (right, bottom) == (1000.0, 500.0)
 
     def test_a_box_too_thin_to_hold_any_points_is_refused(self):
-        assert _pixel_box([500, 500, 500, 501], self._frame()) is None
+        assert pixel_box([500, 500, 500, 501], self._frame()) is None
 
     def test_anything_that_is_not_four_numbers_is_refused(self):
-        assert _pixel_box([1, 2, 3], self._frame()) is None
-        assert _pixel_box("500,500", self._frame()) is None
+        assert pixel_box([1, 2, 3], self._frame()) is None
+        assert pixel_box("500,500", self._frame()) is None
 
 
 class TestNamingThings:
@@ -425,24 +427,24 @@ class TestShowingTheModelTheRoomUpright:
     def test_a_box_the_model_drew_comes_back_in_sensor_pixels(self):
         """Turning the picture clockwise puts the sensor's top-left at the top-right."""
         # The model's whole frame must map to the whole sensor frame.
-        assert _pixel_box([0, 0, 1000, 1000], self._portrait()) == pytest.approx((0.0, 0.0, 1920.0, 1440.0))
+        assert pixel_box([0, 0, 1000, 1000], self._portrait()) == pytest.approx((0.0, 0.0, 1920.0, 1440.0))
 
     def test_the_top_left_of_the_upright_picture_is_the_bottom_left_of_the_sensor(self):
-        left, top, right, bottom = _pixel_box([0, 0, 100, 100], self._portrait())
+        left, top, right, bottom = pixel_box([0, 0, 100, 100], self._portrait())
         assert (left, right) == pytest.approx((0.0, 192.0))
         assert (top, bottom) == pytest.approx((1296.0, 1440.0))
 
     def test_a_frame_needing_no_turn_is_left_exactly_as_it_is(self):
         flat = EncodedFrame(jpeg=b"", width=1000, height=500, turns=0)
-        assert _pixel_box([100, 200, 300, 600], flat) == pytest.approx((200.0, 50.0, 600.0, 150.0))
+        assert pixel_box([100, 200, 300, 600], flat) == pytest.approx((200.0, 50.0, 600.0, 150.0))
 
     def test_four_turns_is_the_same_as_none(self):
         once = EncodedFrame(jpeg=b"", width=1000, height=500, turns=1)
         spun = EncodedFrame(jpeg=b"", width=1000, height=500, turns=5)
-        assert _pixel_box([100, 200, 300, 600], spun) == pytest.approx(_pixel_box([100, 200, 300, 600], once))
+        assert pixel_box([100, 200, 300, 600], spun) == pytest.approx(pixel_box([100, 200, 300, 600], once))
 
     def test_every_orientation_the_phone_reports_is_known(self):
-        from standardphysics_pipeline.discovery.detect import QUARTER_TURNS_CLOCKWISE
+        from standardphysics_pipeline.discovery.frame_encoding import QUARTER_TURNS_CLOCKWISE
 
         assert set(QUARTER_TURNS_CLOCKWISE) == {
             "portrait", "portrait_upside_down", "landscape_left", "landscape_right",

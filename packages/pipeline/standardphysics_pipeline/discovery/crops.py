@@ -18,7 +18,7 @@ import pathlib
 
 from PIL import Image
 
-from .detect import extract_padded_crop
+from .detection_boxes import extract_padded_crop
 
 CROP_PADDING = 0.20
 

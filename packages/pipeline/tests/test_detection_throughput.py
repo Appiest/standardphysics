@@ -17,16 +17,13 @@ import urllib.error
 
 import pytest
 from PIL import Image
-from standardphysics_pipeline.discovery import detect
+from standardphysics_pipeline.discovery import detect, detector_transport
 from standardphysics_pipeline.discovery.cache import DetectionCache
-from standardphysics_pipeline.discovery.detect import (
-    DetectionRateLimited,
-    EncodedFrame,
-    RateLimitGate,
-    answer_identity,
-    detect_objects,
-)
+from standardphysics_pipeline.discovery.detect import detect_objects
+from standardphysics_pipeline.discovery.detection_errors import DetectionRateLimited
+from standardphysics_pipeline.discovery.detector_transport import RateLimitGate, answer_identity
 from standardphysics_pipeline.discovery.discover import _detect_all
+from standardphysics_pipeline.discovery.frame_encoding import EncodedFrame
 
 FIREWORKS = "https://api.fireworks.ai/inference/v1"
 OPENROUTER = "https://openrouter.ai/api/v1"
@@ -63,9 +60,9 @@ def clock(monkeypatch):
         state.sleeps.append(seconds)
         state.now += seconds
 
-    monkeypatch.setattr(detect.time, "sleep", sleep)
-    monkeypatch.setattr(detect.time, "monotonic", lambda: state.now)
-    monkeypatch.setattr(detect, "RATE_LIMIT_GATE", RateLimitGate())
+    monkeypatch.setattr(detector_transport.time, "sleep", sleep)
+    monkeypatch.setattr(detector_transport.time, "monotonic", lambda: state.now)
+    monkeypatch.setattr(detector_transport, "RATE_LIMIT_GATE", RateLimitGate())
     return state
 
 
@@ -83,7 +80,7 @@ class TestAskingWithoutReasoning:
     def test_openrouter_is_never_sent_a_reasoning_switch(self, monkeypatch):
         body = body_for(monkeypatch, OPENROUTER)
         assert "reasoning_effort" not in body and "reasoning" not in body
-        assert body["provider"] == detect.PROVIDER_ROUTING
+        assert body["provider"] == detector_transport.PROVIDER_ROUTING
 
     def test_an_unknown_host_gets_neither_field(self, monkeypatch):
         body = body_for(monkeypatch, "https://models.example.com/v1")
@@ -116,7 +113,7 @@ class TestRateLimits:
         assert clock.sleeps == [pytest.approx(7.0)]
 
     def test_a_rate_limit_outlasts_the_attempts_a_server_error_gets(self, photo, clock):
-        limited = detect.MAX_ATTEMPTS + 2
+        limited = detector_transport.MAX_ATTEMPTS + 2
         calls = []
 
         def transport(url, body, headers):
@@ -134,7 +131,7 @@ class TestRateLimits:
 
         with pytest.raises(DetectionRateLimited):
             detect_objects(photo, "frame-0001", transport=transport)
-        assert len(clock.sleeps) == detect.RATE_LIMITED_ATTEMPTS - 1
+        assert len(clock.sleeps) == detector_transport.RATE_LIMITED_ATTEMPTS - 1
 
     def test_one_rate_limit_holds_every_request_behind_it(self, clock):
         gate = RateLimitGate()
@@ -144,10 +141,10 @@ class TestRateLimits:
         assert sum(clock.sleeps) == pytest.approx(5.0)
 
     def test_retry_after_as_a_date_is_read(self, monkeypatch):
-        monkeypatch.setattr(detect.time, "time", lambda: 1_700_000_000.0)
-        assert detect._retry_after({"Retry-After": "Tue, 14 Nov 2023 22:13:30 GMT"}) == pytest.approx(10.0)
-        assert detect._retry_after({}) is None
-        assert detect._retry_after({"Retry-After": "soon"}) is None
+        monkeypatch.setattr(detector_transport.time, "time", lambda: 1_700_000_000.0)
+        assert detector_transport._retry_after({"Retry-After": "Tue, 14 Nov 2023 22:13:30 GMT"}) == pytest.approx(10.0)
+        assert detector_transport._retry_after({}) is None
+        assert detector_transport._retry_after({"Retry-After": "soon"}) is None
 
 
 class TestNoFrameIsSilentlyDropped:
@@ -159,7 +156,7 @@ class TestNoFrameIsSilentlyDropped:
 
         def transport(url, body, headers):
             calls.append(1)
-            if len(calls) <= detect.MAX_ATTEMPTS:
+            if len(calls) <= detector_transport.MAX_ATTEMPTS:
                 raise http_error(503)
             return reply()
 

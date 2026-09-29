@@ -32,15 +32,9 @@ from dataclasses import dataclass, field
 from standardphysics_contracts import PoseRecord
 
 from .cache import DetectionCache
-from .detect import (
-    DETECTOR_SLOTS_IN_FLIGHT,
-    Detection,
-    DetectionAuthError,
-    DetectionError,
-    ModelRequestInfo,
-    answer_identity,
-    detect_objects,
-)
+from .detect import Detection, ModelRequestInfo, detect_objects
+from .detection_errors import DetectionAuthError, DetectionError
+from .detector_transport import DETECTOR_SLOTS_IN_FLIGHT, answer_identity
 from .walk_sampling import WalkSampler, viewpoint_of_pose
 
 log = logging.getLogger(__name__)

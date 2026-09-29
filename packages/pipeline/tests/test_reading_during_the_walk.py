@@ -18,12 +18,9 @@ from PIL import Image
 from standardphysics_contracts import PoseRecord
 from standardphysics_pipeline.coords import capture_to_room
 from standardphysics_pipeline.discovery.cache import DetectionCache
-from standardphysics_pipeline.discovery.detect import (
-    Detection,
-    DetectionAuthError,
-    DetectorSlots,
-    answer_identity,
-)
+from standardphysics_pipeline.discovery.detect import Detection
+from standardphysics_pipeline.discovery.detection_errors import DetectionAuthError
+from standardphysics_pipeline.discovery.detector_transport import DetectorSlots, answer_identity
 from standardphysics_pipeline.discovery.discover import _detect_all
 from standardphysics_pipeline.discovery.live import LiveReader
 from standardphysics_pipeline.discovery.walk_sampling import (

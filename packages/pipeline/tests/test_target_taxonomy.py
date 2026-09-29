@@ -33,13 +33,10 @@ from standardphysics_pipeline.coords import capture_to_room
 from standardphysics_pipeline.discovery import taxonomy
 from standardphysics_pipeline.discovery.cache import DetectionCache
 from standardphysics_pipeline.discovery.crops import crop_box_of, crop_id_for, save_crop
-from standardphysics_pipeline.discovery.detect import (
-    Detection,
-    DetectionSchemaError,
-    EncodedFrame,
-    _detections_from,
-)
+from standardphysics_pipeline.discovery.detect import Detection, _detections_from
+from standardphysics_pipeline.discovery.detection_errors import DetectionSchemaError
 from standardphysics_pipeline.discovery.discover import DiscoveryInputs, discover_objects
+from standardphysics_pipeline.discovery.frame_encoding import EncodedFrame
 from standardphysics_pipeline.discovery.surface_attach import attach_detection_to_surface
 from standardphysics_pipeline.textures.camera import PhotoCamera
 
@@ -316,7 +313,8 @@ class TestModelRequestRecording:
         must not invent request metadata."""
         import urllib.error
 
-        from standardphysics_pipeline.discovery.detect import DetectionAuthError, detect_objects
+        from standardphysics_pipeline.discovery.detect import detect_objects
+        from standardphysics_pipeline.discovery.detection_errors import DetectionAuthError
 
         img = Image.new("RGB", (640, 480), color=(90, 90, 90))
         img_path = tmp_path / "frame.jpg"

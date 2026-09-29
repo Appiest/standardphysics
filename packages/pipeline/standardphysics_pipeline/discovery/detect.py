@@ -42,62 +42,32 @@ with nothing in it.
 from __future__ import annotations
 
 import base64
-import io
 import json
-import logging
 import os
 import pathlib
-import random
-import threading
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from dataclasses import dataclass
-from email.utils import parsedate_to_datetime
-from typing import Any, Callable
+from typing import Any
 
 from . import taxonomy
+from .detection_boxes import map_crop_box_to_sensor, map_crop_point_to_sensor, pixel_box
+from .detection_errors import DetectionAuthError, DetectionSchemaError
+from .detector_transport import (
+    API_KEY_ENV,
+    DEFAULT_MODEL,
+    FALLBACK_KEY_ENV,
+    MODEL_ENV,
+    Transport,
+    configured_api_key,
+    endpoint_host,
+    model_answer,
+    request_options,
+)
+from .frame_encoding import EncodedFrame, encode_frame
 
-log = logging.getLogger(__name__)
-
-MODEL_ENV = "DISCOVERY_MODEL"
-API_KEY_ENV = "DISCOVERY_API_KEY"
-BASE_URL_ENV = "DISCOVERY_BASE_URL"
-FALLBACK_KEY_ENV = "OPENROUTER_API_KEY"
-FALLBACK_BASE_URL_ENV = "OPENROUTER_BASE_URL"
-DEFAULT_MODEL = "google/gemini-3.8-flash"
-DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_HOST = "openrouter.ai"
-PROVIDER_ROUTING = {"data_collection": "deny"}
-"""OpenRouter's own routing rules. Every other host rejects or ignores them, so
-they travel only when the request is going to OpenRouter."""
-REASONING_OFF_BY_HOST: dict[str, dict[str, Any]] = {"api.fireworks.ai": {"reasoning_effort": "none"}}
-"""Hosts that accept turning the model's reasoning off, and how each spells it.
-
-OpenRouter is absent on purpose: its default Gemini answers HTTP 400
-"Reasoning is mandatory for this endpoint" to `reasoning_effort`, to
-`reasoning.effort` and to `reasoning.enabled`, and a 400 is never retried, so
-sending it there would lose every frame."""
-REQUEST_TIMEOUT_SECONDS = 120.0
-MAX_ATTEMPTS = 4
-RATE_LIMITED_ATTEMPTS = 8
-FIRST_BACKOFF_SECONDS = 1.5
-BACKOFF_GROWTH = 2.5
-MAX_RATE_LIMIT_WAIT = 60.0
 MAX_OUTPUT_TOKENS = 8_192
 MAX_RESPONSE_BYTES = 4_000_000
 MAX_DETECTIONS = 40
 
-MAX_IMAGE_EDGE = 1024
-MAX_IMAGE_BYTES = 3_000_000
-MAX_SOURCE_BYTES = 16_000_000
-MAX_SOURCE_PIXELS = 40_000_000
-JPEG_QUALITIES = (85, 75, 65, 55)
-
-BOX_SCALE = 1000.0
-MIN_BOX_FRACTION = 0.0015
-"""A box thinner than this share of the frame carries too few mesh points to fit."""
 
 PERSON_NAMES = taxonomy.names_for(taxonomy.PERSON)
 
@@ -157,8 +127,6 @@ OUTLET_NAMES = taxonomy.names_for(taxonomy.OUTLET)
 CONFUSER_NAMES = taxonomy.names_for(taxonomy.SWITCH) | taxonomy.names_for(taxonomy.SIGN)
 """Names that look like a target but are not one, so nothing is forced into a finding."""
 
-Transport = Callable[[str, dict[str, Any], dict[str, str]], dict[str, Any]]
-
 
 @dataclass(frozen=True)
 class ModelRequestInfo:
@@ -174,96 +142,6 @@ class ModelRequestInfo:
     orientation: str
     request_id: str | None = None
     usage: dict[str, int] | None = None
-
-
-class DetectionError(RuntimeError):
-    """The frame could not be read, or the model did not answer."""
-
-
-class DetectionAuthError(DetectionError):
-    """Authentication or authorization failure (401, 403, missing key). Never retried."""
-
-
-class DetectionSchemaError(DetectionError):
-    """Malformed schema or unreadable model response. Never retried."""
-
-
-class DetectionTransientError(DetectionError):
-    """Rate limit (429), server error (500/502/503/504), network timeout. Retried with bounded backoff."""
-
-
-class DetectionRateLimited(DetectionTransientError):
-    """HTTP 429, with the wait the host asked for when it said."""
-
-    def __init__(self, message: str, retry_after: float | None = None) -> None:
-        super().__init__(message)
-        self.retry_after = retry_after
-
-
-class RateLimitGate:
-    """One pause shared by every request in flight.
-
-    When one request is told to slow down, the budget is spent for all of them:
-    a thread that keeps asking only spends its own attempts on 429s. So a rate
-    limit holds the gate, and every request waits at it before it is sent.
-    """
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._open_at = 0.0
-
-    def hold(self, seconds: float) -> None:
-        with self._lock:
-            self._open_at = max(self._open_at, time.monotonic() + seconds)
-
-    def wait(self) -> None:
-        with self._lock:
-            delay = self._open_at - time.monotonic()
-        if delay > 0:
-            time.sleep(delay)
-
-
-RATE_LIMIT_GATE = RateLimitGate()
-
-DETECTOR_SLOTS_IN_FLIGHT = 16
-"""Detector requests in flight across the whole process, whichever scan asked.
-
-The account's generated-token budget is shared by every scan, so the cap has to
-be too: sixteen at once is what one walk reads at without a rate limit (see
-`discover.DETECTION_WORKERS`)."""
-
-
-class DetectorSlots:
-    """A process-wide cap on requests in flight, where an urgent request always goes first.
-
-    Discovery for a walk that has ended is urgent: someone is waiting for it.
-    Reading photos while a walk is still going on is not, so it only takes a
-    slot no urgent request is waiting for, and a finished walk is never slowed
-    down by someone else's walk that is still in progress.
-    """
-
-    def __init__(self, size: int = DETECTOR_SLOTS_IN_FLIGHT) -> None:
-        self._free = size
-        self._urgent_waiting = 0
-        self._changed = threading.Condition()
-
-    def acquire(self, urgent: bool) -> None:
-        with self._changed:
-            if urgent:
-                self._urgent_waiting += 1
-                self._changed.wait_for(lambda: self._free > 0)
-                self._urgent_waiting -= 1
-            else:
-                self._changed.wait_for(lambda: self._free > 0 and not self._urgent_waiting)
-            self._free -= 1
-
-    def release(self) -> None:
-        with self._changed:
-            self._free += 1
-            self._changed.notify_all()
-
-
-DETECTOR_SLOTS = DetectorSlots()
 
 
 @dataclass(frozen=True)
@@ -345,29 +223,6 @@ class Detection:
         return (columns >= left) & (columns <= right) & (rows >= top) & (rows <= bottom)
 
 
-QUARTER_TURNS_CLOCKWISE = {
-    "portrait": 1,
-    "portrait_upside_down": 3,
-    "landscape_left": 2,
-    "landscape_right": 0,
-}
-"""How far the stored sensor image turns clockwise to stand the room upright.
-
-`landscape_right` is how the sensor is mounted, so it needs no turn at all.
-An orientation we do not recognise is left alone rather than guessed at.
-"""
-
-
-@dataclass(frozen=True)
-class EncodedFrame:
-    jpeg: bytes
-    width: int
-    height: int
-    """The stored sensor resolution the boxes are turned back into."""
-    turns: int = 0
-    """Quarter turns clockwise applied before the model saw it."""
-
-
 def detect_objects(
     image_path: pathlib.Path,
     frame_id: str,
@@ -391,123 +246,18 @@ def detect_objects(
     model only on a miss), never for a request that ended without a response.
     """
     frame = encode_frame(image_path, orientation)
-    api_key = _api_key()
+    api_key = configured_api_key()
     if transport is None and not api_key:
         raise DetectionAuthError(f"neither {API_KEY_ENV} nor {FALLBACK_KEY_ENV} is set, so no frame can be read")
-    payload = _answer(transport, _request_body(frame), api_key, urgent)
+    payload = model_answer(transport, _request_body(frame), api_key, urgent)
     if recorded is not None:
         recorded.append(_request_info(payload, frame_id, orientation))
     return _detections_from(payload, frame, frame_id)
 
 
-def _answer(transport: Transport | None, body: dict[str, Any], api_key: str, urgent: bool = True) -> dict[str, Any]:
-    """The model's reply, asked for again after a blip or a rate limit until the attempts run out."""
-    attempt = 0
-    while True:
-        attempt += 1
-        RATE_LIMIT_GATE.wait()
-        try:
-            return _post_in_a_slot(transport, body, api_key, urgent)
-        except DetectionRateLimited as error:
-            if attempt >= RATE_LIMITED_ATTEMPTS:
-                raise
-            wait = min(MAX_RATE_LIMIT_WAIT, error.retry_after or _backoff(attempt))
-            log.info("rate limited on attempt %d, holding every request %.1fs (host asked %s)",
-                     attempt, wait, error.retry_after)
-            RATE_LIMIT_GATE.hold(wait)
-        except (DetectionAuthError, DetectionSchemaError):
-            raise
-        except DetectionError:
-            if attempt >= MAX_ATTEMPTS:
-                raise
-            time.sleep(_backoff(attempt))
-
-
-def _post_in_a_slot(transport: Transport | None, body: dict[str, Any], api_key: str, urgent: bool) -> dict[str, Any]:
-    DETECTOR_SLOTS.acquire(urgent)
-    try:
-        return _post(transport, body, api_key)
-    finally:
-        DETECTOR_SLOTS.release()
-
-
-def _backoff(attempt: int) -> float:
-    """A widening wait, spread out so retries from many frames do not land together."""
-    return FIRST_BACKOFF_SECONDS * (BACKOFF_GROWTH ** (attempt - 1)) * (0.5 + random.random())
-
-
-def encode_frame(image_path: pathlib.Path, orientation: str = "landscape_right") -> EncodedFrame:
-    """The frame as JPEG under the size cap, stood upright, with its sensor resolution kept."""
-    from PIL import Image
-
-    source = pathlib.Path(image_path)
-    try:
-        if source.stat().st_size > MAX_SOURCE_BYTES:
-            raise DetectionError(f"{source.name} is too large to read")
-        with Image.open(source) as opened:
-            if opened.width * opened.height > MAX_SOURCE_PIXELS:
-                raise DetectionError(f"{source.name} has too many pixels to read")
-            image = opened.convert("RGB")
-    except (OSError, ValueError) as error:
-        raise DetectionError(f"unreadable frame {source.name}: {error}") from error
-    stored_width, stored_height = image.width, image.height
-    turns = QUARTER_TURNS_CLOCKWISE.get(orientation, 0)
-    for _ in range(turns):
-        image = image.transpose(Image.Transpose.ROTATE_270)
-    image.thumbnail((MAX_IMAGE_EDGE, MAX_IMAGE_EDGE), Image.Resampling.LANCZOS)
-    return EncodedFrame(_compressed(image), stored_width, stored_height, turns)
-
-
-def _compressed(image) -> bytes:
-    encoded = b""
-    for quality in JPEG_QUALITIES:
-        buffer = io.BytesIO()
-        image.save(buffer, format="JPEG", quality=quality, optimize=True)
-        encoded = buffer.getvalue()
-        if len(encoded) <= MAX_IMAGE_BYTES:
-            return encoded
-    raise DetectionError("frame will not compress under the size limit")
-
-
-def _api_key() -> str:
-    return os.environ.get(API_KEY_ENV) or os.environ.get(FALLBACK_KEY_ENV) or ""
-
-
-def _base_url() -> str:
-    configured = os.environ.get(BASE_URL_ENV) or os.environ.get(FALLBACK_BASE_URL_ENV)
-    return (configured or DEFAULT_BASE_URL).rstrip("/")
-
-
-def _host() -> str:
-    return urllib.parse.urlsplit(_base_url()).hostname or "unknown"
-
-
-def _request_options() -> dict[str, Any]:
-    """Host-specific request fields: OpenRouter's routing rules, or reasoning turned off."""
-    host = _host()
-    if host == OPENROUTER_HOST:
-        return {"provider": PROVIDER_ROUTING}
-    return dict(REASONING_OFF_BY_HOST.get(host, {}))
-
-
-def answer_model() -> str:
-    return os.environ.get(MODEL_ENV) or DEFAULT_MODEL
-
-
-def answer_identity() -> str:
-    """What decides the answer besides the photo: the model, and whether it was allowed to reason.
-
-    The cache is keyed by this, so an answer given with reasoning on is never
-    served as one given with it off.
-    """
-    model = os.environ.get(MODEL_ENV) or DEFAULT_MODEL
-    reasoning = REASONING_OFF_BY_HOST.get(_host())
-    return model if not reasoning else f"{model}|{json.dumps(reasoning, sort_keys=True)}"
-
-
 def _request_info(payload: dict[str, Any], frame_id: str, orientation: str) -> ModelRequestInfo:
     """Provider, model, request id and usage from a real response, without secrets."""
-    host = _host()
+    host = endpoint_host()
     usage = payload.get("usage")
     if isinstance(usage, dict):
         usage = {str(key): int(value) for key, value in usage.items() if isinstance(value, (int, float))}
@@ -539,54 +289,8 @@ def _request_body(frame: EncodedFrame) -> dict[str, Any]:
             "name": "detections", "strict": True, "schema": DETECTION_SCHEMA,
         }},
     }
-    body.update(_request_options())
+    body.update(request_options())
     return body
-
-
-def _post(transport: Transport | None, body: dict[str, Any], api_key: str) -> dict[str, Any]:
-    url = f"{_base_url()}/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    try:
-        return (transport or _openrouter_post)(url, body, headers)
-    except DetectionError:
-        raise
-    except urllib.error.HTTPError as error:
-        if error.code in (401, 403):
-            raise DetectionAuthError(f"the vision model rejected authentication: HTTP {error.code}") from error
-        if error.code in (400, 422):
-            raise DetectionSchemaError(f"the vision model rejected request schema: HTTP {error.code}") from error
-        if error.code == 429:
-            raise DetectionRateLimited(
-                "the vision model is rate limited: HTTP 429", _retry_after(error.headers)
-            ) from error
-        raise DetectionTransientError(f"the vision model had a transient HTTP error: HTTP {error.code}") from error
-    except (urllib.error.URLError, TimeoutError) as error:
-        raise DetectionTransientError(f"the vision model timed out or network failed: {error}") from error
-    except (OSError, ValueError) as error:
-        raise DetectionError(f"the vision model did not answer: {error}") from error
-
-
-def _retry_after(headers: Any) -> float | None:
-    """The host's Retry-After, in seconds or as a date, or nothing when it did not say."""
-    value = headers.get("Retry-After") if headers is not None else None
-    if not value:
-        return None
-    try:
-        return max(0.0, float(value))
-    except ValueError:
-        pass
-    try:
-        return max(0.0, parsedate_to_datetime(value).timestamp() - time.time())
-    except (TypeError, ValueError):
-        return None
-
-
-def _openrouter_post(url: str, body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
-    request = urllib.request.Request(
-        url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST"
-    )
-    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-        return json.loads(response.read(MAX_RESPONSE_BYTES))
 
 
 def _detections_from(payload: dict[str, Any], frame: EncodedFrame, frame_id: str) -> list[Detection]:
@@ -628,7 +332,7 @@ def _one_detection(
     if crop_box is not None:
         box = map_crop_box_to_sensor(raw_box, crop_box, frame.turns)
     else:
-        box = _pixel_box(raw_box, frame)
+        box = pixel_box(raw_box, frame)
     if not name or box is None:
         return None
     category = "outlet" if name in OUTLET_NAMES else ("confuser" if name in CONFUSER_NAMES else "object")
@@ -657,146 +361,6 @@ def _one_detection(
         sockets=sockets,
         review_status=review_status,
     )
-
-
-def _pixel_box(values: Any, frame: EncodedFrame) -> tuple[float, float, float, float] | None:
-    """A model box, in the picture it saw, turned back into stored sensor pixels."""
-    return map_crop_box_to_sensor(values, (0.0, 0.0, float(frame.width), float(frame.height)), frame.turns)
-
-
-def map_crop_box_to_sensor(
-    values: Any,
-    crop_box: tuple[float, float, float, float],
-    turns: int,
-) -> tuple[float, float, float, float] | None:
-    """A model box [ymin, xmin, ymax, xmax] in upright crop/image space turned back into sensor pixels."""
-    import math
-
-    if not isinstance(values, (list, tuple)) or len(values) != 4:
-        return None
-    try:
-        top, left, bottom, right = (float(value) / BOX_SCALE for value in values)
-    except (TypeError, ValueError):
-        return None
-    if not (math.isfinite(top) and math.isfinite(left) and math.isfinite(bottom) and math.isfinite(right)):
-        return None
-    top, bottom = sorted((_clamped(top), _clamped(bottom)))
-    left, right = sorted((_clamped(left), _clamped(right)))
-    if (right - left) < MIN_BOX_FRACTION or (bottom - top) < MIN_BOX_FRACTION:
-        return None
-    for _ in range(turns):
-        left, top, right, bottom = top, 1.0 - right, bottom, 1.0 - left
-    c_left, c_top, c_right, c_bottom = crop_box
-    c_w = c_right - c_left
-    c_h = c_bottom - c_top
-    return (
-        c_left + left * c_w,
-        c_top + top * c_h,
-        c_left + right * c_w,
-        c_top + bottom * c_h,
-    )
-
-
-def map_crop_point_to_sensor(
-    point: Any,
-    crop_box: tuple[float, float, float, float],
-    turns: int,
-) -> tuple[float, float, float] | None:
-    """A model point [y, x] in [0, 1000] upright crop space turned back into sensor (x, y) pixels."""
-    import math
-
-    if not isinstance(point, (list, tuple)) or len(point) != 2:
-        return None
-    try:
-        y_val, x_val = (float(v) / BOX_SCALE for v in point)
-    except (TypeError, ValueError):
-        return None
-    if not (math.isfinite(x_val) and math.isfinite(y_val)):
-        return None
-    x_val = _clamped(x_val)
-    y_val = _clamped(y_val)
-    for _ in range(turns):
-        x_val, y_val = y_val, 1.0 - x_val
-    c_left, c_top, c_right, c_bottom = crop_box
-    return (
-        c_left + x_val * (c_right - c_left),
-        c_top + y_val * (c_bottom - c_top),
-    )
-
-
-def extract_padded_crop(
-    image: Any,
-    box: tuple[float, float, float, float],
-    padding_fraction: float = 0.20,
-) -> tuple[Any, tuple[float, float, float, float]]:
-    """Pads a sensor box by padding_fraction, clips to image bounds, and returns (cropped_image, crop_box)."""
-    b_left, b_top, b_right, b_bottom = box
-    pad_x = (b_right - b_left) * padding_fraction
-    pad_y = (b_bottom - b_top) * padding_fraction
-    c_left = max(0.0, b_left - pad_x)
-    c_top = max(0.0, b_top - pad_y)
-    c_right = min(float(image.width), b_right + pad_x)
-    c_bottom = min(float(image.height), b_bottom + pad_y)
-    crop_rect = (c_left, c_top, c_right, c_bottom)
-    cropped = image.crop((int(round(c_left)), int(round(c_top)), int(round(c_right)), int(round(c_bottom))))
-    return cropped, crop_rect
-
-
-def generate_tiles(
-    image_width: int,
-    image_height: int,
-    tile_size: tuple[int, int] = (1024, 1024),
-    overlap: float = 0.20,
-) -> list[tuple[float, float, float, float]]:
-    """Generates overlapping tile rectangles (left, top, right, bottom) covering the image."""
-    tw, th = tile_size
-    if image_width <= tw and image_height <= th:
-        return [(0.0, 0.0, float(image_width), float(image_height))]
-    step_x = max(1, int(tw * (1.0 - overlap)))
-    step_y = max(1, int(th * (1.0 - overlap)))
-    tiles = []
-    y = 0
-    while y < image_height:
-        top = y
-        bottom = min(y + th, image_height)
-        if bottom == image_height and top > 0:
-            top = max(0, bottom - th)
-        x = 0
-        while x < image_width:
-            left = x
-            right = min(x + tw, image_width)
-            if right == image_width and left > 0:
-                left = max(0, right - tw)
-            tile = (float(left), float(top), float(right), float(bottom))
-            if tile not in tiles:
-                tiles.append(tile)
-            if right >= image_width:
-                break
-            x += step_x
-        if bottom >= image_height:
-            break
-        y += step_y
-    return tiles
-
-
-def box_iou(b1: tuple[float, float, float, float], b2: tuple[float, float, float, float]) -> float:
-    """Intersection over union between two 2D boxes (left, top, right, bottom)."""
-    x1 = max(b1[0], b2[0])
-    y1 = max(b1[1], b2[1])
-    x2 = min(b1[2], b2[2])
-    y2 = min(b1[3], b2[3])
-    intersection = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-    area1 = max(0.0, b1[2] - b1[0]) * max(0.0, b1[3] - b1[1])
-    area2 = max(0.0, b2[2] - b2[0]) * max(0.0, b2[3] - b2[1])
-    union = area1 + area2 - intersection
-    return intersection / union if union > 0 else 0.0
-
-
-def _clamped(value: Any) -> float:
-    try:
-        return min(1.0, max(0.0, float(value)))
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def _finite_confidence(value: Any) -> float | None:

@@ -21,17 +21,14 @@ import pathlib
 import pytest
 from PIL import Image
 from standardphysics_pipeline.discovery.cache import DetectionCache
-from standardphysics_pipeline.discovery.detect import (
-    Detection,
-    DetectionAuthError,
-    DetectionSchemaError,
-    EncodedFrame,
-    _detections_from,
-    detect_objects,
+from standardphysics_pipeline.discovery.detect import Detection, _detections_from, detect_objects
+from standardphysics_pipeline.discovery.detection_boxes import (
     extract_padded_crop,
     generate_tiles,
     map_crop_box_to_sensor,
 )
+from standardphysics_pipeline.discovery.detection_errors import DetectionAuthError, DetectionSchemaError
+from standardphysics_pipeline.discovery.frame_encoding import EncodedFrame
 
 
 def test_det_01_asymmetric_rotations_crops_and_tiles(tmp_path: pathlib.Path):

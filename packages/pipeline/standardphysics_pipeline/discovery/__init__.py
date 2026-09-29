@@ -5,7 +5,8 @@ from .cache import DetectionCache
 from .carve import CarvedBox, carve, fit_box
 from .clusters import dominant_cluster, voxel_components
 from .crops import crop_box_of, crop_id_for, save_crop
-from .detect import Detection, DetectionError, ModelRequestInfo, detect_objects
+from .detect import Detection, ModelRequestInfo, detect_objects
+from .detection_errors import DetectionError
 from .discover import DiscoveryError, DiscoveryInputs, DiscoveryResult, discover_objects
 from .merge import Candidate, DiscoveredObject, merge_candidates
 from .people import PeopleRemoval, without_people
