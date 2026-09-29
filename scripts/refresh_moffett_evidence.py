@@ -23,7 +23,7 @@ from standardphysics_pipeline.discovery import DiscoveryInputs, discover_objects
 from standardphysics_api import repository as repo
 from standardphysics_api.db import Database
 from standardphysics_api.settings import Settings
-from standardphysics_api.worker import ASSESS
+from standardphysics_api.worker_handlers import ASSESS
 
 RESULTS = DATA_DIR / "scans" / str(SCAN_ID) / "enhancements"
 

@@ -16,8 +16,10 @@ import pytest
 from conftest import create_scan
 from standardphysics_api import repository as repo
 from standardphysics_api import worker as worker_module
+from standardphysics_api import worker_handlers, worker_pulse
 from standardphysics_api.textures import TEXTURE
-from standardphysics_api.worker import PROCESS, Worker
+from standardphysics_api.worker import Worker
+from standardphysics_api.worker_handlers import PROCESS
 
 
 def _wait_for(condition, seconds: float = 10.0) -> bool:
@@ -42,13 +44,13 @@ def _job(client, scan_id: str, kind: str):
 
 
 def _fast_retries(monkeypatch) -> None:
-    monkeypatch.setattr(worker_module, "FIRST_RETRY_SECONDS", 0.01)
-    monkeypatch.setattr(worker_module, "LONGEST_RETRY_SECONDS", 0.05)
+    monkeypatch.setattr(worker_pulse, "FIRST_RETRY_SECONDS", 0.01)
+    monkeypatch.setattr(worker_pulse, "LONGEST_RETRY_SECONDS", 0.05)
 
 
 def _quick_stall_detection(monkeypatch) -> None:
     """A loop is called stalled after 0.25 s without a beat, and an idle one beats every 0.02 s."""
-    monkeypatch.setattr(worker_module, "STALLED_AFTER_SECONDS", 0.25)
+    monkeypatch.setattr(worker_pulse, "STALLED_AFTER_SECONDS", 0.25)
     monkeypatch.setattr(worker_module, "IDLE_WAIT_SECONDS", 0.02)
 
 
@@ -139,7 +141,7 @@ def test_a_running_simulation_does_not_hold_up_a_new_scan(make_client, monkeypat
 def test_a_long_job_looks_busy_not_dead(make_client, monkeypatch):
     release = threading.Event()
     _quick_stall_detection(monkeypatch)
-    monkeypatch.setattr(worker_module, "run_texture", lambda *args: release.wait(timeout=20))
+    monkeypatch.setattr(worker_handlers, "run_texture", lambda *args: release.wait(timeout=20))
     with make_client() as client:
         scan_id = create_scan(client)
         _queue(client, scan_id, TEXTURE)
@@ -160,7 +162,7 @@ def test_a_long_job_looks_busy_not_dead(make_client, monkeypatch):
 
 def test_a_job_past_its_deadline_degrades_readiness_but_not_liveness(make_client, monkeypatch):
     release = threading.Event()
-    monkeypatch.setattr(worker_module, "run_texture", lambda *args: release.wait(timeout=20))
+    monkeypatch.setattr(worker_handlers, "run_texture", lambda *args: release.wait(timeout=20))
     with make_client(bake_timeout_seconds=0.2) as client:
         scan_id = create_scan(client)
         _queue(client, scan_id, TEXTURE)

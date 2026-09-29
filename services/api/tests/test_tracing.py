@@ -21,7 +21,7 @@ from test_job_lifecycle import _complete_geometry, _complete_semantics
 from conftest import create_scan, drain, no_blender_stages, sign_up
 from standardphysics_api.app import create_app
 from standardphysics_api.settings import Settings
-from standardphysics_api.worker import in_own_process
+from standardphysics_api.worker_child import in_own_process
 
 
 class FakeWeave:

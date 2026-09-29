@@ -38,6 +38,10 @@ FLOORS: dict[str, int] = {
     # 91% measured. Some of its branches depend on timing (retries, deadlines, a
     # loop that stalls), so a floor one point below would fail runs at random.
     f"{API}/worker.py": 85,
+    f"{API}/worker_handlers.py": 90,
+    f"{API}/worker_pulse.py": 90,
+    # The child's own side runs in a spawned process the API suite does not trace.
+    f"{API}/worker_child.py": 80,
     f"{API}/repository.py": 95,
     f"{API}/request_size.py": 95,
     f"{API}/usdz_validation.py": 90,

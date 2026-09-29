@@ -77,7 +77,7 @@ from standardphysics_api.textures import (  # noqa: E402
     record_build,
     staged_build_dir,
 )
-from standardphysics_api.worker import ASSESS  # noqa: E402
+from standardphysics_api.worker_handlers import ASSESS  # noqa: E402
 
 FRAMES_PER_WALK = 10_000
 """Each walk's photos are renumbered into a block of their own, since a frame id is only digits."""

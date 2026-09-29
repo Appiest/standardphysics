@@ -12,7 +12,7 @@ from standardphysics_fixtures import FIX_SHIFT_INCHES, node_id
 
 from conftest import create_scan, drain
 from standardphysics_api import repository as repo
-from standardphysics_api.worker import ASSESS
+from standardphysics_api.worker_handlers import ASSESS
 
 CASE_EAST = str(node_id("case_east"))
 SHIFT = {"x": to_meters(FIX_SHIFT_INCHES), "y": 0.0, "z": 0.0}

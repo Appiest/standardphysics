@@ -31,7 +31,7 @@ from standardphysics_api.combine import captured_graph  # noqa: E402
 from standardphysics_api.db import Database  # noqa: E402
 from standardphysics_api.stages import Stages  # noqa: E402
 from standardphysics_api.store import ArtifactStore  # noqa: E402
-from standardphysics_api.worker import ASSESS  # noqa: E402
+from standardphysics_api.worker_handlers import ASSESS  # noqa: E402
 
 UNREAD_LIMIT = 0.1
 """Share of photos the model may fail to read before the run is refused.

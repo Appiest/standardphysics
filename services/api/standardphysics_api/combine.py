@@ -31,7 +31,8 @@ from .budgets import admit_new_job
 from .db import Database
 from .errors import ApiProblem
 from .store import ArtifactStore
-from .worker import ASSESS, Worker
+from .worker import Worker
+from .worker_handlers import ASSESS
 
 POSITION = (3, 7, 11)
 

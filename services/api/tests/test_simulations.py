@@ -447,7 +447,7 @@ def test_job_limits_and_stale_layout_rejected(make_client):
 def test_simulation_failure_keeps_room_ready_and_sanitizes_errors(make_client, monkeypatch):
     def fail(*args):
         raise RuntimeError('secret upstream payload')
-    monkeypatch.setattr('standardphysics_api.worker.run_simulation', fail)
+    monkeypatch.setattr('standardphysics_api.worker_handlers.run_simulation', fail)
     with make_client(seed=True, team=True) as client:
         scan_id = shop(client)
         client.post(f'/api/scans/{scan_id}/simulations', json={'base_revision': 0, 'samples': 1})

@@ -17,18 +17,13 @@ from test_job_lifecycle import _complete_geometry, _complete_semantics
 from conftest import create_scan, drain
 from standardphysics_api import repository as repo
 from standardphysics_api import worker as worker_module
+from standardphysics_api.furniture import FURNITURE
+from standardphysics_api.rearrangement import REARRANGE
 from standardphysics_api.settings import Settings
-from standardphysics_api.worker import (
-    ASSESS,
-    DISPLAY,
-    FURNITURE,
-    PROCESS,
-    REARRANGE,
-    SIMULATE,
-    TEXTURE,
-    ChildFailed,
-    in_own_process,
-)
+from standardphysics_api.simulations import SIMULATE
+from standardphysics_api.textures import TEXTURE
+from standardphysics_api.worker_child import ChildFailed, in_own_process
+from standardphysics_api.worker_handlers import ASSESS, DISPLAY, PROCESS
 
 EVERY_JOB_KIND = (PROCESS, ASSESS, DISPLAY, SIMULATE, TEXTURE, REARRANGE, FURNITURE)
 

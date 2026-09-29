@@ -32,7 +32,8 @@ from .db import Database
 from .errors import ApiProblem
 from .label_corrections import Correction, record_correction
 from .layout import STALE_LAYOUT
-from .worker import ASSESS, Worker
+from .worker import Worker
+from .worker_handlers import ASSESS
 
 SERVICE_COUNTER_LABEL = "service counter"
 

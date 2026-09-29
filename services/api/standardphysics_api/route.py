@@ -13,7 +13,8 @@ from .budgets import admit_new_job
 from .db import Database
 from .errors import ApiProblem
 from .stages import Stages
-from .worker import ASSESS, Worker
+from .worker import Worker
+from .worker_handlers import ASSESS
 
 
 def suggestion(database: Database, scan_id: uuid.UUID, destinations: list[str] | None = None) -> Scenario:

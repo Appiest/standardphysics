@@ -116,7 +116,8 @@ from .team import adopt_allowlist
 from .textures import MAX_METADATA_BYTES, install_texture_routes, maybe_queue_texture, validate_manifest
 from .usdz_validation import MAX_ARCHIVE_BYTES, InvalidUsdz, validate_room_usdz
 from .waitlist import install_waitlist_routes
-from .worker import ASSESS, PROCESS, Worker
+from .worker import Worker
+from .worker_handlers import ASSESS, PROCESS
 
 PLACES = {*DESTINATIONS, "pickup"}
 DEMO_PASSWORD_FILE = "demo-password"

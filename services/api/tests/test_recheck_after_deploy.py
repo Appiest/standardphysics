@@ -3,7 +3,7 @@
 from standardphysics_agents.checks_version import checks_version
 
 from conftest import drain
-from standardphysics_api.worker import ASSESS
+from standardphysics_api.worker_handlers import ASSESS
 
 
 def _versions(client):

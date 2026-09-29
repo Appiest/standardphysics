@@ -33,7 +33,8 @@ from .errors import ApiProblem
 from .rearrangement_base import rearrangement_base
 from .rearrangement_data import record_outcome, suggested_hash
 from .stages import Stages
-from .worker import ASSESS, Worker
+from .worker import Worker
+from .worker_handlers import ASSESS
 
 STALE_LAYOUT = "a newer layout was saved since this one started"
 

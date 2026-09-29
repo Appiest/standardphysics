@@ -8,7 +8,7 @@ interrupt.
 from conftest import create_scan, drain, put_artifact, usdz_fixture
 from standardphysics_api import drain as deploy_drain
 from standardphysics_api import repository as repo
-from standardphysics_api.worker import ASSESS
+from standardphysics_api.worker_handlers import ASSESS
 
 UPDATING = "Standard Physics is updating; try again in a minute."
 

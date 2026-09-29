@@ -26,7 +26,7 @@ from . import accounts
 from . import repository as repo
 from .db import Database
 from .store import ArtifactStore
-from .worker import ASSESS
+from .worker_handlers import ASSESS
 
 SAMPLE_NAME = "Sample boba shop"
 FIXTURE_GLB = pathlib.Path(standardphysics_fixtures.__path__[0]) / "data" / "shop_lawsuit.glb"
