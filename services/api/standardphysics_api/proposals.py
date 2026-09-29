@@ -18,6 +18,7 @@ from standardphysics_contracts import (
 )
 
 from . import repository as repo
+from . import repository_revisions as revisions_repo
 from .db import Database
 from .errors import ApiProblem
 from .model_chooser import MENU_SECONDS, SEARCH_AFTER_MENU_SECONDS, ModelChooser, ModelReplyError, ModelSlots
@@ -31,9 +32,9 @@ def fix_inputs(database: Database, scan_id: uuid.UUID, revision: int):
     with database.connect() as connection:
         if not repo.scan_exists(connection, scan_id):
             raise ApiProblem(404, "no scan")
-        row = repo.get_revision(connection, scan_id, revision)
-        scenario = repo.get_scenario(connection, scan_id)
-        assessment = repo.assessment_for_revision(connection, scan_id, revision)
+        row = revisions_repo.get_revision(connection, scan_id, revision)
+        scenario = revisions_repo.get_scenario(connection, scan_id)
+        assessment = revisions_repo.assessment_for_revision(connection, scan_id, revision)
         if row is None or scenario is None or assessment is None:
             raise ApiProblem(404, "not ready")
         graph = rearrangement_base(connection, row)

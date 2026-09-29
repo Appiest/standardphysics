@@ -5,10 +5,10 @@ an exclusive lock on a file beside the database; a second process finds the
 lock held, says so in the log, and serves requests without running any job.
 Jobs are claimed atomically, and at startup every job left running is queued
 again, except a simulation, which is failed so that a restart never spends a
-second budget of paid model calls (`repo.fail_interrupted_simulations`), and a
+second budget of paid model calls (`jobs_repo.fail_interrupted_simulations`), and a
 job whose runs `max_job_interruptions` restarts in a row have cut short, which
 is failed so that an input that kills the server can't bring it down for ever
-(`repo.requeue_interrupted_jobs`). The lock is what makes that safe: no other
+(`jobs_repo.requeue_interrupted_jobs`). The lock is what makes that safe: no other
 live process can be running one of them.
 
 Neither loop stops on an error. A job's own failure is recorded on its row; an
@@ -30,67 +30,41 @@ flushes it before it exits.
 
 from __future__ import annotations
 
-import json
 import logging
-import math
-import multiprocessing
-import os
-import pathlib
-import signal
 import sqlite3
 import threading
 import time
 import traceback
-import urllib.error
 import uuid
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from standardphysics_agents.tracing import flush_was_abandoned, tracing_for_this_process
-from standardphysics_contracts import SimulationRequest
-from standardphysics_pipeline.discovery.live import LiveReader, LiveReport
-from standardphysics_pipeline.floor_coverage import with_floor_coverage
+from standardphysics_agents.tracing import tracing_for_this_process
 
 from . import drain as deploy_drain
 from . import evidence, guest_sweep
 from . import repository as repo
+from . import repository_jobs as jobs_repo
+from . import repository_revisions as revisions_repo
 from .db import Database
-from .errors import ApiProblem
-from .furniture import FURNITURE, furniture_runtime, queue_furniture, run_furniture
-from .notifications import LoggedNotifier, Notifier, Push, notifier_from
-from .rearrangement import (
-    INTERRUPTED,
-    REARRANGE,
-    Rearranger,
-    failure_text,
-    run_suggestion,
-    scale_down_when_idle,
-)
+from .furniture import FURNITURE
+from .notifications import notifier_from
+from .rearrangement import INTERRUPTED, REARRANGE, Rearranger, failure_text, scale_down_when_idle
 from .settings import Settings
-from .simulations import SIMULATE, queue_simulation, run_simulation
-from .stages import DiscoveryOutcome, Stages, configured_stages
-from .store import ArtifactStore, ScanQuota
-from .textures import TEXTURE, maybe_queue_texture, run_texture
+from .simulations import SIMULATE
+from .stages import Stages, configured_stages
+from .store import ArtifactStore
+from .textures import TEXTURE
+from .worker_child import ChildFailed, ChildTimedOut, in_own_process, is_lock_contention, is_transient
+from .worker_handlers import ASSESS, DISPLAY, PROCESS, JobHandlers, store_for
 from .worker_lock import WorkerLock
+from .worker_pulse import PROBLEM_STATES, Backoff, JobOverran, LoopPulse, RunningJob
 
 log = logging.getLogger(__name__)
 
-PROCESS, ASSESS, DISPLAY = "process", "assess", "display"
-
-
 SWEEP_SECONDS = 3600.0
 IDLE_WAIT_SECONDS = 2.0
-FIRST_RETRY_SECONDS = 1.0
-LONGEST_RETRY_SECONDS = 60.0
-STALLED_AFTER_SECONDS = 120.0
-"""An idle loop beats at least every IDLE_WAIT_SECONDS and waits at most
-LONGEST_RETRY_SECONDS between retries, so an idle loop that has not beaten for
-this long is stuck somewhere. A loop running a job is never called stalled,
-because a photo bake takes up to fifteen minutes and the loop beats only when
-it ends. A job that runs past its kind's deadline is reported overdue instead."""
-PROBLEM_STATES = ("stopped", "stalled", "overdue")
-"""Loop states that mean jobs are not getting done, worst first."""
 STANDBY_RETRY_SECONDS = 5.0
 """How often a process that found the queue taken tries the lock again."""
 LOOP_NAMES: dict[bool | str, str] = {
@@ -115,99 +89,6 @@ SETTLE_PATIENCE_SECONDS = 60.0
 TRANSIENT_ATTEMPTS = 3
 """How many times a job runs when it keeps meeting an error that goes away by itself: a
 database another writer holds past its busy timeout, or a provider request that timed out."""
-LONGEST_CHILD_ERROR = 2000
-"""How many characters of a child's error cross back to the worker. A pipe holds far more, so
-the child's last write never blocks waiting for a parent that is itself waiting for the child to exit."""
-
-
-class _Backoff:
-    """Waits that double from FIRST_RETRY_SECONDS up to LONGEST_RETRY_SECONDS."""
-
-    def __init__(self):
-        self._next = FIRST_RETRY_SECONDS
-
-    def delay(self) -> float:
-        current = min(self._next, LONGEST_RETRY_SECONDS)
-        self._next = current * 2
-        return current
-
-    def reset(self) -> None:
-        self._next = FIRST_RETRY_SECONDS
-
-
-class JobOverran(RuntimeError):
-    """A job ran past its kind's deadline and was stopped at the next stage boundary."""
-
-
-@dataclass(frozen=True)
-class RunningJob:
-    kind: str
-    id: int
-    started_at: float
-    deadline_seconds: float
-
-    def running_seconds(self, now: float) -> float:
-        return now - self.started_at
-
-    def overdue(self, now: float) -> bool:
-        return self.running_seconds(now) > self.deadline_seconds
-
-    def seconds_left(self, now: float) -> float | None:
-        """How long the job may still run, or None when its kind has no deadline."""
-        if math.isinf(self.deadline_seconds):
-            return None
-        return max(self.deadline_seconds - self.running_seconds(now), 0.0)
-
-    def overran(self) -> JobOverran:
-        limit = _duration(self.deadline_seconds)
-        return JobOverran(f"The {self.kind} job did not finish within {limit} and was stopped")
-
-    def stop_if_overdue(self) -> None:
-        if self.overdue(time.monotonic()):
-            raise self.overran()
-
-
-@dataclass
-class LoopPulse:
-    """What one worker loop is doing, kept in memory so /health can read it without the database."""
-
-    thread: threading.Thread | None = None
-    beat_at: float | None = None
-    job: RunningJob | None = None
-    """The job running now. One attribute, so a reader never sees half of it."""
-
-    def beat(self) -> None:
-        self.beat_at = time.monotonic()
-
-    def begin(self, job: RunningJob) -> None:
-        self.job = job
-
-    def end(self) -> None:
-        self.job = None
-        self.beat()
-
-    def state(self, now: float) -> str:
-        if self.thread is None:
-            return "not_started"
-        if not self.thread.is_alive():
-            return "stopped"
-        if self.job is not None:
-            return "overdue" if self.job.overdue(now) else "busy"
-        if self.beat_at is None or now - self.beat_at > STALLED_AFTER_SECONDS:
-            return "stalled"
-        return "idle"
-
-    def report(self, now: float) -> dict:
-        job = self.job
-        return {
-            "state": self.state(now),
-            "heartbeat_seconds": None if self.beat_at is None else round(now - self.beat_at, 1),
-            "job": None if job is None else {
-                "kind": job.kind,
-                "id": job.id,
-                "running_seconds": round(job.running_seconds(now), 1),
-            },
-        }
 
 
 @dataclass
@@ -217,19 +98,8 @@ class _JobOutcome:
     """Queue the next derived job after this one settles; its row is still running now."""
 
 
-class _UnusableEvidence(Exception):
-    """The evidence artifacts exist but do not agree with each other, so no
-    semantic pass may consume them. Visible on the job and the evidence status;
-    a new upload that repairs the pairing queues the next attempt."""
 
-
-def _count_what_the_walk_read(outcome: DiscoveryOutcome, walk: LiveReport) -> None:
-    """Put the photos read during the walk on the job record: they were real, billed requests."""
-    outcome.read_during_walk = walk.read
-    outcome.model_requests = [*walk.requests, *outcome.model_requests]
-
-
-class Worker:
+class Worker(JobHandlers):
     def __init__(
         self,
         database: Database,
@@ -238,24 +108,18 @@ class Worker:
         settings: Settings,
         rearranger: Rearranger | None = None,
     ):
-        self.database, self.store, self.stages = database, store, stages
-        self.settings = settings
-        self.rearranger = rearranger or Rearranger.from_settings(settings)
-        self._wake = threading.Event()
+        super().__init__(database, store, stages, settings, rearranger)
         self._stop = threading.Event()
         self.pulses = {texture_only: LoopPulse() for texture_only in LOOP_NAMES}
         self.lock = WorkerLock(database.path)
         self._standby = False
-        self.notifier: Notifier = LoggedNotifier()
         self._swept_at: float | None = None
-        self._on_this_thread = threading.local()
         self._unsettled: dict[int, str] = {}
         """Jobs whose outcome could not be written, by id, with the error. Cleared by a restart,
         which queues them again."""
         self.stages_in_child: Callable[[Settings], Stages] = configured_stages
         """Builds the stages a job run in its own process uses. The child finds it by module and
         name, so it must be a module-level function."""
-        self.live_reader = LiveReader(read_photo=stages.read_photo)
 
     def start(self) -> None:
         if not self.lock.acquire():
@@ -282,9 +146,9 @@ class Worker:
     def recheck_stale_results(self) -> int:
         """Queue a check of every shop whose results older checks made; how many were queued."""
         with self.database.transaction() as connection:
-            stale = repo.results_made_under_other_checks(connection)
+            stale = revisions_repo.results_made_under_other_checks(connection)
             for scan_id, revision in stale:
-                repo.queue_job_again(connection, scan_id, ASSESS, revision)
+                jobs_repo.queue_job_again(connection, scan_id, ASSESS, revision)
         if stale:
             log.warning("checking %d shops again: their results came from checks this deploy changed", len(stale))
         return len(stale)
@@ -308,11 +172,11 @@ class Worker:
 
     def _recover_interrupted_jobs(self) -> None:
         with self.database.transaction() as connection:
-            repo.fail_interrupted_simulations(connection)
+            jobs_repo.fail_interrupted_simulations(connection)
             connection.execute(
                 "UPDATE jobs SET state='failed', error=? WHERE kind=? AND state='running'", (INTERRUPTED, REARRANGE)
             )
-            stopped = repo.requeue_interrupted_jobs(connection, self.settings.max_job_interruptions)
+            stopped = jobs_repo.requeue_interrupted_jobs(connection, self.settings.max_job_interruptions)
         for job in stopped:
             log.error(
                 "job %s (%s, scan %s) was stopped after %s interrupted runs instead of being queued again",
@@ -362,18 +226,6 @@ class Worker:
             return "running"
         return "standby" if self._standby else "not_started"
 
-    def wake(self) -> None:
-        self._wake.set()
-
-    def label_inputs(self, scan_id: uuid.UUID) -> tuple[list[pathlib.Path], pathlib.Path | None, pathlib.Path | None]:
-        """Return uploaded frame and pose artifacts for the built-in labeler."""
-        with self.database.connect() as connection:
-            frames = repo.artifacts_of_kind(connection, scan_id, "frames")
-            poses = repo.artifact_of_kind(connection, scan_id, "poses")
-            lidar = repo.artifact_of_kind(connection, scan_id, "lidar_mesh")
-        frame_paths = [self.store.artifact_path(scan_id, artifact.id) for artifact in frames]
-        poses_path = self.store.artifact_path(scan_id, poses.id) if poses is not None else None
-        return frame_paths, poses_path, self.store.artifact_path(scan_id, lidar.id) if lidar else None
 
     def drain(self) -> None:
         """Run every queued job on the calling thread. Tests use this."""
@@ -384,7 +236,7 @@ class Worker:
         if deploy_drain.is_draining(self.settings.data_dir):
             return False
         with self.database.transaction() as connection:
-            job = repo.claim_job(connection, texture_only, kind=kind)
+            job = jobs_repo.claim_job(connection, texture_only, kind=kind)
         if job is None:
             return False
         lane = kind if kind is not None else texture_only
@@ -398,18 +250,6 @@ class Worker:
             self._on_this_thread.job = None
             pulse.end()
         return True
-
-    def _checkpoint(self) -> None:
-        """A stage boundary: stop the job this thread is running if it is past its deadline.
-
-        Python can't interrupt a thread from outside, so an in-thread job is
-        stopped here, between stages, and what the late stage produced is not saved.
-        A job run in its own process has no job on its thread, so this does nothing
-        there: the worker kills the whole process at the deadline instead.
-        """
-        running: RunningJob | None = getattr(self._on_this_thread, "job", None)
-        if running is not None:
-            running.stop_if_overdue()
 
     def _settle(self, job) -> None:
         """Run a claimed job and write how it ended, whatever raises on the way.
@@ -447,7 +287,9 @@ class Worker:
         claim and release the same job for ever.
         """
         if job["attempts"] < MAX_CLAIMS_BEFORE_START:
-            self._settle_or_leave_for_restart(job, lambda connection: repo.requeue_running_job(connection, job["id"]))
+            self._settle_or_leave_for_restart(
+                job, lambda connection: jobs_repo.requeue_running_job(connection, job["id"])
+            )
             return
         self._fail_unrecorded(job, scan_id, error)
 
@@ -455,8 +297,8 @@ class Worker:
         message = f"{type(error).__name__}: {error}"
 
         def fail(connection) -> None:
-            if repo.fail_running_job(connection, job["id"], message):
-                repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
+            if jobs_repo.fail_running_job(connection, job["id"], message):
+                jobs_repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
 
         self._settle_or_leave_for_restart(job, fail)
 
@@ -475,8 +317,8 @@ class Worker:
 
     def _record_outcome(self, job, scan_id: uuid.UUID, outcome: _JobOutcome) -> None:
         def record(connection) -> None:
-            repo.finish_job(connection, job["id"], outcome.error)
-            repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
+            jobs_repo.finish_job(connection, job["id"], outcome.error)
+            jobs_repo.record_job_attempt(connection, job["id"], job["attempts"], scan_id)
 
         self._write_through_locks(record, f"job {job['id']}")
 
@@ -488,7 +330,7 @@ class Worker:
         still held when the patience runs out, or when the worker is stopping, is
         raised too.
         """
-        backoff = _Backoff()
+        backoff = Backoff()
         give_up_at = time.monotonic() + SETTLE_PATIENCE_SECONDS
         while True:
             try:
@@ -497,7 +339,7 @@ class Worker:
                 return
             except sqlite3.OperationalError as error:
                 delay = backoff.delay()
-                if not _is_lock_contention(error) or self._stop.is_set() or time.monotonic() + delay > give_up_at:
+                if not is_lock_contention(error) or self._stop.is_set() or time.monotonic() + delay > give_up_at:
                     raise
                 log.warning("could not record %s (%s); trying again in %.1f s", what, error, delay)
                 self._stop.wait(delay)
@@ -512,8 +354,8 @@ class Worker:
             if not repo.marked_for_deletion(connection, scan_id):
                 return False
             if claimed_job is not None:
-                repo.finish_job(connection, claimed_job, "The shop was deleted")
-            if repo.other_running_job(connection, scan_id):
+                jobs_repo.finish_job(connection, claimed_job, "The shop was deleted")
+            if jobs_repo.other_running_job(connection, scan_id):
                 return True
             repo.delete_scan(connection, scan_id)
         self.store.remove_scan(scan_id)
@@ -528,14 +370,14 @@ class Worker:
                 return
             if latest.semantic_processed_hash == latest.manifest_hash:
                 return
-            if repo.has_pending_process_job(connection, scan_id):
+            if jobs_repo.has_pending_process_job(connection, scan_id):
                 return
-            repo.queue_job_again(connection, scan_id, PROCESS, 0)
+            jobs_repo.queue_job_again(connection, scan_id, PROCESS, 0)
             self.wake()
 
     def _loop(self, lane: bool | str = False) -> None:
         pulse = self.pulses[lane]
-        backoff = _Backoff()
+        backoff = Backoff()
         while not self._stop.is_set():
             pulse.beat()
             try:
@@ -576,22 +418,6 @@ class Worker:
             self.store.remove_abandoned_staging(self.settings.staging_max_age_seconds)
         except OSError:
             log.warning("staging sweep failed:\n%s", traceback.format_exc())
-
-    def _tell_results_ready(self, scan_id: uuid.UUID) -> None:
-        """One push, the first time a shop's results are ready. A re-check afterwards stays quiet."""
-        with self.database.transaction() as connection:
-            row = connection.execute(
-                "SELECT owner_id, results_told_at FROM scans WHERE id = ?", (str(scan_id),)
-            ).fetchone()
-            if row is None or row["owner_id"] is None or row["results_told_at"]:
-                return
-            told = datetime.now(UTC).isoformat()
-            connection.execute("UPDATE scans SET results_told_at = ? WHERE id = ?", (told, str(scan_id)))
-        push = Push(title="Your shop is measured", body="See what we found and what to fix.", scan_id=scan_id)
-        try:
-            self.notifier.send(self.database, uuid.UUID(row["owner_id"]), push)
-        except Exception:
-            log.warning("results push for %s failed:\n%s", scan_id, traceback.format_exc())
 
     def _sweep_due_settled(self) -> None:
         """Queue the one due recognition job for every quiet complete bundle.
@@ -639,7 +465,7 @@ class Worker:
     def _run_through_transient_errors(self, job, scan_id: uuid.UUID) -> bool:
         """Run the job's stage, and run it again after a short wait when it met an error that
         goes away by itself, up to TRANSIENT_ATTEMPTS runs in all and never past its deadline."""
-        backoff = _Backoff()
+        backoff = Backoff()
         attempt = 1
         while True:
             try:
@@ -657,31 +483,6 @@ class Worker:
         if job["kind"] != TEXTURE and self.settings.jobs_in_own_process:
             return self._in_child(job)
         return self.run_stage(job)
-
-    def handlers(self) -> dict[str, Callable[..., bool]]:
-        """Each job kind this worker runs, with the stage that runs it. Every kind needs a deadline
-        in `Settings.job_deadline_seconds`."""
-        return {
-            PROCESS: self._process,
-            ASSESS: self._assess,
-            DISPLAY: self._display,
-            SIMULATE: self._simulate,
-            TEXTURE: self._texture,
-            REARRANGE: self._rearrange,
-            FURNITURE: self._furniture,
-        }
-
-    def run_stage(self, job) -> bool:
-        """Run the job's stage here and say whether a follow-up process job may be due."""
-        scan_id, revision = uuid.UUID(job["scan_id"]), job["revision"]
-        handler = self.handlers()[job["kind"]]
-        if job["kind"] in (TEXTURE, FURNITURE):
-            return handler(scan_id=scan_id, build_id=revision, job=job)
-        return handler(scan_id=scan_id, revision=revision, job=job)
-
-    def _rearrange(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
-        run_suggestion(self.database, self.rearranger, self.stages, scan_id, revision)
-        return False
 
     def _in_child(self, job) -> bool:
         """Run the job's stage in a process of its own, and kill it when the job reaches its deadline.
@@ -709,345 +510,6 @@ class Worker:
             return running
         return RunningJob(job["kind"], job["id"], time.monotonic(), self.settings.job_deadline_seconds(job["kind"]))
 
-    def _texture(self, scan_id, build_id, job=None) -> bool:
-        if self.settings.bake_in_own_process:
-            in_own_process(
-                bake_photos, self.settings, scan_id, build_id, timeout_seconds=self.settings.bake_timeout_seconds
-            )
-        else:
-            run_texture(self.database, self.store, self.stages, scan_id, build_id)
-        queue_furniture(self.database, self, scan_id, build_id)
-        return False
-
-    def _furniture(self, scan_id, build_id, job=None) -> bool:
-        run_furniture(self.database, self.store, scan_id, build_id, furniture_runtime(self.settings))
-        return False
-
-    def _simulate(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
-        run_simulation(self.database, self.store, self.stages, scan_id, revision, self._checkpoint)
-        return False
-
-    def _process(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
-        with self.database.connect() as connection:
-            bundle = repo.latest_bundle(connection, scan_id)
-            consumed = (bundle.version, bundle.manifest_hash) if bundle else None
-        if consumed is not None:
-            with self.database.transaction() as connection:
-                repo.set_job_binding(connection, job["id"], consumed[1], None)
-        association_state, association_failure, declared = evidence.association_state(
-            self.database, self.store, scan_id
-        )
-        if declared and association_state == "failed":
-            raise _UnusableEvidence(association_failure or "uploaded evidence does not parse")
-        with self.database.connect() as connection:
-            room_json = repo.artifact_of_kind(connection, scan_id, "room_json")
-        if room_json is None:
-            raise _UnusableEvidence("the scan has no room_json to measure")
-        frame_paths, poses_path, lidar_mesh_path = self.label_inputs(scan_id)
-        read_during_walk = self.live_reader.finish(scan_id)
-        # With a declared manifest every state except not_started means the
-        # pairing is unfilled or broken; such a run never counts as semantic.
-        run_discovery = not declared or association_state == "not_started"
-        graph, outcome = self.stages.ingest_with_report(
-            self.store.artifact_path(scan_id, room_json.id),
-            scan_id,
-            frame_paths=frame_paths,
-            poses_path=poses_path,
-            lidar_mesh_path=lidar_mesh_path,
-            run_discovery=run_discovery,
-        )
-        if not run_discovery:
-            outcome = DiscoveryOutcome(deferred_reason=association_failure or association_state)
-        else:
-            _count_what_the_walk_read(outcome, read_during_walk)
-        self._checkpoint()
-        graph = self._with_floor_coverage(scan_id, graph)
-        with self.database.transaction() as connection:
-            repo.save_revision(connection, graph, source="ingest")
-            if run_discovery:
-                self._mark_consumed_if_due(connection, scan_id, consumed)
-            repo.set_job_binding(connection, job["id"], consumed[1] if consumed else None, outcome.note())
-            if outcome.model_requests:
-                repo.set_job_requests(
-                    connection,
-                    job["id"],
-                    json.dumps(
-                        [
-                            request.model_dump(mode="json") if hasattr(request, "model_dump") else asdict(request)
-                            for request in outcome.model_requests
-                        ],
-                        default=str,
-                    ),
-                )
-        self._assess(scan_id=scan_id, revision=graph.revision)
-        return self._newer_bundle_is_due(scan_id, consumed)
-
-    def _with_floor_coverage(self, scan_id: uuid.UUID, graph):
-        """The ingested graph with the floor its LiDAR mesh saw, measured once here.
-
-        It is stored on revision 0 and named by the mesh artifact's hash. A
-        scan without a readable mesh keeps an empty coverage list, which the
-        rearranging constraints treat as `NO_FLOOR_MAP`.
-        """
-        with self.database.connect() as connection:
-            mesh = repo.artifact_of_kind(connection, scan_id, "lidar_mesh")
-        if mesh is None:
-            return graph
-        return with_floor_coverage(graph, self.store.artifact_path(scan_id, mesh.id), mesh.sha256)
-
-    def _mark_consumed_if_due(self, connection, scan_id, consumed) -> None:
-        """Mark the bundle this job consumed, and only that bundle, as processed.
-
-        A bundle that advanced while the job ran is left untouched; its own job
-        marks it. This is what keeps a late upload from being reported complete
-        by an older job's exit.
-        """
-        if consumed is None:
-            return
-        version, manifest_hash = consumed
-        with_connection = connection.execute(
-            "SELECT complete, manifest_hash FROM evidence_bundles WHERE scan_id = ? AND version = ?",
-            (str(scan_id), version),
-        ).fetchone()
-        if with_connection is None or not with_connection["complete"]:
-            return
-        repo.bundle_processed(connection, scan_id, version, manifest_hash)
-
-    def _newer_bundle_is_due(self, scan_id, consumed) -> bool:
-        """True when evidence closed over newer inputs while this job ran."""
-        if consumed is None:
-            return False
-        with self.database.connect() as connection:
-            latest = repo.latest_bundle(connection, scan_id)
-        return latest is not None and (latest.version, latest.manifest_hash) != consumed
-
-    def _assess(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
-        with self.database.transaction() as connection:
-            repo.set_state(connection, scan_id, "checking")
-            graph = repo.graph_of(repo.require_revision(connection, scan_id, revision))
-            scenario = repo.get_scenario(connection, scan_id)
-        assessment = self.stages.assess(graph, scenario, pass_number=revision + 1)
-        self._checkpoint()
-        with self.database.transaction() as connection:
-            repo.save_assessment(connection, assessment)
-        with self.database.transaction() as connection:
-            repo.set_state(connection, scan_id, "ready")
-            # A fresh assessment has fresh finding ids, so the stills drawn for
-            # the last one no longer belong to anything. Queueing this again
-            # rather than once means a re-check redraws them.
-            repo.queue_job_again(connection, scan_id, DISPLAY, revision)
-        self._tell_results_ready(scan_id)
-        maybe_queue_texture(self.database, self.store, self, scan_id, revision)
-        self._maybe_queue_deep_simulation(scan_id, revision, scenario is not None)
-        self.wake()
-        return False
-
-    def _maybe_queue_deep_simulation(self, scan_id: uuid.UUID, revision: int, has_scenario: bool) -> None:
-        if not self.settings.auto_deep_simulation or not has_scenario:
-            return
-        with self.database.connect() as connection:
-            existing = connection.execute(
-                "SELECT 1 FROM simulations WHERE scan_id=? AND revision=?",
-                (str(scan_id), revision),
-            ).fetchone()
-        if existing is not None:
-            return
-        try:
-            request = SimulationRequest(
-                base_revision=revision,
-                samples=self.settings.auto_deep_samples,
-                router="typesafe",
-                refine_with_astra=True,
-                typesafe_call_limit=self.settings.auto_deep_typesafe_call_limit,
-                astra_rounds=self.settings.auto_deep_astra_rounds,
-                exhaustive_evaluations=self.settings.auto_deep_exhaustive_evaluations,
-            )
-            queue_simulation(self.database, self.stages, self, scan_id, request)
-        except ApiProblem as error:
-            log.warning(
-                "automatic deep simulation skipped for %s revision %s: %s",
-                scan_id,
-                revision,
-                error.body.error,
-            )
-        except ValueError:
-            log.warning(
-                "automatic deep simulation skipped for %s revision %s: invalid limits",
-                scan_id,
-                revision,
-            )
-
-    def _display(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
-        with self.database.connect() as connection:
-            revision_row = repo.require_revision(connection, scan_id, revision)
-            graph = repo.graph_of(revision_row)
-            has_glb = revision_row["glb_path"] is not None
-            assessment = repo.assessment_for_revision(connection, scan_id, revision)
-            usdz = repo.artifact_of_kind(connection, scan_id, "room_usdz")
-            mapping = repo.artifact_of_kind(connection, scan_id, "room_metadata")
-            lidar = repo.artifact_of_kind(connection, scan_id, "lidar_mesh")
-        revision_dir = self.store.scan_dir(scan_id) / "revisions" / str(revision)
-        if not has_glb:
-            lidar_path = self.store.artifact_path(scan_id, lidar.id) if lidar is not None else None
-            self._store_geometry(scan_id, graph, revision_dir, usdz, mapping, lidar_path)
-        if assessment is not None:
-            self._render_until_current(scan_id, revision, graph, assessment, revision_dir / "renders")
-        return False
-
-    def _render_until_current(self, scan_id, revision, graph, assessment, renders_dir) -> None:
-        """Draw each finding's still and save them with the findings they were drawn for.
-
-        A re-check can finish while the stills are drawn, since display runs on
-        the Blender lane. It cannot queue display again while this job runs, so
-        this job draws again for the newer findings instead of leaving them bare.
-        """
-        while True:
-            self._checkpoint()
-            rendered = self.stages.renders(
-                graph, assessment, renders_dir, lambda finding_id: f"/api/scans/{scan_id}/renders/{finding_id}.png"
-            )
-            self._checkpoint()
-            with self.database.transaction() as connection:
-                latest = repo.assessment_for_revision(connection, scan_id, revision)
-                if latest is None or latest.id == assessment.id:
-                    repo.save_assessment(connection, rendered)
-                    return
-            assessment = latest
-
-    def _store_geometry(self, scan_id, graph, revision_dir, usdz, mapping, lidar_mesh=None) -> None:
-        inputs = revision_dir / "inputs"
-        usdz_path = self._named_input(scan_id, usdz, inputs, "room.usdz")
-        mapping_path = self._named_input(scan_id, mapping, inputs, self._mapping_name(scan_id, mapping))
-        glb = self.stages.geometry(graph, revision_dir / "scene.glb", usdz_path, mapping_path, lidar_mesh)
-        if glb is not None:
-            with self.database.transaction() as connection:
-                repo.set_glb_path(connection, scan_id, graph.revision, str(glb))
-
-    def _named_input(self, scan_id, artifact, directory, name):
-        """Blender's USD importer reads the file extension, and uploads are stored by artifact ID."""
-        if artifact is None:
-            return None
-        directory.mkdir(parents=True, exist_ok=True)
-        link = directory / name
-        link.unlink(missing_ok=True)
-        link.symlink_to(self.store.artifact_path(scan_id, artifact.id))
-        return link
-
-    def _mapping_name(self, scan_id, mapping) -> str:
-        if mapping is None:
-            return "room.metadata"
-        head = self.store.artifact_path(scan_id, mapping.id).read_bytes()[:8]
-        return "room.metadata.plist" if head.startswith(b"bplist") else "room.metadata.json"
-
-
-class ChildTimedOut(RuntimeError):
-    """A child ran past its time limit and was killed."""
-
-
-class ChildFailed(RuntimeError):
-    """A function run in its own process raised. What it raised crosses back as text, with
-    whether it goes away by itself, because an exception's cause and context don't pickle."""
-
-    def __init__(self, description: str, transient: bool = False):
-        super().__init__(description)
-        self.transient = transient
-
-
-@dataclass(frozen=True)
-class _ChildReport:
-    value: object = None
-    failure: str | None = None
-    transient: bool = False
-
-
-def in_own_process(function: Callable[..., object], *args: object, timeout_seconds: float | None = None) -> object:
-    """Run a module-level function in a fresh interpreter, wait, and return what it returned.
-
-    A child still running after `timeout_seconds` is killed along with every
-    process it started, such as a Blender run, so one hung stage can't hold its
-    loop, and every job queued behind it, for ever. What the function raised is
-    raised here as `ChildFailed`; a child that died without a word, as `RuntimeError`.
-    """
-    context = multiprocessing.get_context("spawn")
-    receiver, sender = context.Pipe(duplex=False)
-    child = context.Process(target=_report_to_parent, args=(sender, function, *args), daemon=True)
-    child.start()
-    sender.close()
-    try:
-        child.join(timeout_seconds)
-        if child.is_alive():
-            _kill_with_everything_it_started(child)
-            raise ChildTimedOut(
-                f"{function.__name__} did not finish within {_duration(timeout_seconds or 0)} and was stopped"
-            )
-        report = _received(receiver)
-    finally:
-        receiver.close()
-    return _outcome(function, child.exitcode, report)
-
-
-def _report_to_parent(sender, function: Callable[..., object], *args: object) -> None:
-    """The child's side: lead a process group of its own, run the function, and send back how it went."""
-    os.setpgrp()
-    logging.basicConfig(level=logging.INFO)
-    try:
-        report = _ChildReport(value=function(*args))
-    except Exception as error:
-        log.exception("%s failed in its own process", function.__name__)
-        report = _ChildReport(
-            failure=f"{type(error).__name__}: {error}"[:LONGEST_CHILD_ERROR], transient=is_transient(error)
-        )
-    sender.send(report)
-    sender.close()
-    _exit_past_a_stalled_flush()
-
-
-def _exit_past_a_stalled_flush() -> None:
-    """End the child now if Weave could not flush in time.
-
-    The SDK's own exit handlers wait, without a limit, for the queue that just
-    failed to drain, so an ordinary exit would sit there until the worker kills
-    the child at its job's deadline and fails a job that finished. The report is
-    already with the parent, and every database write was committed in its own
-    transaction, so skipping those handlers loses only the traces that were lost anyway.
-    """
-    if flush_was_abandoned():
-        logging.shutdown()
-        os._exit(0)
-
-
-def _kill_with_everything_it_started(child) -> None:
-    """Kill the child's process group, or only the child when it was killed before it could lead one."""
-    try:
-        os.killpg(child.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        child.kill()
-    child.join()
-
-
-def _received(receiver) -> _ChildReport | None:
-    if not receiver.poll():
-        return None
-    try:
-        return receiver.recv()
-    except EOFError:
-        return None
-
-
-def _outcome(function: Callable[..., object], exitcode: int | None, report: _ChildReport | None) -> object:
-    if report is not None and report.failure is not None:
-        raise ChildFailed(report.failure, report.transient)
-    if exitcode != 0 or report is None:
-        raise RuntimeError(f"{function.__name__} exited with code {exitcode}")
-    return report.value
-
-
-def _duration(seconds: float) -> str:
-    if seconds >= 60 and seconds % 60 == 0:
-        minutes = int(seconds // 60)
-        return f"{minutes} minute{'' if minutes == 1 else 's'}"
-    return f"{seconds:g} second{'' if seconds == 1 else 's'}"
-
 
 def _job_error(kind: str, error: Exception) -> str:
     """What the job row says went wrong. A simulation's own errors can carry a provider's payload,
@@ -1070,44 +532,11 @@ def _claim_filter(lane: bool | str) -> tuple[bool | None, str | None]:
     return lane, None
 
 
-def is_transient(error: BaseException) -> bool:
-    """Whether this error, or any error it was raised from, goes away by itself."""
-    seen: set[int] = set()
-    link: BaseException | None = error
-    while link is not None and id(link) not in seen:
-        if _transient_alone(link):
-            return True
-        seen.add(id(link))
-        link = link.__cause__ or link.__context__
-    return False
-
-
-def _is_lock_contention(error: sqlite3.OperationalError) -> bool:
-    """Another writer holds the database past its busy timeout, which ends when that writer commits."""
-    return "database is locked" in str(error) or "database is busy" in str(error)
-
-
 def _unsettled_problem(job_id: int, error: str) -> str:
     return (
         f"how job {job_id} ended could not be recorded ({error}); it stays running until"
         " the API restarts and queues it again, so fix the database, then restart"
     )
-
-
-def _transient_alone(error: BaseException) -> bool:
-    if isinstance(error, ChildFailed):
-        return error.transient
-    if isinstance(error, sqlite3.OperationalError):
-        return _is_lock_contention(error)
-    if isinstance(error, urllib.error.URLError):
-        return isinstance(error.reason, TimeoutError)
-    return isinstance(error, TimeoutError)
-
-
-def bake_photos(settings: Settings, scan_id: uuid.UUID, build_id: int) -> None:
-    """One photo build, run where its arithmetic cannot hold up the API's requests."""
-    with tracing_for_this_process(settings.weave_project, settings.weave_entity):
-        run_texture(Database(settings.database_path), _store_for(settings), Stages(), scan_id, build_id)
 
 
 def run_job(settings: Settings, stages_for: Callable[[Settings], Stages], job: dict) -> bool:
@@ -1119,11 +548,6 @@ def run_job(settings: Settings, stages_for: Callable[[Settings], Stages], job: d
     It traces to the same Weave project as the API, and sends its traces before it exits.
     """
     with tracing_for_this_process(settings.weave_project, settings.weave_entity):
-        worker = Worker(Database(settings.database_path), _store_for(settings), stages_for(settings), settings)
+        worker = Worker(Database(settings.database_path), store_for(settings), stages_for(settings), settings)
         worker.notifier = notifier_from(settings)
         return worker.run_stage(job)
-
-
-def _store_for(settings: Settings) -> ArtifactStore:
-    quota = ScanQuota(settings.max_scan_artifacts, settings.max_scan_bytes)
-    return ArtifactStore(settings.data_dir, settings.max_artifact_bytes, quota)

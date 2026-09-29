@@ -9,8 +9,8 @@ import hashlib
 import json
 import time
 
+from evidence_uploads import complete_geometry, lidar_mesh_bytes, process_job_states
 from standardphysics_pipeline.discovery import Detection, DiscoveryResult
-from test_job_lifecycle import _complete_geometry, _job_states, _mesh_bytes
 
 from conftest import create_scan, drain, no_blender_stages
 
@@ -74,20 +74,20 @@ def test_frames_sent_with_their_pose_are_read_while_the_walk_goes_on(make_client
         cached = list((client.app.state.store.scan_dir(scan_id) / "detections").glob("*.json"))
         assert len(cached) == 2
 
-        _complete_geometry(client, scan_id)
+        complete_geometry(client, scan_id)
         poses = json.dumps(WALK).encode()
         client.put(
             f"/api/scans/{scan_id}/artifacts/poses", content=poses,
             headers={"X-Checksum-SHA256": hashlib.sha256(poses).hexdigest(), "X-Artifact-Kind": "poses"},
         )
-        mesh = _mesh_bytes()
+        mesh = lidar_mesh_bytes()
         client.put(
             f"/api/scans/{scan_id}/artifacts/lidar-mesh", content=mesh,
             headers={"X-Checksum-SHA256": hashlib.sha256(mesh).hexdigest(), "X-Artifact-Kind": "lidar_mesh"},
         )
         client.post(f"/api/scans/{scan_id}/complete")
         drain(client)
-        notes = [note for *_, note in _job_states(client, scan_id) if note]
+        notes = [note for *_, note in process_job_states(client, scan_id) if note]
         assert any("2 photos read during the walk" in note for note in notes), notes
 
 

@@ -32,7 +32,7 @@ from standardphysics_agents.training import (
     trusted_geometry,
 )
 
-from standardphysics_api import repository
+from standardphysics_api import repository_revisions
 
 ROOM6_SCAN_ID = uuid.UUID("cdb7ced5-b67f-4f94-8639-0257a1dd8e9a")
 ROOM6_REVISION = 4
@@ -44,8 +44,8 @@ def read_room(database: pathlib.Path, scan_id: uuid.UUID, revision: int):
     connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     try:
-        graph = repository.graph_of(repository.get_revision(connection, scan_id, revision))
-        scenario = repository.get_scenario(connection, scan_id)
+        graph = repository_revisions.graph_of(repository_revisions.get_revision(connection, scan_id, revision))
+        scenario = repository_revisions.get_scenario(connection, scan_id)
     finally:
         connection.close()
     return trusted_geometry(graph), scenario

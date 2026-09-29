@@ -21,6 +21,7 @@ from standardphysics_contracts import (
 )
 
 from . import repository as repo
+from . import repository_jobs as jobs_repo
 from .budgets import admit_new_job
 from .db import Database
 from .store import ArtifactStore
@@ -89,14 +90,14 @@ def maybe_queue_semantic(
         return None
     if bundle.semantic_processed_hash == bundle.manifest_hash:
         return None
-    if repo.has_pending_process_job(connection, scan.id):
+    if jobs_repo.has_pending_process_job(connection, scan.id):
         return "pending"
     if not explicit and not _settled(connection, scan.id, bundle, settle_seconds):
         return None
     if not explicit and _attempted_this_input(connection, scan.id, bundle.manifest_hash):
         return None
     admit_new_job(connection, max_queued_jobs)
-    repo.queue_job_again(connection, scan.id, kind, 0)
+    jobs_repo.queue_job_again(connection, scan.id, kind, 0)
     return "queued"
 
 
@@ -110,7 +111,7 @@ def _attempted_this_input(connection: sqlite3.Connection, scan_id: uuid.UUID, ma
     A job that never bound an input failed before it knew what it consumed;
     it is treated the same rather than retried blind.
     """
-    last = repo.latest_process_job(connection, scan_id)
+    last = jobs_repo.latest_process_job(connection, scan_id)
     if last is None:
         return False
     return last["input_hash"] is None or last["input_hash"] == manifest_hash
@@ -160,9 +161,9 @@ def due_semantic_scans(connection: sqlite3.Connection, settle_seconds: float) ->
 def evidence_status_for(database: Database, scan: Scan) -> EvidenceStatus:
     with database.connect() as connection:
         bundle = repo.latest_bundle(connection, scan.id)
-        pending = repo.has_pending_process_job(connection, scan.id)
-        states = repo.process_job_states(connection, scan.id)
-        job = repo.latest_process_job(connection, scan.id)
+        pending = jobs_repo.has_pending_process_job(connection, scan.id)
+        states = jobs_repo.process_job_states(connection, scan.id)
+        job = jobs_repo.latest_process_job(connection, scan.id)
 
     present = sorted({artifact.kind for artifact in scan.artifacts})
     missing_geometry = sorted(set(GEOMETRY_REQUIRED_ARTIFACT_KINDS) - set(present))

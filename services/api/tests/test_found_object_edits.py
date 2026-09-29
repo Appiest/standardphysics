@@ -5,7 +5,7 @@ import uuid
 from standardphysics_contracts import Mat4, SceneNode, Vec3
 
 from conftest import REPO, create_scan, drain, put_artifact
-from standardphysics_api import repository as repo
+from standardphysics_api import repository_revisions as revisions_repo
 from standardphysics_api.label_corrections import corrections_for
 
 PHONE = REPO / "datasets/phone"
@@ -38,8 +38,8 @@ def _add_resting_child(client, scan_id: str, parent_id: str) -> tuple[int, str]:
     database = client.app.state.database
     scan_uuid = uuid.UUID(scan_id)
     with database.connect() as connection:
-        base_rev = repo.latest_revision_number(connection, scan_uuid)
-        graph = repo.graph_of(repo.get_revision(connection, scan_uuid, base_rev))
+        base_rev = revisions_repo.latest_revision_number(connection, scan_uuid)
+        graph = revisions_repo.graph_of(revisions_repo.get_revision(connection, scan_uuid, base_rev))
 
     child = SceneNode(
         id=uuid.uuid4(),
@@ -53,7 +53,7 @@ def _add_resting_child(client, scan_id: str, parent_id: str) -> tuple[int, str]:
     )
     updated = graph.model_copy(update={"nodes": [*graph.nodes, child], "revision": base_rev + 1})
     with database.transaction() as connection:
-        repo.save_revision(connection, updated, source="owner", base_revision=base_rev)
+        revisions_repo.save_revision(connection, updated, source="owner", base_revision=base_rev)
     return base_rev + 1, str(child.id)
 
 

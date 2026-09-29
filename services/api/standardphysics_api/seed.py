@@ -24,9 +24,11 @@ from standardphysics_fixtures import build_lawsuit_graph, build_lawsuit_scenario
 
 from . import accounts
 from . import repository as repo
+from . import repository_jobs as jobs_repo
+from . import repository_revisions as revisions_repo
 from .db import Database
 from .store import ArtifactStore
-from .worker import ASSESS
+from .worker_handlers import ASSESS
 
 SAMPLE_NAME = "Sample boba shop"
 FIXTURE_GLB = pathlib.Path(standardphysics_fixtures.__path__[0]) / "data" / "shop_lawsuit.glb"
@@ -56,7 +58,7 @@ def seed_sample_shop(database: Database, store: ArtifactStore, email: str, passw
         glb = store.scan_dir(graph.scan_id) / "revisions" / "0" / "scene.glb"
         glb.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(FIXTURE_GLB, glb)
-        repo.save_revision(connection, graph, source="sample", glb_path=str(glb))
-        repo.save_scenario(connection, graph.scan_id, build_lawsuit_scenario())
-        repo.enqueue_job(connection, graph.scan_id, ASSESS, graph.revision)
+        revisions_repo.save_revision(connection, graph, source="sample", glb_path=str(glb))
+        revisions_repo.save_scenario(connection, graph.scan_id, build_lawsuit_scenario())
+        jobs_repo.enqueue_job(connection, graph.scan_id, ASSESS, graph.revision)
     return created_owner

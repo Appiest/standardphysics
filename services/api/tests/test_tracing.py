@@ -14,14 +14,14 @@ import time
 import child_stages
 import hanging_child
 import pytest
+from evidence_uploads import complete_geometry, complete_semantics
 from fastapi.testclient import TestClient
 from standardphysics_agents import tracing
-from test_job_lifecycle import _complete_geometry, _complete_semantics
 
 from conftest import create_scan, drain, no_blender_stages, sign_up
 from standardphysics_api.app import create_app
 from standardphysics_api.settings import Settings
-from standardphysics_api.worker import in_own_process
+from standardphysics_api.worker_child import in_own_process
 
 
 class FakeWeave:
@@ -139,8 +139,8 @@ def test_a_job_run_in_its_own_process_sends_its_traces(make_client, recording_we
     client.app.state.worker.stages_in_child = child_stages.traced_at_labeling
     with client:
         scan_id = create_scan(client)
-        _complete_geometry(client, scan_id)
-        _complete_semantics(client, scan_id)
+        complete_geometry(client, scan_id)
+        complete_semantics(client, scan_id)
         client.post(f"/api/scans/{scan_id}/complete")
         drain(client)
     in_child = [(call["call"], call.get("name")) for call in _calls_from_other_processes(recording_weave)]

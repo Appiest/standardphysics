@@ -30,9 +30,9 @@ from standardphysics_api.db import Database
 from standardphysics_api.repository import (
     insert_artifact,
     insert_scan,
-    save_revision,
     set_state,
 )
+from standardphysics_api.repository_revisions import save_revision
 from standardphysics_api.settings import Settings
 from standardphysics_api.store import ArtifactStore
 

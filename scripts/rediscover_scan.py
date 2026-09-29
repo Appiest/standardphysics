@@ -26,12 +26,16 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "services" 
 
 from standardphysics_contracts import SceneGraph  # noqa: E402
 
-from standardphysics_api import repository  # noqa: E402
+from standardphysics_api import (
+    repository,  # noqa: E402
+    repository_jobs,  # noqa: E402
+    repository_revisions,  # noqa: E402
+)
 from standardphysics_api.combine import captured_graph  # noqa: E402
 from standardphysics_api.db import Database  # noqa: E402
 from standardphysics_api.stages import Stages  # noqa: E402
 from standardphysics_api.store import ArtifactStore  # noqa: E402
-from standardphysics_api.worker import ASSESS  # noqa: E402
+from standardphysics_api.worker_handlers import ASSESS  # noqa: E402
 
 UNREAD_LIMIT = 0.1
 """Share of photos the model may fail to read before the run is refused.
@@ -68,7 +72,7 @@ def main() -> int:
     database = Database(args.db)
     store = ArtifactStore(args.scans.parent, max_bytes=0)
     with database.connect() as connection:
-        latest = repository.graph_of(repository.get_revision(connection, scan_id, None))
+        latest = repository_revisions.graph_of(repository_revisions.get_revision(connection, scan_id, None))
         frame_paths, poses_path, lidar_mesh_path = _inputs(connection, store, scan_id)
     found, outcome = Stages().discover_scan_with_report(
         _measured_only(latest, captured_graph(store, scan_id)),
@@ -81,10 +85,10 @@ def main() -> int:
         found.model_copy(update={"revision": latest.revision + 1, "base_hash": repository.graph_hash(latest)}).model_dump()
     )
     with database.transaction() as connection:
-        if repository.get_revision(connection, scan_id)["revision"] != latest.revision:
+        if repository_revisions.get_revision(connection, scan_id)["revision"] != latest.revision:
             raise SystemExit("the scan was saved again while discovery ran: run this once more")
-        repository.save_revision(connection, revised, source="rediscover", base_revision=latest.revision)
-        repository.enqueue_job(connection, scan_id, ASSESS, revised.revision)
+        repository_revisions.save_revision(connection, revised, source="rediscover", base_revision=latest.revision)
+        repository_jobs.enqueue_job(connection, scan_id, ASSESS, revised.revision)
     print(f"{scan_id}: revision {revised.revision}, {outcome.note()}")
     return 0
 

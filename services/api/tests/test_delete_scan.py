@@ -6,6 +6,7 @@ import pytest
 
 from conftest import REPO, create_scan, drain, put_artifact, usdz_fixture
 from standardphysics_api import repository as repo
+from standardphysics_api import repository_jobs as jobs_repo
 
 
 def test_delete_removes_the_scan(client):
@@ -78,12 +79,12 @@ def test_a_shop_deleted_while_it_is_measured_goes_when_the_job_ends(client, monk
 def test_a_deleted_shop_whose_job_was_cut_off_is_deleted_when_the_job_comes_back(client, monkeypatch):
     scan_id = _measuring_scan(client)
     with client.app.state.database.transaction() as connection:
-        repo.claim_job(connection)
+        jobs_repo.claim_job(connection)
     assert client.delete(f"/api/scans/{scan_id}").status_code == 204
     assert _stored(client, scan_id)
 
     with client.app.state.database.transaction() as connection:
-        repo.requeue_interrupted_jobs(connection)
+        jobs_repo.requeue_interrupted_jobs(connection)
     monkeypatch.setattr(client.app.state.worker, "_process", lambda **_: pytest.fail("a deleted shop was measured"))
     drain(client)
 

@@ -7,8 +7,8 @@ interrupt.
 
 from conftest import create_scan, drain, put_artifact, usdz_fixture
 from standardphysics_api import drain as deploy_drain
-from standardphysics_api import repository as repo
-from standardphysics_api.worker import ASSESS
+from standardphysics_api import repository_jobs as jobs_repo
+from standardphysics_api.worker_handlers import ASSESS
 
 UPDATING = "Standard Physics is updating; try again in a minute."
 
@@ -64,7 +64,7 @@ def test_the_worker_starts_no_queued_job_while_draining_and_does_once_it_ends(ma
     with make_client() as client:
         scan_id = create_scan(client)
         with client.app.state.database.transaction() as connection:
-            repo.enqueue_job(connection, scan_id, ASSESS, 0)
+            jobs_repo.enqueue_job(connection, scan_id, ASSESS, 0)
         _start_draining(client)
         drain(client)
         while_draining = _job_states(client)

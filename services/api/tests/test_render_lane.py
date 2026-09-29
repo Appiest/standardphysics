@@ -10,7 +10,8 @@ from datetime import UTC, datetime
 from standardphysics_contracts import Assessment, Citation, Finding
 
 from conftest import create_scan
-from standardphysics_api import repository as repo
+from standardphysics_api import repository_jobs as jobs_repo
+from standardphysics_api import repository_revisions as revisions_repo
 
 
 def _assessment(scan_id: uuid.UUID, title: str) -> Assessment:
@@ -23,11 +24,11 @@ def _assessment(scan_id: uuid.UUID, title: str) -> Assessment:
 def test_the_jobs_lane_leaves_a_render_for_the_blender_lane(client):
     shop, new_upload = uuid.UUID(create_scan(client)), uuid.UUID(create_scan(client))
     with client.app.state.database.transaction() as connection:
-        repo.enqueue_job(connection, shop, "display", 0)
-        repo.enqueue_job(connection, new_upload, "process", 0)
+        jobs_repo.enqueue_job(connection, shop, "display", 0)
+        jobs_repo.enqueue_job(connection, new_upload, "process", 0)
 
-        from_jobs_lane = repo.claim_job(connection, False)
-        from_blender_lane = repo.claim_job(connection, True)
+        from_jobs_lane = jobs_repo.claim_job(connection, False)
+        from_blender_lane = jobs_repo.claim_job(connection, True)
 
     assert from_jobs_lane["kind"] == "process"
     assert from_blender_lane["kind"] == "display"
@@ -38,14 +39,14 @@ def test_a_render_overtaken_by_a_recheck_draws_again_for_the_new_findings(client
     database, worker = client.app.state.database, client.app.state.worker
     first, recheck = _assessment(scan_id, "first"), _assessment(scan_id, "recheck")
     with database.transaction() as connection:
-        repo.save_assessment(connection, first)
+        revisions_repo.save_assessment(connection, first)
     drawn: list[uuid.UUID] = []
 
     def renders(graph, assessment, directory, url_for):
         drawn.append(assessment.id)
         if len(drawn) == 1:
             with database.transaction() as connection:
-                repo.save_assessment(connection, recheck)
+                revisions_repo.save_assessment(connection, recheck)
         stills = [finding.model_copy(update={"title": f"{finding.title} drawn"}) for finding in assessment.findings]
         return assessment.model_copy(update={"findings": stills})
 
@@ -53,7 +54,7 @@ def test_a_render_overtaken_by_a_recheck_draws_again_for_the_new_findings(client
     worker._render_until_current(scan_id, 0, None, first, tmp_path)
 
     with database.connect() as connection:
-        latest = repo.assessment_for_revision(connection, scan_id, 0)
+        latest = revisions_repo.assessment_for_revision(connection, scan_id, 0)
     assert drawn == [first.id, recheck.id]
     assert latest is not None
     assert (latest.id, latest.findings[0].title) == (recheck.id, "recheck drawn")

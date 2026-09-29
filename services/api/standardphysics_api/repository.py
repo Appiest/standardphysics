@@ -1,4 +1,9 @@
-"""Rows in, contract models out. Nothing here knows about HTTP."""
+"""Rows in, contract models out. Nothing here knows about HTTP.
+
+This module holds scans, their artifacts and their evidence bundles. The job
+queue is in `repository_jobs`, and graph revisions, scenarios and assessments
+are in `repository_revisions`.
+"""
 
 from __future__ import annotations
 
@@ -8,21 +13,16 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime
 
-from standardphysics_agents.checks_version import checks_version
 from standardphysics_contracts import (
     GEOMETRY_REQUIRED_ARTIFACT_KINDS,
     SEMANTIC_REQUIRED_ARTIFACT_KINDS,
     Artifact,
-    Assessment,
     CreateScanRequest,
     EvidenceBundle,
     OwnerWish,
     Scan,
-    Scenario,
-    SceneGraph,
     SpaceTypology,
     SurfaceCoverage,
-    graph_hash,
 )
 
 REQUIRED_ARTIFACT_KINDS = ("room_json", "room_usdz")
@@ -154,13 +154,6 @@ def scan_exists(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
     return connection.execute("SELECT 1 FROM scans WHERE id = ?", (str(scan_id),)).fetchone() is not None
 
 
-def other_running_job(connection: sqlite3.Connection, scan_id: uuid.UUID, job_id: int | None = None) -> bool:
-    """True when a job for this scan is running, not counting the one given."""
-    return connection.execute(
-        "SELECT 1 FROM jobs WHERE scan_id = ? AND state = 'running' AND id IS NOT ?", (str(scan_id), job_id)
-    ).fetchone() is not None
-
-
 def mark_for_deletion(connection: sqlite3.Connection, scan_id: uuid.UUID) -> None:
     """Hide a scan whose job is still running, for the worker to delete when the job ends.
 
@@ -226,10 +219,6 @@ def owner_artifact_bytes(connection: sqlite3.Connection, owner_id: uuid.UUID) ->
         " JOIN scans ON scans.id = artifacts.scan_id WHERE scans.owner_id = ?",
         (str(owner_id),),
     ).fetchone()[0]
-
-
-def queued_job_count(connection: sqlite3.Connection) -> int:
-    return connection.execute("SELECT COUNT(*) FROM jobs WHERE state = 'queued'").fetchone()[0]
 
 
 def artifact_of_kind(connection: sqlite3.Connection, scan_id: uuid.UUID, kind: str) -> Artifact | None:
@@ -346,17 +335,6 @@ def bundle_processed(connection: sqlite3.Connection, scan_id: uuid.UUID, version
     )
 
 
-def has_pending_process_job(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
-    """True while a semantic job is queued or running. Kind string matches worker.PROCESS."""
-    return (
-        connection.execute(
-            "SELECT 1 FROM jobs WHERE scan_id = ? AND kind = 'process' AND state IN ('queued', 'running') LIMIT 1",
-            (str(scan_id),),
-        ).fetchone()
-        is not None
-    )
-
-
 def latest_semantic_arrival(connection: sqlite3.Connection, scan_id: uuid.UUID) -> str | None:
     """The newest created_at among semantic-input artifacts, for the settle gate."""
     placeholders = ", ".join("?" for _ in SEMANTIC_INPUT_KINDS)
@@ -367,452 +345,8 @@ def latest_semantic_arrival(connection: sqlite3.Connection, scan_id: uuid.UUID) 
     return row["latest"] if row else None
 
 
-def latest_process_job(connection: sqlite3.Connection, scan_id: uuid.UUID) -> sqlite3.Row | None:
-    """The newest process job row, or None when the scan has never queued one."""
-    return connection.execute(
-        "SELECT * FROM jobs WHERE scan_id = ? AND kind = 'process' ORDER BY id DESC LIMIT 1",
-        (str(scan_id),),
-    ).fetchone()
-
-
-def set_job_binding(
-    connection: sqlite3.Connection,
-    job_id: int,
-    input_hash: str | None,
-    note: str | None,
-) -> None:
-    """Record which input manifest this run consumed, and its visible outcome.
-
-    Runs at claim time and again at publish, so a fresh attempt starts from a
-    clean latest view: the previous attempt's note and request receipts are
-    cleared here, and only this attempt's own writes land afterwards.
-    """
-    connection.execute(
-        "UPDATE jobs SET input_hash = ?, note = ?, model_requests_json = NULL WHERE id = ?",
-        (input_hash, note, job_id),
-    )
-
-
-def set_job_requests(connection: sqlite3.Connection, job_id: int, requests_json: str | None) -> None:
-    """Persist what every real detector request was: provider, model, provider
-    request id and usage. Categories and counts only; never a secret or a pixel."""
-    connection.execute(
-        "UPDATE jobs SET model_requests_json = ? WHERE id = ?",
-        (requests_json, job_id),
-    )
-
-
-def record_job_attempt(
-    connection: sqlite3.Connection,
-    job_id: int,
-    attempt: int,
-    scan_id: uuid.UUID,
-) -> None:
-    """Snap the finished job row into immutable per-attempt history.
-
-    Each attempt gets its own (job, attempt) row that is never updated: what
-    the attempt consumed, how it ended and which provider requests it made.
-    The mutable jobs row stays the latest active view and is cleared at each
-    claim, so an empty or failed attempt can never inherit the previous
-    attempt's receipts.
-    """
-    row = connection.execute(
-        "SELECT state, error, input_hash, note, model_requests_json FROM jobs WHERE id = ?",
-        (job_id,),
-    ).fetchone()
-    if row is None:
-        return
-    connection.execute(
-        "INSERT INTO job_attempts (job_id, attempt, scan_id, input_hash, state, error, note,"
-        " model_requests_json, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        " ON CONFLICT (job_id, attempt) DO NOTHING",
-        (
-            job_id,
-            attempt,
-            str(scan_id),
-            row["input_hash"],
-            row["state"],
-            row["error"],
-            row["note"],
-            row["model_requests_json"],
-            now(),
-        ),
-    )
-
-
-def process_job_states(connection: sqlite3.Connection, scan_id: uuid.UUID) -> tuple[str, ...]:
-    """Every state a process job has been in for this scan, newest first."""
-    rows = connection.execute(
-        "SELECT state FROM jobs WHERE scan_id = ? AND kind = 'process' ORDER BY id DESC",
-        (str(scan_id),),
-    ).fetchall()
-    return tuple(row["state"] for row in rows)
-
-
 def mark_finalized(connection: sqlite3.Connection, scan: Scan, coverage: list[SurfaceCoverage]) -> None:
     connection.execute(
         "UPDATE scans SET state = 'measuring', content_hash = ?, coverage_json = ? WHERE id = ?",
         (content_hash(scan), json.dumps([c.model_dump(mode="json") for c in coverage]), str(scan.id)),
     )
-
-
-def enqueue_job(connection: sqlite3.Connection, scan_id: uuid.UUID, kind: str, revision: int) -> None:
-    queued_at = now()
-    connection.execute(
-        "INSERT OR IGNORE INTO jobs (scan_id, kind, revision, state, created_at, queued_at)"
-        " VALUES (?, ?, ?, 'queued', ?, ?)",
-        (str(scan_id), kind, revision, queued_at, queued_at),
-    )
-
-
-def queue_job_again(connection: sqlite3.Connection, scan_id: uuid.UUID, kind: str, revision: int) -> None:
-    """Queue a job whether or not it ran before, unless it is running now."""
-    queued_at = now()
-    connection.execute(
-        "INSERT INTO jobs (scan_id, kind, revision, state, created_at, queued_at) VALUES (?, ?, ?, 'queued', ?, ?)"
-        " ON CONFLICT (scan_id, kind, revision) DO UPDATE SET state = 'queued', error = NULL,"
-        " interruptions = 0, queued_at = excluded.queued_at WHERE jobs.state != 'running'",
-        (str(scan_id), kind, revision, queued_at, queued_at),
-    )
-
-
-def oldest_queued_job_seconds(connection: sqlite3.Connection) -> float | None:
-    """How long the job at the front of the queue has waited, or None when nothing is queued.
-
-    A number that keeps growing while the worker reports itself idle means jobs
-    are arriving and nothing is taking them.
-    """
-    row = connection.execute(
-        "SELECT MIN(COALESCE(queued_at, created_at)) AS since FROM jobs WHERE state = 'queued'"
-    ).fetchone()
-    if row["since"] is None:
-        return None
-    return round((datetime.now(UTC) - datetime.fromisoformat(row["since"])).total_seconds(), 1)
-
-
-BLENDER_KINDS = ("texture", "display")
-"""The kinds that run Blender, which share one lane so a 4 GB machine never holds two Blenders at once."""
-LANED_KINDS = (*BLENDER_KINDS, "rearrange", "furniture", "simulate")
-"""Job kinds that run on a worker thread of their own, never the main one."""
-
-
-def _lane_filter(texture_only: bool | None, kind: str | None) -> tuple[str, tuple]:
-    if kind is not None:
-        return "kind = ?", (kind,)
-    if texture_only:
-        return "kind IN (" + ", ".join("?" for _ in BLENDER_KINDS) + ")", BLENDER_KINDS
-    if texture_only is False:
-        return "kind NOT IN (" + ", ".join("?" for _ in LANED_KINDS) + ")", LANED_KINDS
-    return "1=1", ()
-
-
-def claim_job(
-    connection: sqlite3.Connection, texture_only: bool | None = None, *, kind: str | None = None
-) -> sqlite3.Row | None:
-    """The job queued longest ago on a lane: textures, one kind, everything but the laned kinds, or anything.
-
-    Ordered by when it was queued, not by its id: queueing a job again reuses
-    its row, and a render re-queued on a row from last week must not go ahead
-    of a shop uploaded a minute ago.
-    """
-    lane, parameters = _lane_filter(texture_only, kind)
-    return connection.execute(
-        "UPDATE jobs SET state = 'running', attempts = attempts + 1"
-        " WHERE id = (SELECT id FROM jobs WHERE state = 'queued'"
-        f" AND {lane} ORDER BY COALESCE(queued_at, created_at), id LIMIT 1)"
-        " RETURNING id, scan_id, kind, revision, attempts",
-        parameters,
-    ).fetchone()
-
-
-def finish_job(connection: sqlite3.Connection, job_id: int, error: str | None = None) -> None:
-    state = "failed" if error else "done"
-    connection.execute("UPDATE jobs SET state = ?, error = ? WHERE id = ?", (state, error, job_id))
-
-
-def fail_running_job(connection: sqlite3.Connection, job_id: int, error: str) -> bool:
-    """Fail a job only if it is still running, so an outcome already written is never overwritten."""
-    cursor = connection.execute(
-        "UPDATE jobs SET state = 'failed', error = ? WHERE id = ? AND state = 'running'", (error, job_id)
-    )
-    return cursor.rowcount > 0
-
-
-def requeue_running_job(connection: sqlite3.Connection, job_id: int) -> bool:
-    """Put a claimed job back at its place in the queue, if nothing has settled it since."""
-    cursor = connection.execute(
-        "UPDATE jobs SET state = 'queued', queued_at = ? WHERE id = ? AND state = 'running'", (now(), job_id)
-    )
-    return cursor.rowcount > 0
-
-
-def retry_failed_jobs(connection: sqlite3.Connection, scan_id: uuid.UUID) -> None:
-    """Queue again whichever stage failed, and show the state that stage runs in."""
-    kinds = {
-        row["kind"]
-        for row in connection.execute(
-            "SELECT kind FROM jobs WHERE scan_id = ? AND state = 'failed'"
-            " AND kind NOT IN ('display', 'simulate', 'texture', 'rearrange')",
-            (str(scan_id),),
-        )
-    }
-    if not kinds:
-        return
-    state = "measuring" if "process" in kinds else "checking"
-    connection.execute("UPDATE scans SET state = ? WHERE id = ?", (state, str(scan_id)))
-    connection.execute(
-        "UPDATE jobs SET state = 'queued', error = NULL, interruptions = 0, queued_at = ?"
-        " WHERE scan_id = ? AND state = 'failed'"
-        " AND kind NOT IN ('display', 'simulate', 'texture', 'rearrange')",
-        (now(), str(scan_id)),
-    )
-
-
-INTERRUPTED_SIMULATION = "Simulation interrupted; start a new run to continue"
-
-
-def fail_interrupted_simulations(connection: sqlite3.Connection) -> None:
-    """Fail every simulation a stopped process left running, rather than queueing it again.
-
-    A simulation spends paid TypeSafe and Astra calls against a per-run budget
-    that lives only in the process running it. Queued again, it would start
-    from nothing with a fresh budget and could spend the owner's limit a second
-    time without anyone asking, so the owner starts the new run.
-    """
-    connection.execute(
-        "UPDATE jobs SET state = 'failed', error = ? WHERE kind = 'simulate' AND state = 'running'",
-        (INTERRUPTED_SIMULATION,),
-    )
-
-
-MAX_INTERRUPTIONS = 3
-"""How many runs of one job a restart may cut short before the job is failed rather than queued again."""
-DERIVED_KINDS = ("display", "simulate", "texture")
-"""Job kinds whose failure leaves the scan's own state alone. Each is asked for again on its own."""
-
-
-def requeue_interrupted_jobs(
-    connection: sqlite3.Connection, max_interruptions: int = MAX_INTERRUPTIONS
-) -> list[sqlite3.Row]:
-    """Queue again every job a stopped process left running, and return the ones stopped instead.
-
-    Each job left running counts one more interrupted run on its row. A job
-    whose input kills the whole container would otherwise run, take the server
-    down, and be queued again by the next start for ever, so at
-    `max_interruptions` it is failed with the count in its error. The retry
-    route queues it again with the count cleared, once the cause is fixed.
-    """
-    connection.execute("UPDATE jobs SET interruptions = interruptions + 1 WHERE state = 'running'")
-    stopped = _fail_jobs_interrupted_too_often(connection, max_interruptions)
-    connection.execute("UPDATE jobs SET state = 'queued', queued_at = ? WHERE state = 'running'", (now(),))
-    return stopped
-
-
-def _fail_jobs_interrupted_too_often(connection: sqlite3.Connection, max_interruptions: int) -> list[sqlite3.Row]:
-    stopped = connection.execute(
-        "UPDATE jobs SET state = 'failed', error = 'Stopped after ' || interruptions || ' interrupted runs:"
-        " the server stopped during each one. Retry once the cause is fixed.'"
-        " WHERE state = 'running' AND interruptions >= ? RETURNING id, scan_id, kind, attempts, interruptions",
-        (max_interruptions,),
-    ).fetchall()
-    for job in stopped:
-        scan_id = uuid.UUID(job["scan_id"])
-        record_job_attempt(connection, job["id"], job["attempts"], scan_id)
-        if job["kind"] not in DERIVED_KINDS:
-            set_state(connection, scan_id, "failed")
-    return stopped
-
-
-_REVISION_WRITE = {"owner": "INSERT INTO", "ingest": "INSERT INTO", "other": "INSERT OR IGNORE INTO"}
-_REVISION_CONFLICT = {
-    "ingest": " ON CONFLICT (scan_id, revision) DO UPDATE SET"
-    " graph_hash = excluded.graph_hash, graph_json = excluded.graph_json,"
-    " created_at = excluded.created_at",
-}
-"""An ingest revision is derived entirely from the uploaded artifacts, so running
-ingest again replaces it. Everything an owner did stands on its own revision and
-is never overwritten."""
-
-
-def save_revision(
-    connection: sqlite3.Connection,
-    graph: SceneGraph,
-    source: str,
-    base_revision: int | None = None,
-    glb_path: str | None = None,
-) -> None:
-    connection.execute(
-        f"{_REVISION_WRITE[source if source in _REVISION_WRITE else 'other']} revisions"
-        " (scan_id, revision, graph_hash, graph_json, source, base_revision, glb_path, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-        f"{_REVISION_CONFLICT.get(source, '')}",
-        (
-            str(graph.scan_id),
-            graph.revision,
-            graph_hash(graph),
-            graph.model_dump_json(),
-            source,
-            base_revision,
-            glb_path,
-            now(),
-        ),
-    )
-
-
-def get_revision(connection: sqlite3.Connection, scan_id: uuid.UUID, revision: int | None = None) -> sqlite3.Row | None:
-    if revision is None:
-        return connection.execute(
-            "SELECT * FROM revisions WHERE scan_id = ? ORDER BY revision DESC LIMIT 1", (str(scan_id),)
-        ).fetchone()
-    return connection.execute(
-        "SELECT * FROM revisions WHERE scan_id = ? AND revision = ?", (str(scan_id), revision)
-    ).fetchone()
-
-
-def require_revision(connection: sqlite3.Connection, scan_id: uuid.UUID, revision: int) -> sqlite3.Row:
-    """A revision a queued job names. The job was queued after it was saved, so its absence is a fault."""
-    row = get_revision(connection, scan_id, revision)
-    if row is None:
-        raise LookupError(f"scan {scan_id} has no revision {revision}")
-    return row
-
-
-def graph_of(row: sqlite3.Row) -> SceneGraph:
-    return SceneGraph.model_validate_json(row["graph_json"])
-
-
-def display_geometry(
-    connection: sqlite3.Connection, scan_id: uuid.UUID, revision: int | None = None
-) -> tuple[str, int] | None:
-    """The newest GLB, and the revision whose layout it was exported from."""
-    row = connection.execute(
-        "SELECT glb_path, revision FROM revisions WHERE scan_id = ? AND glb_path IS NOT NULL"
-        " AND (? IS NULL OR revision = ?)"
-        " ORDER BY revision DESC LIMIT 1",
-        (str(scan_id), revision, revision),
-    ).fetchone()
-    return (row["glb_path"], row["revision"]) if row else None
-
-
-def display_pending(connection: sqlite3.Connection, scan_id: uuid.UUID) -> bool:
-    return (
-        connection.execute(
-            "SELECT 1 FROM jobs WHERE scan_id = ? AND kind IN ('process', 'assess', 'display')"
-            " AND state IN ('queued', 'running') LIMIT 1",
-            (str(scan_id),),
-        ).fetchone()
-        is not None
-    )
-
-
-def base_glb_path(connection: sqlite3.Connection, scan_id: uuid.UUID) -> str | None:
-    found = display_geometry(connection, scan_id)
-    return found[0] if found else None
-
-
-def set_glb_path(connection: sqlite3.Connection, scan_id: uuid.UUID, revision: int, path: str) -> None:
-    connection.execute(
-        "UPDATE revisions SET glb_path = ? WHERE scan_id = ? AND revision = ?", (path, str(scan_id), revision)
-    )
-
-
-def save_scenario(connection: sqlite3.Connection, scan_id: uuid.UUID, scenario: Scenario) -> None:
-    """Replace the scenario and advance its version, so derived results saved
-    against the old route are visibly stale until they are recomputed."""
-    connection.execute(
-        "INSERT INTO scenarios (scan_id, scenario_json, version) VALUES (?, ?, 1)"
-        " ON CONFLICT (scan_id) DO UPDATE SET"
-        " scenario_json = excluded.scenario_json, version = scenarios.version + 1",
-        (str(scan_id), scenario.model_dump_json()),
-    )
-
-
-def get_scenario(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Scenario | None:
-    row = connection.execute("SELECT scenario_json FROM scenarios WHERE scan_id = ?", (str(scan_id),)).fetchone()
-    return Scenario.model_validate_json(row["scenario_json"]) if row else None
-
-
-def scenario_version(connection: sqlite3.Connection, scan_id: uuid.UUID) -> int | None:
-    row = connection.execute("SELECT version FROM scenarios WHERE scan_id = ?", (str(scan_id),)).fetchone()
-    return row["version"] if row else None
-
-
-def save_assessment(connection: sqlite3.Connection, assessment: Assessment) -> None:
-    """Stored with the fingerprint of the checks that made it, so a deploy that changes them can check again."""
-    connection.execute(
-        "INSERT INTO assessments (id, scan_id, graph_revision, assessment_json,"
-        " created_at, scenario_version, checks_version)"
-        " VALUES (?, ?, ?, ?, ?, (SELECT version FROM scenarios WHERE scan_id = ?), ?)"
-        " ON CONFLICT (id) DO UPDATE SET assessment_json = excluded.assessment_json,"
-        " scenario_version = excluded.scenario_version, checks_version = excluded.checks_version",
-        (
-            str(assessment.id),
-            str(assessment.scan_id),
-            assessment.graph_revision,
-            assessment.model_dump_json(),
-            now(),
-            str(assessment.scan_id),
-            checks_version(),
-        ),
-    )
-
-
-def results_made_under_other_checks(connection: sqlite3.Connection) -> list[tuple[uuid.UUID, int]]:
-    """Each ready shop whose current revision was last checked under different checks, with that revision."""
-    rows = connection.execute(
-        "SELECT scans.id AS scan_id, latest.revision AS revision FROM scans"
-        " JOIN (SELECT scan_id, MAX(revision) AS revision FROM revisions GROUP BY scan_id) AS latest"
-        "   ON latest.scan_id = scans.id"
-        " JOIN assessments ON assessments.scan_id = scans.id AND assessments.graph_revision = latest.revision"
-        " WHERE scans.state = 'ready' AND assessments.created_at = ("
-        "   SELECT MAX(created_at) FROM assessments AS newer"
-        "   WHERE newer.scan_id = scans.id AND newer.graph_revision = latest.revision)"
-        " AND (assessments.checks_version IS NULL OR assessments.checks_version != ?)",
-        (checks_version(),),
-    ).fetchall()
-    return [(uuid.UUID(row["scan_id"]), row["revision"]) for row in rows]
-
-
-def latest_revision_number(connection: sqlite3.Connection, scan_id: uuid.UUID) -> int | None:
-    row = connection.execute(
-        "SELECT revision FROM revisions WHERE scan_id = ? ORDER BY revision DESC LIMIT 1",
-        (str(scan_id),),
-    ).fetchone()
-    return row["revision"] if row else None
-
-
-def latest_assessment(connection: sqlite3.Connection, scan_id: uuid.UUID) -> Assessment | None:
-    """The assessment of the scan's current graph revision, or nothing.
-
-    An assessment computed from an older graph must never be read as the
-    current one: a role change or re-measure leaves it behind and the next
-    assessment job supersedes it. Callers that want a historic snapshot pin the
-    revision with `assessment_for_revision`.
-    """
-    revision = latest_revision_number(connection, scan_id)
-    if revision is None:
-        return None
-    return assessment_for_revision(connection, scan_id, revision)
-
-
-def assessment_for_revision(connection: sqlite3.Connection, scan_id: uuid.UUID, revision: int) -> Assessment | None:
-    """The newest assessment for this graph revision, if it still matches the
-    current scenario. A route confirm replaces the scenario, so every result
-    measured against the old one is history until the next assess job runs."""
-    row = connection.execute(
-        "SELECT assessment_json, scenario_version FROM assessments WHERE scan_id = ?"
-        " AND graph_revision = ? ORDER BY created_at DESC LIMIT 1",
-        (str(scan_id), revision),
-    ).fetchone()
-    if row is None:
-        return None
-    current = scenario_version(connection, scan_id)
-    stored = row["scenario_version"]
-    if stored is not None and current is not None and stored != current:
-        return None
-    # Assessments saved before any route existed predate the run they should
-    # re-measure once a route is confirmed. Databases migrated with a version-0
-    # scenario row keep the older tolerance so untouched scans stay readable.
-    if stored is None and current is not None and current > 0:
-        return None
-    return Assessment.model_validate_json(row["assessment_json"])

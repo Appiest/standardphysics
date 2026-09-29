@@ -18,7 +18,7 @@ import uuid
 
 from standardphysics_contracts import FloorCoverage, SceneGraph
 
-from . import repository as repo
+from . import repository_revisions as revisions_repo
 from .measured_origins import Origins, RevisionPoses, recover_origins, with_origins
 
 log = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ MOST_REMEMBERED = 32
 
 def rearrangement_base(connection: sqlite3.Connection, row: sqlite3.Row) -> SceneGraph:
     """The stored revision, with origins and floor coverage filled in from its history."""
-    graph = repo.graph_of(row)
+    graph = revisions_repo.graph_of(row)
     graph = _with_captured_coverage(connection, graph)
     recovered, unrecovered = with_origins(graph, _origins(connection, graph.scan_id, graph.revision))
     if unrecovered:
@@ -56,7 +56,7 @@ def _with_captured_coverage(connection: sqlite3.Connection, graph: SceneGraph) -
     """
     if graph.floor_coverage or graph.revision == 0:
         return graph
-    captured = repo.get_revision(connection, graph.scan_id, 0)
+    captured = revisions_repo.get_revision(connection, graph.scan_id, 0)
     if captured is None:
         return graph
     floors = {str(node.id) for node in graph.nodes}

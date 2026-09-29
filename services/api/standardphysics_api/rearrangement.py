@@ -48,6 +48,8 @@ from standardphysics_contracts import (
 )
 
 from . import repository as repo
+from . import repository_jobs as jobs_repo
+from . import repository_revisions as revisions_repo
 from .budgets import admit_new_job
 from .dev_model import nudges_from_prompt
 from .errors import ApiProblem
@@ -160,7 +162,7 @@ def model_from_settings(settings: Settings) -> RearrangeModel | None:
 def _require_latest(connection, scan_id: uuid.UUID, revision: int) -> None:
     if not repo.scan_exists(connection, scan_id):
         raise ApiProblem(404, "no scan")
-    latest = repo.get_revision(connection, scan_id)
+    latest = revisions_repo.get_revision(connection, scan_id)
     if latest is None:
         raise ApiProblem(409, "the shop is still being measured")
     if latest["revision"] != revision:
@@ -188,7 +190,7 @@ def queue_suggestion(database, worker, rearranger: Rearranger, scan_id: uuid.UUI
                 " DO UPDATE SET phase='waiting', phase_reason=NULL, result_json=NULL",
                 (str(scan_id), body.base_revision),
             )
-            repo.queue_job_again(connection, scan_id, REARRANGE, body.base_revision)
+            jobs_repo.queue_job_again(connection, scan_id, REARRANGE, body.base_revision)
     worker.wake()
     return suggestion_status(database, rearranger, scan_id, body.base_revision)
 
@@ -237,11 +239,11 @@ class Inputs:
 
 def _inputs(database, scan_id: uuid.UUID, revision: int) -> Inputs:
     with database.connect() as connection:
-        row = repo.get_revision(connection, scan_id, revision)
-        scenario = repo.get_scenario(connection, scan_id)
+        row = revisions_repo.get_revision(connection, scan_id, revision)
+        scenario = revisions_repo.get_scenario(connection, scan_id)
     if row is None:
         raise ModelFailed("That layout isn't there any more. Reload the page and ask again.")
-    return Inputs(repo.graph_of(row), scenario)
+    return Inputs(revisions_repo.graph_of(row), scenario)
 
 
 def ask_patiently(rearranger: Rearranger, messages: list[dict], on_warming: Callable[[], None]) -> list[str]:

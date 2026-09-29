@@ -11,8 +11,8 @@ from standardphysics_contracts import to_meters
 from standardphysics_fixtures import FIX_SHIFT_INCHES, node_id
 
 from conftest import create_scan, drain
-from standardphysics_api import repository as repo
-from standardphysics_api.worker import ASSESS
+from standardphysics_api import repository_jobs as jobs_repo
+from standardphysics_api.worker_handlers import ASSESS
 
 CASE_EAST = str(node_id("case_east"))
 SHIFT = {"x": to_meters(FIX_SHIFT_INCHES), "y": 0.0, "z": 0.0}
@@ -42,7 +42,7 @@ def _simulate(client, scan_id):
 
 def _queued(client) -> int:
     with client.app.state.database.connect() as connection:
-        return repo.queued_job_count(connection)
+        return jobs_repo.queued_job_count(connection)
 
 
 def _latest_revision(client, scan_id) -> int:
@@ -76,7 +76,7 @@ def test_a_finished_job_still_queues_its_follow_up_when_the_queue_is_full(make_c
         scan_id = _seeded_shop(client)
         waiting = create_scan(client)
         with client.app.state.database.transaction() as connection:
-            repo.enqueue_job(connection, waiting, ASSESS, 0)
+            jobs_repo.enqueue_job(connection, waiting, ASSESS, 0)
         drain(client)
         with client.app.state.database.connect() as connection:
             display = connection.execute(

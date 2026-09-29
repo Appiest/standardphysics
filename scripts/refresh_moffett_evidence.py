@@ -20,10 +20,11 @@ from bake_library_textures import DATA_DIR, DATASETS_DIR, ROOMS, SCAN_ID, TRANSF
 from standardphysics_contracts import Mat4, SceneGraph, Vec3, graph_hash
 from standardphysics_pipeline.discovery import DiscoveryInputs, discover_objects
 
-from standardphysics_api import repository as repo
+from standardphysics_api import repository_jobs as jobs_repo
+from standardphysics_api import repository_revisions as revisions_repo
 from standardphysics_api.db import Database
 from standardphysics_api.settings import Settings
-from standardphysics_api.worker import ASSESS
+from standardphysics_api.worker_handlers import ASSESS
 
 RESULTS = DATA_DIR / "scans" / str(SCAN_ID) / "enhancements"
 
@@ -149,12 +150,12 @@ def enhanced_floor_graph(head: SceneGraph, room_graphs: dict[str, SceneGraph], t
 def publish_discovered_nodes(database: Database, room_graphs: dict[str, SceneGraph], transforms: dict) -> dict:
     copy_room_crops()
     with database.transaction() as connection:
-        head = repo.graph_of(repo.get_revision(connection, SCAN_ID))
+        head = revisions_repo.graph_of(revisions_repo.get_revision(connection, SCAN_ID))
         updated, report = enhanced_floor_graph(head, room_graphs, transforms)
         if updated.revision == head.revision:
             return {"revision": head.revision, **report}
-        repo.save_revision(connection, updated, source="discovery", base_revision=head.revision)
-        repo.enqueue_job(connection, SCAN_ID, ASSESS, updated.revision)
+        revisions_repo.save_revision(connection, updated, source="discovery", base_revision=head.revision)
+        jobs_repo.enqueue_job(connection, SCAN_ID, ASSESS, updated.revision)
     return {"revision": updated.revision, **report}
 
 

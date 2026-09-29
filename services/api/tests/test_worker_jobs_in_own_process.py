@@ -12,23 +12,18 @@ import uuid
 import child_stages
 import hanging_child
 import pytest
-from test_job_lifecycle import _complete_geometry, _complete_semantics
+from evidence_uploads import complete_geometry, complete_semantics
 
 from conftest import create_scan, drain
-from standardphysics_api import repository as repo
+from standardphysics_api import repository_jobs as jobs_repo
 from standardphysics_api import worker as worker_module
+from standardphysics_api.furniture import FURNITURE
+from standardphysics_api.rearrangement import REARRANGE
 from standardphysics_api.settings import Settings
-from standardphysics_api.worker import (
-    ASSESS,
-    DISPLAY,
-    FURNITURE,
-    PROCESS,
-    REARRANGE,
-    SIMULATE,
-    TEXTURE,
-    ChildFailed,
-    in_own_process,
-)
+from standardphysics_api.simulations import SIMULATE
+from standardphysics_api.textures import TEXTURE
+from standardphysics_api.worker_child import ChildFailed, in_own_process
+from standardphysics_api.worker_handlers import ASSESS, DISPLAY, PROCESS
 
 EVERY_JOB_KIND = (PROCESS, ASSESS, DISPLAY, SIMULATE, TEXTURE, REARRANGE, FURNITURE)
 
@@ -81,8 +76,8 @@ def jobs_client(make_client):
 
 def _queue_process_job(client) -> str:
     scan_id = create_scan(client)
-    _complete_geometry(client, scan_id)
-    _complete_semantics(client, scan_id)
+    complete_geometry(client, scan_id)
+    complete_semantics(client, scan_id)
     client.post(f"/api/scans/{scan_id}/complete")
     return scan_id
 
@@ -118,7 +113,7 @@ def test_a_hung_furniture_or_rearrange_job_is_killed_at_its_deadline(
         with jobs_client(seed=True, **{deadline_setting: 5.0}) as client:
             scan_id = _seeded_shop(client)
             with client.app.state.database.transaction() as connection:
-                repo.enqueue_job(connection, uuid.UUID(scan_id), kind, 1)
+                jobs_repo.enqueue_job(connection, uuid.UUID(scan_id), kind, 1)
             finished = _finishes_within(client.app.state.worker, kind, 60)
             job = _job(client, scan_id, kind)
     finally:

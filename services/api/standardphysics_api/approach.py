@@ -26,6 +26,7 @@ from standardphysics_contracts import (
 )
 
 from . import repository as repo
+from . import repository_revisions as revisions_repo
 from .db import Database
 from .errors import ApiProblem
 
@@ -47,13 +48,13 @@ def evaluate(
     with database.connect() as connection:
         if not repo.scan_exists(connection, scan_id):
             raise ApiProblem(404, "no scan")
-        latest = repo.get_revision(connection, scan_id)
+        latest = revisions_repo.get_revision(connection, scan_id)
         if latest is None:
             raise ApiProblem(404, "no such revision")
         if latest["revision"] != base_revision:
             raise ApiProblem(409, "the shop changed since this revision; refresh and try again")
-        graph: SceneGraph = repo.graph_of(latest)
-        scenario = repo.get_scenario(connection, scan_id)
+        graph: SceneGraph = revisions_repo.graph_of(latest)
+        scenario = revisions_repo.get_scenario(connection, scan_id)
 
     if scenario is None:
         raise ApiProblem(409, "confirm a route before evaluating an approach")

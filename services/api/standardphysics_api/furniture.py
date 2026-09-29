@@ -23,7 +23,7 @@ from standardphysics_contracts import SceneGraph, TextureBuild
 from standardphysics_pipeline.textures.scan_colour import vertex_normals
 from standardphysics_pipeline.textures.surface_materials import room_owners
 
-from . import repository as repo
+from . import repository_jobs as jobs_repo
 from .settings import Settings
 from .textures import build_dir, build_prefix
 
@@ -110,7 +110,7 @@ def queue_furniture(database, worker, scan_id: uuid.UUID, build_id: int) -> None
         build = TextureBuild.model_validate_json(row["result_json"])
         if not inputs.get("lidar") or not inputs.get("frames") or not build.scan_glb_url:
             return
-        repo.enqueue_job(connection, scan_id, FURNITURE, build_id)
+        jobs_repo.enqueue_job(connection, scan_id, FURNITURE, build_id)
     worker.wake()
 
 

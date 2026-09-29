@@ -13,7 +13,7 @@ from test_textures import _room, _scan_build, furniture_settings
 
 from conftest import FIXTURE_DATA, drain
 from standardphysics_api import furniture
-from standardphysics_api import repository as repo
+from standardphysics_api import repository_jobs as jobs_repo
 from standardphysics_api.furniture import FURNITURE, UNAVAILABLE, FurnitureRuntime, furniture_runtime
 from standardphysics_api.settings import Settings
 from standardphysics_api.textures import build_dir, finish_build, record_build, staged_build_dir
@@ -67,7 +67,7 @@ def test_a_furniture_job_left_from_before_ends_at_once_with_a_plain_reason(make_
     with make_client() as client:
         scan_id, build_id = _painted_build(client)
         with client.app.state.database.transaction() as connection:
-            repo.enqueue_job(connection, uuid.UUID(scan_id), FURNITURE, build_id)
+            jobs_repo.enqueue_job(connection, uuid.UUID(scan_id), FURNITURE, build_id)
         drain(client)
         jobs = _furniture_jobs(client)
         status = client.get(f"/api/scans/{scan_id}/furniture").json()
