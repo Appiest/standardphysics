@@ -116,6 +116,26 @@ def test_details_report_an_idle_worker_and_the_oldest_queued_job(make_client):
         assert client.get("/health/details").json()["oldest_queued_job_seconds"] >= 3600
 
 
+def test_a_running_simulation_does_not_hold_up_a_new_scan(make_client, monkeypatch):
+    release = threading.Event()
+    monkeypatch.setattr(Worker, "_simulate", lambda self, scan_id, revision, job=None: release.wait(timeout=20))
+    monkeypatch.setattr(Worker, "_process", lambda self, scan_id, revision, job=None: False)
+    with make_client() as client:
+        simulated, measured = create_scan(client), create_scan(client)
+        _queue(client, simulated, "simulate")
+        _queue(client, measured, PROCESS)
+        worker = client.app.state.worker
+        worker.start()
+        try:
+            simulate = lambda: client.get("/health/details").json()["worker"]["loops"]["simulate"]  # noqa: E731
+            assert _wait_for(lambda: simulate()["state"] == "busy")
+            assert _wait_for(lambda: _job(client, measured, PROCESS)["state"] == "done")
+            assert simulate()["job"]["kind"] == "simulate"
+        finally:
+            release.set()
+            worker.stop()
+
+
 def test_a_long_job_looks_busy_not_dead(make_client, monkeypatch):
     release = threading.Event()
     _quick_stall_detection(monkeypatch)
