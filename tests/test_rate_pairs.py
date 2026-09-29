@@ -12,9 +12,10 @@ import uuid
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts" / "finetune"))
 
-from scripts.finetune import rate_pairs  # noqa: E402
+import rate_pairs  # noqa: E402
+import rate_pairs_plan  # noqa: E402
 
 
 def test_picked_side_translates_left_and_right_by_which_was_shown_there():
@@ -85,19 +86,19 @@ def _node(label: str, raw_category: str, x: float = 1.0, y: float = 2.0, degrees
 
 
 def test_only_pieces_with_a_single_front_get_a_front_marker():
-    assert rate_pairs._has_a_facing(_node("Chair", "chair"))
-    assert rate_pairs._has_a_facing(_node("Reading Bench", "bench"))
-    assert not rate_pairs._has_a_facing(_node("Wall", "wall"))
-    assert not rate_pairs._has_a_facing(_node("Backpack", "backpack"))
-    assert not rate_pairs._has_a_facing(_node("Table", "table"))
-    assert not rate_pairs._has_a_facing(_node("Ordering counter", "storage"))
+    assert rate_pairs_plan._has_a_facing(_node("Chair", "chair"))
+    assert rate_pairs_plan._has_a_facing(_node("Reading Bench", "bench"))
+    assert not rate_pairs_plan._has_a_facing(_node("Wall", "wall"))
+    assert not rate_pairs_plan._has_a_facing(_node("Backpack", "backpack"))
+    assert not rate_pairs_plan._has_a_facing(_node("Table", "table"))
+    assert not rate_pairs_plan._has_a_facing(_node("Ordering counter", "storage"))
 
 
 def test_front_edge_sits_on_the_front_heading_degrees_side_of_the_footprint():
     """At yaw 0 the front heading (yaw - 90) points along -Y, so the front edge
     sits `dimensions.y / 2` below centre and spans `dimensions.x` wide."""
     node = _node("Chair", "chair", x=1.0, y=2.0, degrees=0.0)
-    start, end = rate_pairs._front_edge(node)
+    start, end = rate_pairs_plan._front_edge(node)
     assert start[1] == pytest.approx(1.8)
     assert end[1] == pytest.approx(1.8)
     assert {round(start[0], 2), round(end[0], 2)} == {0.75, 1.25}
@@ -105,6 +106,6 @@ def test_front_edge_sits_on_the_front_heading_degrees_side_of_the_footprint():
 
 def test_front_edge_turns_with_front_heading_degrees():
     node = _node("Chair", "chair", x=0.0, y=0.0, degrees=90.0)
-    start, end = rate_pairs._front_edge(node)
+    start, end = rate_pairs_plan._front_edge(node)
     assert start[0] == pytest.approx(0.2, abs=1e-6)
     assert end[0] == pytest.approx(0.2, abs=1e-6)
