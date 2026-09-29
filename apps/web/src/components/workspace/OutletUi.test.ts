@@ -1,12 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  assessOutletAccessibility,
-  dockPoint,
-  sweepWheelchairInGeometry,
-  wheelchairMotionGeometry,
-  wheelchairProfile,
-  type MotionPoint,
-} from "@/lib/wheelchair-motion";
+import type { MotionPoint } from "@/lib/motion-vector";
+import { assessOutletAccessibility } from "@/lib/outlet-accessibility";
+import { wheelchairMotionGeometry } from "@/lib/wheelchair-geometry";
+import { dockPoint, sweepWheelchairInGeometry } from "@/lib/wheelchair-navigation";
+import { wheelchairProfile } from "@/lib/wheelchair-profile";
 import { reviewOutlet } from "@/lib/layout-client";
 import type { SceneGraph, SceneNode } from "@/types/contracts";
 

@@ -4,16 +4,11 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import { MathUtils, Vector3 } from "three";
 import type { SceneGraph, SceneNode } from "@/types/contracts";
-import {
-  dockPoint,
-  LOOK_LIMIT,
-  sweepWheelchairInGeometry,
-  targetInView,
-  wheelchairMotionGeometry,
-  wheelchairSpawn,
-  type MotionPoint,
-  type WheelchairProfile,
-} from "@/lib/wheelchair-motion";
+import type { MotionPoint } from "@/lib/motion-vector";
+import { wheelchairMotionGeometry } from "@/lib/wheelchair-geometry";
+import { dockPoint, sweepWheelchairInGeometry, wheelchairSpawn } from "@/lib/wheelchair-navigation";
+import type { WheelchairProfile } from "@/lib/wheelchair-profile";
+import { LOOK_LIMIT, targetInView } from "@/lib/wheelchair-view";
 
 const TURN_SPEED = 1.8;
 const STATE_INTERVAL_SECONDS = 0.1;
