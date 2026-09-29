@@ -20,6 +20,7 @@ LEDGER = json.loads((ROOT / "notebooks" / "public" / "finetune_ledger.json").rea
 
 
 def load(path: Path, name: str):
+    sys.path.insert(0, str(path.parent))
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module

@@ -13,6 +13,7 @@ dimension does not claim one the routine took away.
 from __future__ import annotations
 
 import importlib.util
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -25,6 +26,7 @@ SWEPT_KNOB = "aisle_inches"
 
 @pytest.fixture(scope="module")
 def notebook():
+    sys.path.insert(0, str(NOTEBOOK.parent))
     pytest.importorskip(
         "marimo",
         reason='needs the notebook extra: pip install -e "packages/agents[notebook]"',
