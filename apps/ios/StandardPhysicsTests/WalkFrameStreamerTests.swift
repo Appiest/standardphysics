@@ -30,7 +30,7 @@ final class WalkFrameStreamerTests: XCTestCase {
         let frames = try (0..<3).map(makeFrame)
         frames.forEach { streamer.offer($0) }
 
-        try await waitUntil { WalkStub.requests.filter { $0.httpMethod == "PUT" }.count == 3 }
+        try await waitUntil { ResumableUploadStore(captureDirectory: self.directory).completedArtifactIDs.count == 3 }
         await streamer.stop()
 
         let creates = WalkStub.requests.filter { $0.httpMethod == "POST" }
@@ -101,7 +101,7 @@ final class WalkFrameStreamerTests: XCTestCase {
         XCTAssertEqual(offers.filter { $0 == .dropped }.count, 16)
 
         streamer.finishOffering()
-        try await waitUntil(timeout: 3) {
+        try await waitUntil {
             WalkStub.requests.filter { $0.httpMethod == "PUT" }.count == 5
         }
         await streamer.stop()
@@ -169,7 +169,7 @@ final class WalkFrameStreamerTests: XCTestCase {
         let streamer = makeStreamer(gate: OpenGate(true))
         await streamer.start()
         streamer.offer(try makeFrame(1))
-        try await waitUntil { WalkStub.requests.count == 1 }
+        try await waitUntil { ResumableUploadStore(captureDirectory: self.directory).completedArtifactIDs.count == 2 }
         await streamer.stop()
 
         XCTAssertTrue(WalkStub.requests[0].url!.path.contains(remoteID.uuidString))
@@ -215,7 +215,7 @@ final class WalkFrameStreamerTests: XCTestCase {
         await streamer.start()
         streamer.offer(try makeFrame(0))
         streamer.offer(try makeFrame(1))
-        try await waitUntil { WalkStub.requests.filter { $0.httpMethod == "PUT" }.count == 2 }
+        try await waitUntil { ResumableUploadStore(captureDirectory: self.directory).completedArtifactIDs.count == 2 }
         await streamer.stop()
         WalkStub.reset()
         WalkStub.handler = { request in
@@ -306,16 +306,6 @@ final class WalkFrameStreamerTests: XCTestCase {
             artifacts: artifacts, name: "Tea House")
     }
 
-    private func waitUntil(timeout: TimeInterval = 2, _ condition: @escaping () -> Bool) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition() {
-            if Date() >= deadline {
-                XCTFail("Timed out")
-                return
-            }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-    }
 }
 
 private final class OpenGate: WalkStreamingGate, @unchecked Sendable {
