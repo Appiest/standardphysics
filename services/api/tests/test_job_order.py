@@ -26,6 +26,20 @@ def test_a_job_queued_again_on_an_old_row_waits_behind_what_was_queued_before_it
     assert (second["scan_id"], second["kind"]) == (str(earlier_shop), "display")
 
 
+def test_a_new_upload_is_measured_before_the_rechecks_a_deploy_queued_ahead_of_it(client):
+    older_shops = [uuid.UUID(create_scan(client)) for _ in range(3)]
+    new_upload = uuid.UUID(create_scan(client))
+    with client.app.state.database.transaction() as connection:
+        for shop in older_shops:
+            jobs_repo.enqueue_job(connection, shop, "assess", 0)
+        jobs_repo.enqueue_job(connection, new_upload, "process", 0)
+
+        claimed = [jobs_repo.claim_job(connection, False) for _ in range(4)]
+
+    assert (claimed[0]["scan_id"], claimed[0]["kind"]) == (str(new_upload), "process")
+    assert [job["scan_id"] for job in claimed[1:]] == [str(shop) for shop in older_shops]
+
+
 def test_jobs_queued_together_still_go_in_the_order_they_were_made(client):
     shop = uuid.UUID(create_scan(client))
     with client.app.state.database.transaction() as connection:

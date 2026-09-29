@@ -275,6 +275,11 @@ class Settings:
     fireworks_api_key: str | None = field(default=None, repr=False)
     """FIREWORKS_API_KEY, from the repo-root .env."""
     openrouter_api_key: str | None = field(default=None, repr=False)
+    offload_url: str | None = None
+    """SP_OFFLOAD_URL: a machine with more memory that runs photo bakes and Blender steps for this
+    one (`offload.py`), such as http://100.x.y.z:8790 over Tailscale. Unset, everything runs here."""
+    offload_token: str | None = field(default=None, repr=False)
+    """SP_OFFLOAD_TOKEN: the shared secret that machine was started with."""
 
     @property
     def database_path(self) -> pathlib.Path:
@@ -335,6 +340,8 @@ class Settings:
             apns_team_id=os.environ.get("SP_APNS_TEAM_ID") or None,
             apns_topic=os.environ.get("SP_APNS_TOPIC") or "com.standardphysics.capture",
             git_sha=os.environ.get("SP_GIT_SHA") or "unknown",
+            offload_url=os.environ.get("SP_OFFLOAD_URL") or None,
+            offload_token=os.environ.get("SP_OFFLOAD_TOKEN") or None,
             apple_audiences=_email_set("SP_APPLE_AUDIENCES") or frozenset({"com.standardphysics.capture"}),
             max_scan_artifacts=_bounded_integer("SP_MAX_SCAN_ARTIFACTS", ScanQuota.max_artifacts, 1, 1_000_000),
             max_scan_bytes=_bounded_integer("SP_MAX_SCAN_BYTES", ScanQuota.max_bytes, 1, 2**50),

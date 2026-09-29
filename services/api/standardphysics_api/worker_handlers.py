@@ -35,7 +35,7 @@ from .notifications import LoggedNotifier, Notifier, Push
 from .rearrangement import REARRANGE, Rearranger, run_suggestion
 from .settings import Settings
 from .simulations import SIMULATE, queue_simulation, run_simulation
-from .stages import DiscoveryOutcome, Stages
+from .stages import DiscoveryOutcome, Stages, configured_stages
 from .store import ArtifactStore, ScanQuota
 from .textures import TEXTURE, maybe_queue_texture, run_texture
 from .worker_child import in_own_process
@@ -375,7 +375,8 @@ class JobHandlers:
 def bake_photos(settings: Settings, scan_id: uuid.UUID, build_id: int) -> None:
     """One photo build, run where its arithmetic cannot hold up the API's requests."""
     with tracing_for_this_process(settings.weave_project, settings.weave_entity):
-        run_texture(Database(settings.database_path), store_for(settings), Stages(), scan_id, build_id)
+        stages = configured_stages(settings)
+        run_texture(Database(settings.database_path), store_for(settings), stages, scan_id, build_id)
 
 
 def store_for(settings: Settings) -> ArtifactStore:

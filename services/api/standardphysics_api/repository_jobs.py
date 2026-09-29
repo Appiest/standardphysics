@@ -175,13 +175,15 @@ def claim_job(
 
     Ordered by when it was queued, not by its id: queueing a job again reuses
     its row, and a render re-queued on a row from last week must not go ahead
-    of a shop uploaded a minute ago.
+    of a shop uploaded a minute ago. A measuring job goes before every other
+    kind on its lane, so someone who just walked their shop is not waiting on
+    the re-check of every older shop that a deploy queues.
     """
     lane, parameters = _lane_filter(texture_only, kind)
     return connection.execute(
         "UPDATE jobs SET state = 'running', attempts = attempts + 1"
         " WHERE id = (SELECT id FROM jobs WHERE state = 'queued'"
-        f" AND {lane} ORDER BY COALESCE(queued_at, created_at), id LIMIT 1)"
+        f" AND {lane} ORDER BY kind != 'process', COALESCE(queued_at, created_at), id LIMIT 1)"
         " RETURNING id, scan_id, kind, revision, attempts",
         parameters,
     ).fetchone()
