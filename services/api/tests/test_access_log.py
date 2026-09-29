@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+import secrets
 import threading
 import time
 import urllib.error
@@ -14,7 +15,7 @@ import uvicorn
 from standardphysics_api.__main__ import server_config
 from standardphysics_api.access_log import without_tokens
 
-TOKEN = "Zq3v9mA1bC7dE5fG2hJ4kL6nP8rS0tUw"
+TOKEN = secrets.token_urlsafe(24)
 
 
 def _serve_briefly_and_fetch(app, path: str) -> str:

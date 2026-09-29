@@ -15,3 +15,6 @@ b3a6a208689a9c588e4bf309d0e24ce108342cb1:scripts/build_full_floor.py:generic-api
 # by any deployed environment, and was removed from the file in the commit that
 # added this line; a local server now generates its own and writes it to demo-password.
 4d2b9c2bcf569f517cb0b4b5dfb394de012273ab:.claude/launch.json:generic-api-key:157
+# A made-up share token a test put in a request path to prove the access log
+# hides it. It never opened anything; the test now generates one per run.
+02d36e0ed22224f3f56f87217406079c9bfd3f55:services/api/tests/test_access_log.py:generic-api-key:17
