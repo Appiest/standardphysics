@@ -9,6 +9,7 @@ import { boxTop, type FoundMark, type PieceSize } from "@/lib/found-objects";
 import type { SceneGraph, SceneNode } from "@/types/contracts";
 import { MODEL } from "./palette";
 import { boxMatrix } from "./ShopModel";
+import { endsADrag } from "@/lib/tap";
 
 /** What the owner's list of found pieces hands the 3D view, and how the view answers back. */
 export type FoundHandles = {
@@ -118,7 +119,11 @@ const FoundBox = memo(function FoundBox({ mark, node, matrix, state, labelled, o
   const pointer = {
     onPointerOver: (event: ThreeEvent<PointerEvent>) => { event.stopPropagation(); setCursor("pointer"); onHoverNode(mark.nodeId); },
     onPointerOut: () => { setCursor("auto"); onHoverNode(null); },
-    onClick: (event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); onPickNode(mark.nodeId); },
+    onClick: (event: ThreeEvent<MouseEvent>) => {
+      if (endsADrag(event)) return;
+      event.stopPropagation();
+      onPickNode(mark.nodeId);
+    },
   };
   return (
     <>

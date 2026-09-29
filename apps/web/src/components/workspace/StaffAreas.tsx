@@ -7,6 +7,7 @@ import { Color, Plane, Vector3 } from "three";
 import { CORNERS, type Corner, cornerPoint, isOpen, outline, type StaffHandles } from "@/lib/staff-areas";
 import type { StaffArea } from "@/types/contracts";
 import { MODEL } from "./palette";
+import { endsADrag } from "@/lib/tap";
 
 export type { StaffHandles };
 
@@ -85,6 +86,7 @@ function useChooseOnTap(handles: StaffHandles, index: number, open: boolean) {
   if (!choosable) return {};
   return {
     onClick(event: ThreeEvent<MouseEvent>) {
+      if (endsADrag(event)) return;
       event.stopPropagation();
       handles.onChoose(index);
     },

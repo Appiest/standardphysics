@@ -129,7 +129,7 @@ function horizontalAxes(node: SceneNode, planarBoundary: boolean): ProjectedAxis
     .slice(0, 2);
 }
 
-export function sceneRect(node: SceneNode): CollisionRect | null {
+function sceneRect(node: SceneNode): CollisionRect | null {
   const matrix = node.transform.m;
   const planarBoundary = node.kind === "wall" || node.kind === "door" || node.kind === "opening";
   const axes = horizontalAxes(node, planarBoundary);

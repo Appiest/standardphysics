@@ -10,6 +10,7 @@ import { groupGlbPrimitives } from "@/lib/glb-parts";
 import { displayMatrix, toViewerMatrix } from "@/lib/scene-matrix";
 import type { SceneGraph, SceneNode } from "@/types/contracts";
 import { MODEL, nodeColor, WALL_CUT_HEIGHT } from "./palette";
+import { endsADrag } from "@/lib/tap";
 
 const UNIT_BOX = new BoxGeometry(1, 1, 1);
 /** Viewer supplies one stable ground plane; RoomPlan floors are often rotated zero-depth shells. */
@@ -329,6 +330,7 @@ const ModelNode = memo(function ModelNode({ placed, ...props }: ModelNodeProps) 
   const clipWall = clipsWall(node, props.cutWalls);
 
   function select(event: ThreeEvent<MouseEvent>) {
+    if (endsADrag(event)) return;
     event.stopPropagation();
     props.onSelectNode(node.id);
   }
