@@ -89,10 +89,20 @@ def _replace_nodes(graph: SceneGraph, changed: dict[UUID, SceneNode], added: Seq
     return graph.model_copy(update={"nodes": nodes, "revision": graph.revision + 1, "base_hash": None})
 
 
+def _built_to_spec(node: SceneNode) -> SceneNode:
+    """A piece built new or rebuilt is measured by its box, which the work sets, so it drops the top the scan saw.
+    Checks read a scanned top before the box: a counter rebuilt at 34 inches that kept one would still measure 42."""
+    return node.model_copy(update={"top_surface": None})
+
+
 def _raised(node: SceneNode, dz: float) -> SceneNode:
+    """The same piece higher or lower by `dz`, its scanned top carried with it."""
     m = list(node.transform.m)
     m[11] += dz
-    return node.model_copy(update={"transform": Mat4(m=m)})
+    scanned = node.top_surface
+    if scanned is not None and scanned.height_m is not None:
+        scanned = scanned.model_copy(update={"height_m": max(0.0, scanned.height_m + dz)})
+    return node.model_copy(update={"transform": Mat4(m=m), "top_surface": scanned})
 
 
 def rests_on(item: SceneNode, surface: SceneNode) -> bool:
@@ -154,7 +164,8 @@ def _with_top(graph: SceneGraph, node: SceneNode, top: float) -> SceneNode:
     height = top - bottom
     m = list(node.transform.m)
     m[11] = bottom + height / 2
-    return node.model_copy(update={"dimensions": Vec3(x=size.x, y=size.y, z=height), "transform": Mat4(m=m)})
+    rebuilt = node.model_copy(update={"dimensions": Vec3(x=size.x, y=size.y, z=height), "transform": Mat4(m=m)})
+    return _built_to_spec(rebuilt)
 
 
 def _node(graph: SceneGraph, node_id: UUID, action: str) -> SceneNode:
@@ -197,8 +208,8 @@ def replace(graph: SceneGraph, replacement: Replacement) -> SceneGraph:
     height = item.top_meters - bottom
     m = list(node.transform.m)
     m[11] = bottom + height / 2
-    swapped = node.model_copy(update={"label": item.label, "dimensions": _catalog_size(node, item, height),
-                                      "transform": Mat4(m=m)})
+    swapped = _built_to_spec(node.model_copy(update={
+        "label": item.label, "dimensions": _catalog_size(node, item, height), "transform": Mat4(m=m)}))
     riders = _riders(graph, node, top_of(swapped) - top_of(node))
     return _replace_nodes(graph, {**riders, node.id: swapped})
 
@@ -303,7 +314,7 @@ def add_lowered_section(graph: SceneGraph, section: LoweredSection) -> SceneGrap
     for item in carried:
         taken.append(_set_down(frame, item, cut, sign, top_of(lowered), taken))
     changed = {**dropped, **{node.id: node for node in taken}, counter.id: shortened}
-    return _replace_nodes(graph, changed, [lowered])
+    return _replace_nodes(graph, changed, [_built_to_spec(lowered)])
 
 
 def fit(graph: SceneGraph, heights: list[HeightChange], replacements: list[Replacement],

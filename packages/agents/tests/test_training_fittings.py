@@ -21,7 +21,7 @@ from standardphysics_agents.training.prices import (
     wall_shift_price,
 )
 from standardphysics_agents.training.prompt import FITTINGS_SYSTEM_PROMPT, SYSTEM_PROMPT
-from standardphysics_contracts import Mat4, SceneNode, Vec3, to_inches, to_meters
+from standardphysics_contracts import Mat4, SceneNode, SurfaceHeight, Vec3, to_inches, to_meters
 from standardphysics_fixtures import node_id
 from standardphysics_pipeline import footprint, gap_between
 
@@ -39,6 +39,13 @@ def _register_on_the_counter(graph):
                          dimensions=Vec3(x=0.35, y=0.28, z=0.25),
                          transform=Mat4.translation(0.3, 3.42, to_meters(47.0) + 0.125), movable=False)
     return _with(graph, register)
+
+
+def _scanned_top(graph, node_id_, inches):
+    """The piece as a real scan leaves it: its top measured from the mesh, which checks read before its box."""
+    scanned = SurfaceHeight(height_m=to_meters(inches), uncertainty_m=0.04, support_area_m2=1.0)
+    return graph.model_copy(update={"nodes": [node.model_copy(update={"top_surface": scanned}) if node.id == node_id_
+                                              else node for node in graph.nodes]})
 
 
 def _soap_dispenser(top_inches):
@@ -132,6 +139,30 @@ def test_leaving_the_register_on_the_high_part_is_a_new_problem(graph, fittings)
     room = _register_on_the_counter(graph)
     candidate = apply_edits(room, TrainingEdits(add_lowered_section=[_section(carry=())]))
     assert fittings.assess(candidate).verdicts["point_of_sale_height"] == "problem"
+
+
+def test_a_rebuilt_counter_measures_its_new_height_rather_than_what_the_scan_saw(graph, pipeline, fittings):
+    room = _scanned_top(graph, COUNTER, 46.5)
+    assert pipeline.counter_height(room, COUNTER).inches == pytest.approx(46.5)
+    rebuilt = change_height(room, HeightChange(node_id=COUNTER, top_inches=34.0))
+    assert pipeline.counter_height(rebuilt, COUNTER).inches == pytest.approx(34.0)
+    assert fittings.assess(rebuilt).verdicts["service_counter_height"] == "passes"
+
+
+def test_a_section_cut_from_a_scanned_counter_measures_its_own_height(graph, pipeline, fittings):
+    room = _scanned_top(_register_on_the_counter(graph), COUNTER, 46.5)
+    fitted = apply_edits(room, TrainingEdits(add_lowered_section=[_section()]))
+    section = next(node for node in fitted.nodes if node.label == "Lowered counter section")
+    assert pipeline.counter_height(fitted, section.id).inches == pytest.approx(36.0)
+    assert pipeline.counter_height(fitted, COUNTER).inches == pytest.approx(46.5)
+    assert fittings.assess(fitted).verdicts["service_counter_height"] == "passes"
+
+
+def test_a_scanned_piece_carried_with_its_surface_keeps_its_scanned_top_in_step(graph):
+    room = _scanned_top(_with(graph, _soap_dispenser(55.0)), node_id("soap"), 55.0)
+    rehung = change_height(room, HeightChange(node_id=node_id("soap"), top_inches=46.0)).by_id(node_id("soap"))
+    assert to_inches(rehung.top_surface.height_m) == pytest.approx(46.0)
+    assert rehung.top_surface.uncertainty_m == pytest.approx(0.04)
 
 
 def test_an_added_piece_must_not_land_on_anything(graph, fittings):
