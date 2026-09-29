@@ -14,8 +14,7 @@ import pytest
 from test_lidar_mesh import mesh_bytes
 
 from conftest import create_scan, put_artifact
-from standardphysics_api import app as api_app
-from standardphysics_api import lidar_mesh
+from standardphysics_api import lidar_mesh, upload_routes
 
 IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 
@@ -36,8 +35,8 @@ def _write(tmp_path, document) -> object:
 
 
 def _slow_mesh_check(monkeypatch, check):
-    original = api_app.STAGED_CHECKS["lidar_mesh"]
-    monkeypatch.setitem(api_app.STAGED_CHECKS, "lidar_mesh", dataclasses.replace(original, validate=check))
+    original = upload_routes.STAGED_CHECKS["lidar_mesh"]
+    monkeypatch.setitem(upload_routes.STAGED_CHECKS, "lidar_mesh", dataclasses.replace(original, validate=check))
 
 
 def test_the_server_answers_health_while_a_mesh_is_being_checked(make_client, monkeypatch):
