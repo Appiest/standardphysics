@@ -204,8 +204,8 @@ function TurnRow({ turn }: { turn: ModelLoopEvent }) {
       <TurnMark moved={turn.picked.length > 0} />
       <div className="min-w-0">
         <ul className="flex flex-col gap-1">
-          {turnLines(turn).map((line) => (
-            <li key={line.text}>
+          {turnLines(turn).map((line, index) => (
+            <li key={`${index}:${line.text}`}>
               <span className="font-semibold">{line.text}</span>
               {line.construction && (
                 <span className="mt-0.5 flex items-center gap-1.5 text-sm text-attention">
