@@ -1,4 +1,4 @@
-"""Two background threads that run queued jobs in order: one for photo bakes, one for the rest.
+"""Background threads that run queued jobs in order, one per lane (`LOOP_NAMES`).
 
 Run one API process per database. Before it touches the queue the worker takes
 an exclusive lock on a file beside the database; a second process finds the
@@ -93,10 +93,20 @@ PROBLEM_STATES = ("stopped", "stalled", "overdue")
 """Loop states that mean jobs are not getting done, worst first."""
 STANDBY_RETRY_SECONDS = 5.0
 """How often a process that found the queue taken tries the lock again."""
-LOOP_NAMES: dict[bool | str, str] = {False: "jobs", True: "textures", REARRANGE: "rearrange", FURNITURE: "furniture"}
+LOOP_NAMES: dict[bool | str, str] = {
+    False: "jobs",
+    True: "textures",
+    REARRANGE: "rearrange",
+    FURNITURE: "furniture",
+    SIMULATE: "simulate",
+}
 """Each worker loop by its lane: False takes every job but the laned kinds, True takes texture bakes,
-REARRANGE takes layout suggestions, whose provider calls can wait on a cold deployment, and FURNITURE
-takes furniture refinement, whose model trials run long after a scan's render is ready."""
+REARRANGE takes layout suggestions, whose provider calls can wait on a cold deployment, FURNITURE
+takes furniture refinement, whose model trials run long after a scan's render is ready, and SIMULATE
+takes simulations, which may run for hours and would otherwise hold every new scan's measuring
+behind them. A simulation works on the graph saved on its own row and writes only that row, so it
+is safe beside a check of the same scan. Display stays on the jobs lane: it saves the assessment it
+read, so beside a re-check of the same revision it could put back the findings the re-check replaced."""
 MAX_CLAIMS_BEFORE_START = 3
 """How many times a job may be claimed and put back because of an error before it ran."""
 SETTLE_PATIENCE_SECONDS = 60.0

@@ -585,20 +585,6 @@ final class UploadViewModelTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }
-
-    private func waitUntil(
-        timeout: TimeInterval = 2,
-        _ condition: @escaping () -> Bool
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition() {
-            if Date() >= deadline {
-                XCTFail("Timed out waiting for upload state")
-                return
-            }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-    }
 }
 
 private struct StubResponse {
