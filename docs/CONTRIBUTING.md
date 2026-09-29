@@ -206,7 +206,7 @@ The scans and every uploaded artifact live in `/data`. Mount it, or a restart lo
 
 `/health` answers without a session, so a load balancer can ask. It reads from the database, because a process that is listening but cannot read its own scans is not healthy in any way that matters.
 
-The image installs a pinned Blender (see the `Dockerfile`), which bakes the painted scan and renders the picture beside each finding. `/present` and `/brush` are not part of the product, so they answer 404 unless `SP_SHOW_DEMO_ROUTES=1` asks for them.
+The image installs a pinned Blender (see the `Dockerfile`), which bakes the painted scan and renders the picture beside each finding. The pitch deck at `/present` is public. The drafting sandbox at `/brush` is not part of the product, so it answers 404 unless `SP_SHOW_DEMO_ROUTES=1` asks for it.
 
 ## What already works
 
