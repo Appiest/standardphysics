@@ -45,18 +45,23 @@ logger = logging.getLogger(__name__)
 
 API_KEY_ENV = "OPENROUTER_API_KEY"
 MODEL_ENV = "LABEL_MODEL"
-"""Labelling has its own model setting rather than OPENROUTER_MODEL, which other calls share. On a real Share
-Tea scan, DeepSeek v4.1 Flash on Fireworks matched Opus on the counters that mattered: both 35.7 in RoomPlan
-boxes came back not movable and both 44 in bar-counter tables came back "Table" and not movable, for $0.04
-against Opus's $0.73. It did not tell bar stools from chairs, calling both "Chair"; movability still came back
-right. An unusable answer falls back to local labels rather than a second model: Kimi K3 ran to the
-wall-clock deadline on the same scan before finishing every batch, at five times DeepSeek's cost. Set
-LABEL_MODEL to use another model, including anthropic/claude-opus-5.5 through OPENROUTER_API_KEY and
-OPENROUTER_BASE_URL. gpt-6-astra is retired: 2.5 times Opus's price would push a scan past the $1.50 it is
-allowed."""
+"""Labelling has its own model setting rather than OPENROUTER_MODEL, which other calls share.
+
+Default: Gemini 3.8 Flash through OpenRouter. Open weights on Fireworks were tried first, as the provider policy
+prefers for volume work, and fell short on what the checks read. In a production test on four held-out rooms,
+scored against an answer key built from Claude Fable 5.1, GPT-6 Astra, Gemini and adjudication, Gemini made 88 of
+90 built-in calls right (the fine-tuned Qwen3.8-27B on Fireworks 81, production Opus 86) and named 84 of 93
+objects right (Qwen 85, Opus 91), for about $0.12 a room against Opus's $1.09. Built-in calls decide whether the
+solver may move a piece, so they weigh most. DeepSeek v4.1 Flash on Fireworks repeated the phone's category on
+every object. An unusable answer falls back to local labels rather than a second model.
+
+LABEL_STATE switches to the fine-tuned Qwen instead (tuned_labeller). A model named accounts/fireworks/... goes to
+Fireworks; anything else goes to OpenRouter. OPENROUTER_BASE_URL still overrides the host. gpt-6-astra is retired:
+2.5 times Opus's price would push a scan past the $1.50 it is allowed."""
 BASE_URL_ENV = "OPENROUTER_BASE_URL"
-DEFAULT_BASE_URL = "https://api.fireworks.ai/inference/v1"
-DEFAULT_MODEL = "accounts/fireworks/models/deepseek-v4p1-flash"
+FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_MODEL = "google/gemini-3.8-flash"
 
 FIREWORKS_HOST = "api.fireworks.ai"
 OPENROUTER_HOST = "openrouter.ai"
@@ -78,7 +83,10 @@ def provider_routing(model: str) -> dict:
 
 
 def _base_url() -> str:
-    return (os.environ.get(BASE_URL_ENV) or DEFAULT_BASE_URL).rstrip("/")
+    override = os.environ.get(BASE_URL_ENV)
+    if override:
+        return override.rstrip("/")
+    return FIREWORKS_BASE_URL if _label_model().startswith("accounts/fireworks/") else OPENROUTER_BASE_URL
 
 
 def _host(url: str) -> str:

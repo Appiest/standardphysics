@@ -212,20 +212,31 @@ def test_context_tells_astra_when_photo_evidence_is_available(tmp_path):
     assert json.loads(without_photos)["images_provided"] is False
 
 
-def test_label_request_defaults_to_fireworks_with_reasoning_off_and_no_openrouter_fields():
+def test_label_requests_default_to_gemini_flash_on_openrouter():
+    graph = parse_room_json({"objects": [element("chair")]})
+
+    body = _chat_body(graph)
+
+    assert astra.DEFAULT_MODEL == "google/gemini-3.8-flash"
+    assert astra._chat_url() == "https://openrouter.ai/api/v1/chat/completions"
+    assert astra._api_key_env() == "OPENROUTER_API_KEY"
+    assert body["model"] == astra.DEFAULT_MODEL
+    assert body["provider"] == astra.provider_routing(astra.DEFAULT_MODEL)
+    assert body["reasoning"] == {"effort": "low"}
+    assert body["max_tokens"] == MAX_OUTPUT_TOKENS
+    assert MAX_OUTPUT_TOKENS == 8_192
+
+
+def test_a_fireworks_label_model_goes_to_fireworks_with_reasoning_off(monkeypatch):
+    monkeypatch.setenv("LABEL_MODEL", "accounts/fireworks/models/deepseek-v4p1-flash")
     graph = parse_room_json({"objects": [element("chair")]})
 
     body = _chat_body(graph)
 
     assert astra._chat_url() == "https://api.fireworks.ai/inference/v1/chat/completions"
     assert astra._api_key_env() == "FIREWORKS_API_KEY"
-    assert body["model"] == astra.DEFAULT_MODEL
     assert body["reasoning_effort"] == "none"
-    assert "reasoning" not in body
-    assert "provider" not in body
-    assert "usage" not in body
-    assert body["max_tokens"] == MAX_OUTPUT_TOKENS
-    assert MAX_OUTPUT_TOKENS == 8_192
+    assert "provider" not in body and "usage" not in body
 
 
 def test_an_explicit_openrouter_base_url_keeps_openrouters_own_fields(monkeypatch):
