@@ -611,3 +611,19 @@ def test_the_labelling_model_cannot_decide_how_well_a_box_was_measured():
 
     assert rebuilt.source == "astra"
     assert rebuilt.graph.by_id(counter.id).quality == "measured"
+
+
+def test_requests_are_pinned_to_the_openrouter_providers_of_the_model_maker():
+    assert astra.provider_routing("google/gemini-3.8-flash")["order"] == ["google-vertex", "google-ai-studio"]
+    assert astra.provider_routing("qwen/qwen3-vl-32b-instruct")["order"] == ["alibaba"]
+    assert astra.provider_routing("anthropic/claude-opus-5.5")["order"] == ["anthropic"]
+    assert astra.provider_routing("google/gemini-3.8-flash")["allow_fallbacks"] is False
+
+
+def test_gemini_gets_the_schema_without_numeric_and_length_limits_which_google_rejects():
+    graph = parse_room_json(shop_payload())
+    gemini = _chat_body(graph, model="google/gemini-3.8-flash")["response_format"]["json_schema"]["schema"]
+    opus = _chat_body(graph, model="anthropic/claude-opus-5.5")["response_format"]["json_schema"]["schema"]
+    limits = ("minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems")
+    assert not any(f'"{word}"' in json.dumps(gemini) for word in limits)
+    assert any(f'"{word}"' in json.dumps(opus) for word in limits)

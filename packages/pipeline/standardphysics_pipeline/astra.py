@@ -66,9 +66,15 @@ REASONING_OFF_BY_HOST: dict[str, dict[str, Any]] = {FIREWORKS_HOST: {"reasoning_
 """Mirrors discovery/detect.py's host table: hosts that accept turning reasoning off, and how each spells it."""
 
 
+MAKER_PROVIDERS = {"google": ["google-vertex", "google-ai-studio"], "qwen": ["alibaba"]}
+"""OpenRouter names some makers' own endpoints differently from the maker prefix in the model id. Pinning to the
+bare prefix matched no endpoint for Gemini and Qwen, so every request 404ed and labelling fell back to the phone."""
+
+
 def provider_routing(model: str) -> dict:
     """Pin the request to the provider that makes the model, and retain nothing."""
-    return {"order": [model.split("/")[0]], "allow_fallbacks": False, "data_collection": "deny"}
+    maker = model.split("/")[0]
+    return {"order": MAKER_PROVIDERS.get(maker, [maker]), "allow_fallbacks": False, "data_collection": "deny"}
 
 
 def _base_url() -> str:
@@ -524,6 +530,24 @@ def _chat_headers(api_key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
+SCHEMA_LIMITS = frozenset({"minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems"})
+MAKERS_WITHOUT_SCHEMA_LIMITS = frozenset({"google"})
+"""Google rejects a response schema carrying numeric or length limits (HTTP 400, invalid argument). The limits are
+dropped for those makers only; every answer is re-checked against them in _patch_from_item regardless."""
+
+
+def _without_limits(node: Any) -> Any:
+    if isinstance(node, dict):
+        return {key: _without_limits(value) for key, value in node.items() if key not in SCHEMA_LIMITS}
+    if isinstance(node, list):
+        return [_without_limits(value) for value in node]
+    return node
+
+
+def _schema_for(model: str) -> dict[str, Any]:
+    return _without_limits(LABEL_SCHEMA) if model.split("/")[0] in MAKERS_WITHOUT_SCHEMA_LIMITS else LABEL_SCHEMA
+
+
 def _chat_body(
     graph: SceneGraph,
     *,
@@ -550,7 +574,8 @@ def _chat_body(
         "model": chosen_model,
         "max_tokens": MAX_OUTPUT_TOKENS,
         "messages": [{"role": "system", "content": INSTRUCTION}, {"role": "user", "content": content}],
-        "response_format": {"type": "json_schema", "json_schema": {"name": "astra_labels", "strict": True, "schema": LABEL_SCHEMA}},
+        "response_format": {"type": "json_schema", "json_schema": {"name": "astra_labels", "strict": True,
+                                                                   "schema": _schema_for(chosen_model)}},
     }
     body.update(_request_options(chosen_model, _host(_base_url())))
     return body

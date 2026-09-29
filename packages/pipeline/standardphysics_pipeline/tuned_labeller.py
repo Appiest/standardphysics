@@ -40,7 +40,11 @@ RETRY_STATUSES = {408, 429, 500, 502, 503, 504}
 IMAGE_TOKEN = "<|vision_start|><|image_pad|><|vision_end|>"
 
 
-class SessionGone(RuntimeError):
+class PoolError(ValueError):
+    """The pool answered in a way the labeller cannot use. A ValueError, so astra falls back to the phone's labels."""
+
+
+class SessionGone(PoolError):
     """The pool no longer holds the session behind the sampling checkpoint."""
 
 
@@ -141,26 +145,37 @@ class Session:
         with self.lock:
             self.sampling_model = ""
 
-    def _job(self, path: str, payload: dict, deadline: float) -> dict:
+    def _job(self, path: str, payload: dict, deadline: float, wanted: str) -> Any:
+        """Start a pool job and poll it until its result carries `wanted`; under load it can answer before then."""
         started = _post_retrying(path, payload, self.api_key, deadline)
-        result = _post_retrying("/api/v1/retrieve_future", {"request_id": started["request_id"],
-                                                            "allow_metadata_only": True}, self.api_key, deadline)
-        if "error" in result:
-            raise RuntimeError(f"{path} failed: {str(result['error'])[:200]}")
-        return result
+        if "request_id" not in started:
+            raise PoolError(f"{path} returned no job: {str(started)[:200]}")
+        while True:
+            result = _post_retrying("/api/v1/retrieve_future", {"request_id": started["request_id"],
+                                                                "allow_metadata_only": True}, self.api_key, deadline)
+            if "error" in result:
+                raise PoolError(f"{path} failed: {str(result['error'])[:200]}")
+            if result.get(wanted):
+                return result[wanted]
+            if time.monotonic() >= deadline:
+                raise PoolError(f"{path} never returned {wanted}")
+            time.sleep(1.0)
 
     def _open(self) -> None:
         deadline = time.monotonic() + SETUP_TIMEOUT_SECONDS
-        self.session_id = _post_retrying("/api/v1/create_session", {"tags": [], "user_metadata": {},
-                                         "type": "create_session"}, self.api_key, deadline)["session_id"]
+        opened = _post_retrying("/api/v1/create_session", {"tags": [], "user_metadata": {},
+                                "type": "create_session"}, self.api_key, deadline)
+        if not opened.get("session_id"):
+            raise PoolError(f"create_session returned no session: {str(opened)[:200]}")
+        self.session_id = opened["session_id"]
         model_id = self._job("/api/v1/create_model", {"session_id": self.session_id, "model_seq_id": 0,
                              "base_model": BASE_MODEL, "lora_config": LORA_CONFIG, "type": "create_model"},
-                             deadline)["model_id"]
+                             deadline, "model_id")
         self._job("/api/v1/load_weights", {"model_id": model_id, "path": self.state, "optimizer": False,
-                  "seq_id": 1, "type": "load_weights"}, deadline)
+                  "seq_id": 1, "type": "load_weights"}, deadline, "path")
         exported = self._job("/api/v1/save_weights_for_sampler", {"model_id": model_id, "path": "labeller",
                              "seq_id": 2, "type": "save_weights_for_sampler", "checkpoint_type": "base"},
-                             deadline)["path"]
+                             deadline, "path")
         account = exported.split("/", 1)[0]
         self.sampling_model = f"accounts/{account}/trainingSessions/{self.session_id}/checkpoints/{exported}"
         self.beat_at = time.monotonic()

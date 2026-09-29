@@ -163,3 +163,36 @@ def test_the_labeller_hands_its_requests_to_the_tuned_transport(monkeypatch):
     monkeypatch.setattr(astra, "object_mesh_profiles", lambda graph, path: {})
     astra._remote_patches(graph, None)
     assert seen == [(f"tuned:{STATE}", tuned.transport)]
+
+
+def test_a_job_answered_before_it_has_its_result_is_polled_until_it_does(pool):
+    pending = {"left": 1}
+    original = RESPONSES["/api/v1/retrieve_future"]
+
+    def slow(payload):
+        if payload["request_id"] == "fut-save" and pending["left"]:
+            pending["left"] -= 1
+            return {"type": "save_weights_for_sampler"}
+        return original(payload)
+
+    RESPONSES["/api/v1/retrieve_future"] = slow
+    try:
+        tuned.transport("ignored", chat_body(photo(64, 48)), {})
+    finally:
+        RESPONSES["/api/v1/retrieve_future"] = original
+    assert [path for path, _ in pool.calls].count("/api/v1/retrieve_future") == 4
+
+
+def test_a_pool_that_cannot_open_a_session_leaves_the_phone_labels_instead_of_crashing(monkeypatch):
+    from standardphysics_pipeline.ingest import parse_room_json
+    from test_astra import shop_payload
+
+    monkeypatch.setenv(tuned.STATE_ENV, STATE)
+    monkeypatch.setenv(tuned.KEY_ENV, "key")
+    monkeypatch.setattr(tuned, "_session", None)
+
+    def refuse(*args, **kwargs):
+        raise tuned.PoolError("pool answered without a checkpoint path")
+
+    monkeypatch.setattr(tuned.Session, "model", refuse)
+    assert astra.reconstruct_result(parse_room_json(shop_payload())).source == "roomplan"
