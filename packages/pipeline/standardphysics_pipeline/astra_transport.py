@@ -33,9 +33,19 @@ REASONING_OFF_BY_HOST: dict[str, dict[str, Any]] = {FIREWORKS_HOST: {"reasoning_
 """Mirrors discovery/detect.py's host table: hosts that accept turning reasoning off, and how each spells it."""
 
 
+MAKER_PROVIDERS = {"google": ["google-vertex", "google-ai-studio"], "qwen": ["alibaba"]}
+"""OpenRouter names some makers' own endpoints differently from the maker prefix in the model id. Pinning to the
+bare prefix matched no endpoint for Gemini and Qwen, so every request answered 404."""
+
+
 def provider_routing(model: str) -> dict:
-    """Pin the request to the provider that makes the model, and retain nothing."""
-    return {"order": [model.split("/")[0]], "allow_fallbacks": False, "data_collection": "deny"}
+    """Pin the request to the provider that makes the model, and retain nothing.
+
+    `data_collection: deny` is the per-request half of zero data retention; the
+    account setting is the other half and a person sets that one.
+    """
+    maker = model.split("/")[0]
+    return {"order": MAKER_PROVIDERS.get(maker, [maker]), "allow_fallbacks": False, "data_collection": "deny"}
 
 
 def base_url() -> str:
