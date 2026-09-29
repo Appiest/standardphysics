@@ -1,9 +1,13 @@
-"""Process, assess, display and simulate jobs run in a process of their own, killed at their kind's deadline."""
+"""Every job but a photo bake runs in a process of its own, killed at its kind's deadline."""
 
 from __future__ import annotations
 
+import math
 import os
 import pathlib
+import signal
+import threading
+import uuid
 
 import child_stages
 import hanging_child
@@ -11,8 +15,22 @@ import pytest
 from test_job_lifecycle import _complete_geometry, _complete_semantics
 
 from conftest import create_scan, drain
+from standardphysics_api import repository as repo
+from standardphysics_api import worker as worker_module
 from standardphysics_api.settings import Settings
-from standardphysics_api.worker import ChildFailed, in_own_process
+from standardphysics_api.worker import (
+    ASSESS,
+    DISPLAY,
+    FURNITURE,
+    PROCESS,
+    REARRANGE,
+    SIMULATE,
+    TEXTURE,
+    ChildFailed,
+    in_own_process,
+)
+
+EVERY_JOB_KIND = (PROCESS, ASSESS, DISPLAY, SIMULATE, TEXTURE, REARRANGE, FURNITURE)
 
 
 def _seeded_shop(client) -> str:
@@ -28,6 +46,19 @@ def _job(client, scan_id: str, kind: str):
 
 def _findings(client, scan_id: str) -> list[dict]:
     return client.get(f"/api/scans/{scan_id}/assessment").json()["findings"]
+
+
+def _finishes_within(worker, kind: str, seconds: float) -> bool:
+    """Run one job of this kind on a thread of its own, and say whether it ended within `seconds`."""
+    thread = threading.Thread(target=worker.run_once, kwargs={"kind": kind}, daemon=True)
+    thread.start()
+    thread.join(seconds)
+    return not thread.is_alive()
+
+
+def _kill_if_left(pid_file: pathlib.Path) -> None:
+    if pid_file.is_file() and not _gone(int(pid_file.read_text())):
+        os.kill(int(pid_file.read_text()), signal.SIGKILL)
 
 
 def _gone(pid: int) -> bool:
@@ -72,6 +103,42 @@ def test_a_stage_that_hangs_is_killed_at_its_deadline_and_the_next_job_still_run
     assert _gone(int(pid_file.read_text()))
     assert display["state"] == "done", display["error"]
     assert any(finding["locus"] and finding["locus"]["render_url"] for finding in findings)
+
+
+@pytest.mark.parametrize(
+    ("kind", "deadline_setting"),
+    [(FURNITURE, "furniture_timeout_seconds"), (REARRANGE, "rearrange_timeout_seconds")],
+)
+def test_a_hung_furniture_or_rearrange_job_is_killed_at_its_deadline(
+    jobs_client, monkeypatch, tmp_path, kind, deadline_setting
+):
+    monkeypatch.setattr(worker_module, "run_job", hanging_child.hang_like_a_job)
+    pid_file = tmp_path / "var" / hanging_child.HUNG_JOB_PID
+    try:
+        with jobs_client(seed=True, **{deadline_setting: 5.0}) as client:
+            scan_id = _seeded_shop(client)
+            with client.app.state.database.transaction() as connection:
+                repo.enqueue_job(connection, uuid.UUID(scan_id), kind, 1)
+            finished = _finishes_within(client.app.state.worker, kind, 60)
+            job = _job(client, scan_id, kind)
+    finally:
+        _kill_if_left(pid_file)
+    assert finished
+    assert job["state"] == "failed"
+    assert job["error"] == f"The {kind} job did not finish within 5 seconds and was stopped"
+
+
+@pytest.mark.parametrize("kind", EVERY_JOB_KIND)
+def test_every_job_kind_the_worker_runs_has_a_finite_deadline(kind):
+    assert math.isfinite(Settings().job_deadline_seconds(kind))
+
+
+def test_the_worker_runs_no_kind_without_a_deadline(client):
+    assert set(client.app.state.worker.handlers()) == set(EVERY_JOB_KIND)
+
+
+def test_an_unknown_kind_still_gets_a_finite_deadline():
+    assert math.isfinite(Settings().job_deadline_seconds("a kind added without a deadline"))
 
 
 def test_a_process_job_in_its_own_process_saves_its_revision_and_checks_it(jobs_client):

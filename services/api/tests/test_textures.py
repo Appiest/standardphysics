@@ -1,6 +1,8 @@
 import hashlib
 import json
+import pathlib
 import shutil
+import sys
 
 from standardphysics_contracts import Mat4, NodeTextureCoverage, SceneGraph, TextureBuild, TextureCoverage
 from standardphysics_fixtures import build_graph
@@ -16,6 +18,13 @@ def _bake(inputs):
     shutil.copyfile(FIXTURE_DATA / 'shop.glb', output)
     coverage = TextureCoverage(textured_fraction=0.5, nodes=[NodeTextureCoverage(node_id=n.id, textured_fraction=0.5) for n in inputs.bake_graph.nodes], needs_another_view=[])
     return BakeResult(output, [], coverage, 1, 0.1)
+
+
+def furniture_settings(tmp_path):
+    """Settings naming a SPAR3D runtime that exists, so furniture jobs are queued. Tests stand in for the script."""
+    source = tmp_path / 'spar3d-source'
+    source.mkdir(exist_ok=True)
+    return {'furniture_python': pathlib.Path(sys.executable), 'furniture_source': source}
 
 
 def _room(client):
@@ -215,7 +224,12 @@ def test_completed_library_floor_and_furniture_report_are_visible_without_upload
     assert furniture['report']['accepted'] == 0
 
 
-def test_furniture_runs_after_a_photo_build_and_publishes_only_accepted_mesh(client, monkeypatch):
+def test_furniture_runs_after_a_photo_build_and_publishes_only_accepted_mesh(make_client, monkeypatch, tmp_path):
+    with make_client(**furniture_settings(tmp_path)) as client:
+        _furniture_runs_and_publishes_only_accepted_mesh(client, monkeypatch)
+
+
+def _furniture_runs_and_publishes_only_accepted_mesh(client, monkeypatch):
     from standardphysics_api import furniture
     from standardphysics_api.textures import build_dir, finish_build, record_build, staged_build_dir
 
@@ -231,7 +245,7 @@ def test_furniture_runs_after_a_photo_build_and_publishes_only_accepted_mesh(cli
     chosen = str(furniture.candidate_nodes(graph)[0])
     calls = []
 
-    def fake_candidates(scan_id, node_ids, directory):
+    def fake_candidates(scan_id, node_ids, directory, runtime):
         calls.extend(str(node_id) for node_id in node_ids)
         reports = [{'node_id': str(node_id), 'status': 'skipped'} for node_id in node_ids]
         reports[0] = (
@@ -265,7 +279,7 @@ def test_furniture_runs_after_a_photo_build_and_publishes_only_accepted_mesh(cli
     assert len(calls) == 2 * len(furniture.candidate_nodes(graph))
 
 
-def test_finished_upload_automatically_queues_furniture_after_scan_paint(make_client, monkeypatch):
+def test_finished_upload_automatically_queues_furniture_after_scan_paint(make_client, monkeypatch, tmp_path):
     from standardphysics_api import furniture, textures
 
     monkeypatch.setattr(
@@ -274,7 +288,7 @@ def test_finished_upload_automatically_queues_furniture_after_scan_paint(make_cl
     )
     calls = []
 
-    def candidates(scan_id, node_ids, directory):
+    def candidates(scan_id, node_ids, directory, runtime):
         calls.extend(str(node_id) for node_id in node_ids)
         return [
             {'node_id': str(node_id), 'status': 'failed' if len(calls) == len(node_ids) and index == 0 else 'skipped'}
@@ -282,7 +296,7 @@ def test_finished_upload_automatically_queues_furniture_after_scan_paint(make_cl
         ]
 
     monkeypatch.setattr(furniture, '_run_candidates', candidates)
-    with make_client(stages=no_blender_stages(bake_textures=_bake)) as client:
+    with make_client(stages=no_blender_stages(bake_textures=_bake), **furniture_settings(tmp_path)) as client:
         scan_id, _ = _room(client)
         lidar = json.dumps({'parts': [{
             'id': '00000000-0000-0000-0000-000000000001',

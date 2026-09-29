@@ -53,3 +53,13 @@ def trace_through_a_stalled_flush(project: str) -> str:
     with tracing.tracing_for_this_process(project):
         pass
     return "finished"
+
+
+HUNG_JOB_PID = "hung-job.pid"
+
+
+def hang_like_a_job(settings, stages_for, job) -> None:
+    """Stand in for `worker.run_job`: write this child's pid beside the database and never return."""
+    with open(os.path.join(settings.data_dir, HUNG_JOB_PID), "w") as handle:
+        handle.write(str(os.getpid()))
+    time.sleep(3600)

@@ -112,6 +112,14 @@ with no pictures in them. `doctor.sh` asks the container for its version.
 It adds about 366 MB to the image, and blender.org publishes no arm64 Linux
 build of this version, which is what keeps the Droplet on x86_64.
 
+## Furniture refinement
+
+Swapping photographed furniture for SPAR3D reconstructions needs a SPAR3D
+virtualenv and source checkout that the image doesn't carry, so it is off
+unless `SP_FURNITURE_PYTHON` and `SP_FURNITURE_SOURCE` name both. While it is
+off no furniture job is queued, the workspace shows the painted scan as it is,
+and `furniture_refinement` in `/health/details` says which setting is missing.
+
 ## When it will not start
 
 ```bash

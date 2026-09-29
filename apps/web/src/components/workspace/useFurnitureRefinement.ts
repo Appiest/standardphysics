@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { TextureStatus } from "@/types/contracts";
-import type { FurnitureRefinement } from "./ViewerDock";
+import { furnitureProgress, type FurnitureRefinement } from "@/lib/furniture-refinement";
 
 type Snapshot = { buildId: string; status: FurnitureRefinement };
 
@@ -12,7 +12,7 @@ async function fetchFurniture(scanId: string, revision: number): Promise<Furnitu
 }
 
 function needsAnotherPoll(state: FurnitureRefinement["state"]): boolean {
-  return state === "queued" || state === "running" || state === "not_started";
+  return furnitureProgress(state) === "working";
 }
 
 export function useFurnitureRefinement(

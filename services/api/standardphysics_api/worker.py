@@ -57,7 +57,7 @@ from . import evidence, guest_sweep
 from . import repository as repo
 from .db import Database
 from .errors import ApiProblem
-from .furniture import FURNITURE, queue_furniture, run_furniture
+from .furniture import FURNITURE, furniture_runtime, queue_furniture, run_furniture
 from .notifications import LoggedNotifier, Notifier, Push, notifier_from
 from .rearrangement import (
     INTERRUPTED,
@@ -647,10 +647,10 @@ class Worker:
             return self._in_child(job)
         return self.run_stage(job)
 
-    def run_stage(self, job) -> bool:
-        """Run the job's stage here and say whether a follow-up process job may be due."""
-        scan_id, revision = uuid.UUID(job["scan_id"]), job["revision"]
-        handler: Callable[..., bool] = {
+    def handlers(self) -> dict[str, Callable[..., bool]]:
+        """Each job kind this worker runs, with the stage that runs it. Every kind needs a deadline
+        in `Settings.job_deadline_seconds`."""
+        return {
             PROCESS: self._process,
             ASSESS: self._assess,
             DISPLAY: self._display,
@@ -658,7 +658,12 @@ class Worker:
             TEXTURE: self._texture,
             REARRANGE: self._rearrange,
             FURNITURE: self._furniture,
-        }[job["kind"]]
+        }
+
+    def run_stage(self, job) -> bool:
+        """Run the job's stage here and say whether a follow-up process job may be due."""
+        scan_id, revision = uuid.UUID(job["scan_id"]), job["revision"]
+        handler = self.handlers()[job["kind"]]
         if job["kind"] in (TEXTURE, FURNITURE):
             return handler(scan_id=scan_id, build_id=revision, job=job)
         return handler(scan_id=scan_id, revision=revision, job=job)
@@ -704,7 +709,7 @@ class Worker:
         return False
 
     def _furniture(self, scan_id, build_id, job=None) -> bool:
-        run_furniture(self.database, self.store, scan_id, build_id)
+        run_furniture(self.database, self.store, scan_id, build_id, furniture_runtime(self.settings))
         return False
 
     def _simulate(self, scan_id: uuid.UUID, revision: int, job=None) -> bool:
@@ -1084,7 +1089,7 @@ def bake_photos(settings: Settings, scan_id: uuid.UUID, build_id: int) -> None:
 
 
 def run_job(settings: Settings, stages_for: Callable[[Settings], Stages], job: dict) -> bool:
-    """One process, assess, display or simulate job, run in a process the worker can kill at its deadline.
+    """One job other than a photo bake, run in a process the worker can kill at its deadline.
 
     The child opens its own database connections and store from the settings
     and runs the same stage the worker thread would, on a worker that never
