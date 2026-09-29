@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from PIL import Image
 from standardphysics_pipeline.discovery.carve import fit_box
-from standardphysics_pipeline.discovery.detect import DetectionSchemaError
+from standardphysics_pipeline.discovery.detection_errors import DetectionSchemaError
 from standardphysics_pipeline.discovery.merge import DiscoveredObject
 from standardphysics_pipeline.discovery.second_look import Photos, _sharpness, second_look, undecided
 from standardphysics_pipeline.textures.camera import PhotoCamera

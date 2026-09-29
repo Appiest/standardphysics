@@ -25,7 +25,10 @@ python -m standardphysics_pipeline.check_blender
 | `check_blender.py` | Proves this machine can import USDZ |
 | `coords.py` | RoomPlan's Y-up meters to our Z-up meters, once, on ingest |
 | `ingest.py` | `room.json` to `SceneGraph` |
-| `astra.py` | OpenRouter label/clean, or local shop heuristics |
+| `astra.py` | Entry point: labels a graph through a hosted model, or falls back to local shop heuristics |
+| `astra_patches.py` | What a label patch may change, and the local heuristics |
+| `astra_prompt.py`, `astra_transport.py`, `astra_response.py` | The request, where it is sent, and how the reply is checked |
+| `astra_frames.py`, `astra_photo_evidence.py` | Which frames and object crops go with the request |
 | `occupancy.py` | Floor rasterization and the distance transform |
 | `routes.py` | Widest path, bottleneck width, and the pinch point |
 | `measure.py` | The `MeasurementProvider` Lane C calls |

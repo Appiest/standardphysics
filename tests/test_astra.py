@@ -9,19 +9,14 @@ import uuid
 import numpy as np
 import pytest
 import standardphysics_pipeline.astra as astra
+import standardphysics_pipeline.astra_photo_evidence as photo_evidence
+import standardphysics_pipeline.astra_transport as endpoint
 from PIL import Image
-from standardphysics_pipeline.astra import (
-    MAX_IMAGE_BYTES,
-    MAX_OUTPUT_TOKENS,
-    LabelPatch,
-    _chat_body,
-    _PoseEvidence,
-    _project_score,
-    apply_patches,
-    reconstruct,
-    reconstruct_result,
-    select_keyframes,
-)
+from standardphysics_pipeline.astra import reconstruct, reconstruct_result
+from standardphysics_pipeline.astra_frames import PoseEvidence, project_score, select_keyframes
+from standardphysics_pipeline.astra_patches import LabelPatch, apply_patches
+from standardphysics_pipeline.astra_photo_evidence import MAX_IMAGE_BYTES
+from standardphysics_pipeline.astra_prompt import MAX_OUTPUT_TOKENS, chat_body
 from standardphysics_pipeline.ingest import parse_room_json
 
 
@@ -205,8 +200,8 @@ def test_context_tells_astra_when_photo_evidence_is_available(tmp_path):
     frame = tmp_path / "frame-0000"
     Image.new("RGB", (100, 80), "red").save(frame, format="JPEG")
 
-    with_photos = _chat_body(graph, frame_paths=[frame])["messages"][1]["content"]
-    without_photos = _chat_body(graph)["messages"][1]["content"]
+    with_photos = chat_body(graph, frame_paths=[frame])["messages"][1]["content"]
+    without_photos = chat_body(graph)["messages"][1]["content"]
 
     assert json.loads(with_photos[0]["text"])["images_provided"] is True
     assert json.loads(without_photos)["images_provided"] is False
@@ -215,11 +210,11 @@ def test_context_tells_astra_when_photo_evidence_is_available(tmp_path):
 def test_label_request_defaults_to_fireworks_with_reasoning_off_and_no_openrouter_fields():
     graph = parse_room_json({"objects": [element("chair")]})
 
-    body = _chat_body(graph)
+    body = chat_body(graph)
 
-    assert astra._chat_url() == "https://api.fireworks.ai/inference/v1/chat/completions"
-    assert astra._api_key_env() == "FIREWORKS_API_KEY"
-    assert body["model"] == astra.DEFAULT_MODEL
+    assert endpoint.chat_url() == "https://api.fireworks.ai/inference/v1/chat/completions"
+    assert endpoint.api_key_env() == "FIREWORKS_API_KEY"
+    assert body["model"] == endpoint.DEFAULT_MODEL
     assert body["reasoning_effort"] == "none"
     assert "reasoning" not in body
     assert "provider" not in body
@@ -232,11 +227,11 @@ def test_an_explicit_openrouter_base_url_keeps_openrouters_own_fields(monkeypatc
     monkeypatch.setenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 
     graph = parse_room_json({"objects": [element("chair")]})
-    body = _chat_body(graph, model="anthropic/claude-opus-5.5")
+    body = chat_body(graph, model="anthropic/claude-opus-5.5")
 
-    assert astra._api_key_env() == "OPENROUTER_API_KEY"
+    assert endpoint.api_key_env() == "OPENROUTER_API_KEY"
     assert body["reasoning"] == {"effort": "low"}
-    assert body["provider"] == astra.provider_routing("anthropic/claude-opus-5.5")
+    assert body["provider"] == endpoint.provider_routing("anthropic/claude-opus-5.5")
     assert body["usage"] == {"include": True}
     assert "reasoning_effort" not in body
 
@@ -253,7 +248,7 @@ def test_an_unusable_answer_costs_one_model_call_and_falls_back_to_local_labels(
 
     batch_count = len(range(0, len(graph.contents()), astra.RECONSTRUCTION_BATCH_SIZE))
     assert batch_count > 1
-    assert set(attempted_models) == {astra.DEFAULT_MODEL}
+    assert set(attempted_models) == {endpoint.DEFAULT_MODEL}
     # The first invalid batch cancels batches no worker has started yet, so fewer calls than batches is correct.
     assert 1 <= len(attempted_models) <= batch_count
     assert result.source == "roomplan"
@@ -282,9 +277,9 @@ def test_response_reader_stops_after_a_slow_heartbeat(monkeypatch):
             clock[0] += 0.75
             return b"heartbeat"
 
-    monkeypatch.setattr(astra.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(endpoint.time, "monotonic", lambda: clock[0])
     with pytest.raises(TimeoutError, match="response_deadline"):
-        astra._read_response(HeartbeatResponse(), deadline=1.0)
+        endpoint.read_response(HeartbeatResponse(), deadline=1.0)
 
 
 def test_response_reader_rejects_a_body_over_the_cap(monkeypatch):
@@ -292,9 +287,9 @@ def test_response_reader_rejects_a_body_over_the_cap(monkeypatch):
         def read1(self, size):
             return b"x" * size
 
-    monkeypatch.setattr(astra, "MAX_RESPONSE_BYTES", 4)
+    monkeypatch.setattr(endpoint, "MAX_RESPONSE_BYTES", 4)
     with pytest.raises(ValueError, match="response_too_large"):
-        astra._read_response(OversizedResponse(), deadline=float("inf"))
+        endpoint.read_response(OversizedResponse(), deadline=float("inf"))
 
 
 def test_poses_project_in_the_ar_camera_forward_direction():
@@ -304,14 +299,14 @@ def test_poses_project_in_the_ar_camera_forward_direction():
             element("table", at=(0.0, 0.0, 2.0)),
         ],
     })
-    pose = _PoseEvidence(
+    pose = PoseEvidence(
         frame_key="frame-0", orientation="portrait",
         transform=tuple(column_major(0.0, 0.0, 0.0)),
         intrinsics=(100, 0, 50, 0, 100, 50, 50, 50, 1), order=0,
     )
 
-    assert _project_score(graph.nodes[0], pose)[1]
-    assert not _project_score(graph.nodes[1], pose)[1]
+    assert project_score(graph.nodes[0], pose)[1]
+    assert not project_score(graph.nodes[1], pose)[1]
 
 
 def test_frame_evidence_is_projected_bounded_normalized_and_embedded(tmp_path):
@@ -333,7 +328,7 @@ def test_frame_evidence_is_projected_bounded_normalized_and_embedded(tmp_path):
     poses_path.write_text(json.dumps(poses))
 
     selected = select_keyframes(graph, frame_paths, poses_path)
-    body = _chat_body(graph, frame_paths=frame_paths, poses_path=poses_path)
+    body = chat_body(graph, frame_paths=frame_paths, poses_path=poses_path)
     content = body["messages"][1]["content"]
 
     assert len(selected) <= 6
@@ -353,7 +348,7 @@ def test_invalid_frame_bytes_are_skipped_without_breaking_label_request(tmp_path
     valid = tmp_path / "frame-0001"
     Image.new("RGB", (100, 80), "red").save(valid, format="JPEG")
 
-    body = _chat_body(graph, frame_paths=[invalid, valid])
+    body = chat_body(graph, frame_paths=[invalid, valid])
     content = body["messages"][1]["content"]
     assert isinstance(content, list)
     assert len(content) == 2
@@ -367,7 +362,7 @@ def test_calibrated_object_crop_association_allows_a_photo_reconstruction(tmp_pa
     poses = tmp_path / "poses.json"
     poses.write_text(json.dumps([calibrated_pose()]))
 
-    body = _chat_body(graph, frame_paths=[frame], poses_path=poses)
+    body = chat_body(graph, frame_paths=[frame], poses_path=poses)
     context = json.loads(body["messages"][1]["content"][0]["text"])
     assert context["photo_evidence"] == [{
         "frame_id": "frame-0000", "object_ids": [str(table.id)], "camera_local": [0.0, -4.0, 0.0],
@@ -520,7 +515,7 @@ def test_calibrated_evidence_includes_a_separated_second_view_for_each_object(tm
     poses = tmp_path / "poses.json"
     poses.write_text(json.dumps([calibrated_pose(0), calibrated_pose(1, camera_x=0.3)]))
 
-    body = _chat_body(graph, frame_paths=frames, poses_path=poses)
+    body = chat_body(graph, frame_paths=frames, poses_path=poses)
     context = json.loads(body["messages"][1]["content"][0]["text"])
     assert [item["frame_id"] for item in context["photo_evidence"]] == ["frame-0000", "frame-0001"]
     assert len(body["messages"][1]["content"]) == 3
@@ -542,8 +537,8 @@ def test_object_crop_rejects_near_plane_and_mostly_clipped_boxes():
                 return np.array([50.0]), np.array([40.0]), np.array([1.0])
             return np.array([-300.0] * 7 + [50.0]), np.array([10.0] * 8), np.ones(8)
 
-    assert astra._projected_object_crop(table, NearPlaneCamera())[0] is None
-    assert astra._projected_object_crop(table, ClippedCamera())[0] is None
+    assert photo_evidence.projected_object_crop(table, NearPlaneCamera())[0] is None
+    assert photo_evidence.projected_object_crop(table, ClippedCamera())[0] is None
 
 
 def test_calibrated_crop_rotates_after_sensor_coordinate_crop_for_portrait_model_input(tmp_path):
@@ -552,7 +547,7 @@ def test_calibrated_crop_rotates_after_sensor_coordinate_crop_for_portrait_model
 
     # The crop is already tall, but the original sensor image is wide. Rotate
     # based on the sensor image before cropping, not the crop's own aspect.
-    encoded = astra._encode_crop(frame, (10, 5, 40, 55), "portrait")
+    encoded = photo_evidence.encode_crop(frame, (10, 5, 40, 55), "portrait")
     assert Image.open(io.BytesIO(encoded)).size == (50, 30)
 
 

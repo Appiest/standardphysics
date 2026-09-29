@@ -15,8 +15,8 @@ import numpy as np
 import pytest
 from scipy.spatial import cKDTree
 from standardphysics_pipeline.ingest import parse_room_json
+from standardphysics_pipeline.textures.atlas_texels import face_normals
 from standardphysics_pipeline.textures.hole_patches import with_holes_patched
-from standardphysics_pipeline.textures.project import face_normals
 from standardphysics_pipeline.textures.scan_atlas import thinned_for_blender, welded
 from standardphysics_pipeline.textures.scan_colour import scan_geometry
 

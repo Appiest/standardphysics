@@ -19,6 +19,10 @@ One new package, `packages/pipeline/standardphysics_pipeline/discovery/`.
 | Module | Job |
 | --- | --- |
 | `detect.py` | One vision pass per frame: what is in the picture, and the rectangle around it |
+| `detector_transport.py` | Which endpoint the vision model is asked at, and the retries and request cap around it |
+| `frame_encoding.py` | The frame as an upright, size-capped JPEG |
+| `detection_boxes.py` | Model boxes turned back into sensor pixels, padded crops, tiles, and overlap |
+| `detection_errors.py` | The ways a detector request fails |
 | `people.py` | Every person's surface taken out of the mesh before anything measures it |
 | `carve.py` | A rectangle plus the mesh becomes one measured box |
 | `clusters.py` | Separates an object from what it stands on and what is behind it |

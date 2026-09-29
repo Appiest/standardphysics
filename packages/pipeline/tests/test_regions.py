@@ -20,7 +20,7 @@ from standardphysics_contracts import bounds_the_room
 from standardphysics_pipeline.ingest import parse_room_json
 from standardphysics_pipeline.textures import surface_materials, symmetry
 from standardphysics_pipeline.textures.camera import load_cameras
-from standardphysics_pipeline.textures.project import depth_buffer
+from standardphysics_pipeline.textures.depth_buffers import depth_buffer
 from standardphysics_pipeline.textures.regions import VertexIndex
 from standardphysics_pipeline.textures.scan_colour import scan_geometry, vertex_normals
 

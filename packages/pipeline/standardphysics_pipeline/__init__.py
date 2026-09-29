@@ -1,4 +1,5 @@
-from .astra import reconstruct, reconstruct_result, select_keyframes
+from .astra import reconstruct, reconstruct_result
+from .astra_frames import select_keyframes
 from .blender import export_glb, glb_node_names
 from .footprints import (
     closest_points,

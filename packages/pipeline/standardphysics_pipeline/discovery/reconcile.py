@@ -15,7 +15,7 @@ from standardphysics_contracts import SceneNode, SurfaceAttachment
 
 from ..textures.camera import PhotoCamera
 from . import taxonomy
-from .detect import box_iou
+from .detection_boxes import box_iou
 
 MIN_INDEPENDENT_VIEW_DISTANCE_M = 0.50
 MAX_SAME_OUTLET_SURFACE_DISTANCE_M = 0.06  # 6 cm faceplate tolerance

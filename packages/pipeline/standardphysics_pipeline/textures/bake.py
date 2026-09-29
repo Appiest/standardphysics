@@ -18,26 +18,23 @@ from standardphysics_contracts import NodeTextureCoverage, SceneGraph, TextureCo
 from ..blender import BlenderError, _run, display_graph
 from ..footprints import floor_polygon
 from ..lidar import load_mesh, triangles_in_arkit_world
+from .atlas_texels import pad_gutters, rasterize_atlas, sample_surface
 from .camera import CameraMetadataError, PhotoCamera, load_cameras
+from .depth_buffers import occluder_depth_buffer
 from .project import (
     MAX_EXPOSURE_POINTS,
     DepthBuffers,
-    PointBlocks,
     TopViews,
-    TriangleBlocks,
     bilinear,
     exposure_gains,
     in_parallel,
-    occluder_depth_buffer,
-    pad_gutters,
-    rasterize_atlas,
-    sample_surface,
     to_linear,
     to_srgb,
     view_samples,
 )
 from .stages import advanced, timed
 from .surface_materials import MaterialFill, material_key, room_materials
+from .visibility_blocks import PointBlocks, TriangleBlocks
 
 
 def _budget(name: str, fallback: int) -> int:

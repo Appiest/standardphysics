@@ -25,9 +25,11 @@ from standardphysics_pipeline.discovery.people import (
 )
 from standardphysics_pipeline.ingest import parse_room_json
 from standardphysics_pipeline.textures.camera import load_cameras
+from standardphysics_pipeline.textures.depth_buffers import depth_buffer
 from standardphysics_pipeline.textures.object_holes import MAX_RIM_VERTICES, _rims
-from standardphysics_pipeline.textures.project import PointBlocks, depth_buffer, evenly_spread
+from standardphysics_pipeline.textures.project import evenly_spread
 from standardphysics_pipeline.textures.scan_colour import scan_geometry
+from standardphysics_pipeline.textures.visibility_blocks import PointBlocks
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 

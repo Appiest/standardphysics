@@ -22,7 +22,9 @@ DECIDING = ("rules", "precedents", "checks", "assess.py", "findings.py", "copy.p
 """What a result depends on, relative to this package."""
 PIPELINE = Path(standardphysics_pipeline.__file__).parent
 BUILDS_THE_GRAPH = frozenset({"discovery", "textures", "splats", "render_efficiency", "blender_scripts",
-                              "astra.py", "blender.py", "check_blender.py", "ingest.py"})
+                              "astra.py", "astra_frames.py", "astra_patches.py", "astra_photo_evidence.py",
+                              "astra_prompt.py", "astra_response.py", "astra_transport.py",
+                              "blender.py", "check_blender.py", "ingest.py"})
 """Pipeline code that makes a scan's graph rather than measuring it. A re-check measures the stored graph again
 with everything else in the pipeline: routes, footprints, what blocks the floor."""
 SUFFIXES = frozenset({".py", ".json"})

@@ -90,7 +90,7 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 # map_crop_point_to_sensor returns an (x, y) pair but is annotated as a triple.
-module = ["standardphysics_pipeline.discovery.detect"]
+module = ["standardphysics_pipeline.discovery.detect", "standardphysics_pipeline.discovery.detection_boxes"]
 disable_error_code = ["arg-type", "return-value"]
 
 [[tool.mypy.overrides]]

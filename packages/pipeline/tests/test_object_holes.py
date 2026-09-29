@@ -8,7 +8,8 @@ import numpy as np
 from PIL import Image
 from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3
 from standardphysics_pipeline.discovery.cache import DetectionCache
-from standardphysics_pipeline.discovery.detect import DEFAULT_MODEL, MODEL_ENV, Detection
+from standardphysics_pipeline.discovery.detect import Detection
+from standardphysics_pipeline.discovery.detector_transport import DEFAULT_MODEL, MODEL_ENV
 from standardphysics_pipeline.discovery.discover import detections_digest, known_detections
 from standardphysics_pipeline.discovery.people import mostly_people
 from standardphysics_pipeline.textures.camera import PhotoCamera

@@ -27,7 +27,7 @@ from standardphysics_pipeline.discovery.detect import Detection
 from standardphysics_pipeline.discovery.merge import Candidate, merge_candidates
 from standardphysics_pipeline.discovery.people import without_people
 from standardphysics_pipeline.textures.camera import camera_from_pose
-from standardphysics_pipeline.textures.project import depth_buffer
+from standardphysics_pipeline.textures.depth_buffers import depth_buffer
 
 CAPTURE = pathlib.Path(__file__).resolve().parents[3] / "datasets" / "replays" / "living-room"
 FRAME_LIMIT = 40

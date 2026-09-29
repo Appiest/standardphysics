@@ -17,8 +17,10 @@ import numpy as np
 import pytest
 from standardphysics_contracts import PoseRecord
 from standardphysics_pipeline.coords import capture_to_room
+from standardphysics_pipeline.textures.atlas_texels import rasterize_atlas
 from standardphysics_pipeline.textures.camera import CameraMetadataError, PhotoCamera, camera_from_pose, load_cameras
-from standardphysics_pipeline.textures.project import DepthBuffers, rasterize_atlas, triangle_depth_buffer, view_samples
+from standardphysics_pipeline.textures.depth_buffers import triangle_depth_buffer
+from standardphysics_pipeline.textures.project import DepthBuffers, view_samples
 
 FLOOR_HEIGHT = -1.3
 CALIBRATION = (1920, 1440)

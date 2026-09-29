@@ -30,12 +30,11 @@ from standardphysics_contracts import SceneGraph
 
 from ..lidar import load_mesh
 from .camera import PhotoCamera, load_cameras
+from .depth_buffers import depth_buffer
 from .project import (
     MAX_EXPOSURE_POINTS,
-    PointBlocks,
     TopViews,
     bilinear,
-    depth_buffer,
     evenly_spread,
     exposure_gains,
     in_parallel,
@@ -43,6 +42,7 @@ from .project import (
     to_srgb,
 )
 from .stages import timed
+from .visibility_blocks import PointBlocks
 
 MAX_PHOTOS = 60
 """Photos read for colour. More photos raise coverage; this is where the gain flattens."""
