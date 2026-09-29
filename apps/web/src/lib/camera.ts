@@ -31,6 +31,18 @@ export function fitPoseToBounds(pose: ViewerPose, bounds: Box3, aspect: number):
   };
 }
 
+const SAME_POSE_TOLERANCE = 1e-6;
+
+/**
+ * Whether two poses put the camera in the same place. A page that re-reads itself from the server hands the
+ * viewer a new pose object with the same numbers every time; only a pose that moves the camera is a new request.
+ */
+export function samePose(a: ViewerPose, b: ViewerPose): boolean {
+  const close = (x: number, y: number) => Math.abs(x - y) <= SAME_POSE_TOLERANCE;
+  return close(a.fov, b.fov) && a.position.every((value, index) => close(value, b.position[index]))
+    && a.target.every((value, index) => close(value, b.target[index]));
+}
+
 export function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - Math.min(Math.max(t, 0), 1), 3);
 }

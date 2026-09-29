@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { poseAtPoint } from "@/lib/camera";
+import { poseAtPoint, samePose, type ViewerPose } from "@/lib/camera";
 import type { SceneGraph } from "@/types/contracts";
 
 const scene = (): SceneGraph => ({
@@ -52,5 +52,19 @@ describe("poseAtPoint", () => {
   it("keeps the eye above the floor even for a point at floor level", () => {
     const pose = poseAtPoint({ x: 0, y: 0, z: 0 }, scene());
     expect(pose.position[1]).toBeGreaterThan(0);
+  });
+});
+
+describe("samePose", () => {
+  const pose: ViewerPose = { position: [3, 4, 5], target: [0, 0, 0], fov: 50 };
+
+  it("treats a copy with the same numbers as the same pose, so a page refresh leaves the camera alone", () => {
+    expect(samePose(pose, { position: [3, 4, 5], target: [0, 0, 0], fov: 50 })).toBe(true);
+  });
+
+  it("treats any real move of the camera, its target or its lens as a new pose", () => {
+    expect(samePose(pose, { ...pose, position: [3, 4, 5.01] })).toBe(false);
+    expect(samePose(pose, { ...pose, target: [0.2, 0, 0] })).toBe(false);
+    expect(samePose(pose, { ...pose, fov: 65 })).toBe(false);
   });
 });
