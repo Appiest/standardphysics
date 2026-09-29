@@ -24,7 +24,7 @@ from standardphysics_agents.precedents import (
 )
 from standardphysics_agents.precedents.verification import PRECEDENTS_FILE, PREVIEW_REVIEWER
 from standardphysics_agents.redesign import propose_redesign, validate_redesign
-from standardphysics_agents.workflows import WHEELCHAIR_PROFILE, Workflow
+from standardphysics_agents.workflow_definitions import WHEELCHAIR_PROFILE, Workflow
 from standardphysics_contracts import Mat4, SceneGraph, SceneNode, Vec3
 from standardphysics_contracts.precedents import SpaceTypology
 from standardphysics_fixtures.shop import node_id

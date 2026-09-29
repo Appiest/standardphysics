@@ -9,7 +9,7 @@ from standardphysics_contracts import to_inches
 from standardphysics_pipeline import Grid
 from standardphysics_pipeline.routes import PathResult
 
-from ..workflows import FunctionalProfile
+from ..workflow_definitions import FunctionalProfile
 
 Cell = tuple[int, int]
 

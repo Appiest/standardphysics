@@ -26,7 +26,7 @@ from .evaluation.gate import accepts
 from .fix import apply_moves, propose_fix
 from .fix.composition import Composition, lost_seating
 from .fix.furnishing import arrangements
-from .workflows import evaluate_workflow, workflow_candidate_rejection
+from .workflow_evaluation import evaluate_workflow, workflow_candidate_rejection
 
 
 def moves_between(before: SceneGraph, after: SceneGraph) -> list[NodeMove]:

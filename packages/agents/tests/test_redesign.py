@@ -8,7 +8,7 @@ from standardphysics_agents.models import ModelAnswer
 from standardphysics_agents.redesign import propose_redesign, validate_redesign
 from standardphysics_agents.router import Rejected
 from standardphysics_agents.rules import VerificationLedger
-from standardphysics_agents.workflows import WHEELCHAIR_PROFILE, Workflow
+from standardphysics_agents.workflow_definitions import WHEELCHAIR_PROFILE, Workflow
 from standardphysics_contracts import NodeMove, Vec3, to_meters
 from standardphysics_fixtures import node_id
 

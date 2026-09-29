@@ -28,13 +28,8 @@ from standardphysics_agents.precedents import directives_for_space
 from standardphysics_agents.router import LocalPolicyRouter, TypeSafeRouter
 from standardphysics_agents.scenario_suggestion import suggest_scenario
 from standardphysics_agents.simulation_report import simulation_result
-from standardphysics_agents.workflows import (
-    DEFAULT_PROFILES,
-    Interaction,
-    WorkflowBatchResult,
-    build_workflow_suite,
-    run_workflow_batch,
-)
+from standardphysics_agents.workflow_definitions import DEFAULT_PROFILES, Interaction, build_workflow_suite
+from standardphysics_agents.workflows import WorkflowBatchResult, run_workflow_batch
 from standardphysics_contracts import (
     AdaptiveRoundResult,
     LidarMesh,

@@ -8,296 +8,55 @@ returns typed judgments for deterministic callers to validate or escalate.
 from __future__ import annotations
 
 import math
-import re
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
-from typing import Literal, cast, get_args
+from collections.abc import Mapping, Sequence
 
-from pydantic import BaseModel, ConfigDict, Field
 from standardphysics_contracts import Finding
 
+from .accessibility_judgments import (
+    ChoiceJudgment,
+    ClaimVerification,
+    ConfidenceThresholds,
+    DownstreamGuardResult,
+    EvidenceAudit,
+    FailureCluster,
+    LayoutCandidate,
+    MeasurementRoute,
+    OwnerGoal,
+    PrioritizedFinding,
+    RankedLayout,
+    RankedRegulation,
+    RegulationCandidate,
+    ReportClaim,
+    SemanticFeatures,
+    TextGuardResult,
+)
+from .accessibility_validation import (
+    bounded_count,
+    choice_answer,
+    goal_kind,
+    noul_certainty,
+    noul_value,
+    probability_threshold,
+    quantity_candidates,
+    score_answer,
+    validated_items,
+)
+from .accessibility_vocabulary import (
+    EVIDENCE_ACTIONS,
+    FAILURE_PATTERNS,
+    MAX_BATCH_ITEMS,
+    OBJECT_CLASSES,
+    SEMANTIC_FEATURES,
+    ReviewRoute,
+)
 from .ask import EXECUTORS, KINDS
 from .ask.query import QueryKind
 from .router.systemone import (
-    ChoiceAnswer,
     ChoiceQuestion,
-    NoulAnswer,
     NoulQuestion,
-    ScoreAnswer,
     ScoreQuestion,
     SystemOneClient,
 )
-
-MAX_BATCH_ITEMS = 100
-
-ObjectClass = Literal[
-    "ramp", "stair", "curb", "threshold", "furniture", "unknown"
-]
-EvidenceAction = Literal["rescan", "tape_measurement", "professional_review"]
-ReviewRoute = Literal["automatic", "reasoning_model", "human"]
-GoalKind = Literal[
-    "preserve_count",
-    "do_not_move",
-    "preserve_fixture",
-    "minimize_disruption",
-    "other",
-]
-
-OBJECT_CLASSES: dict[str, str] = {
-    "ramp": "A sloped walking or rolling surface connecting different levels.",
-    "stair": "One or more steps intended for foot travel between levels.",
-    "curb": (
-        "A raised edge separating adjacent surfaces, often at a sidewalk or "
-        "parking area."
-    ),
-    "threshold": "A small level change at a door or opening.",
-    "furniture": "A movable or fixed furnishing rather than a building level change.",
-    "unknown": "The evidence does not distinguish the supplied classes.",
-}
-
-EVIDENCE_ACTIONS: dict[str, str] = {
-    "rescan": (
-        "The geometry or visual coverage is incomplete and another scan can answer it."
-    ),
-    "tape_measurement": (
-        "A person can safely resolve the exact dimension with a tape or level."
-    ),
-    "professional_review": (
-        "The issue needs technical or legal judgment, destructive inspection, "
-        "or specialist equipment."
-    ),
-}
-
-FAILURE_PATTERNS: dict[str, str] = {
-    "narrow_route": "A traversable route is narrower than the tested clearance.",
-    "collision": "The wheelchair or mobility envelope intersects geometry.",
-    "turning_space": "There is not enough space to turn or change direction.",
-    "reach": "A control, surface, or object cannot be approached or reached.",
-    "level_change": "A ramp, curb, threshold, slope, or stair blocks travel.",
-    "missing_evidence": (
-        "The simulation cannot decide because geometry or metadata is absent."
-    ),
-    "labeling": "Contradictory or incorrect scene labels drive the failure.",
-    "workflow": "The generated journey or task definition itself is invalid.",
-    "other": "No supplied recurring pattern adequately describes the failure.",
-}
-
-SEMANTIC_FEATURES: dict[str, str] = {
-    "mobility_barrier": (
-        "The text describes difficulty moving through or using the space."
-    ),
-    "level_change": (
-        "The text mentions a ramp, stair, curb, threshold, slope, or vertical transition."
-    ),
-    "route_obstruction": (
-        "The text describes an aisle, path, or entrance blocked or narrowed by something."
-    ),
-    "door_issue": (
-        "The text describes door width, force, hardware, swing, or maneuvering clearance."
-    ),
-    "turning_issue": "The text describes difficulty turning a wheelchair or mobility aid.",
-    "reach_issue": (
-        "The text describes a control, counter, item, or service point being hard to reach."
-    ),
-    "customer_impact": (
-        "The text reports a customer being excluded, delayed, diverted, or needing assistance."
-    ),
-    "missing_measurement": (
-        "The text signals that a dimension or observation needed for evaluation is absent."
-    ),
-    "fixed_fixture_constraint": (
-        "The text says plumbing, walls, counters, or another fixed fixture cannot move."
-    ),
-    "movable_furniture": (
-        "The text identifies chairs, tables, displays, or other furniture that may be rearranged."
-    ),
-}
-
-
-@dataclass(frozen=True)
-class ChoiceJudgment:
-    value: str
-    probabilities: dict[str, float]
-    confidence: float
-
-
-@dataclass(frozen=True)
-class ScoreJudgment:
-    value: float
-    probabilities: dict[str, float]
-    confidence: float
-
-
-@dataclass(frozen=True)
-class MeasurementRoute:
-    kind: QueryKind
-    executor: Callable
-    judgment: ChoiceJudgment
-
-
-class LayoutCandidate(BaseModel):
-    """Metrics computed by layout code, not claims generated by Jev."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: str = Field(min_length=1, max_length=100)
-    deterministic_checks_passed: Literal[True]
-    usability_evidence: dict
-    disruption_evidence: dict
-
-
-@dataclass(frozen=True)
-class RankedLayout:
-    candidate: LayoutCandidate
-    usability: ScoreJudgment
-    disruption: ScoreJudgment
-    composite: float
-
-
-@dataclass(frozen=True)
-class PrioritizedFinding:
-    finding: Finding
-    customer_impact: ScoreJudgment
-
-
-@dataclass(frozen=True)
-class EvidenceAudit:
-    contradiction_probability: float
-    missing_evidence_probability: float
-
-    @property
-    def needs_review(self) -> bool:
-        return max(
-            self.contradiction_probability, self.missing_evidence_probability
-        ) >= 0.5
-
-
-class MeasurementEvidence(BaseModel):
-    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-
-    id: str = Field(min_length=1, max_length=100)
-    description: str = Field(min_length=1, max_length=1000)
-    value: float | int | bool | str
-    unit: str | None = Field(default=None, max_length=50)
-    quality: Literal["measured", "confirmed", "needs_another_look"]
-
-
-class RuleEvidence(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: str = Field(min_length=1, max_length=100)
-    citation: str = Field(min_length=1, max_length=500)
-    source_text: str = Field(min_length=1, max_length=10000)
-    human_verified: bool
-
-
-class ReportClaim(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: str = Field(min_length=1, max_length=100)
-    text: str = Field(min_length=1, max_length=2000)
-    measurements: list[MeasurementEvidence] = Field(max_length=100)
-    cited_rules: list[RuleEvidence] = Field(max_length=100)
-
-
-@dataclass(frozen=True)
-class ClaimVerification:
-    claim: ReportClaim
-    measurement_support: float
-    rule_support: float
-    citation_match: float
-    supported: bool
-
-
-@dataclass(frozen=True)
-class TextGuardResult:
-    overstatement_probability: float
-    legal_guarantee_probability: float
-
-    @property
-    def allowed(self) -> bool:
-        return max(
-            self.overstatement_probability, self.legal_guarantee_probability
-        ) < 0.5
-
-
-@dataclass(frozen=True)
-class OwnerGoal:
-    source_text: str
-    kind: GoalKind
-    target: str | None
-    quantity: int | None
-    confidence: float
-
-
-@dataclass(frozen=True)
-class FailureCluster:
-    pattern: str
-    case_ids: tuple[str, ...]
-    mean_probability: float
-
-
-@dataclass(frozen=True)
-class DownstreamGuardResult:
-    unsupported_claim_probability: float
-    unsafe_recommendation_probability: float
-    bad_tool_call_probability: float
-    deterministic_tool_violation: bool
-    route: ReviewRoute
-
-    @property
-    def allowed(self) -> bool:
-        return (
-            self.route == "automatic"
-            and not self.deterministic_tool_violation
-            and max(
-                self.unsupported_claim_probability,
-                self.unsafe_recommendation_probability,
-                self.bad_tool_call_probability,
-            ) < 0.5
-        )
-
-
-class ConfidenceThresholds(BaseModel):
-    """Calibrated per deployment and consequence, not a universal constant."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    reasoning_model_min: float = Field(ge=0.0, le=1.0)
-    automatic_min: float = Field(ge=0.0, le=1.0)
-
-    def model_post_init(self, __context, /) -> None:
-        if self.reasoning_model_min > self.automatic_min:
-            raise ValueError("reasoning_model_min cannot exceed automatic_min")
-
-
-class RegulationCandidate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: str = Field(min_length=1, max_length=100)
-    citation: str = Field(min_length=1, max_length=500)
-    text: str = Field(min_length=1, max_length=10000)
-    source_kind: Literal["regulation", "case", "guidance"]
-
-
-@dataclass(frozen=True)
-class RankedRegulation:
-    candidate: RegulationCandidate
-    relevance: ScoreJudgment
-
-
-@dataclass(frozen=True)
-class SemanticFeatures:
-    probabilities: dict[str, float]
-
-    def present(self, threshold: float = 0.5) -> tuple[str, ...]:
-        if not 0.0 <= threshold <= 1.0:
-            raise ValueError("threshold must be between zero and one")
-        return tuple(
-            feature
-            for feature, probability in self.probabilities.items()
-            if probability >= threshold
-        )
 
 
 class AccessibilityIntelligence:
@@ -360,7 +119,7 @@ class AccessibilityIntelligence:
         disruption_weight: float = 1.0,
     ) -> tuple[RankedLayout, ...]:
         """Capability 4: rank code-generated, already validated candidates."""
-        items = _validated_items(candidates)
+        items = validated_items(candidates)
         if not math.isfinite(disruption_weight) or disruption_weight < 0:
             raise ValueError("disruption_weight must be finite and nonnegative")
         questions: dict[str, ScoreQuestion] = {}
@@ -396,8 +155,8 @@ class AccessibilityIntelligence:
         )
         ranked = []
         for index, candidate in enumerate(items):
-            usability = _score_answer(result.answers[f"u_{index}"])
-            disruption = _score_answer(result.answers[f"d_{index}"])
+            usability = score_answer(result.answers[f"u_{index}"])
+            disruption = score_answer(result.answers[f"d_{index}"])
             ranked.append(
                 RankedLayout(
                     candidate=candidate,
@@ -422,7 +181,7 @@ class AccessibilityIntelligence:
         self, findings: Sequence[Finding]
     ) -> tuple[PrioritizedFinding, ...]:
         """Capability 5: order findings by likely customer impact."""
-        items = _validated_items(findings, id_getter=lambda item: str(item.id))
+        items = validated_items(findings, id_getter=lambda item: str(item.id))
         questions = {
             f"finding_{index}": ScoreQuestion(
                 instructions=(
@@ -444,7 +203,7 @@ class AccessibilityIntelligence:
         ranked = [
             PrioritizedFinding(
                 finding=finding,
-                customer_impact=_score_answer(result.answers[f"finding_{index}"]),
+                customer_impact=score_answer(result.answers[f"finding_{index}"]),
             )
             for index, finding in enumerate(items)
         ]
@@ -475,8 +234,8 @@ class AccessibilityIntelligence:
             },
         )
         return EvidenceAudit(
-            contradiction_probability=_noul_value(result.answers["contradiction"]),
-            missing_evidence_probability=_noul_value(result.answers["missing"]),
+            contradiction_probability=noul_value(result.answers["contradiction"]),
+            missing_evidence_probability=noul_value(result.answers["missing"]),
         )
 
     def verify_report_claims(
@@ -486,8 +245,8 @@ class AccessibilityIntelligence:
         support_threshold: float,
     ) -> tuple[ClaimVerification, ...]:
         """Capability 7: check claims against measurements and cited rule text."""
-        _probability_threshold(support_threshold)
-        items = _validated_items(claims)
+        probability_threshold(support_threshold)
+        items = validated_items(claims)
         questions: dict[str, NoulQuestion] = {}
         for index, _ in enumerate(items):
             questions[f"measurement_{index}"] = NoulQuestion(
@@ -513,9 +272,9 @@ class AccessibilityIntelligence:
         )
         verified = []
         for index, claim in enumerate(items):
-            measurement = _noul_value(result.answers[f"measurement_{index}"])
-            rule = _noul_value(result.answers[f"rule_{index}"])
-            citation = _noul_value(result.answers[f"citation_{index}"])
+            measurement = noul_value(result.answers[f"measurement_{index}"])
+            rule = noul_value(result.answers[f"rule_{index}"])
+            citation = noul_value(result.answers[f"citation_{index}"])
             supported = (
                 bool(claim.measurements)
                 and bool(claim.cited_rules)
@@ -559,8 +318,8 @@ class AccessibilityIntelligence:
             },
         )
         return TextGuardResult(
-            overstatement_probability=_noul_value(result.answers["overstatement"]),
-            legal_guarantee_probability=_noul_value(result.answers["legal_guarantee"]),
+            overstatement_probability=noul_value(result.answers["overstatement"]),
+            legal_guarantee_probability=noul_value(result.answers["legal_guarantee"]),
         )
 
     def interpret_owner_goal(
@@ -574,7 +333,7 @@ class AccessibilityIntelligence:
         )
         if len(targets) > MAX_BATCH_ITEMS:
             raise ValueError(f"a judgment batch cannot exceed {MAX_BATCH_ITEMS} items")
-        quantities = _quantity_candidates(text)
+        quantities = quantity_candidates(text)
         criteria: dict[str, str] = {
             "preserve_count": "Keep at least a stated quantity of a named item or capacity.",
             "do_not_move": "Do not relocate a named object or system.",
@@ -613,9 +372,9 @@ class AccessibilityIntelligence:
         result = self.client.evaluate(
             {"owner_goal": text, "known_targets": list(targets)}, questions
         )
-        kind_answer = _choice_answer(result.answers["kind"])
+        kind_answer = choice_answer(result.answers["kind"])
         target_answer = (
-            _choice_answer(result.answers["target"])
+            choice_answer(result.answers["target"])
             if "target" in result.answers
             else None
         )
@@ -624,14 +383,14 @@ class AccessibilityIntelligence:
         if len(quantities) == 1:
             quantity = quantities[0]
         elif len(quantities) > 1:
-            quantity_answer = _choice_answer(result.answers["quantity"])
+            quantity_answer = choice_answer(result.answers["quantity"])
             quantity = int(quantity_answer.value)
             confidence_values.append(quantity_answer.confidence)
         if target_answer is not None:
             confidence_values.append(target_answer.confidence)
         return OwnerGoal(
             source_text=text,
-            kind=_goal_kind(kind_answer.value),
+            kind=goal_kind(kind_answer.value),
             target=(
                 target_answer.value
                 if target_answer is not None and target_answer.value != "none"
@@ -646,7 +405,7 @@ class AccessibilityIntelligence:
     ) -> tuple[FailureCluster, ...]:
         """Capability 10: group up to 100 aggregated or representative failures."""
         items = list(failures)
-        _bounded_count(items)
+        bounded_count(items)
         ids = []
         for index, failure in enumerate(items):
             case_id = str(failure.get("id", index))
@@ -666,7 +425,7 @@ class AccessibilityIntelligence:
         result = self.client.evaluate({"failures": items}, questions)
         grouped: dict[str, list[tuple[str, float]]] = {}
         for index, case_id in enumerate(ids):
-            answer = _choice_answer(result.answers[f"failure_{index}"])
+            answer = choice_answer(result.answers[f"failure_{index}"])
             grouped.setdefault(answer.value, []).append(
                 (case_id, answer.probabilities[answer.value])
             )
@@ -721,11 +480,11 @@ class AccessibilityIntelligence:
             },
         )
         values = (
-            _noul_value(result.answers["unsupported"]),
-            _noul_value(result.answers["unsafe"]),
-            _noul_value(result.answers["bad_tool"]),
+            noul_value(result.answers["unsupported"]),
+            noul_value(result.answers["unsafe"]),
+            noul_value(result.answers["bad_tool"]),
         )
-        certainty = min(_noul_certainty(value) for value in values)
+        certainty = min(noul_certainty(value) for value in values)
         route = self.route_uncertain_case(certainty, thresholds)
         if deterministic_violation or max(values) >= 0.5:
             route = "human"
@@ -742,7 +501,7 @@ class AccessibilityIntelligence:
         confidence: float, thresholds: ConfidenceThresholds
     ) -> ReviewRoute:
         """Capability 12: apply caller-calibrated confidence thresholds."""
-        _probability_threshold(confidence)
+        probability_threshold(confidence)
         if confidence >= thresholds.automatic_min:
             return "automatic"
         if confidence >= thresholds.reasoning_model_min:
@@ -755,7 +514,7 @@ class AccessibilityIntelligence:
         candidates: Sequence[RegulationCandidate],
     ) -> tuple[RankedRegulation, ...]:
         """Capability 13: rerank retrieved sources; it does not verify them."""
-        items = _validated_items(candidates)
+        items = validated_items(candidates)
         questions = {
             f"source_{index}": ScoreQuestion(
                 instructions=(
@@ -786,7 +545,7 @@ class AccessibilityIntelligence:
         ranked = [
             RankedRegulation(
                 candidate=candidate,
-                relevance=_score_answer(result.answers[f"source_{index}"]),
+                relevance=score_answer(result.answers[f"source_{index}"]),
             )
             for index, candidate in enumerate(items)
         ]
@@ -803,7 +562,7 @@ class AccessibilityIntelligence:
         result = self.client.evaluate({"source_text": text}, questions)
         return SemanticFeatures(
             probabilities={
-                feature: _noul_value(result.answers[feature])
+                feature: noul_value(result.answers[feature])
                 for feature in SEMANTIC_FEATURES
             }
         )
@@ -823,122 +582,5 @@ class AccessibilityIntelligence:
                 )
             },
         )
-        return _choice_answer(result.answers["decision"])
+        return choice_answer(result.answers["decision"])
 
-
-def _goal_kind(value: str) -> GoalKind:
-    if value not in get_args(GoalKind):
-        raise TypeError("validated answer type changed unexpectedly")
-    return cast(GoalKind, value)
-
-
-def _choice_answer(answer) -> ChoiceJudgment:
-    if not isinstance(answer, ChoiceAnswer):
-        raise TypeError("validated answer type changed unexpectedly")
-    return ChoiceJudgment(
-        value=answer.choice,
-        probabilities=dict(answer.probabilities),
-        confidence=answer.confidence,
-    )
-
-
-def _score_answer(answer) -> ScoreJudgment:
-    if not isinstance(answer, ScoreAnswer):
-        raise TypeError("validated answer type changed unexpectedly")
-    return ScoreJudgment(
-        value=answer.score,
-        probabilities=dict(answer.probabilities),
-        confidence=answer.confidence,
-    )
-
-
-def _noul_value(answer) -> float:
-    if not isinstance(answer, NoulAnswer):
-        raise TypeError("validated answer type changed unexpectedly")
-    return answer.noul
-
-
-def _noul_certainty(value: float) -> float:
-    return abs(value - 0.5) * 2.0
-
-
-def _bounded_count(items: Sequence) -> None:
-    if not items:
-        raise ValueError("at least one item is required")
-    if len(items) > MAX_BATCH_ITEMS:
-        raise ValueError(f"a judgment batch cannot exceed {MAX_BATCH_ITEMS} items")
-
-
-def _validated_items(items: Sequence, id_getter=lambda item: item.id):
-    result = list(items)
-    _bounded_count(result)
-    ids = [str(id_getter(item)) for item in result]
-    if len(ids) != len(set(ids)):
-        raise ValueError("candidate IDs must be unique")
-    return result
-
-
-def _probability_threshold(value: float) -> None:
-    if not 0.0 <= value <= 1.0:
-        raise ValueError("probability or confidence must be between zero and one")
-
-
-NUMBER_WORDS = {
-    "zero": 0,
-    "one": 1,
-    "two": 2,
-    "three": 3,
-    "four": 4,
-    "five": 5,
-    "six": 6,
-    "seven": 7,
-    "eight": 8,
-    "nine": 9,
-    "ten": 10,
-    "eleven": 11,
-    "twelve": 12,
-    "thirteen": 13,
-    "fourteen": 14,
-    "fifteen": 15,
-    "sixteen": 16,
-    "seventeen": 17,
-    "eighteen": 18,
-    "nineteen": 19,
-    "twenty": 20,
-}
-
-
-def _quantity_candidates(text: str) -> tuple[int, ...]:
-    found: list[int] = []
-    for match in re.finditer(r"\b\d{1,4}\b", text):
-        value = int(match.group())
-        if value not in found:
-            found.append(value)
-    for word in re.findall(r"[a-z]+", text.casefold()):
-        if word in NUMBER_WORDS and NUMBER_WORDS[word] not in found:
-            found.append(NUMBER_WORDS[word])
-    return tuple(found)
-
-
-__all__ = [
-    "AccessibilityIntelligence",
-    "ChoiceJudgment",
-    "ClaimVerification",
-    "ConfidenceThresholds",
-    "DownstreamGuardResult",
-    "EvidenceAudit",
-    "FailureCluster",
-    "LayoutCandidate",
-    "MeasurementEvidence",
-    "MeasurementRoute",
-    "OwnerGoal",
-    "PrioritizedFinding",
-    "RankedLayout",
-    "RankedRegulation",
-    "RegulationCandidate",
-    "ReportClaim",
-    "RuleEvidence",
-    "ScoreJudgment",
-    "SemanticFeatures",
-    "TextGuardResult",
-]

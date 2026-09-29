@@ -8,13 +8,15 @@ from dataclasses import dataclass
 from standardphysics_contracts import AdaptiveRoundResult, Scenario, SceneGraph, SimulationResult, graph_hash
 from standardphysics_contracts.precedents import PrecedentDirective
 
-from .accessibility_intelligence import AccessibilityIntelligence, LayoutCandidate
+from .accessibility_intelligence import AccessibilityIntelligence
+from .accessibility_judgments import LayoutCandidate
 from .assess import assess
 from .checks.protrusions import is_mounted
 from .mesh_collision import MeshCollisionIndex
 from .redesign import propose_redesign
 from .router import SystemOneClient, SystemOneError, TypeSafeCallBudget
-from .workflows import FunctionalProfile, Workflow, evaluate_workflow
+from .workflow_definitions import FunctionalProfile, Workflow
+from .workflow_evaluation import evaluate_workflow
 
 MAX_FAILURE_EVIDENCE = 64
 
