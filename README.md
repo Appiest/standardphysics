@@ -87,7 +87,7 @@ cd apps/web && npm run lint && npm run typecheck && npm run test && npm run e2e
 |---|---|
 | Does it survive failures? | A crash-safe job queue, hard deadlines on every job, bounded retries, admission control on every input, and a test that injects each failure. See [failure modes](#failure-modes-and-what-happens). |
 | Is the code held to a standard? | ruff with a cyclomatic complexity ceiling and mypy across the contracts, pipeline, agents and API packages, strict TypeScript with an ESLint complexity ceiling, and a test that fails the build if a package imports upward. |
-| How is the repo built? | Six packages with one-way dependencies, contracts generated from one source of truth, pinned dependencies everywhere, and one CI workflow that gates the release image on every check. |
+| How is the repo built? | Six packages with one-way dependencies, contracts generated from one source of truth, pinned dependencies everywhere, and one CI workflow in which every check on code that ships gates the release image. |
 | Can it be operated? | Commit-tagged images, deploys that verify the new commit is serving before they record it, one-command rollback, tested backup and restore, alerting, log rotation and resource limits. |
 | Can you see what it does? | W&B Weave traces from the API and from every worker process, a live health endpoint, and a Weave Evaluation of the checks tagged by commit. |
 | Is it secure? | scrypt passwords, hashed sessions, ownership checks on every scan route, granted team roles, throttled sign-in, capped request bodies, and secret and vulnerability scanning in CI. |
@@ -113,11 +113,11 @@ Each row names what goes wrong, what the system does about it, and the test that
 | A model provider stalls or sends garbage | Replies are capped at 64 KB, checked against the expected shape and timed out as a whole; model runs are limited per owner and server-wide; a bad reply ends the loop with a message to the owner | [`test_model_provider.py`](services/api/tests/test_model_provider.py), [`test_model_loop.py`](services/api/tests/test_model_loop.py) |
 | A zip bomb is uploaded | `room.usdz` is refused past a declared expansion size or entry count | [`test_usdz_validation.py`](services/api/tests/test_usdz_validation.py) |
 | A JSON request is huge | Bodies over 1 MiB are refused with a 413 before they are read, chunked or not | [`test_request_size.py`](services/api/tests/test_request_size.py) |
-| Someone guesses passwords | Sign-in is throttled per address and per account before any password work, atomically, with bounded memory | [`attempt_limiter.py`](services/api/standardphysics_api/attempt_limiter.py), [`test_auth.py`](services/api/tests/test_auth.py) |
+| Someone guesses passwords | Sign-in is throttled per address and per account before any password work, atomically, with bounded memory, inside the one API process that serves every request | [`attempt_limiter.py`](services/api/standardphysics_api/attempt_limiter.py), [`test_auth.py`](services/api/tests/test_auth.py) |
 | Someone asks for another owner's scan | Ownership is checked for every spelling of a scan id; the answer is the same 404 as a scan that does not exist | [`test_auth.py`](services/api/tests/test_auth.py) |
 | A share link would land in a log | The API's access log writes `<token>` in place of the token in every share path, since the token alone opens the report | [`access_log.py`](services/api/standardphysics_api/access_log.py), [`test_access_log.py`](services/api/tests/test_access_log.py) |
 | Someone pre-registers a victim's email | When Apple proves the email, the squatter's password and sessions are revoked | [`test_guests.py`](services/api/tests/test_guests.py) |
-| A deploy goes wrong | The deploy refuses over running jobs, waits until the new commit is serving, and prints the rollback command if it never is | [`test_deploy.py`](scripts/tests/test_deploy.py) |
+| A deploy goes wrong | The deploy stops the worker taking new jobs, waits up to 20 minutes for running ones and refuses if they are still going, then waits until the new commit is serving and prints the rollback command if it never is | [`test_deploy.py`](scripts/tests/test_deploy.py) |
 | Data is lost | Nightly snapshots of the database and artifacts; a restore checks every uploaded artifact against the sha256 recorded at upload | [`test_backup_restore.py`](scripts/tests/test_backup_restore.py) |
 | Production goes down at night | A monitor checks readiness, queue age, disk, backup age (a box with no backup destination fails too) and tracing every five minutes and alerts once per outage and once on recovery | [`test_monitor.py`](scripts/tests/test_monitor.py) |
 
@@ -159,7 +159,7 @@ The API is one service with one SQLite database, which is the right size for a 2
 
 ## What CI enforces on every push
 
-One workflow, [`ci.yml`](.github/workflows/ci.yml), runs everything below. The release image is published only when all of it passes, security scans included, and production deploys only published images.
+One workflow, [`ci.yml`](.github/workflows/ci.yml), runs everything below. The release image is published only when every check on code that ships passes, security scans included, and production deploys only published images.
 
 - **Python:** ruff (with a complexity ceiling), mypy over the contracts, pipeline, agents and API packages, and every test suite, installed from [`requirements.lock`](requirements.lock).
 - **Web:** ESLint (with a complexity ceiling), strict TypeScript, unit tests, the production build, and a check that the TypeScript contracts match the Python ones.
@@ -181,7 +181,7 @@ The containers run as a non-root user with memory and CPU limits and rotated log
 
 ## Observability with W&B Weave
 
-Every ADA check and every model call is a Weave op ([`tracing.py`](packages/agents/standardphysics_agents/tracing.py)). The API traces the checks it runs for a request, and every worker child process starts its own tracing and flushes it before it exits, so a scan's processing appears in Weave end to end. `/health/details` reports whether tracing started and, when it did not, why.
+Every ADA check and every model call is a Weave op ([`tracing.py`](packages/agents/standardphysics_agents/tracing.py)). The API traces the checks it runs for a request, and every worker child process starts its own tracing and flushes it before it exits, so a scan's processing appears in Weave end to end. `/health/details` reports whether the API process's tracing started, why not when it did not, and how many of its sends to W&B have failed.
 
 The checks are also scored as a [Weave Evaluation](packages/agents/standardphysics_agents/evaluation/weave_eval.py) over 39 labelled cases: the sample shop as shipped, and variants that move its walls, fixtures and doors so the right answer changes. Each configuration of the system is one run, tagged with the commit it scored. The latest, at commit `5ce8e53`:
 
