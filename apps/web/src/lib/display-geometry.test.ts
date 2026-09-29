@@ -1,6 +1,6 @@
 import { BoxGeometry, Matrix4 } from "three";
 import { describe, expect, it } from "vitest";
-import { canUseCapturedGlbGeometry, displayScale, hasUsableFloorMesh, MAX_DISPLAY_WALL_HEIGHT, MIN_DISPLAY_WALL_THICKNESS, needsDisplayBoxFallback } from "./display-geometry";
+import { canUseCapturedGlbGeometry, displayScale, drawnInModel, hasUsableFloorMesh, MAX_DISPLAY_WALL_HEIGHT, MIN_DISPLAY_WALL_THICKNESS, needsDisplayBoxFallback } from "./display-geometry";
 import type { SceneNode } from "@/types/contracts";
 
 const wall: SceneNode = {
@@ -43,5 +43,29 @@ describe("photo floor geometry", () => {
     expect(canUseCapturedGlbGeometry(wall, box, new Matrix4(), false)).toBe(true);
     expect(canUseCapturedGlbGeometry(wall, box, new Matrix4(), true)).toBe(false);
     box.dispose();
+  });
+});
+
+describe("what the model draws from a real scan", () => {
+  const shareTea = (node: Pick<SceneNode, "kind" | "label" | "raw_category" | "dimensions"> & { m: SceneNode["transform"]["m"] }): SceneNode => ({
+    ...wall, id: node.label, kind: node.kind, label: node.label, raw_category: node.raw_category,
+    dimensions: node.dimensions, transform: { m: node.m }, labeled_by: "lidar",
+  });
+  const shopWall = shareTea({ kind: "wall", label: "Wall", raw_category: "wall", dimensions: { x: 9.67151, y: 0, z: 3.1866665 },
+    m: [0.88593596, 0.4638077, 0, -0.55621326, -0.4638077, 0.88593596, 0, 4.628888, 0, 0, 1, 1.5933332, 0, 0, 0, 1] });
+  const ceiling = shareTea({ kind: "ceiling", label: "Ceiling", raw_category: "lidar_ceiling", dimensions: { x: 7.394203, y: 6.205668, z: 0.03 },
+    m: [1, 0, 0, -1.043172, 0, 1, 0, 1.742806, 0, 0, 1, 3.768037, 0, 0, 0, 1] });
+  const unclaimed = shareTea({ kind: "surface_candidate", label: "Unidentified vertical surface", raw_category: "lidar_candidate",
+    dimensions: { x: 10.180636, y: 9.601639, z: 4.151214 }, m: [1, 0, 0, -1.648945, 0, 1, 0, 1.292984, 0, 0, 1, 2.012777, 0, 0, 0, 1] });
+  const floor = shareTea({ kind: "floor", label: "Floor", raw_category: "floor", dimensions: { x: 9, y: 8, z: 0 },
+    m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] });
+
+  it("leaves out Share Tea's room-sized box round unclaimed LiDAR and its ceiling, and keeps the walls and floor", () => {
+    const drawn = drawnInModel([shopWall, ceiling, unclaimed, floor]);
+    expect(drawn.map((node) => node.label)).toEqual(["Wall", "Floor"]);
+  });
+
+  it("keeps a flat sheet when the scan has no walls to say where the room's top is", () => {
+    expect(drawnInModel([ceiling, floor])).toEqual([ceiling, floor]);
   });
 });

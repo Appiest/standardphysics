@@ -14,10 +14,11 @@ import subprocess
 import tempfile
 from typing import NamedTuple
 
-from standardphysics_contracts import SceneGraph
+from standardphysics_contracts import SceneGraph, SceneNode, lies_flat, measured_as, stands_upright
 
 from .check_blender import blender_path
 from .object_shapes import scanned_shapes_from
+from .occupancy import UNCLAIMED_SURFACE
 
 SCRIPTS = pathlib.Path(__file__).parent / "blender_scripts"
 
@@ -206,12 +207,29 @@ def _write_temp(payload: str) -> str:
 
 
 def display_graph(graph: SceneGraph) -> SceneGraph:
-    """Clamp visual-only zero-depth shells; measurements keep their original dimensions."""
+    """Clamp visual-only zero-depth shells, and leave out what would hide the room; measurements are untouched.
+
+    A box round LiDAR faces nothing claimed is where a surface was seen, not the
+    shape of anything, and on a real scan one spans the whole room. A flat sheet
+    above the middle of the walls closes the room to every camera looking in
+    from above. Drawn, either one buries the shop in grey.
+    """
+    lid_height = _wall_middle(graph)
     nodes = [
         _display_node(node)
         for node in graph.nodes
+        if node.raw_category != UNCLAIMED_SURFACE and not _is_a_lid(node, lid_height)
     ]
     return graph.model_copy(update={"nodes": nodes})
+
+
+def _wall_middle(graph: SceneGraph) -> float | None:
+    return max((node.transform.position.z for node in graph.nodes if stands_upright(node)), default=None)
+
+
+def _is_a_lid(node: SceneNode, lid_height: float | None) -> bool:
+    bottom = node.transform.position.z - measured_as(node).z / 2
+    return lid_height is not None and lies_flat(node) and bottom > lid_height
 
 
 def _display_node(node):
