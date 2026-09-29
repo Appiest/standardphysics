@@ -56,7 +56,8 @@ READ_CHUNK_BYTES = 8 * 1024
 MODEL_RETRY_SECONDS = 30
 PROVIDER_KEYS = {"api.fireworks.ai": "FIREWORKS_API_KEY", "openrouter.ai": "OPENROUTER_API_KEY"}
 """The environment variable holding each hosted provider's key, used when `<prefix>MODEL_KEY` is unset."""
-REASONING_OFF = {"api.fireworks.ai": {"reasoning_effort": "none"}}
+REASONING_OFF: dict[str, dict[str, object]] = {
+    "api.fireworks.ai": {"reasoning_effort": "none"}, "openrouter.ai": {"reasoning": {"enabled": False}}}
 """Hosts that accept turning reasoning off. A menu pick is a short JSON answer, and reasoning tokens would
 eat the reply budget and add seconds per turn."""
 

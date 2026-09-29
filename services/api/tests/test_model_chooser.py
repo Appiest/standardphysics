@@ -136,6 +136,16 @@ def test_an_explicit_key_wins_over_the_providers_key(monkeypatch):
     assert "reasoning_effort" not in json.loads(sent[0].data)
 
 
+def test_openrouter_is_asked_with_reasoning_off(monkeypatch):
+    """With reasoning on, Kimi K3 spent all of MAX_REPLY_TOKENS thinking about a Share Tea turn and sent no pick."""
+    sent = _capture_requests(monkeypatch)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-default")
+    monkeypatch.setenv("SP_LOOP_MODEL_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("SP_LOOP_MODEL", "moonshotai/kimi-k3")
+    ModelChooser.from_environment("SP_LOOP_").ask([{"role": "user", "content": "pick"}])
+    assert json.loads(sent[0].data)["reasoning"] == {"enabled": False}
+
+
 def test_a_local_server_is_asked_without_a_key(monkeypatch):
     sent = _capture_requests(monkeypatch)
     monkeypatch.setenv("SP_LOOP_MODEL_URL", "http://127.0.0.1:8095/v1")
