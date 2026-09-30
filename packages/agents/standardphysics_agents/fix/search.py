@@ -31,8 +31,8 @@ from standardphysics_contracts import (
 from standardphysics_contracts.rules import Tier
 
 from ..assess import Pass, assess
-from ..copy import no_arrangement, proposal_rationale, relaxation_question
 from ..hashing import inventory
+from ..layout_copy import no_arrangement, proposal_rationale, relaxation_question
 from ..rules import AgentRulePack, VerificationLedger
 from ..tracing import traced
 from .budget import out_of_time

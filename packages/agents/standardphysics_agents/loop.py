@@ -30,9 +30,9 @@ from standardphysics_contracts.loop import RouterAction
 from standardphysics_contracts.rules import Tier
 
 from .assess import Pass, assess
-from .copy import REPORT_READY, escalation_note
 from .evaluation.gate import GateResult, accepts
 from .fix.search import CandidateRejection, propose_fix
+from .layout_copy import REPORT_READY, escalation_note
 from .router.decision import Rejected
 from .router.state import MAX_FIX_ATTEMPTS, RouterState, state_for
 from .rules import AgentRulePack, VerificationLedger, load_ledger, load_pack

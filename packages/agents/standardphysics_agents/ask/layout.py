@@ -23,12 +23,12 @@ from standardphysics_contracts import (
     to_meters,
 )
 
-from ..copy import no_room_for_request, request_rationale
 from ..evaluation.gate import accepts
 from ..fix.constraints import violations
 from ..fix.moves import apply_moves
 from ..fix.search import proposal_id
 from ..hashing import inventory
+from ..layout_copy import no_room_for_request, request_rationale
 from ..tracing import traced
 from . import subjects
 from .answer import Answer, AskContext

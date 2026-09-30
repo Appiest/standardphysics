@@ -17,7 +17,7 @@ from typing import Callable
 from standardphysics_contracts import MeasurementProvider, Scenario, SceneGraph
 from standardphysics_contracts.rules import Tier
 
-from ..copy import ask_reply
+from ..layout_copy import ask_reply
 from ..router.decision import Rejected
 from ..rules import AgentRulePack, VerificationLedger, load_ledger, load_pack
 from ..tracing import traced
