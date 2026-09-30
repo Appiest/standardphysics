@@ -3,7 +3,7 @@ import { DEMO_EMAIL, DEMO_PASSWORD, SAMPLE_SHOP_NAME } from "./demo-account";
 import { openSampleShop, reachSampleResults, signIn } from "./owner-session";
 
 async function makeShareLink(owner: Page): Promise<string> {
-  await owner.getByRole("button", { name: "Share your report" }).click();
+  await owner.getByRole("button", { name: "Share a link for 30 days" }).click();
   const link = owner.getByText(/\/r\/[\w-]+$/);
   await expect(link).toBeVisible();
   return (await link.innerText()).trim();
@@ -12,7 +12,7 @@ async function makeShareLink(owner: Page): Promise<string> {
 async function stopEveryLink(owner: Page) {
   await owner.getByRole("button", { name: "Stop every link to this report" }).click();
   await owner.getByRole("button", { name: "Stop every link", exact: true }).click();
-  await expect(owner.getByRole("region", { name: "Share your report" }).getByRole("status")).toHaveText(
+  await expect(owner.getByRole("region", { name: "Your report" }).getByRole("status")).toHaveText(
     "Every link to this report has stopped working.",
   );
 }
@@ -20,7 +20,7 @@ async function stopEveryLink(owner: Page) {
 async function expectReadOnlyReport(reader: Page) {
   await expect(reader.getByRole("heading", { level: 1, name: SAMPLE_SHOP_NAME })).toBeVisible();
   await expect(reader.getByRole("heading", { name: "What to fix" })).toBeVisible();
-  for (const ownerControl of ["Share your report", "Stop every link to this report", "Delete this shop", "Start fixing"]) {
+  for (const ownerControl of ["Share a link for 30 days", "Stop every link to this report", "Delete this shop", "Start fixing"]) {
     await expect(reader.getByRole("button", { name: ownerControl })).toHaveCount(0);
   }
 }

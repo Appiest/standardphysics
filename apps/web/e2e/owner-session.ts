@@ -49,7 +49,7 @@ const JOURNEY_WAIT_MS = 60_000;
  * already taken is passed over, so this works however far the shop has got.
  */
 export async function reachSampleResults(page: Page) {
-  const shareHeading = page.getByRole("heading", { name: "Share your report" });
+  const shareHeading = page.getByRole("heading", { name: "Your report" });
   const shareFolder = page.getByRole("button", { name: /^Share and tools/ });
   const nextStep = page.getByRole("button", { name: "No", exact: true }).or(page.getByRole("button", { name: "Skip for now" })).or(shareFolder).first();
   await expect(async () => {

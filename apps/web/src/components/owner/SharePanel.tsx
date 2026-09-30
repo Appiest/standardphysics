@@ -1,6 +1,7 @@
 "use client";
 
-import { Copy, FilePdf, ShareNetwork } from "@phosphor-icons/react";
+import { Copy, FilePdf, FileText, ShareNetwork } from "@phosphor-icons/react";
+import Link from "next/link";
 import { useState } from "react";
 import { Button, buttonClassName } from "@/components/ui/Button";
 import { tellApp } from "@/lib/native-bridge";
@@ -49,8 +50,11 @@ export function SharePanel({ scanId, shopName, onShared }: { scanId: string; sho
 
   return (
     <section className="flex flex-col gap-3 rounded-2xl bg-sheet p-4 shadow-float" aria-labelledby="share-heading">
-      <h2 id="share-heading" className="text-lg font-semibold">Share your report</h2>
-      <p className="text-pretty text-ink-muted">Send it to a contractor, your landlord or an inspector. Anyone with the link can read it for 30 days.</p>
+      <h2 id="share-heading" className="text-lg font-semibold">Your report</h2>
+      <Link href={`/scans/${scanId}/report`} className={`${buttonClassName("primary")} justify-center`}>
+        <FileText size={20} weight="bold" aria-hidden />
+        See and print the report
+      </Link>
       {link ? (
         <div className="flex flex-col gap-2">
           <p className="measurement break-all rounded-lg bg-ink/[0.05] px-3 py-2 text-sm">{link}</p>
@@ -60,9 +64,9 @@ export function SharePanel({ scanId, shopName, onShared }: { scanId: string; sho
           </div>
         </div>
       ) : (
-        <Button variant="primary" className="justify-center" disabled={working} onClick={share}>
+        <Button variant="choice" className="justify-center" disabled={working} onClick={share}>
           <ShareNetwork size={20} weight="bold" aria-hidden />
-          {working ? "Making a link" : "Share your report"}
+          {working ? "Making a link" : "Share a link for 30 days"}
         </Button>
       )}
       <p role="status" className="text-sm text-ink-muted">{note}</p>

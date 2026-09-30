@@ -8,13 +8,13 @@ test("a share request the API fails shows the app's own message, and the next tr
   await reachSampleResults(page);
 
   await page.route("**/api/scans/*/shares", (route) => route.fulfill({ status: 503, json: { error: "unavailable" } }), { times: 1 });
-  await page.getByRole("button", { name: "Share your report" }).click();
-  await expect(page.getByRole("region", { name: "Share your report" }).getByRole("status")).toHaveText(
+  await page.getByRole("button", { name: "Share a link for 30 days" }).click();
+  await expect(page.getByRole("region", { name: "Your report" }).getByRole("status")).toHaveText(
     "We couldn't make a link. Try again.",
   );
-  await expect(page.getByRole("heading", { name: "Share your report" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your report" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Share your report" }).click();
+  await page.getByRole("button", { name: "Share a link for 30 days" }).click();
   await expect(page.getByText(/\/r\/[\w-]+$/)).toBeVisible();
 });
 

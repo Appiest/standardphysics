@@ -101,10 +101,10 @@ function EarlyPanel({ scan, journey, requests }: OwnerViewProps) {
 const MODEL_HEIGHT: Record<ModelSize, string> = { small: "h-[30dvh] min-h-52", medium: "h-[42dvh] min-h-64", large: "h-[62dvh] min-h-64" };
 type ModelSize = "small" | "medium" | "large";
 
-/** How much of a phone the model takes: most while driving, some while tapping on it, least while reading a list. */
+/** How much of a phone the model takes: most while driving or dragging furniture, some while tapping on it, least while reading a list. */
 function modelSize(panel: string): ModelSize {
-  if (panel === "wheelchair") return "large";
-  return panel === "counter" || panel === "path" || panel === "plan" ? "medium" : "small";
+  if (panel === "wheelchair" || panel === "plan") return "large";
+  return panel === "counter" || panel === "path" ? "medium" : "small";
 }
 
 /** Where the owner deletes a shop: the end of every step's page, and never on a shop they can only read. */
