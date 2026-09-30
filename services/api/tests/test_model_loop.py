@@ -89,7 +89,7 @@ def test_the_loop_measures_its_moves_without_sending_each_check_to_the_tracer(ma
     assert "checks.run" not in sent
 
 
-def test_a_piece_the_owner_dragged_into_the_aisle_is_put_back_where_it_was(make_client, monkeypatch):
+def test_fix_room_clears_what_a_piece_dragged_into_the_aisle_pinches(make_client, monkeypatch):
     from standardphysics_contracts import to_meters
     from standardphysics_fixtures import node_id
 
@@ -102,8 +102,7 @@ def test_a_piece_the_owner_dragged_into_the_aisle_is_put_back_where_it_was(make_
     turns = [event for event in events if event["kind"] == "turn"]
     pinch = "The turn around the display case is too tight"
     assert pinch in events[0]["working_on"] and events[-1]["kind"] == "finished"
-    assert any("back where it was" in words for turn in turns for words in turn["picked"])
-    assert turns and pinch not in turns[-1]["working_on"]
+    assert turns and pinch not in turns[-1]["working_on"] and events[-1]["fixable_left"] == 0
 
 
 def test_an_unreachable_model_ends_the_stream_with_a_way_to_recover(make_client, monkeypatch):

@@ -26,14 +26,21 @@ async function refusal(response: Response) {
   return new ApiRefusal(response.status, `${String(detail.error ?? "")}${fields}`);
 }
 
-async function sendJson<T>(url: string, body: unknown, method = "POST"): Promise<T> {
-  const response = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw await refusal(response);
-  return (await response.json()) as T;
+async function sendJson<T>(url: string, body: unknown, method = "POST", timeoutMs?: number): Promise<T> {
+  const controller = new AbortController();
+  const timer = timeoutMs === undefined ? null : setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw await refusal(response);
+    return (await response.json()) as T;
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
 }
 
 async function getJson<T>(url: string): Promise<T> {
@@ -54,12 +61,15 @@ export function putBackSuggestion(scanId: string, revision: number, suggestionId
   return sendJson<void>(`/api/scans/${scanId}/rearrangement-suggestion/${suggestionId}/put-back?revision=${revision}`, {});
 }
 
+/** How long one plan check may take before the plan says it couldn't check, instead of waiting forever. */
+export const LAYOUT_CHECK_MS = 20_000;
+
 export function checkLayout(scanId: string, baseRevision: number, sequence: number, moves: NodeMove[]) {
   return sendJson<LayoutCheckResult>(`/api/scans/${scanId}/layout-checks`, {
     base_revision: baseRevision,
     sequence,
     moves,
-  });
+  }, "POST", LAYOUT_CHECK_MS);
 }
 
 export function saveLayout(scanId: string, baseRevision: number, moves: NodeMove[], suggestionId?: string) {
