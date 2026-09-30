@@ -53,7 +53,7 @@ def map_crop_point_to_sensor(
     point: Any,
     crop_box: tuple[float, float, float, float],
     turns: int,
-) -> tuple[float, float, float] | None:
+) -> tuple[float, float] | None:
     """A model point [y, x] in [0, 1000] upright crop space turned back into sensor (x, y) pixels."""
     import math
 
