@@ -23,7 +23,7 @@ from standardphysics_pipeline.occupancy import CELL_SIZE
 from ..checks.rectangles import intruders, rectangle
 from ..rules import AgentRulePack
 from .budget import out_of_time
-from .constraints import violations
+from .constraints import is_allowed
 from .moves import apply_moves, carried_by_hand, move_node, without
 from .pinch import Pinch
 from .strategies import Candidate
@@ -157,7 +157,7 @@ def _expand(graph: SceneGraph, node, moves_for_node, beam: list[list[NodeMove]],
             if key in occupied:
                 continue
             trial = [*moves, move]
-            if violations(graph, apply_moves(graph, trial)):
+            if not is_allowed(graph, apply_moves(graph, trial)):
                 continue
             expanded.append(trial)
             occupied.add(key)

@@ -22,7 +22,7 @@ from standardphysics_contracts import NodeMove, SceneGraph, Vec3, to_meters
 from standardphysics_pipeline import footprint
 from standardphysics_pipeline.footprints import Polygon, touching
 
-from .constraints import violations
+from .constraints import is_allowed
 from .moves import apply_moves
 
 RING_STEP_METERS = to_meters(2.0)
@@ -66,7 +66,7 @@ def nearest_legal(base: SceneGraph, kept: list[NodeMove], move: NodeMove,
         candidate = apply_moves(base, [*kept, trial])
         if avoid is not None and touching(footprint(candidate.by_id(move.node_id)), avoid):
             continue
-        if not violations(base, candidate):
+        if is_allowed(base, candidate):
             return trial, math.hypot(dx, dy)
     return None
 

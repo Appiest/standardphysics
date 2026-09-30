@@ -33,7 +33,7 @@ from standardphysics_pipeline.footprints import Polygon, closest_point, rotation
 from standardphysics_pipeline.measure import COUNTER_CLEAR_DEPTH, COUNTER_CLEAR_WIDTH
 
 from ..checks.rectangles import EDGE_TOLERANCE, rectangle
-from .constraints import violations
+from .constraints import is_allowed
 from .moves import apply_moves
 from .snap import snap_moves
 from .strategies import Candidate
@@ -179,7 +179,7 @@ def _pushes(blockers: list[SceneNode], centre: tuple[float, float], axes: Axes, 
 def _landed(graph: SceneGraph, candidate: Candidate, space: Polygon) -> Candidate | None:
     """The push as asked when it is legal, else with each piece nudged to the nearest legal floor outside the space,
     else None."""
-    if not violations(graph, apply_moves(graph, candidate.moves)):
+    if is_allowed(graph, apply_moves(graph, candidate.moves)):
         return candidate
     snapped = snap_moves(graph, candidate.moves, avoid=space)
     if snapped.dropped:

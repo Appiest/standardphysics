@@ -36,7 +36,7 @@ from ..checks.route_geometry import reversal_stops, setback_point
 from ..checks.turning_space import APPROACH_SETBACK_INCHES
 from ..rules import AgentRulePack
 from .composition import BREATHING_ROOM_METERS, Composition
-from .constraints import SWING_KINDS, door_keep_clear, interior_bounds, violations
+from .constraints import SWING_KINDS, door_keep_clear, interior_bounds, is_allowed
 from .moves import apply_moves
 from .strategies import Candidate
 
@@ -480,7 +480,7 @@ def arrangements(graph: SceneGraph, scenario: Scenario, rules: AgentRulePack) ->
     found: dict[tuple, Candidate] = {}
     for breathing, corners in product(BREATHING_TIERS, _corner_choices(scenario, floor)):
         moves = _plan(floor.with_aisles(scenario, rules, corners), tables, chairs, breathing)
-        if not moves or violations(graph, apply_moves(graph, moves)):
+        if not moves or not is_allowed(graph, apply_moves(graph, moves)):
             continue
         key = tuple(sorted((str(m.node_id), round(m.delta_translation.x, 2), round(m.delta_translation.y, 2)) for m in moves))
         found.setdefault(key, Candidate(STRATEGY, moves, composition.cost(moves)))
