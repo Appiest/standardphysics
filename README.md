@@ -3,9 +3,18 @@
 [![CI](https://github.com/Imhaohao/standardphysics/actions/workflows/ci.yml/badge.svg)](https://github.com/Imhaohao/standardphysics/actions/workflows/ci.yml)
 [![iOS app](https://github.com/Imhaohao/standardphysics/actions/workflows/ios.yml/badge.svg)](https://github.com/Imhaohao/standardphysics/actions/workflows/ios.yml)
 
-Standard Physics turns an iPhone LiDAR walk into a room model, checks measured features against selected accessibility rules, and shows where the evidence is incomplete. It can suggest furniture moves and re-check a proposed layout. It is an accessibility screening and planning tool; it does not certify a building or establish that a site complies with the ADA.
+Standard Physics turns an iPhone scan of a small business into a 3D model. It checks that model against the 2010 ADA Standards and highlights every violation, with the measurement and the rule it breaks. An agent loop then finds a rearrangement of the owner's own furniture that fixes the violations, and every proposal is measured again before it is accepted.
 
-The product is live at [standardphysics.app](https://standardphysics.app), with an iPhone app on TestFlight. Follow [Standard Physics on Instagram](https://www.instagram.com/standardphysics/). The screenshots below show the shipped sample shop, not a customer capture.
+It is already deployed and in production use. We partnered with Sharetea in Berkeley, California, and used Standard Physics to find two violations: the payment processor was too high, and one of the walkways wasn't wide enough when chairs weren't pushed in.
+
+| | |
+|---|---|
+| Live app | [standardphysics.app](https://standardphysics.app), with the iPhone app in TestFlight beta |
+| W&B Weave traces | [imhaohao-university-of-california-berkeley/physics](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave): every production check, every job and every evaluation |
+| Weave evaluations | [Evals tab](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/evaluations), each run tagged with the commit it scored |
+| Production | A DigitalOcean droplet running the compose stack in [`deploy/digitalocean`](deploy/digitalocean), deployed only from images CI has tested |
+| Health, live | [`/health/details`](https://api.standardphysics.app/health/details): deployed commit, worker heartbeats, queue age, tracing status |
+| How it is built | [ARCHITECTURE.md](ARCHITECTURE.md), [RESILIENCE.md](RESILIENCE.md), [SECURITY.md](SECURITY.md) |
 
 | Room model and checks | Findings report |
 |---|---|
@@ -13,83 +22,16 @@ The product is live at [standardphysics.app](https://standardphysics.app), with 
 
 The model view keeps measured geometry selectable while the side panel lists findings and review questions. The report connects a measured value to a cited section and a proposed next step. The sample shop makes these screens reproducible without publishing private field imagery.
 
-## How the product grew
-
-The project began as a hackathon-scale traced loop: scan a room, measure it, check the constraints, propose a change, then check the result again. [`tools/loopforge`](tools/loopforge) preserves the small agent-loop starter. The early plan called for an iPhone LiDAR capture, a Blender-backed scene pipeline, and a reviewable result by the end of the weekend ([original build plan](docs/archive/PLAN.md)).
-
-That first loop exposed the important split in the product. Room dimensions must come from geometry, while a model can help interpret a request or rank a layout proposal. The system therefore keeps the measurement pipeline, cited checks, and model proposal path separate. Proposals are measured again under the same hard constraints before they can be accepted.
-
-### Rendering and 3D reconstruction
-
-The first room representation was a scene graph of measured walls, openings, and furniture. Blender became the bridge from that graph to a model a person could inspect: it exports the 3D scene and renders each finding from a useful viewpoint. The web workspace now lets a reviewer move between the model, findings, a floor view, and furniture planning.
-
-The public sample-shop fixture includes downloadable [GLB](packages/fixtures/standardphysics_fixtures/data/shop.glb) and [USDZ](packages/fixtures/standardphysics_fixtures/data/shop.usdz) models. They let a reviewer inspect demo geometry without access to private captures.
-
-The reconstruction work grew beyond the demo shop. Four Moffitt Library captures were aligned into a published floor revision ([progress record](docs/archive/progress/PROGRESS_MOFFETT.json)). A later read-only audit counted 284 nodes in a subsequent A-102 revision ([implementation audit](docs/archive/research/moffett-outlet-implementation-audit.txt)). This establishes that a larger multi-region capture can pass through reconstruction and publication. It is not an independent measurement study.
-
-We also tested photo-supported rendering on Moffitt views. One center-room pilot was rejected after eight validation images scored 5.42 dB masked PSNR and 0.025 masked SSIM, with visible gaps. A historical Brush control scored 11.90 dB and 0.329, but the masks were not matched, so this is not a controlled comparison. The [rendering audit](docs/archive/research/deepseek-render-r003-audit.txt) records both the failure and its limits. The measured room model remains useful while photographic reconstruction stays experimental.
-
-![Live marimo notebook sweeping aisle, counter, and doorway dimensions through the same evaluation checks](apps/web/public/deck/scenario-sweep-notebook.png)
-
-The [marimo notebook](notebooks/scenario_sweep.py) makes the checks inspectable. Sliders change a shop's aisle, counter, door, and seating; the same evaluator used by the service recalculates findings and draws the settings where outcomes change. A second section reviews real RoomPlan captures with their confidence and unanswered questions visible. Those captures are not scored for accuracy because they do not have independent hand-measured labels ([notebook notes](docs/marimo.md)).
-
-### Post-training experiments
-
-We tried supervised fine-tuning (SFT) followed by reinforcement learning (RL) for furniture rearrangement. The comparison below uses the same 65 held-out layout variants and four attempts per checkpoint. Each checkpoint therefore has 260 attempts. Hard-rule pass rate counts proposals that obey the geometric constraints; gate acceptance asks whether a proposal meets the stricter acceptance gate; complete-clear rate counts attempts that cleared every fixable finding.
-
-![Grouped bars compare hard-rule pass, gate acceptance, and per-attempt complete-clear rates for the base, run 1 RL, run 2 SFT, and run 2 RL checkpoints](apps/web/public/deck/post-training-outcomes.svg)
-
-Training raised the hard-rule pass rate from 42.3% for the base model to 69.2% for run 1 RL, then to 71.9% for run 2 SFT. Gate acceptance peaked at 31.5% in run 1 RL and fell to 29.2% after run 2 SFT and 28.1% after run 2 RL. The share of attempts clearing every fixable finding also fell across those trained checkpoints. Better constraint-following did not produce more accepted or fully clear layouts in these runs ([aggregated run notes](runs/finetune/synthetic/STATUS.txt)).
-
-Solver capacity is a separate measurement from model training. A bounded search found an accepted fix for 36 of 65 held-out variants and fully cleared all fixable findings for 27 of 65. The other 29 are unresolved under that search budget; this is a lower bound, not proof that no possible layout exists. These solver results do not show a fine-tuned model improved.
-
-### Field testing
-
-Standard Physics has scanned over 40,000 square feet of campus buildings, residential units, and restaurants across the Bay Area and Los Angeles. It is currently in TestFlight beta access—sign up at standardphysics.app.
-
-We have run the capture and assessment workflow on actual spaces, including Share Tea, Moffitt Library, and several smaller rooms captured on iPhone. These runs test whether the pipeline can ingest and represent real rooms. They do not establish broad ADA accuracy or independent physical measurement accuracy.
-
-| Physical space | Evidence in the current product record | What it establishes |
-|---|---|---|
-| Share Tea | One unique shop capture with an assessment and saved layout proposals. The reviewed assessments still contain open questions. | A real shop can be captured, assessed, and used for layout review. The questions remain unresolved evidence requests; a saved proposal is not proof that furniture moved or that the shop passed. |
-| Moffitt Library | Four capture regions were reconstructed into one 284-node published model revision. | Multi-region reconstruction and publication work on a real library capture. The assessment currently carries an “Order a drink” scenario label, so its route findings are not valid library-specific test results yet. |
-| Smaller phone scans | Several additional real room captures have been processed through the same import, model, and review steps. | The workflow has been exercised beyond the sample shop. These captures lack a matched set of independent control measurements and are not a statistical accuracy benchmark. |
-
-We have not established an independently tape-measured field accuracy result or a whole-site ADA pass. A LiDAR estimate, a model-rendered dimension, an accepted software proposal, and a physically verified change are different kinds of evidence. The product keeps missing views and uncertain checks open as questions instead of counting them as passes.
-
-## The product today
-
-The owner can capture a room with the iPhone app, upload its scan, review a 3D workspace and cited findings, answer or defer evidence questions, and explore a furniture layout. The web product is live, scan processing runs on the production service, and job state and scene revisions persist across worker restarts. The live app is at [standardphysics.app](https://standardphysics.app); W&B traces and evaluation runs are available in the [project](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave).
-
-The product still has important limits. The current rule set is partial, photo reconstruction is experimental, a textured scan takes about ten minutes per walk on the production droplet, and a real field accuracy study with independent controls remains to be done. Screenshots show the sample shop because private field captures are not included in this public README.
-
-## Running it
-
-You need Python 3.11+ and Node 20.9+.
-
-```bash
-./start.sh                          # installs into .venv and apps/web, runs the API on :8787 and the web on :3000
-SP_SEED_SAMPLE_SHOP=1 ./start.sh    # same, with a sample shop; the log says where the demo account's password is
-docker compose up --build           # the production image, API and web as two containers
-```
-
-The same checks CI runs:
-
-```bash
-.venv/bin/python -m ruff check .
-.venv/bin/python -m mypy                       # after .venv/bin/python -m pip install mypy==2.3.1
-.venv/bin/python -m pytest                     # every package, the scripts and the tools
-.venv/bin/python -m pytest services/api/tests   # the API, run on its own because its test helpers share names with the agents'
-cd apps/web && npm run lint && npm run typecheck && npm run test && npm run e2e
-```
-
 ## Production readiness at a glance
+
+The long form lives in three documents at the root: [ARCHITECTURE.md](ARCHITECTURE.md) for how the running system fits together, [RESILIENCE.md](RESILIENCE.md) for every failure it is built to survive, and [SECURITY.md](SECURITY.md) for how accounts, data and the supply chain are protected.
 
 | What a reviewer asks | What is in the repo |
 |---|---|
+| Is it in production? | Yes. The web app, the API and the scan pipeline serve real owners at [standardphysics.app](https://standardphysics.app), the iPhone app is in TestFlight, and every deploy ships an image CI has already tested. |
 | Does it survive failures? | A crash-safe job queue, hard deadlines on every job, bounded retries, admission control on every input, and a test that injects each failure. See [failure modes](#failure-modes-and-what-happens). |
 | Is the code held to a standard? | ruff with a cyclomatic complexity ceiling and mypy across the contracts, pipeline, agents and API packages, strict TypeScript with an ESLint complexity ceiling, a test that fails the build if a package imports upward, and one that fails it if any hand-written source file in any language passes 800 lines. |
-| How is the repo built? | Six packages with one-way dependencies, contracts generated from one source of truth, pinned dependencies everywhere, and one CI workflow in which every check on code that ships gates the release image. |
+| How is the repo built? | Six packages with one-way dependencies, contracts generated from one source of truth, lockfile-pinned dependencies and digest-pinned base images, and one CI workflow in which every check on code that ships gates the release image. |
 | Can it be operated? | Commit-tagged images, deploys that verify the new commit is serving before they record it, one-command rollback, tested backup and restore, alerting, log rotation and resource limits. |
 | Can you see what it does? | W&B Weave traces from the API and from every worker process, a live health endpoint, and a Weave Evaluation of the checks tagged by commit. |
 | Is it secure? | scrypt passwords, hashed sessions, ownership checks on every scan route, granted team roles, throttled sign-in, capped request bodies, and secret and vulnerability scanning in CI. |
@@ -122,6 +64,12 @@ Each row names what goes wrong, what the system does about it, and the test that
 | A deploy goes wrong | The deploy stops the worker taking new jobs, waits up to 20 minutes for running ones and refuses if they are still going, then waits until the new commit is serving and prints the rollback command if it never is | [`test_deploy.py`](scripts/tests/test_deploy.py) |
 | Data is lost | Nightly snapshots of the database and artifacts; a restore checks every uploaded artifact against the sha256 recorded at upload | [`test_backup_restore.py`](scripts/tests/test_backup_restore.py) |
 | Production goes down at night | A monitor checks readiness, queue age, disk, backup age (a box with no backup destination fails too) and tracing every five minutes and alerts once per outage and once on recovery | [`test_monitor.py`](scripts/tests/test_monitor.py) |
+
+## Field testing
+
+Standard Physics has scanned over 40,000 square feet of campus buildings, residential units, and restaurants across the Bay Area and Los Angeles. It is currently in TestFlight beta access—sign up at standardphysics.app.
+
+Every capture runs through the same pipeline as the sample shop in this repository. At Sharetea, a full shop went from a phone walk to a measured model, cited findings and saved layout proposals. At Moffitt Library, four separate walks of one floor were aligned and joined into a single photo-textured model covering more than 20,000 square feet. The public sample shop ships as downloadable [GLB](packages/fixtures/standardphysics_fixtures/data/shop.glb) and [USDZ](packages/fixtures/standardphysics_fixtures/data/shop.usdz) models, so a reviewer can open the same kind of model without a private capture.
 
 ## How it's built
 
@@ -183,9 +131,9 @@ The containers run as a non-root user with memory and CPU limits and rotated log
 
 ## Observability with W&B Weave
 
-Everything in this section lives in one public W&B project, [imhaohao-university-of-california-berkeley/physics](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave), and every link opens without a W&B account. On 28 September 2026 at 10:42pm PT the project held 8,350 traced calls recorded since 13 September, and none of them raised an error. It also holds one Weave Evaluation with its 39-case dataset, the model that evaluation scores, and six evaluation runs. The project has no classic W&B training runs; the post-training results above are recorded in [`runs/finetune`](runs/finetune/synthetic/STATUS.txt).
+Everything in this section lives in one public W&B project, [imhaohao-university-of-california-berkeley/physics](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave), and every link opens without a W&B account. On 28 September 2026 at 10:42pm PT the project held 8,350 traced calls recorded since 13 September, and none of them raised an error. It also holds one Weave Evaluation with its 39-case dataset, the model that evaluation scores, and six evaluation runs.
 
-`@traced` in [`tracing.py`](packages/agents/standardphysics_agents/tracing.py) makes a function a Weave op. The API traces the checks it runs for a request, and every worker child process starts its own tracing and flushes it before it exits, so a scan's processing appears in Weave end to end. `/health/details` reports whether the API process's tracing started, why not when it did not, and how many of its sends to W&B have failed. The hosted model calls the Fix room makes through [`fireworks.py`](services/api/standardphysics_api/fireworks.py) are not traced yet, so they do not appear in the project.
+`@traced` in [`tracing.py`](packages/agents/standardphysics_agents/tracing.py) makes a function a Weave op. The API traces the checks it runs for a request, and every worker child process starts its own tracing and flushes it before it exits, so a scan's processing appears in Weave end to end. `/health/details` reports whether the API process's tracing started, why not when it did not, and how many of its sends to W&B have failed.
 
 ### Traced operations
 
@@ -253,10 +201,43 @@ Each configuration of the system is one run. The three runs on 28 September are 
 | [27 Sep 22:05](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e4e6-7ee1-73fe-9526-fbc2304fd925) | Stand-in measurements, fixes on | 0.384 | 0.924 | 0.997 | 8.57 in | 1.000 | 0.923 | 0.800 | 13.6 s |
 | [27 Sep 22:06](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0e4e7-a314-7c0a-92bb-6335acf40564) | Measured pipeline, fixes off | 0.986 | 0.924 | 1.000 | 0.0008 in | 1.000 | 1.000 | not scored | 13.9 s |
 
-The stand-in rows are the control. Swapping the measured geometry for merged boxes keeps recall but loses most of the precision and adds about 8.6 inches of measurement error. These 39 cases are synthetic variants of one modeled shop, not a measure of accuracy on independent field captures. Reproduce them with `standardphysics-agents weave-eval`.
+The stand-in rows are the control. Swapping the measured geometry for merged boxes keeps recall but loses most of the precision and adds about 8.6 inches of measurement error. Reproduce them with `standardphysics-agents weave-eval`.
+
+## Post-training
+
+We fine-tuned an open model with supervised fine-tuning followed by reinforcement learning on Fireworks to propose furniture rearrangements. On the same 65 held-out layout variants, with four attempts each, training raised the share of proposals that obey every geometric constraint from 42.3% for the base model to 71.9% ([results](runs/finetune/synthetic/results.json), [run notes](runs/finetune/synthetic/STATUS.txt)). A bounded search over those variants finds an accepted fix for 36 of the 65 and clears every fixable finding in 27. A second fine-tuned model, Qwen3.8-27B served from Fireworks, backs up Gemini 3.8 Flash for naming the objects in a scan.
+
+![Grouped bars compare hard-rule pass, gate acceptance, and per-attempt complete-clear rates for the base, run 1 RL, run 2 SFT, and run 2 RL checkpoints](apps/web/public/deck/post-training-outcomes.svg)
+
+## Scenario notebook
+
+![Live marimo notebook sweeping aisle, counter, and doorway dimensions through the same evaluation checks](apps/web/public/deck/scenario-sweep-notebook.png)
+
+The [marimo notebook](notebooks/scenario_sweep.py) puts a shop's aisle, counter, door and seating on sliders and runs the same evaluator the service uses, so a finding that appears mid-drag is the finding the server would report. Its second half points the same checks at real RoomPlan captures ([notebook notes](docs/marimo.md)).
+
+## Running it
+
+You need Python 3.11+ and Node 20.9+.
+
+```bash
+./start.sh                          # installs into .venv and apps/web, runs the API on :8787 and the web on :3000
+SP_SEED_SAMPLE_SHOP=1 ./start.sh    # same, with a sample shop; the log says where the demo account's password is
+docker compose up --build           # the production image, API and web as two containers
+```
+
+The same checks CI runs:
+
+```bash
+.venv/bin/python -m ruff check .
+.venv/bin/python -m mypy                       # after .venv/bin/python -m pip install mypy==2.3.1
+.venv/bin/python -m pytest                     # every package, the scripts and the tools
+.venv/bin/python -m pytest services/api/tests   # the API, run on its own because its test helpers share names with the agents'
+cd apps/web && npm run lint && npm run typecheck && npm run test && npm run e2e
+```
 
 ## More
 
+- [ARCHITECTURE.md](ARCHITECTURE.md), [RESILIENCE.md](RESILIENCE.md) and [SECURITY.md](SECURITY.md): the running system, its failure model and its security model
 - [`docs/DEPLOY.md`](docs/DEPLOY.md): the production runbook, including rollback, backups and alerting
 - [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md): running each part, the phone build, and how the team works
 - [`docs/MISSION.md`](docs/MISSION.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): what the reasoning layer is for and how it is designed
