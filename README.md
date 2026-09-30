@@ -10,7 +10,7 @@ It is already deployed and in production use. We partnered with Sharetea in Berk
 | | |
 |---|---|
 | Live app | [standardphysics.app](https://standardphysics.app), with the iPhone app in TestFlight beta |
-| W&B Weave traces | [imhaohao-university-of-california-berkeley/physics](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave): every production check, every job and every evaluation |
+| W&B Weave traces | [imhaohao-university-of-california-berkeley/physics](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave): every assessment and job in production, and every evaluation. The drag check and Fix room's model loop run untraced; see [Observability](#observability-with-wb-weave) |
 | Weave evaluations | [Evals tab](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/evaluations), each run tagged with the commit it scored |
 | Production | A DigitalOcean droplet running the compose stack in [`deploy/digitalocean`](deploy/digitalocean), deployed only from images CI has tested |
 | Health, live | [`/health/details`](https://api.standardphysics.app/health/details): deployed commit, worker heartbeats, queue age, tracing status |
@@ -21,6 +21,18 @@ It is already deployed and in production use. We partnered with Sharetea in Berk
 | ![3D sample-shop model in the Standard Physics workspace, with findings and layout controls beside it](apps/web/public/deck/app-model.jpg) | ![Sample-shop findings report with measured values and cited ADA sections](apps/web/public/deck/app-report.jpg) |
 
 The model view keeps measured geometry selectable while the side panel lists findings and review questions. The report connects a measured value to a cited section and a proposed next step. The sample shop makes these screens reproducible without publishing private field imagery.
+
+## Where to start
+
+The repository is large, so these five stops cover the loop end to end.
+
+| To see | Open |
+|---|---|
+| One live trace | [An `assess` call](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave/calls/01a0eba2-a789-70bc-b324-16f1174d4777) in W&B Weave, with every ADA check it ran nested inside it |
+| The agent loop | [`model_loop.py`](services/api/standardphysics_api/model_loop.py) runs Fix room turn by turn: build the menu, let the model pick, apply the pick, check again |
+| Why the model can't place furniture badly | [`menu.py`](packages/agents/standardphysics_agents/training/menu.py) measures every candidate move before the model sees it, and [`gate.py`](packages/agents/standardphysics_agents/evaluation/gate.py) refuses a layout that loses a check or adds a problem |
+| The ADA checks | [`checks/`](packages/agents/standardphysics_agents/checks), one file per rule family, each finding carrying its measurement and citation |
+| How it fails safely | [RESILIENCE.md](RESILIENCE.md), or the [failure-mode table](#failure-modes-and-what-happens) below with the test behind each row |
 
 ## Production readiness at a glance
 
@@ -53,7 +65,7 @@ Each row names what goes wrong, what the system does about it, and the test that
 | Many large uploads arrive at once | Each upload reserves its declared size; concurrency is capped per owner and globally | [`budgets.py`](services/api/standardphysics_api/budgets.py), [`test_budgets.py`](services/api/tests/test_budgets.py) |
 | The disk fills up | New uploads are refused with a 507 before the volume runs out; abandoned staging files are swept | [`test_budgets.py`](services/api/tests/test_budgets.py) |
 | The job queue floods | Every path that enqueues work checks the queue limit in the same transaction and answers 503 with Retry-After | [`test_queue_admission.py`](services/api/tests/test_queue_admission.py) |
-| A 640 MB mesh is uploaded | It is validated off the event loop, one part at a time, a bounded number at once; peak memory stays in single megabytes | [`test_mesh_validation_load.py`](services/api/tests/test_mesh_validation_load.py) |
+| A mesh up to the 640 MB cap is uploaded | It is validated off the event loop, one part at a time, a bounded number at once. Peak memory is set by the largest part, not the file: in the test a mesh four times larger peaks at the same 4 MB | [`test_mesh_validation_load.py`](services/api/tests/test_mesh_validation_load.py) |
 | A model provider stalls or sends garbage | Replies are capped at 64 KB, checked against the expected shape and timed out as a whole; model runs are limited per owner and server-wide; a bad reply ends the loop with a message to the owner | [`test_model_provider.py`](services/api/tests/test_model_provider.py), [`test_model_loop.py`](services/api/tests/test_model_loop.py) |
 | A zip bomb is uploaded | `room.usdz` is refused past a declared expansion size or entry count | [`test_usdz_validation.py`](services/api/tests/test_usdz_validation.py) |
 | A JSON request is huge | Bodies over 1 MiB are refused with a 413 before they are read, chunked or not | [`test_request_size.py`](services/api/tests/test_request_size.py) |
@@ -144,7 +156,7 @@ The containers run as a non-root user with memory and CPU limits and rotated log
 
 Everything in this section lives in one public W&B project, [imhaohao-university-of-california-berkeley/physics](https://wandb.ai/imhaohao-university-of-california-berkeley/physics/weave), and every link opens without a W&B account. On 28 September 2026 at 10:42pm PT the project held 8,350 traced calls recorded since 13 September, and none of them raised an error. It also holds one Weave Evaluation with its 39-case dataset, the model that evaluation scores, and six evaluation runs.
 
-`@traced` in [`tracing.py`](packages/agents/standardphysics_agents/tracing.py) makes a function a Weave op. The API traces the checks it runs for a request, and every worker child process starts its own tracing and flushes it before it exits, so a scan's processing appears in Weave end to end. `/health/details` reports whether the API process's tracing started, why not when it did not, and how many of its sends to W&B have failed.
+`@traced` in [`tracing.py`](packages/agents/standardphysics_agents/tracing.py) makes a function a Weave op. The API traces the checks it runs for a request, and every worker child process starts its own tracing and flushes it before it exits, so a scan's processing appears in Weave end to end. Two paths run with tracing suspended: the check that answers while an owner drags furniture, and Fix room's model loop. Tracing walked the whole scene graph on every call, which once pushed a production layout check past its 20-second limit ([`44cee09`](https://github.com/Imhaohao/standardphysics/commit/44cee09386f4bc814d016ac0714efd6c81141d0c)). `/health/details` reports whether the API process's tracing started, why not when it did not, and how many of its sends to W&B have failed.
 
 ### Traced operations
 

@@ -92,18 +92,35 @@ def test_no_more_meshes_are_checked_at_once_than_the_cap(make_client, monkeypatc
     assert most == cap
 
 
-def test_a_mesh_is_read_a_part_at_a_time(tmp_path):
-    path = _write(tmp_path, {"parts": [_part(index, vertex_count=600) for index in range(1200)], "floorY": -0.5})
-    size = path.stat().st_size
+def _mesh_of(directory, parts: int):
+    directory.mkdir()
+    return _write(directory, {"parts": [_part(index, vertex_count=600) for index in range(parts)], "floorY": -0.5})
+
+
+def _checked_with_peak(path):
     tracemalloc.start()
     try:
         checked = lidar_mesh.validate_lidar_mesh_file(path)
         _, peak = tracemalloc.get_traced_memory()
     finally:
         tracemalloc.stop()
+    return checked, peak
+
+
+def test_a_mesh_is_read_a_part_at_a_time(tmp_path):
+    path = _mesh_of(tmp_path / "mesh", 1200)
+    size = path.stat().st_size
+    checked, peak = _checked_with_peak(path)
     assert checked.parts == 1200
     assert checked.vertices == 1200 * 600
     assert peak < size / 2, f"peak {peak} bytes for a {size} byte file"
+
+
+def test_peak_memory_follows_the_largest_part_not_the_file(tmp_path):
+    """A mesh four times larger peaks at the same memory, so a mesh at the 640 MB cap does too."""
+    _, small = _checked_with_peak(_mesh_of(tmp_path / "small", 300))
+    _, large = _checked_with_peak(_mesh_of(tmp_path / "large", 1200))
+    assert large < small * 1.25, f"peak grew from {small} to {large} bytes for four times the parts"
 
 
 def test_a_part_bigger_than_one_read_is_still_read_whole(tmp_path, monkeypatch):
