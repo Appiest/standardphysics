@@ -203,6 +203,28 @@ final class ScanExportTests: XCTestCase {
         XCTAssertFalse(poses.contains { $0.image.hasSuffix("frame_0005.jpg") })
     }
 
+    func testScanFromAnOldAppContainerPointsAtTheFolderItWasFoundIn() {
+        let oldFolder = URL(fileURLWithPath: "/var/mobile/Containers/Data/Application/OLD/Captures/A")
+        let newFolder = URL(fileURLWithPath: "/var/mobile/Containers/Data/Application/NEW/Captures/A")
+        let scan = CapturedScan(
+            id: UUID(),
+            directory: oldFolder,
+            roomURL: oldFolder.appendingPathComponent("room.usdz"),
+            duration: 1,
+            artifacts: [CaptureArtifact(id: "frame-0000", kind: .frames,
+                fileURL: oldFolder.appendingPathComponent("frames/frame_0000.jpg"))],
+            name: "Front room"
+        )
+
+        let moved = scan.relocated(to: newFolder)
+
+        XCTAssertEqual(moved.directory, newFolder)
+        XCTAssertEqual(moved.roomURL.path, newFolder.appendingPathComponent("room.usdz").path)
+        XCTAssertEqual(moved.artifacts.first?.fileURL.path,
+            newFolder.appendingPathComponent("frames/frame_0000.jpg").path)
+        XCTAssertEqual(moved.name, "Front room")
+    }
+
     private func loadFixtureRoom() throws -> CapturedRoom {
         let source = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "apple_bedroom3.room", withExtension: "json"))
         return try JSONDecoder().decode(CapturedRoom.self, from: Data(contentsOf: source))

@@ -62,6 +62,32 @@ struct CapturedScan: Identifiable, Codable {
         )
         return updated
     }
+
+    /// capture.json keeps full paths, and iOS moves the app's container on
+    /// every install or TestFlight update, so a scan read back from disk is
+    /// pointed at the folder it was actually found in.
+    func relocated(to folder: URL) -> CapturedScan {
+        guard folder.standardizedFileURL != directory.standardizedFileURL else { return self }
+        return CapturedScan(
+            id: id,
+            directory: folder,
+            roomURL: rebased(roomURL, onto: folder),
+            duration: duration,
+            artifacts: artifacts.map {
+                CaptureArtifact(id: $0.id, kind: $0.kind, fileURL: rebased($0.fileURL, onto: folder))
+            },
+            name: name,
+            captureNotice: captureNotice,
+            replaces: replaces
+        )
+    }
+
+    private func rebased(_ file: URL, onto folder: URL) -> URL {
+        let oldFolder = directory.standardizedFileURL.path + "/"
+        let path = file.standardizedFileURL.path
+        guard path.hasPrefix(oldFolder) else { return file }
+        return folder.appendingPathComponent(String(path.dropFirst(oldFolder.count)))
+    }
 }
 
 enum ScanExporter {
@@ -246,7 +272,8 @@ enum CaptureLibrary {
 
         return directories.compactMap { directory in
             let manifest = directory.appendingPathComponent("capture.json")
-            return try? JSONDecoder().decode(CapturedScan.self, from: Data(contentsOf: manifest))
+            let saved = try? JSONDecoder().decode(CapturedScan.self, from: Data(contentsOf: manifest))
+            return saved?.relocated(to: directory)
         }.sorted { left, right in
             let leftDate = (try? left.directory.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
             let rightDate = (try? right.directory.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
