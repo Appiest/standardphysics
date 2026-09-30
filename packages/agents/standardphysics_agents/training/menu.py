@@ -9,9 +9,11 @@ illegally let code own the geometry. So the model here chooses, and code places.
 1. Generate. For each fixable problem, the solver's own guesses: the slide
    ladder of `fix/strategies.py` and the placement beam of `fix/placement.py`,
    and slides that set a too-high item down on a lower surface
-   (`fix/surfaces.py`). When none of those clears the problem, three more
+   (`fix/surfaces.py`). When none of those clears the problem, more
    families get their own tries: every piece inside a turning circle pushed
-   out at once (`fix/clearing.py`), a table carried together with its seats
+   out at once (`fix/clearing.py`), every piece in a passing square somewhere
+   on the route pushed out of it (`fix/path_squares.py`), a table carried
+   together with its seats
    (`fix/groups.py`), and short nudges of each named piece along its own sides
    (`fix/nudges.py`). Last come short slides of a built-in fixture the problem
    names, alone or together with the built-ins it touches (`fix/built_ins.py`),
@@ -62,6 +64,7 @@ from ..fix.clearing import circle_clearing_moves, space_clearing_moves
 from ..fix.groups import group_moves
 from ..fix.moves import measured_position
 from ..fix.nudges import nudge_moves
+from ..fix.path_squares import on_a_route, route_paths, square_clearing_moves
 from ..fix.placement import placements
 from ..fix.strategies import Candidate
 from ..fix.surfaces import lower_surface_moves
@@ -245,6 +248,11 @@ def _set_words(graph: SceneGraph, candidate: Candidate, finding: Finding) -> str
     return f"{_slide_words(graph, table, finding, delta.x, delta.y, 'slide')} with its {seats} seat{'s' * (seats > 1)}"
 
 
+def _routes(graph: SceneGraph, finding: Finding, checker: TrainingChecker) -> list[list[Vec3]]:
+    """The route's legs, measured only for a problem whose locus is the route."""
+    return route_paths(graph, checker.scenario, checker.measure) if on_a_route(finding) else []
+
+
 def _clearing_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:
     """A turning circle or a counter's clear floor emptied at once, a table moved with its seats, and short nudges,
     taken in turn."""
@@ -259,6 +267,8 @@ def _clearing_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChec
     families = [
         [worded(found, slides(found)) for found in circle_clearing_moves(graph, finding, pinned)],
         [worded(found, slides(found)) for found in space_clearing_moves(graph, finding, pinned)],
+        [worded(found, slides(found)) for found in square_clearing_moves(graph, finding, _routes(graph, finding, checker),
+                                                                         pinned)],
         _varied([worded(found, _set_words(graph, found, finding))
                  for found in group_moves(graph, finding, _groups(graph), pinned)]),
         _varied([worded(found, slides(found)) for found in nudge_moves(graph, finding, pinned)]),
