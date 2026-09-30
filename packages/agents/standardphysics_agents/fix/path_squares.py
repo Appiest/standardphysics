@@ -8,9 +8,9 @@ finds none, and the gate refuses every piece moved on its own. On a real scan
 with a sofa dragged into a room's middle, the menu found no option for it.
 
 So this file walks every leg of the route, since a passing space anywhere on
-it counts, and at each point where only movable pieces
-stand in the square it pushes all of them sideways out of it, across the
-route, to one side, the other, or each to its own nearer side. The squares
+it counts, and at each point where only movable pieces stand in the square it
+pushes all of them sideways out of it, across the route, to one side, the
+other, or each to its own nearer side. The squares
 with the fewest pieces in them are tried first. A push that lands a piece on
 another is nudged to the nearest legal floor outside the square, as
 `clearing.py` does for a counter's clear floor. Nothing here is measured.
@@ -39,6 +39,8 @@ from ..checks.route_geometry import sample_path
 from .clearing import PUSH_MARGINS_INCHES, _landed, _rounded
 from .strategies import Candidate
 
+SQUARE_CHECKS = frozenset({"passing_space"})
+"""Checks satisfied by a clear square of their required width anywhere on the route."""
 SAMPLE_METERS = 0.3
 """How far apart along the route the squares are tried."""
 SQUARES_TRIED = 6
@@ -110,14 +112,14 @@ def route_paths(graph: SceneGraph, scenario: Scenario, measure: MeasurementProvi
 
 
 def on_a_route(finding: Finding) -> bool:
-    """Whether the finding's locus is a route rather than a spot, as a passing space none was found for is."""
-    return finding.locus is not None and finding.locus.annotation.kind == "path" and finding.required_inches is not None
+    """Whether a clear square of the finding's required width anywhere on the route would satisfy its check."""
+    return finding.check_id in SQUARE_CHECKS and finding.required_inches is not None
 
 
 def square_clearing_moves(graph: SceneGraph, finding: Finding, routes: list[list[Vec3]],
                           pinned=frozenset()) -> list[Candidate]:
-    """For a finding whose locus is a route, the pieces in a square of its required width somewhere on `routes`
-    pushed out of it, the squares with fewest pieces in them first."""
+    """For a check a square anywhere on the route satisfies, the pieces in one square of its required width on
+    `routes` pushed out of it, the squares with fewest pieces in them first."""
     if not on_a_route(finding):
         return []
     assert finding.required_inches is not None
