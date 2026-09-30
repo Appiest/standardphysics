@@ -480,16 +480,23 @@ class _Measurer:
                 found.append((guess, effect))
         return sorted(found, key=lambda pair: _rank(pair[1]))[:OPTIONS_PER_PROBLEM]
 
-    def for_problem(self, finding: Finding) -> list[tuple[_Guess, dict]]:
-        """Each tier of guesses in turn, stopping at the first tier that offers an option clearing the problem."""
-        label = self.labels[finding.id]
+    def every_problem(self, findings: list[Finding]) -> list[tuple[_Guess, dict]]:
+        """Every problem's first tier of guesses, then the next tier of each problem no option clears yet, and so on.
+
+        Taken one problem at a time, the first problem's built-in slides used a
+        whole menu's time on the validation shops before a later problem had any
+        guess measured, even one its own first tier would have cleared.
+        """
+        queues = [(finding, tiers_for(self.checker, finding)) for finding in findings]
         found: list[tuple[_Guess, dict]] = []
-        for tier in tiers_for(self.checker, finding):
-            if out_of_time(self.deadline):
-                break
-            found.extend(self.options(tier.guesses(self.room, finding, self.checker, label), tier.tries, label))
-            if _clears(found, label):
-                break
+        for depth in range(len(TIERS)):
+            for finding, tiers in queues:
+                if out_of_time(self.deadline):
+                    return found
+                label = self.labels[finding.id]
+                if depth < len(tiers) and not (depth and _clears(found, label)):
+                    tier = tiers[depth]
+                    found.extend(self.options(tier.guesses(self.room, finding, self.checker, label), tier.tries, label))
         return found
 
 
@@ -507,7 +514,7 @@ def build_menu(room: SceneGraph, checker: TrainingChecker, stated: WishBook | No
     veto = combine_rejections(checker.directive_veto(room), stated.rejection(checker.measure) if stated else None)
     labelled, told = _wishes_shown(room, checker, stated, view)
     measurer = _Measurer(room, checker, before, labels, veto, labelled, deadline=limits.deadline)
-    measured = [pair for finding in problems if limits.wants(finding) for pair in measurer.for_problem(finding)]
+    measured = measurer.every_problem([finding for finding in problems if limits.wants(finding)])
     measured = _drop_covered_diagonals(measured)
     kept_best = sorted(measured, key=lambda pair: _rank(pair[1]))[:MENU_SIZE]
     options = [Option(number, guess.wording, guess.edits, effect)
