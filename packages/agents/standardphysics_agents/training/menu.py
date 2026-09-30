@@ -17,7 +17,9 @@ illegally let code own the geometry. So the model here chooses, and code places.
    (`fix/groups.py`), and short nudges of each named piece along its own sides
    (`fix/nudges.py`). Last come short slides of a built-in fixture the problem
    names, alone or together with the built-ins it touches (`fix/built_ins.py`),
-   so a counter keeps its lowered section. Each is worded as a relation
+   so a counter keeps its lowered section, and for a problem nothing clears, a
+   move refused only for a problem it brought together with a move for that
+   problem (`training/menu_follow_ups.py`). Each is worded as a relation
    ("slide Chair [3f2a] 14 in away from the Cafe table, for P1").
    After Holodeck (Yang et al., CVPR 2024, arXiv:2312.09067), where the language
    model states relations and a solver enforces no-collision and in-bounds.
@@ -72,6 +74,7 @@ from .checker import FITTING_FIELDS, TrainingChecker
 from .construction import build, construction_inches
 from .edits import TrainingEdits, _json_text, combined, edits_json, node_moves, parse_edits
 from .menu_construction import _fitting_guesses, _fixture_guesses
+from .menu_follow_ups import Tried, follow_up_guesses
 from .menu_words import _furniture, _Guess, _move_words, _name, _slide_words
 from .owner import WishBook
 from .prices import construction_price
@@ -87,6 +90,7 @@ FURNITURE_TRIES = 12
 CLEARING_TRIES = 18
 FIXTURE_TRIES = 12
 FITTING_TRIES = 8
+FOLLOW_UP_TRIES = 8
 """Legal guesses measured per problem; each costs one full checker pass.
 
 The clearing families and then fixture slides are only measured for a problem
@@ -455,14 +459,17 @@ class _Measurer:
     wishes: list[tuple[str, Wish]] = field(default_factory=list)
     worded: set = field(default_factory=set)
     deadline: float | None = None
+    tried: dict[str, list[Tried]] = field(default_factory=dict)
+    """Every legal guess measured for each problem label, refused or not, for following up."""
 
     def breaks(self, candidate: SceneGraph) -> list[str]:
         return [label for label, wish in self.wishes if not kept(wish, self.room, candidate, self.checker.measure)]
 
-    def measured(self, guess: _Guess, candidate: SceneGraph) -> dict | None:
+    def measured(self, guess: _Guess, candidate: SceneGraph, label: str) -> dict | None:
         """What the guess does to the room, or None when the gate refuses it."""
         after = self.checker.assess(candidate)
         verdict = accepts(self.before, after)
+        self.tried.setdefault(label, []).append(Tried(guess, candidate, after, verdict))
         if not verdict and not _restores_the_scan(guess, verdict):
             return None
         self.worded.add(guess.wording)
@@ -485,7 +492,7 @@ class _Measurer:
             if candidate is None:
                 continue
             tries -= 1
-            effect = self.measured(guess, candidate)
+            effect = self.measured(guess, candidate, label)
             if effect is not None:
                 found.append((guess, effect))
         return sorted(found, key=lambda pair: _rank(pair[1]))[:OPTIONS_PER_PROBLEM]
@@ -507,7 +514,20 @@ class _Measurer:
                 if depth < len(tiers) and not (depth and _clears(found, label)):
                     tier = tiers[depth]
                     found.extend(self.options(tier.guesses(self.room, finding, self.checker, label), tier.tries, label))
-        return found
+        return found + self.follow_ups(findings, found)
+
+    def follow_ups(self, findings: list[Finding], found: list[tuple[_Guess, dict]]) -> list[tuple[_Guess, dict]]:
+        """For each problem no option clears and furniture could, a move refused only for a problem it brought,
+        together with a move for that problem."""
+        followed: list[tuple[_Guess, dict]] = []
+        for finding in findings:
+            label = self.labels[finding.id]
+            if out_of_time(self.deadline) or _clears(found, label) or not MOVES & set(
+                    self.checker.resolving_edits(finding.check_id)):
+                continue
+            guesses = follow_up_guesses(self.tried.get(label, []), self.before, self.checker, label, _furniture_guesses)
+            followed.extend(self.options(guesses, FOLLOW_UP_TRIES, label))
+        return followed
 
 
 def build_menu(room: SceneGraph, checker: TrainingChecker, stated: WishBook | None = None,
