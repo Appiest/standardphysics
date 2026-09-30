@@ -25,6 +25,18 @@ def _answer_everything(client, scan_id):
             client.post(f"/api/scans/{scan_id}/requests/{request['id']}/skip")
 
 
+def _fill_every_gap(client, scan_id):
+    """The quick questions and photos, then every follow-up: a number where one is asked, a skip for a photo."""
+    _answer_everything(client, scan_id)
+    for request in client.get(f"/api/scans/{scan_id}/requests").json()["requests"]:
+        if request["timing"] != "follow_up":
+            continue
+        if request["kind"] == "number":
+            client.put(f"/api/scans/{scan_id}/requests/{request['id']}/answer", json={"number": 34})
+        else:
+            client.post(f"/api/scans/{scan_id}/requests/{request['id']}/skip")
+
+
 def test_a_walk_still_uploading_is_in_the_walk_stage(client):
     scan_id = create_scan(client)
     journey = _journey(client, scan_id)
@@ -45,10 +57,7 @@ def test_the_quick_questions_come_first(make_client):
 
 def test_the_results_are_ready_once_the_gaps_are_filled(make_client):
     client, scan_id = _sample(make_client)
-    _answer_everything(client, scan_id)
-    for request in client.get(f"/api/scans/{scan_id}/requests").json()["requests"]:
-        if request["timing"] == "follow_up" and request["kind"] == "number":
-            client.put(f"/api/scans/{scan_id}/requests/{request['id']}/answer", json={"number": 34})
+    _fill_every_gap(client, scan_id)
     journey = _journey(client, scan_id)
     assert journey["stage"] == "results"
     assert journey["next_step"]["title"].startswith("Your results are ready.")
@@ -82,10 +91,7 @@ def test_marking_something_that_is_not_a_problem_is_refused(make_client):
 
 def test_fixing_says_how_far_along_and_what_is_next(make_client):
     client, scan_id = _sample(make_client)
-    _answer_everything(client, scan_id)
-    for request in client.get(f"/api/scans/{scan_id}/requests").json()["requests"]:
-        if request["timing"] == "follow_up" and request["kind"] == "number":
-            client.put(f"/api/scans/{scan_id}/requests/{request['id']}/answer", json={"number": 34})
+    _fill_every_gap(client, scan_id)
     items = client.get(f"/api/scans/{scan_id}/checklist").json()["items"]
     client.put(f"/api/scans/{scan_id}/checklist/{items[0]['finding_id']}", json={"status": "done"})
     journey = _journey(client, scan_id)
