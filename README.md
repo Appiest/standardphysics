@@ -5,7 +5,7 @@
 
 Standard Physics turns an iPhone scan of a small business into a 3D model. It checks the features it can measure against selected rules from the 2010 ADA Standards, and each finding shows the measurement and the rule it breaks. Where the scan can't see enough to decide, it asks the owner a question instead of counting a pass. An agent loop then searches for a rearrangement of the owner's own furniture, and every proposal is measured again before it is accepted. It is a screening and planning tool: it doesn't certify a building or establish that a site complies with the ADA.
 
-It is already deployed and in production use. We partnered with Sharetea in Berkeley, California, and used Standard Physics to find two violations: the payment processor was too high, and one of the walkways wasn't wide enough when chairs weren't pushed in.
+It is already deployed and in production use. We partnered with Sharetea in Berkeley, California, and used Standard Physics to find four problems at its two ordering counters: both tops are too high to order from a wheelchair, at 42 and 41.5 inches where 36 is the most allowed, and stools fill the space a wheelchair needs to pull up to each one.
 
 | | |
 |---|---|

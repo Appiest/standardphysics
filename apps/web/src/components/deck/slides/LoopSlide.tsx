@@ -19,12 +19,19 @@ type LoopNode = { key: string; Icon: Icon; title: string; tool: string; degrees:
 
 const nodes: LoopNode[] = [
   { key: "measure", Icon: ListChecks, title: "Check", tool: "ADA rules", degrees: -90 },
-  { key: "decide", Icon: Scales, title: "Decide", tool: "TypeSafe", degrees: 0 },
+  { key: "decide", Icon: Scales, title: "Decide", tool: "Tested moves", degrees: 0 },
   { key: "act", Icon: Wrench, title: "Act", tool: "Fix agent", degrees: 90 },
   { key: "recheck", Icon: ArrowsClockwise, title: "Re-check", tool: "W&B Weave", degrees: 180 },
 ];
 
-const routerActions = ["FIX", "RESCAN_AREA", "ASK_OWNER", "ESCALATE", "DONE"];
+/** Five of the nine moves Sharetea's checker passed, out of 65 it tested. The model picked the three marked chosen and one more. */
+const testedMoves = [
+  { label: "Counter 1: 34 in", chosen: true },
+  { label: "Counter 1: 36 in", chosen: false },
+  { label: "Counter 2: 34 in", chosen: true },
+  { label: "Counter 2: 36 in", chosen: false },
+  { label: "Clear the stools", chosen: true },
+];
 
 function pointOnRing(degrees: number, radius = RING.r) {
   const radians = (degrees * Math.PI) / 180;
@@ -109,12 +116,11 @@ function ActionChoices({ visible }: { visible: boolean }) {
     <AnimatePresence>
       {visible && (
         <motion.g key="choices" initial="enter" animate="present" exit="exit">
-          {routerActions.map((action, index) => {
+          {testedMoves.map(({ label, chosen }, index) => {
             const y = decide.y - 160 + index * 80;
-            const chosen = action === "FIX";
             return (
               <motion.g
-                key={action}
+                key={label}
                 variants={{
                   enter: { opacity: 0, x: -30 },
                   present: { opacity: 1, x: 0, transition: { duration: 0.4, ease: easeDrawn, delay: 0.1 + index * 0.08 } },
@@ -124,7 +130,7 @@ function ActionChoices({ visible }: { visible: boolean }) {
                 <line x1={decide.x + NODE_RADIUS} y1={decide.y} x2={decide.x + 150} y2={y} stroke={chosen ? "var(--color-tape-deep)" : "var(--color-rule)"} strokeWidth={chosen ? 6 : 3} />
                 <rect x={decide.x + 150} y={y - 28} width={290} height={56} rx={8} fill={chosen ? "var(--color-tape)" : "var(--color-paper-raised)"} />
                 <text x={decide.x + 295} y={y + 10} textAnchor="middle" fill={chosen ? "var(--color-ink)" : "var(--color-ink-muted)"} className="font-display text-3xl font-extrabold">
-                  {action}
+                  {label}
                 </text>
               </motion.g>
             );
@@ -137,7 +143,7 @@ function ActionChoices({ visible }: { visible: boolean }) {
 
 function LoopDiagram({ phase }: { phase: LoopPhase }) {
   return (
-    <svg viewBox="90 60 1180 820" className="h-full w-full overflow-visible" role="img" aria-label="A loop: check the shop, TypeSafe decides the next action, the fix agent acts, and the change is re-checked and traced in W&B Weave">
+    <svg viewBox="90 60 1180 820" className="h-full w-full overflow-visible" role="img" aria-label="A loop: check the shop, pick from the moves the checker already passed, the fix agent acts, and the change is re-checked and traced in W&B Weave">
       {nodes.map((node, index) => (
         <motion.path
           key={node.key}
@@ -164,8 +170,8 @@ const copy: Record<LoopPhase, { headline: string[]; detail: string[] }> = {
     detail: ["It checks the shop, decides, acts,", "and checks again until the problems clear."],
   },
   decide: {
-    headline: ["TypeSafe picks", "the next move."],
-    detail: [],
+    headline: ["It only picks", "moves the checker", "already passed."],
+    detail: ["At Sharetea it tested 65 moves,", "refused 56 and offered 9."],
   },
   test: {
     headline: ["Every fix is", "tested before", "Sara sees it."],
