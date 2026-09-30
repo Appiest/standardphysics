@@ -50,17 +50,18 @@ from itertools import chain, zip_longest
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from standardphysics_contracts import Finding, NodeMove, SceneGraph, SceneNode, to_inches, to_meters
+from standardphysics_contracts import Finding, NodeMove, SceneGraph, SceneNode, Vec3, to_inches, to_meters
 from standardphysics_pipeline.footprints import rotation_about_z
 
 from ..assess import Pass
 from ..checks import roles
-from ..evaluation.gate import accepts
+from ..evaluation.gate import GateResult, accepts
 from ..fix import CandidateRejection, candidates, combine_rejections, pinch_from, room_heading, snap_moves
 from ..fix.budget import out_of_time
 from ..fix.built_ins import built_in_set_moves
 from ..fix.clearing import circle_clearing_moves, space_clearing_moves
 from ..fix.groups import group_moves
+from ..fix.moves import measured_position
 from ..fix.nudges import nudge_moves
 from ..fix.placement import placements
 from ..fix.strategies import Candidate
@@ -96,6 +97,8 @@ last.
 """
 OPTIONS_PER_PROBLEM = 4
 MENU_SIZE = 12
+RETURN_MIN_METERS = to_meters(3.0)
+"""A piece closer than this to where the scan found it has not really been moved, so there is nothing to undo."""
 MAX_PICKS = MENU_SIZE
 TURN_WORDING_DEGREES = 1.0
 SQUARE_TOLERANCE_DEGREES = 3.0
@@ -191,6 +194,8 @@ class MenuView:
 class _Guess:
     edits: TrainingEdits
     wording: str
+    restores_scan: bool = False
+    """Every piece it moves goes back where the scan found it."""
 
 
 def _name(node: SceneNode) -> str:
@@ -248,12 +253,30 @@ def _surface_guesses(graph: SceneGraph, finding: Finding, label: str) -> list[tu
         for found in lower_surface_moves(graph, finding)]
 
 
+def _return_guesses(graph: SceneGraph, finding: Finding, label: str) -> list[tuple[float, _Guess]]:
+    """Each movable piece standing away from where the scan found it set back there, first in line: when a piece the
+    plan moved causes the pinch, undoing that move is what anyone would try before shuffling everything around it.
+    The piece need not be one the problem names, since a piece moved onto a route narrows it for pieces further on."""
+    found = []
+    for node in graph.nodes:
+        if not node.movable:
+            continue
+        origin, here = measured_position(node), node.transform.position
+        if math.hypot(origin.x - here.x, origin.y - here.y) < RETURN_MIN_METERS:
+            continue
+        back = NodeMove(node_id=node.id, delta_translation=Vec3(x=origin.x - here.x, y=origin.y - here.y, z=0.0))
+        found.append((0.0, _Guess(TrainingEdits(moves=[_furniture(back)]), f"put {_name(node)} back where it was, for {label}",
+                                  restores_scan=True)))
+    return found
+
+
 def _furniture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:
     """Slides and placements that open space, and slides that set a too-high item on a lower surface."""
     found = [(candidate.disruption, _Guess(
         TrainingEdits(moves=[_furniture(move) for move in candidate.moves]),
         "; ".join(_move_words(graph, move, finding) for move in candidate.moves) + f", for {label}"))
         for candidate in _pinch_candidates(graph, finding, checker)]
+    found.extend(_return_guesses(graph, finding, label))
     found.extend(_surface_guesses(graph, finding, label))
     found.sort(key=lambda pair: pair[0])
     return _varied([guess for _, guess in found if not touched(guess.edits) & set(checker.pinned)])
@@ -528,6 +551,13 @@ def _problem_view(graph: SceneGraph, problems: list[Finding], labels: dict[UUID,
             for finding in problems]
 
 
+def _restores_the_scan(guess: _Guess, verdict: GateResult) -> bool:
+    """A piece put back where the scan found it brings back the scan's own questions about that spot. That is the
+    room as scanned, not an answer hidden to pass the gate, so it may go ahead if nothing else got worse."""
+    lost_answers_only = all(reason.endswith("lost its measured answer") for reason in verdict.reasons)
+    return guess.restores_scan and lost_answers_only and verdict.problems_after <= verdict.problems_before
+
+
 @dataclass(frozen=True)
 class MenuLimits:
     """How much of the room a menu is built for.
@@ -564,7 +594,8 @@ class _Measurer:
     def measured(self, guess: _Guess, candidate: SceneGraph) -> dict | None:
         """What the guess does to the room, or None when the gate refuses it."""
         after = self.checker.assess(candidate)
-        if not accepts(self.before, after):
+        verdict = accepts(self.before, after)
+        if not verdict and not _restores_the_scan(guess, verdict):
             return None
         self.worded.add(guess.wording)
         effect = _effect(self.room, candidate, self.checker, self.before, after, self.labels, guess.edits)

@@ -24,7 +24,7 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from standardphysics_contracts import SceneGraph, SceneNode, Vec3, lies_flat, to_meters
+from standardphysics_contracts import NodeMove, SceneGraph, SceneNode, Vec3, lies_flat, to_meters
 from standardphysics_pipeline import footprint
 from standardphysics_pipeline.discovery.taxonomy import is_fixture_name
 from standardphysics_pipeline.floor_coverage import ObservedFloor
@@ -39,7 +39,7 @@ from standardphysics_pipeline.footprints import (
     sized_footprint,
     touching,
 )
-from standardphysics_pipeline.occupancy import blocks_floor
+from standardphysics_pipeline.occupancy import UNCLAIMED_SURFACE, blocks_floor
 
 from ..checks import roles
 from ..checks.rectangles import rectangle
@@ -50,6 +50,7 @@ from .moves import (
     carried_by_hand,
     floor_height,
     measured_position,
+    move_node,
     per_layout,
     rests_on_something,
     surface_under,
@@ -77,6 +78,8 @@ VERTICAL_TOLERANCE = 0.02
 
 SWING_KINDS = frozenset({"door"})
 
+HOME_METERS = 0.01
+"""How near where the scan found it a piece counts as not moved."""
 MAX_TRAVEL_METERS = to_meters(60.0)
 """How far a piece may end up from where the scan found it: 60 inches.
 
@@ -430,7 +433,7 @@ def _collisions(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode])
     obstacles = [
         node
         for node in candidate.nodes
-        if node.id not in moved_ids
+        if node.id not in moved_ids and node.raw_category != UNCLAIMED_SURFACE
         and (blocks_floor(node) or node.id in wall_ids or node.id in surface_ids)
     ]
     swings = [node for node in candidate.nodes if node.kind in SWING_KINDS]
@@ -443,9 +446,21 @@ def _collisions(base: SceneGraph, candidate: SceneGraph, moved: list[SceneNode])
     return found
 
 
+def _where_scanned(node: SceneNode) -> bool:
+    """Whether the piece stands where the scan found it, give or take `HOME_METERS`."""
+    origin, here = measured_position(node), node.transform.position
+    return math.hypot(here.x - origin.x, here.y - origin.y) <= HOME_METERS
+
+
+def _as_scanned(node: SceneNode, other: SceneNode) -> bool:
+    """Both pieces stand where the scan found them, so any overlap is the scan's, as when it boxed a table twice.
+    Putting a piece back there restores the scan; it does not cause the clash."""
+    return _where_scanned(node) and _where_scanned(other)
+
+
 def _overlaps(node: SceneNode, obstacles, swings, scene: _Scene) -> list[Violation]:
     for other in obstacles:
-        if scene.collide(node, other) and not scene.already(scene.collide, node, other):
+        if scene.collide(node, other) and not scene.already(scene.collide, node, other) and not _as_scanned(node, other):
             return [Violation("collided", str(node.id), f"{node.label} into {other.label}", blocker=other.label)]
     for door in swings:
         clash = lambda piece, swing: _in_swing(piece, door_keep_clear(swing), scene.floor_z)
@@ -576,7 +591,28 @@ def _lost_room_to_use(base: SceneGraph, candidate: SceneGraph, checked: list[Sce
         Violation("no_room_to_use", str(node.id), node.label)
         for node, role in at_risk
         if _had_room(room_before, before.get(node.id), role) and not has_room_to_use(room_after, node, role)
+        and not _back_where_it_had_no_room(base, node, role)
     ]
+
+
+def _back_where_it_had_no_room(base: SceneGraph, node: SceneNode, role: roles.UsedFromTheFloor) -> bool:
+    """A piece put back where the scan found it wedged in gets back the room it had there, which was none."""
+    if not _where_scanned(node):
+        return False
+    scanned = as_scanned(base)
+    return not has_room_to_use(room_of(scanned), scanned.by_id(node.id), role)
+
+
+@per_layout
+def as_scanned(graph: SceneGraph) -> SceneGraph:
+    """The layout with every piece back where the scan found it."""
+    return graph.model_copy(update={"nodes": [
+        move_node(node, NodeMove(node_id=node.id, delta_translation=Vec3(
+            x=measured_position(node).x - node.transform.position.x,
+            y=measured_position(node).y - node.transform.position.y, z=0.0)))
+        if not _where_scanned(node) else node
+        for node in graph.nodes
+    ]})
 
 
 def _had_room(room: Room, node: SceneNode | None, role: roles.UsedFromTheFloor) -> bool:

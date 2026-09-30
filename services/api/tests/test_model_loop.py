@@ -89,6 +89,23 @@ def test_the_loop_measures_its_moves_without_sending_each_check_to_the_tracer(ma
     assert "checks.run" not in sent
 
 
+def test_a_piece_the_owner_dragged_into_the_aisle_is_put_back_where_it_was(make_client, monkeypatch):
+    from standardphysics_contracts import to_meters
+    from standardphysics_fixtures import node_id
+
+    monkeypatch.delenv("SP_LOOP_MODEL_URL", raising=False)
+    client, scan_id = _sample(make_client)
+    case = str(node_id("case_east"))
+    dragged = {"node_id": case, "delta_translation": {"x": -to_meters(30), "y": 0.0, "z": 0.0}, "delta_rotation_z_degrees": 0.0}
+    response = client.post(f"/api/scans/{scan_id}/model-loop/stream", json={"base_revision": 0, "moves": [dragged]})
+    events = [json.loads(line) for line in response.text.splitlines() if line.strip()]
+    turns = [event for event in events if event["kind"] == "turn"]
+    pinch = "The turn around the display case is too tight"
+    assert pinch in events[0]["working_on"] and events[-1]["kind"] == "finished"
+    assert any("back where it was" in words for turn in turns for words in turn["picked"])
+    assert turns and pinch not in turns[-1]["working_on"]
+
+
 def test_an_unreachable_model_ends_the_stream_with_a_way_to_recover(make_client, monkeypatch):
     def down(self, messages, seconds=None):
         raise urllib.error.URLError("connection refused")
