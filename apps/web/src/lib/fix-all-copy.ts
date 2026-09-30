@@ -1,11 +1,6 @@
 import type { ModelLoopProgress } from "@/lib/model-loop-progress";
 import type { ModelLoopEvent } from "@/types/contracts";
 
-export function idleDetail(label: string, fromPlan = false): string {
-  if (fromPlan) return `${label} starts from your plan as it stands and works through what is still wrong, choosing only moves that pass every check.`;
-  return `${label} works through the whole room, choosing only moves that pass every check. Nothing changes until you keep it.`;
-}
-
 /** Which turn is running, out of the most the run can take. */
 export function turnInProgress(turn: number, atMost: number | null): string {
   return atMost ? `Turn ${turn} of up to ${atMost}` : `Turn ${turn}`;
@@ -14,11 +9,6 @@ export function turnInProgress(turn: number, atMost: number | null): string {
 /** Seconds spent on this turn so far, as a clock: 0:07, 1:12. */
 export function turnClock(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
-/** What happens during a turn, which is why it takes a while. */
-export function turnWork(label: string): string {
-  return `${label} measures every move that fits your shop against the ADA rules, then picks one.`;
 }
 
 /** The open problems to name, and how many more there are beyond them. */
@@ -65,22 +55,6 @@ export function finishedHeadline(finished: ModelLoopEvent, started: number): str
   if (left === 0) return started === 1 ? "The problem is fixed" : `All ${started} problems fixed`;
   if (left < started) return `Fixed ${started - left} of ${started} problems`;
   return "No furniture move fixed a problem";
-}
-
-/** How many pieces move, and how many of them are built in and need a contractor. */
-function piecesMoved(count: number, builtIns: number): string {
-  if (count === 1) return builtIns === 1 ? "1 built-in piece moves. A contractor has to move it." : "1 piece moves.";
-  if (builtIns === 0) return `${count} pieces move.`;
-  const contractor = builtIns === 1 ? "One is built in, so a contractor has to move it." : `${builtIns} are built in, so a contractor has to move them.`;
-  return `${count} pieces move. ${contractor}`;
-}
-
-/** What the run proposes to move, not counting the owner's own moves it started from, and when it stopped short, the server's reason why. */
-export function finishedDetail(finished: ModelLoopEvent, allCleared: boolean): string {
-  const proposed = new Set(finished.proposed);
-  const builtIns = finished.built_ins.filter((nodeId) => proposed.has(nodeId)).length;
-  const moved = proposed.size === 0 ? "The layout stays as it is." : piecesMoved(proposed.size, builtIns);
-  return allCleared || !finished.message ? moved : `${moved} ${finished.message}`;
 }
 
 /** The button that puts the proposed moves on the plan, counted so the owner knows what to look for. */

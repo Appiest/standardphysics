@@ -1,38 +1,48 @@
 "use client";
 
-import { ArrowClockwise, ArrowCounterClockwise, ArrowUUpLeft, ArrowsLeftRight, CheckCircle, Lock, WarningCircle, Wrench } from "@phosphor-icons/react";
-import { type ComponentType, type ReactNode, useMemo } from "react";
+import { ArrowClockwise, ArrowCounterClockwise, ArrowUUpLeft, ArrowsLeftRight, CheckCircle, CircleNotch, Hammer, Lock, MinusCircle, WarningCircle, Wrench } from "@phosphor-icons/react";
+import { type ComponentType, type ReactNode, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/Button";
 import type { Arrangement } from "@/components/workspace/useArrangement";
 import { blockedSentence } from "@/lib/blocked-copy";
 import { formatInches } from "@/lib/findings";
 import { type ChangeKind, changeTitle, type FindingChange, layoutChanges, unchangedProblems } from "@/lib/layout-changes";
+import { justCleared, needsBuilding, openProblems, type StatusOf } from "@/lib/owner-decisions";
+import type { ChecklistStatus } from "@/lib/owner-journey";
 import type { Finding } from "@/types/contracts";
-import { ActionBar, StepHeading } from "./StepHeading";
+import { ActionBar } from "./StepHeading";
 
 const TURN_STEP_DEGREES = 15;
-
-function planIntro(piece: string | null, moved: boolean): string {
-  if (piece && !moved) return `Try dragging the ${piece}, outlined on the plan, and watch what it changes below.`;
-  return "Drag furniture on the plan. We re-check the shop as you move it, and nothing changes in your shop until you save.";
-}
-
-function problemsLeft(findings: Finding[]): number {
-  return findings.filter((finding) => finding.outcome === "problem").length;
-}
 
 /**
  * The findings as they stand, against the scanned layout's: the latest check,
  * else the scanned layout's own check, else what the shop was assessed with.
+ * Problems the owner already handed to a contractor or set aside are not counted.
  */
-function usePlanFindings(arrangement: Arrangement, scanned: Finding[]) {
+function usePlanFindings(arrangement: Arrangement, scanned: Finding[], statusOf: StatusOf) {
   const before = arrangement.baseline?.findings ?? scanned;
   const { check } = arrangement;
   return useMemo(() => {
     const now = check?.findings ?? before;
     const changes = check ? layoutChanges(before, check.findings) : [];
-    return { before: problemsLeft(before), left: problemsLeft(now), changes, still: unchangedProblems(now, changes) };
-  }, [before, check]);
+    const still = unchangedProblems(now, changes);
+    return {
+      before: openProblems(before, statusOf).length,
+      left: openProblems(now, statusOf).length,
+      changes,
+      movable: still.filter((finding) => !needsBuilding(finding)),
+      building: now.filter((finding) => finding.outcome === "problem" && needsBuilding(finding)),
+    };
+  }, [before, check, statusOf]);
+}
+
+/** Calls `onAllClear` the moment the open count steps down to zero, counting from the scanned layout's, so a fixed layout that opens clear counts too. */
+function useAllClear(before: number, left: number, checking: boolean, onAllClear: () => void) {
+  const previous = useRef(before);
+  useEffect(() => {
+    if (justCleared(previous.current, left, checking)) onAllClear();
+    if (!checking) previous.current = left;
+  }, [left, checking, onAllClear]);
 }
 
 function pieceWords(pieceName: string | null, activeId: string | null): { piece: string | null; turnable: boolean } {
@@ -41,7 +51,7 @@ function pieceWords(pieceName: string | null, activeId: string | null): { piece:
 }
 
 /** Try a layout: drag pieces on the plan, watch each check change as they move, and keep the plan without changing the scan. */
-export function PlanPanel({ arrangement, scanned, pieceName, fixedNote, builtIn = false, review, fixPlan, onReset, onDone }: {
+export function PlanPanel({ arrangement, scanned, pieceName, fixedNote, builtIn = false, review, fixPlan, statusOf, onDecide, onAllClear, onReset, onDone }: {
   arrangement: Arrangement;
   /** The findings the shop was assessed with, until the scanned layout's own check comes back. */
   scanned: Finding[];
@@ -55,21 +65,28 @@ export function PlanPanel({ arrangement, scanned, pieceName, fixedNote, builtIn 
   fixPlan?: ReactNode;
   /** Said when the owner reaches for a piece that is built in. */
   fixedNote: string | null;
+  /** What the owner decided about each problem: a contractor's job, set aside, or still to do. */
+  statusOf: StatusOf;
+  onDecide: (finding: Finding, status: ChecklistStatus) => void;
+  /** Called when nothing is left to fix. */
+  onAllClear: () => void;
   /** Puts every piece back where it was scanned, and drops the suggestion that moved them. */
   onReset: () => void;
   onDone: () => void;
 }) {
   const { piece, turnable } = pieceWords(pieceName, arrangement.activeId);
-  const { before, left, changes, still } = usePlanFindings(arrangement, scanned);
+  const { before, left, changes, movable, building } = usePlanFindings(arrangement, scanned, statusOf);
+  useAllClear(before, left, arrangement.checking, onAllClear);
   return (
-    <div className="flex min-h-full flex-col gap-6" data-check-ms={arrangement.latencyMs ?? undefined}>
-      <StepHeading title="Try a layout">{planIntro(piece, arrangement.hasMoves)}</StepHeading>
+    <div className="flex min-h-full flex-col gap-5" data-check-ms={arrangement.latencyMs ?? undefined}>
       <PlanScore before={before} left={left} checking={arrangement.checking} moved={arrangement.hasMoves} />
-      {left > 0 && fixPlan}
+      {!arrangement.hasMoves && <p className="-mt-2 text-ink-muted">Drag a piece on the plan.</p>}
+      {movable.length + changes.filter((change) => change.kind === "new").length > 0 && fixPlan}
       {review}
       <Refusals arrangement={arrangement} fixedNote={fixedNote} />
-      <Changes changes={changes} moved={arrangement.hasMoves} />
-      <StillToFix findings={still} />
+      <Changes changes={changes} />
+      <StillToFix findings={movable.filter((finding) => statusOf(finding.id) === "to_do")} />
+      <BuildingWork findings={building} statusOf={statusOf} onDecide={onDecide} />
       {turnable && <PieceInHand piece={piece ?? ""} builtIn={builtIn} onTurn={(degrees) => arrangement.nudge(0, 0, degrees)} />}
       {arrangement.saved && <SavedNote />}
       <PlanActions arrangement={arrangement} onReset={onReset} onDone={onDone} />
@@ -104,14 +121,11 @@ const CHANGE_LOOK: Record<ChangeKind, { Icon: IconType; tone: string; word: stri
   changed: { Icon: ArrowsLeftRight, tone: "text-ink-muted", word: "Measurement moved", surface: "bg-sheet shadow-float", title: "", weight: "bold" },
 };
 
-function Changes({ changes, moved }: { changes: FindingChange[]; moved: boolean }) {
-  if (!moved) return null;
+function Changes({ changes }: { changes: FindingChange[] }) {
+  if (changes.length === 0) return null;
   return (
-    <section aria-labelledby="layout-changes" aria-live="polite" className="flex flex-col gap-3">
-      <h2 id="layout-changes" className="text-lg font-semibold">What this layout changes</h2>
-      {changes.length === 0
-        ? <p className="text-pretty text-ink-muted">None of the checks moved yet. Try the pieces near a red line on the plan.</p>
-        : <ul className="flex flex-col gap-2">{changes.map((change) => <ChangeRow key={change.id} change={change} />)}</ul>}
+    <section aria-label="What this layout changes" aria-live="polite">
+      <ul className="flex flex-col gap-2">{changes.map((change) => <ChangeRow key={change.id} change={change} />)}</ul>
     </section>
   );
 }
@@ -119,11 +133,10 @@ function Changes({ changes, moved }: { changes: FindingChange[]; moved: boolean 
 function ChangeRow({ change }: { change: FindingChange }) {
   const { Icon, tone, word, surface, title, weight } = CHANGE_LOOK[change.kind];
   return (
-    <li className={`grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-2xl p-4 ${surface}`}>
+    <li className={`grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 rounded-2xl px-4 py-3 ${surface}`}>
       <Icon size={22} weight={weight} aria-hidden className={`mt-0.5 ${tone}`} />
-      <div className="flex flex-col gap-1">
-        <p className={`text-sm font-semibold ${tone}`}>{word}</p>
-        <p className={`text-pretty font-medium ${title}`}>{changeTitle(change)}</p>
+      <div className="flex flex-col">
+        <p className={`text-pretty font-medium ${title}`}><span className="sr-only">{word}: </span>{changeTitle(change)}</p>
         <MeasurementShift change={change} />
       </div>
     </li>
@@ -178,21 +191,75 @@ function StillToFix({ findings }: { findings: Finding[] }) {
   );
 }
 
+const DECIDED: Partial<Record<ChecklistStatus, { Icon: IconType; words: string; tone: string }>> = {
+  needs_pro: { Icon: Wrench, words: "In the report for a contractor", tone: "text-attention" },
+  not_doing: { Icon: MinusCircle, words: "Ignored", tone: "text-ink-muted" },
+  done: { Icon: CheckCircle, words: "Done", tone: "text-pass" },
+};
+
+/** Problems no furniture move reaches, like a door frame: each goes in the report for a contractor, or is set aside. */
+function BuildingWork({ findings, statusOf, onDecide }: { findings: Finding[]; statusOf: StatusOf; onDecide: (finding: Finding, status: ChecklistStatus) => void }) {
+  if (findings.length === 0) return null;
+  return (
+    <section aria-labelledby="layout-building" className="flex flex-col gap-2">
+      <h2 id="layout-building" className="flex items-center gap-2 text-lg font-semibold">
+        <Hammer size={20} weight="bold" aria-hidden className="text-attention" />
+        Needs building work
+      </h2>
+      <ul className="flex flex-col gap-2">
+        {findings.map((finding) => <BuildingRow key={finding.id} finding={finding} status={statusOf(finding.id)} onDecide={onDecide} />)}
+      </ul>
+    </section>
+  );
+}
+
+function BuildingRow({ finding, status, onDecide }: { finding: Finding; status: ChecklistStatus; onDecide: (finding: Finding, status: ChecklistStatus) => void }) {
+  const decided = DECIDED[status];
+  if (decided) {
+    return (
+      <li className="flex items-center gap-3 rounded-2xl bg-ink/[0.04] px-4 py-3">
+        <decided.Icon size={20} weight="bold" aria-hidden className={`shrink-0 ${decided.tone}`} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium text-ink-muted">{finding.title}</p>
+          <p className={`text-sm ${decided.tone}`}>{decided.words}</p>
+        </div>
+        <Button variant="quiet" onClick={() => onDecide(finding, "to_do")}>Undo</Button>
+      </li>
+    );
+  }
+  return (
+    <li className="flex flex-col gap-3 rounded-2xl bg-sheet p-4 shadow-float">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-pretty font-semibold">{finding.title}</p>
+        {finding.measured_inches !== null && <span className="measurement shrink-0 text-sm text-problem">{formatInches(finding.measured_inches)}</span>}
+      </div>
+      {finding.fix && <p className="border-l-2 border-accent pl-3 text-pretty">{finding.fix}</p>}
+      <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-2">
+        <Button variant="choice" className="justify-center" onClick={() => onDecide(finding, "needs_pro")}>
+          <Wrench size={18} weight="bold" aria-hidden />
+          Add to report
+        </Button>
+        <Button className="justify-center" onClick={() => onDecide(finding, "not_doing")}>Ignore</Button>
+      </div>
+    </li>
+  );
+}
+
 /** What can be done with the piece being moved, and what moving it involves when it is built in. */
 function PieceInHand({ piece, builtIn, onTurn }: { piece: string; builtIn: boolean; onTurn: (degrees: number) => void }) {
   return (
     <>
-      {builtIn && <BuiltInNote piece={piece} />}
+      {builtIn && <BuiltInNote />}
       <TurnControls piece={piece} onTurn={onTurn} />
     </>
   );
 }
 
-function BuiltInNote({ piece }: { piece: string }) {
+function BuiltInNote() {
   return (
     <p className="flex items-start gap-2 text-pretty text-ink-muted">
       <Wrench size={20} weight="bold" className="mt-0.5 shrink-0" aria-hidden />
-      The {piece} is built in, so moving it means construction work. Plumbing and power may need to move with it.
+      Moving this built-in piece takes a contractor.
     </p>
   );
 }
@@ -201,7 +268,7 @@ function SavedNote() {
   return (
     <p role="status" className="flex items-center gap-2 font-medium text-pass">
       <CheckCircle size={20} weight="fill" aria-hidden />
-      Saved. Once the real furniture moves, walk the shop again to update your results.
+      Saved
     </p>
   );
 }
@@ -241,20 +308,16 @@ function trendOf(before: number, left: number, moved: boolean): Trend {
   return left < before ? "better" : "worse";
 }
 
-function scoreNote(before: number, checking: boolean, moved: boolean): string {
-  if (checking) return "Checking the layout";
-  return moved ? `Your shop has ${before} now` : "Your shop as scanned";
-}
-
 function PlanScore({ before, left, checking, moved }: { before: number; left: number; checking: boolean; moved: boolean }) {
   const look = TREND_LOOK[trendOf(before, left, moved)];
   return (
-    <div aria-live="polite" className={`flex items-baseline gap-3 rounded-2xl p-4 transition-colors duration-150 ${look.surface}`}>
-      <span className={`text-4xl font-semibold tabular-nums transition-opacity duration-150 ${look.number} ${checking ? "opacity-40" : ""}`}>{left}</span>
-      <p className="text-lg">
-        {left === 1 ? "thing" : "things"} to fix with this layout
-        <span className="block text-base text-ink-muted">{scoreNote(before, checking, moved)}</span>
-      </p>
+    <div aria-live="polite" className={`flex items-center gap-3 rounded-2xl p-4 transition-colors duration-150 ${look.surface}`}>
+      <span className={`text-5xl font-semibold tabular-nums transition-opacity duration-150 ${look.number} ${checking ? "opacity-40" : ""}`}>{left}</span>
+      <h1 className="text-lg font-medium">{left === 1 ? "problem" : "problems"} left</h1>
+      <span className="ms-auto flex items-center gap-2 text-sm text-ink-muted">
+        {checking && <CircleNotch size={16} className="motion-safe:animate-spin" aria-label="Checking" />}
+        {moved && before !== left && <span className="tabular-nums">was {before}</span>}
+      </span>
     </div>
   );
 }

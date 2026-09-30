@@ -10,8 +10,10 @@ import { canBeCounter } from "@/lib/counter";
 import { groupFindings } from "@/lib/findings";
 import { inApp, listenToApp, tellApp } from "@/lib/native-bridge";
 import { latestPlan, markStatus, savePlan, walkingRoute } from "@/lib/owner-client";
+import { statusLookup } from "@/lib/owner-decisions";
 import { type ChecklistStatus, checklistRows, type Destination, isFixing, type Panel, panelFor, pieceToTry, requestsForStep } from "@/lib/owner-journey";
 import type { Assessment, Checklist, Finding, Journey, LayoutCheckResult, NodeMove, OwnerRequest, ProposalResult, Scan, Scenario, SceneGraph, SceneNode, Vec3 } from "@/types/contracts";
+import { AllClearSheet } from "./AllClearSheet";
 import { CounterStep } from "./CounterStep";
 import { OwnerModel } from "./OwnerModel";
 import { PathStep } from "./PathStep";
@@ -157,6 +159,20 @@ function useStatuses(scanId: string, guest: boolean, onFirstGuestMark: () => voi
     }
   }, [scanId, guest, onFirstGuestMark, router]);
   return { overrides, saving, set };
+}
+
+/** The offer made when nothing is left to fix: keep the layout and open the report, or stay in the room. */
+function useAllClearSheet(scanId: string, arrangement: ReturnType<typeof useArrangement>) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const show = useCallback(() => setOpen(true), []);
+  const seeReport = async () => {
+    setOpening(true);
+    if (arrangement.hasMoves && !arrangement.saved) await arrangement.save();
+    router.push(`/scans/${scanId}/report`);
+  };
+  return { open, opening, show, seeReport, close: () => setOpen(false) };
 }
 
 function useSaveAsk(guest: boolean) {
@@ -330,6 +346,10 @@ function OwnerShop(props: ShopProps) {
     setSelected(finding.id === selected?.id ? null : finding);
   };
 
+  const statusOf = useMemo(() => statusLookup(props.checklist, statuses.overrides), [props.checklist, statuses.overrides]);
+  const allClear = useAllClearSheet(scan.id, arrangement);
+  const forContractor = problems.filter((finding) => statusOf(finding.id) === "needs_pro").length;
+
   const fixRoom = fixRoomCard(modelLabel, { scanId: scan.id, revision: scene.revision, onOpen: openFixedLayout, onOneAtATime: () => setFixingHere(true) });
 
   const content: Record<Panel | Tool, () => ReactNode> = {
@@ -344,6 +364,7 @@ function OwnerShop(props: ShopProps) {
         builtIn={isBuiltIn(scene, arrangement.activeId)}
         review={<PlanReview review={review} scene={scene} finding={planFinding} onRelook={showProposal} onPreview={arrangement.setActiveId} />}
         fixPlan={fixPlanCard(modelLabel, { scanId: scan.id, revision: scene.revision, onOpen: showFixedLayout, plan: Object.values(arrangement.moves) })}
+        statusOf={statusOf} onDecide={statuses.set} onAllClear={allClear.show}
         onReset={putEverythingBack} onDone={leavePlan} />
     ),
     wheelchair: () => <WheelchairPanel onDone={() => tools.setTool(null)} />,
@@ -367,6 +388,7 @@ function OwnerShop(props: ShopProps) {
       {content[panel]()}
       <FoundSection list={{ ...foundList(found, trial, trying), editing }} shown={foundShown || trying} everywhere={trying} />
       <SavePrompt open={save.open} inApp={props.embedded} onClose={save.close} />
+      <AllClearSheet open={allClear.open} opening={allClear.opening} forContractor={forContractor} onReport={allClear.seeReport} onStay={allClear.close} />
     </Frame>
   );
 }

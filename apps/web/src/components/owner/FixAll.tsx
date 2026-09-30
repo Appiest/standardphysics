@@ -3,13 +3,10 @@
 import { CheckCircle, CircleNotch, Hammer, MagicWand, MinusCircle, Stop } from "@phosphor-icons/react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import { type RefObject, useEffect, useReducer, useRef, useState } from "react";
-import { Explanation } from "@/components/proposal/ProposalReview";
 import { Button } from "@/components/ui/Button";
 import {
-  finishedDetail,
   finishedHeadline,
   fixAllAnnouncement,
-  idleDetail,
   isAllCleared,
   namedProblems,
   problemsLeft,
@@ -19,7 +16,6 @@ import {
   turnClock,
   turnInProgress,
   turnLines,
-  turnWork,
 } from "@/lib/fix-all-copy";
 import { ApiRefusal, modelLoopInfo, streamModelLoop } from "@/lib/layout-client";
 import { advanceModelLoop, type ModelLoopProgress, NOT_STARTED } from "@/lib/model-loop-progress";
@@ -101,15 +97,12 @@ type IdleProps = { label: string; fromPlan: boolean; onStart: () => void; onOneA
 
 function Idle({ label, fromPlan, onStart, onOneAtATime }: IdleProps) {
   return (
-    <motion.div className="flex flex-col items-start gap-3" exit={{ opacity: 0, transition: { duration: 0.15 } }}>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="primary" onClick={onStart}>
-          <MagicWand size={18} weight="bold" aria-hidden />
-          {fromPlan ? "Fix this layout" : "Fix room"}
-        </Button>
-        {onOneAtATime && <Button variant="quiet" onClick={onOneAtATime}>Fix one at a time</Button>}
-      </div>
-      <p className="text-pretty text-sm text-ink-muted">{idleDetail(label, fromPlan)}</p>
+    <motion.div className="flex flex-wrap items-center gap-3" exit={{ opacity: 0, transition: { duration: 0.15 } }}>
+      <Button variant="primary" onClick={onStart} title={`${label} tries only moves that pass every check`}>
+        <MagicWand size={18} weight="bold" aria-hidden />
+        {fromPlan ? "Fix this layout" : "Fix room"}
+      </Button>
+      {onOneAtATime && <Button variant="quiet" onClick={onOneAtATime}>Fix one at a time</Button>}
     </motion.div>
   );
 }
@@ -216,7 +209,6 @@ function TurnRow({ turn }: { turn: ModelLoopEvent }) {
             </li>
           ))}
         </ul>
-        {turn.why && <p className="mt-0.5 text-pretty text-sm text-ink-muted">{turn.why}</p>}
       </div>
     </motion.li>
   );
@@ -234,7 +226,7 @@ function useSecondsRunning(): number {
 }
 
 /** The turn under way: its number and clock, the problems it is working on, and what it is doing meanwhile. */
-function WorkingRow({ label, progress }: { label: string; progress: ModelLoopProgress }) {
+function WorkingRow({ progress }: { progress: ModelLoopProgress }) {
   const seconds = useSecondsRunning();
   const { named, more } = namedProblems(progress.workingOn);
   return (
@@ -257,19 +249,18 @@ function WorkingRow({ label, progress }: { label: string; progress: ModelLoopPro
             {more > 0 && <li className="pl-3.5 text-ink-muted">and {more} more</li>}
           </ul>
         )}
-        <p className="mt-1.5 text-pretty text-sm text-ink-muted">{turnWork(label)}</p>
       </div>
     </motion.li>
   );
 }
 
-function Turns({ progress, label }: { progress: ModelLoopProgress; label: string }) {
+function Turns({ progress }: { progress: ModelLoopProgress }) {
   if (progress.turns.length === 0 && progress.phase !== "running") return null;
   return (
     <ol className="mt-5 flex flex-col gap-4" aria-label="Moves the model made">
       <AnimatePresence initial={false}>
         {progress.turns.map((turn) => <TurnRow key={turn.turn ?? turn.picked.join()} turn={turn} />)}
-        {progress.phase === "running" && <WorkingRow key={`working-${progress.turns.length}`} label={label} progress={progress} />}
+        {progress.phase === "running" && <WorkingRow key={`working-${progress.turns.length}`} progress={progress} />}
       </AnimatePresence>
     </ol>
   );
@@ -282,19 +273,34 @@ function useQuietFocus() {
   return ref;
 }
 
+/** How long the cleared count and its burst stay on screen before the fixed layout opens by itself. */
+const OPEN_AFTER_CLEAR_MS = 1400;
+
+/** Opens the fixed layout by itself once every problem cleared, after the count has had its moment. */
+function useOpenWhenCleared(allCleared: boolean, open: () => void) {
+  const latest = useRef(open);
+  useEffect(() => { latest.current = open; }, [open]);
+  useEffect(() => {
+    if (!allCleared) return;
+    const timer = setTimeout(() => latest.current(), OPEN_AFTER_CLEAR_MS);
+    return () => clearTimeout(timer);
+  }, [allCleared]);
+}
+
 function Finished({ finished, started, onOpen }: { finished: ModelLoopEvent; started: number; onOpen: Props["onOpen"] }) {
   const allCleared = isAllCleared(finished, started);
   const proposes = finished.proposed.length > 0;
   const openButton = useQuietFocus();
+  const open = () => onOpen(finished.moves, finished.proposed, finished.check);
+  useOpenWhenCleared(allCleared && proposes, open);
   return (
     <motion.div className="mt-5 flex flex-col items-start gap-3" initial={BLURRED_IN} animate={SHARP} transition={{ ...GROW, delay: allCleared ? 0.35 : 0 }}>
       <div>
         <p className="text-lg font-semibold">{finishedHeadline(finished, started)}</p>
-        <p className="mt-1 text-pretty text-ink-muted">{finishedDetail(finished, allCleared)}</p>
+        {!allCleared && finished.message && <p className="mt-1 text-pretty text-ink-muted">{finished.message}</p>}
       </div>
-      {proposes && finished.explanation && <Explanation explanation={finished.explanation} />}
       {proposes && (
-        <Button ref={openButton} variant="primary" onClick={() => onOpen(finished.moves, finished.proposed, finished.check)}>{showMovesLabel(finished.proposed.length)}</Button>
+        <Button ref={openButton} variant="primary" onClick={open}>{showMovesLabel(finished.proposed.length)}</Button>
       )}
     </motion.div>
   );
@@ -321,11 +327,11 @@ function Ending({ progress, onOpen, onStart, onStop }: EndingProps) {
   );
 }
 
-function Run({ progress, label, onOpen, onStart, onStop }: EndingProps & { label: string }) {
+function Run({ progress, onOpen, onStart, onStop }: EndingProps) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2, delay: 0.1 }}>
       <Tally progress={progress} />
-      <Turns progress={progress} label={label} />
+      <Turns progress={progress} />
       <Ending progress={progress} onOpen={onOpen} onStart={onStart} onStop={onStop} />
     </motion.div>
   );
@@ -347,7 +353,7 @@ export function FixAll({ scanId, revision, onOpen, label, onOneAtATime, plan }: 
           <AnimatePresence mode="wait" initial={false}>
             {progress.phase === "idle"
               ? <Idle key="idle" label={label} fromPlan={fromPlan} onStart={start} onOneAtATime={onOneAtATime} />
-              : <Run key="run" progress={progress} label={label} onOpen={onOpen} onStart={start} onStop={stop} />}
+              : <Run key="run" progress={progress} onOpen={onOpen} onStart={start} onStop={stop} />}
           </AnimatePresence>
         </div>
       </motion.article>

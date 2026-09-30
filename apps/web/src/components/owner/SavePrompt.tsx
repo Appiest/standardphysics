@@ -2,9 +2,10 @@
 
 import { AppleLogo } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useId, useRef, useState } from "react";
+import { type FormEvent, useId, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/Field";
+import { Sheet } from "@/components/ui/Sheet";
 import { ApiRefusal } from "@/lib/layout-client";
 import { tellApp } from "@/lib/native-bridge";
 import { saveAccount } from "@/lib/owner-client";
@@ -14,16 +15,8 @@ import { saveAccount } from "@/lib/owner-client";
  * what the owner was doing: the status is already saved when this opens.
  */
 export function SavePrompt({ open, inApp, onClose }: { open: boolean; inApp: boolean; onClose: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const element = dialog.current;
-    if (open && element && !element.open) element.showModal();
-    if (!open && element?.open) element.close();
-  }, [open]);
-
   return (
-    <dialog ref={dialog} onClose={onClose} aria-labelledby="save-heading"
-      className="m-auto w-[min(100%-2rem,28rem)] rounded-2xl bg-sheet p-5 text-ink shadow-float backdrop:bg-ink/40 max-sm:mx-0 max-sm:mb-0 max-sm:mt-auto max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none max-sm:pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+    <Sheet open={open} onClose={onClose} labelledBy="save-heading">
       <h2 id="save-heading" className="heading-display text-2xl">Save your shop</h2>
       <p className="mt-2 text-pretty text-ink-muted">Add your email so your shop and your checklist are here next time, on any device.</p>
       {inApp && (
@@ -34,7 +27,7 @@ export function SavePrompt({ open, inApp, onClose }: { open: boolean; inApp: boo
       )}
       <EmailForm onSaved={onClose} primary={!inApp} />
       <Button className="mt-2 w-full justify-center" onClick={onClose}>Not now</Button>
-    </dialog>
+    </Sheet>
   );
 }
 
