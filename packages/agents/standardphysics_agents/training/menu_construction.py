@@ -9,7 +9,7 @@ from itertools import chain, zip_longest
 from standardphysics_contracts import Finding, NodeMove, SceneGraph, SceneNode, to_inches, to_meters
 
 from ..checks import roles
-from ..fix.built_ins import built_in_set_moves
+from ..fix.built_ins import built_in_set_moves, built_ins_apart_moves
 from ..fix.strategies import Candidate
 from .catalog import ACCESSIBLE_FOUR_TOP, ACCESSIBLE_TWO_TOP, LOWERED_COUNTER_SECTION
 from .checker import TrainingChecker
@@ -58,11 +58,28 @@ def _fixture_set_guesses(graph: SceneGraph, finding: Finding, fixtures: set, lab
             for found in built_in_set_moves(graph, finding, fixtures) if len(found.moves) <= MAX_FIXTURE_MOVES]
 
 
+def _apart_words(graph: SceneGraph, candidate: Candidate) -> str:
+    names = " and ".join(_name(graph.by_id(move.node_id)) for move in candidate.moves)
+    inches = to_inches(math.hypot(candidate.moves[0].delta_translation.x, candidate.moves[0].delta_translation.y))
+    return f"move built-ins {names} each {inches:.0f} in further from the problem spot"
+
+
+def _apart_guesses(graph: SceneGraph, finding: Finding, fixtures: set, label: str) -> list[_Guess]:
+    """Every built-in the problem names pushed away from its spot at once, unless that is more than one answer may
+    move."""
+    return [_Guess(TrainingEdits(fixture_moves=[_fixture_move(move) for move in found.moves]),
+                   f"{_apart_words(graph, found)} (construction), for {label}")
+            for found in built_ins_apart_moves(graph, finding, fixtures, to_meters(MAX_FIXTURE_MOVE_INCHES))
+            if len(found.moves) <= MAX_FIXTURE_MOVES]
+
+
 def _fixture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:
-    """Slides of a built-in the problem names, alone or with the built-ins it touches; construction, so offered last."""
+    """Slides of a built-in the problem names, alone or with the built-ins it touches, and every named built-in
+    pushed apart at once; construction, so offered last."""
     fixtures = fixture_ids(graph) - set(checker.pinned)
     families = [_single_fixture_guesses(graph, finding, fixtures, label),
-                _fixture_set_guesses(graph, finding, fixtures, label)]
+                _fixture_set_guesses(graph, finding, fixtures, label),
+                _apart_guesses(graph, finding, fixtures, label)]
     return [guess for guess in chain.from_iterable(zip_longest(*families)) if guess is not None]
 
 
