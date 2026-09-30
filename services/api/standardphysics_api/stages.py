@@ -15,6 +15,7 @@ holds up the findings.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import pathlib
@@ -69,6 +70,7 @@ from standardphysics_pipeline.discovery.mesh_surfaces import segment_surfaces
 from standardphysics_pipeline.lidar import LidarMeshError, room_faces
 from standardphysics_pipeline.textures import BakeInputs, BakeResult, bake_textures
 
+from .errors import ApiProblem
 from .model_chooser import ModelChooser, menu_for_findings, picked_outcome
 from .offload import Offload, offloaded
 from .scope_manifest import build_scope_manifest
@@ -91,6 +93,22 @@ ROUTE_SUBJECTS = frozenset({"route", "route_leg", "route_turn", "turning_room"})
 
 UNPLACED = Stop(name="Unplaced", position=Vec3(x=0.0, y=0.0, z=0.0))
 NO_ROUTE_YET = Scenario(name="No route yet", stops=[UNPLACED, UNPLACED])
+LOCK_WAIT_SECONDS = 10.0
+"""How long a request waits for the assess or the search lock before it is told to come back. A drag check holds
+the assess lock for about 0.3 s and a fix search can hold the search lock for minutes, so only a search outlasts it."""
+BUSY_RETRY_SECONDS = 30
+BUSY = "This shop is still being checked for another request. Try again in half a minute."
+
+
+@contextlib.contextmanager
+def _held(lock: threading.Lock) -> Iterator[None]:
+    """The lock, or a 503 with Retry-After once LOCK_WAIT_SECONDS pass without it, so no request waits unbounded."""
+    if not lock.acquire(timeout=LOCK_WAIT_SECONDS):
+        raise ApiProblem(503, BUSY, headers={"Retry-After": str(BUSY_RETRY_SECONDS)})
+    try:
+        yield
+    finally:
+        lock.release()
 """Lane C's CheckContext needs a scenario, and only rules that never read one run with this."""
 
 
@@ -354,7 +372,7 @@ class Stages:
         pack = load_pack()
         if scenario is None:
             ledger, scenario = without_route_rules(ledger), NO_ROUTE_YET
-        with self._assess_lock:
+        with _held(self._assess_lock):
             result = assess(graph, scenario, self.measure, ledger=ledger, pass_number=pass_number)
         for missing in result.unevaluated:
             log.info("rule %s not evaluated: %s", missing.rule_id, missing.waiting_on)
@@ -373,7 +391,7 @@ class Stages:
         veto any arrangement that breaks them. A `deadline` (`fix/budget.py`)
         stops the search when it passes.
         """
-        with self._search_lock:
+        with _held(self._search_lock):
             ledger = self.ledger_factory()
             return propose_fix(
                 graph, scenario, self.search_measure, targets, rules=load_pack(), ledger=ledger,
@@ -393,7 +411,7 @@ class Stages:
         Options are only generated for the findings asked about, and none are
         measured after `deadline` (`fix/budget.py`).
         """
-        with self._search_lock:
+        with _held(self._search_lock):
             checker = self.menu_checker(graph, scenario, typology)
             limits = MenuLimits(focus=frozenset(finding.id for finding in targets), deadline=deadline)
             full = build_menu(graph, checker, stated=stated_book(graph, list(wishes)), limits=limits)
@@ -402,7 +420,7 @@ class Stages:
                 return None
             messages = menu_messages(graph, checker, menu, None)
         reply = chooser.ask(messages)
-        with self._search_lock:
+        with _held(self._search_lock):
             return picked_outcome(graph, checker, menu, reply, targets)
 
     def menu_checker(self, graph: SceneGraph, scenario: Scenario, typology: SpaceTypology | None,
@@ -414,15 +432,15 @@ class Stages:
                                owner_layout=graph, space_typology=typology, scope=scope, promoted=frozenset(),
                                trust_unsure_geometry=trust_unsure_geometry)
 
-    def locked(self):
+    def locked(self) -> contextlib.AbstractContextManager[None]:
         """Holds the search lock, so a caller measuring on the search cache doesn't race another search."""
-        return self._search_lock
+        return _held(self._search_lock)
 
     def explain(
         self, before: SceneGraph, after: SceneGraph, scenario: Scenario, wishes: Sequence[OwnerWish] = ()
     ) -> ProposalExplanation:
         """A proposal in the owner's words: what moved, what it fixed, and which of their choices it bends."""
-        with self._search_lock:
+        with _held(self._search_lock):
             reader = _Assessor(scenario, self.search_measure, load_pack(), self.ledger_factory())
             inferred = infer_wishes(before, self.search_measure)
             said = stated_book(before, list(wishes)).wishes
@@ -442,16 +460,22 @@ class Stages:
         return router.provider, self._loop_steps(graph, scenario, router, self._rejection(graph, typology, wishes))
 
     def _loop_steps(self, graph: SceneGraph, scenario: Scenario, router, rejection) -> Iterator[LoopStep]:
-        with self._search_lock:
-            ledger = self.ledger_factory()
-            yield from loop_steps(
-                graph, scenario, self.search_measure, router, rules=load_pack(), ledger=ledger,
-                candidate_rejection=rejection,
-            )
+        """Each pass runs under the search lock, and the lock is let go while the pass is handed on, so a slow
+        reader of the stream never keeps another search waiting."""
+        steps = loop_steps(
+            graph, scenario, self.search_measure, router, rules=load_pack(), ledger=self.ledger_factory(),
+            candidate_rejection=rejection,
+        )
+        while True:
+            with _held(self._search_lock):
+                step = next(steps, None)
+            if step is None:
+                return
+            yield step
 
     def ask(self, text: str, graph: SceneGraph, scenario: Scenario) -> Answer:
         """Lane C's ask box, on the search cache."""
-        with self._search_lock:
+        with _held(self._search_lock):
             return ask(text, graph, scenario, self.search_measure, ledger=self.ledger_factory())
 
     def geometry(

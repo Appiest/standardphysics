@@ -51,6 +51,7 @@ from standardphysics_contracts import (
 )
 
 from .db import Database
+from .errors import ApiProblem
 from .layout import plan_candidate, plan_check
 from .model_chooser import REPLY_SECONDS, ModelChooser, ModelReplyError, ModelSlots, without_wall_shifts
 from .proposals import fix_inputs, owner_wishes_of, space_typology_of
@@ -294,6 +295,8 @@ def _streamed(events: Iterator[ModelLoopEvent], chooser: Chooser, release: Calla
         yield from (_line(event) for event in events)
     except (OSError, ModelReplyError) as error:
         yield _line(ModelLoopEvent(kind="failed", message=_failure(chooser, error)))
+    except ApiProblem as problem:
+        yield _line(ModelLoopEvent(kind="failed", message=problem.body.error))
     except Exception:
         log.exception("the model loop stopped on an unexpected error")
         yield _line(ModelLoopEvent(kind="failed", message=UNEXPECTED_FAILURE))

@@ -21,6 +21,7 @@ from standardphysics_contracts import (
 )
 
 from .db import Database
+from .errors import ApiProblem
 from .proposals import fix_inputs, owner_wishes_of, space_typology_of
 from .stages import Stages
 
@@ -104,6 +105,9 @@ def _event_lines(body: LoopRequest, decided_by: str, steps: Iterable[LoopStep]) 
         for step in steps:
             passes.append(_to_pass(step))
             yield _line(LoopPassFinished(loop_pass=passes[-1]))
+    except ApiProblem as problem:
+        yield _line(LoopFailed(error=problem.body.error))
+        return
     except Exception:
         # The status line is already sent, so the failure has to travel as an event.
         log.exception("the streamed loop failed after %d passes", len(passes))
