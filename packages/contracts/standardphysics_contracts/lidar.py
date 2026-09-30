@@ -116,7 +116,7 @@ def _is_rigid_affine(values: list[float]) -> bool:
         if not math.isclose(sum(value * value for value in column), 1.0, abs_tol=1e-3):
             return False
     if any(
-        not math.isclose(sum(left * right for left, right in zip(first, second)), 0.0, abs_tol=1e-3)
+        not math.isclose(sum(left * right for left, right in zip(first, second, strict=True)), 0.0, abs_tol=1e-3)
         for index, first in enumerate(columns)
         for second in columns[index + 1 :]
     ):

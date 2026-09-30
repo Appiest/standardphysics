@@ -27,7 +27,7 @@ EXTINGUISHER = ((0.0, 1.85, 1.1), (0.14, 0.08, 0.6))
 
 
 def slab(centre, size, spacing=0.02) -> np.ndarray:
-    ranges = [np.arange(c - s / 2, c + s / 2 + spacing / 2, spacing) for c, s in zip(centre, size)]
+    ranges = [np.arange(c - s / 2, c + s / 2 + spacing / 2, spacing) for c, s in zip(centre, size, strict=False)]
     grid = np.meshgrid(*ranges, indexing="ij")
     return np.stack([axis.ravel() for axis in grid], axis=1)
 

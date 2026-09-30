@@ -85,7 +85,7 @@ def _convex_hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]
 
 def _inside_hull(hull: list[tuple[float, float]], xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
     inside = np.ones(xs.shape, dtype=bool)
-    for (ax, ay), (bx, by) in zip(hull, hull[1:] + hull[:1]):
+    for (ax, ay), (bx, by) in zip(hull, hull[1:] + hull[:1], strict=True):
         inside &= (bx - ax) * (ys - ay) - (by - ay) * (xs - ax) > 0
     return inside
 

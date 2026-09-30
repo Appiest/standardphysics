@@ -84,7 +84,7 @@ def thin(obj, max_triangles: int) -> None:
 def main() -> None:
     args = parse_args()
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    meshes = [obj for path, placement in zip(args.scan, args.placement) for obj in placed(path, placement)]
+    meshes = [obj for path, placement in zip(args.scan, args.placement, strict=True) for obj in placed(path, placement)]
     floor = joined(meshes)
     thin(floor, args.max_triangles)
     bpy.ops.export_scene.gltf(

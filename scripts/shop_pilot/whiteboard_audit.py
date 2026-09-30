@@ -142,7 +142,7 @@ def _db_snapshot() -> dict[str, Any]:
                 f"SELECT {select} FROM scans WHERE id = ?", (SCAN_ID,)
             ).fetchone()
             if raw is not None:
-                scan_row = dict(zip(columns, raw))
+                scan_row = dict(zip(columns, raw, strict=True))
         artifacts = []
         if "artifacts" in tables:
             artifacts = [

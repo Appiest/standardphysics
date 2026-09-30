@@ -77,7 +77,9 @@ def test_seen_through_asks_only_the_cameras_that_frame_the_points_and_agrees(ver
     culled = symmetry.seen_through_by(cameras, buffers, min_views=1)
     for start in range(0, len(vertices), max(1, len(vertices) // 25)):
         region = vertices[start:start + 400]
-        every_camera = sum(symmetry._seen_beyond(region, camera, buffer) for camera, buffer in zip(cameras, buffers))
+        every_camera = sum(
+            symmetry._seen_beyond(region, camera, buffer) for camera, buffer in zip(cameras, buffers, strict=True)
+        )
         assert np.array_equal(culled(region), every_camera >= 1)
 
 

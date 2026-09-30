@@ -151,7 +151,7 @@ def distance(owner: SceneGraph, layout: SceneGraph) -> dict:
     slid = [math.hypot(after.transform.position.x - before.transform.position.x,
                        after.transform.position.y - before.transform.position.y) for before, after in pairs]
     turned = [_turned(yaw_degrees(before), yaw_degrees(after)) for before, after in pairs]
-    home = [meters <= HOME_METERS and degrees <= HOME_DEGREES for meters, degrees in zip(slid, turned)]
+    home = [meters <= HOME_METERS and degrees <= HOME_DEGREES for meters, degrees in zip(slid, turned, strict=True)]
     return {"pieces": len(pairs), "mean_meters": round(sum(slid) / len(slid), 4),
             "mean_degrees": round(sum(turned) / len(turned), 2), "at_home": round(sum(home) / len(home), 4)}
 

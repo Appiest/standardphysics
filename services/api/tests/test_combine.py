@@ -114,6 +114,6 @@ def test_a_walk_is_found_where_it_was_placed_after_several_saves() -> None:
     motion = placement_since_capture(_graph(*captured), placed, [str(node_id) for node_id in ids])
 
     assert abs(math.degrees(motion.yaw) - 92.0) < 1e-9
-    for (_, node), moved in zip(captured, placed.nodes):
+    for (_, node), moved in zip(captured, placed.nodes, strict=True):
         x, y = motion.apply((node.transform.m[3], node.transform.m[7]))
         assert abs(x - moved.transform.m[3]) < 1e-9 and abs(y - moved.transform.m[7]) < 1e-9

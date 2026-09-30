@@ -149,7 +149,9 @@ class _Grid:
         order = np.lexsort((cells[:, 1], cells[:, 0]))
         keys, starts = np.unique(cells[order], axis=0, return_index=True)
         ends = np.append(starts[1:], len(order))
-        self._buckets = {(int(x), int(y)): order[start:end] for (x, y), start, end in zip(keys, starts, ends)}
+        self._buckets = {
+            (int(x), int(y)): order[start:end] for (x, y), start, end in zip(keys, starts, ends, strict=True)
+        }
 
     def near(self, node: SceneNode, margin: float = INSIDE_MARGIN) -> np.ndarray:
         low, high = _plan_bounds(node, margin)
@@ -291,7 +293,7 @@ def _rectangles(mask: np.ndarray) -> list[tuple[int, int, int, int]]:
     """Greedy rectangles covering a boolean grid, as (row, column, rows, columns)."""
     left = mask.copy()
     found = []
-    for row, column in zip(*np.nonzero(mask)):
+    for row, column in zip(*np.nonzero(mask), strict=True):
         if not left[row, column]:
             continue
         columns = _run_length(left[row, column:])

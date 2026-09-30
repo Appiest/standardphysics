@@ -86,7 +86,7 @@ _NAMES: dict[str, frozenset[str]] = {
     }),
     WHITEBOARD: frozenset({
         "whiteboard", "white board", "chalkboard", "dry erase board",
-        "dry erase board", "writing board", "blackboard", "presentation board",
+        "writing board", "blackboard", "presentation board",
     }),
     SOFA: frozenset({
         "sofa", "couch", "loveseat", "sectional", "armchair", "lounge chair",

@@ -7,13 +7,16 @@ line-length = 120
 extend-exclude = [".venv", "notebooks"]
 
 [tool.ruff.lint]
-# What CI enforces everywhere: real defects, import order, and complexity.
+# What CI enforces everywhere: real defects, likely bugs (flake8-bugbear, which
+# among other things makes every zip() say whether unequal lengths are an error),
+# import order, and complexity.
 #
 # `E` (pycodestyle, line length among it) is selected in services/api, where the
 # code already holds that line. The older packages carry about eighty long lines
 # that predate any linting. Wrapping them is a separate change, and gating CI on
 # it today would mean a red build nobody caused.
-select = ["F", "I", "C90"]
+select = ["F", "I", "C90", "B"]
+
 
 [tool.ruff.lint.isort]
 # Both configs must agree, or a fix run under one undoes the other. conftest is

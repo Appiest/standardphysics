@@ -164,7 +164,7 @@ def available_scans() -> tuple[Scan, ...]:
 
 def _floor_heading(floor: SceneNode) -> float:
     hull = floor_polygon(floor)
-    a, b = max(zip(hull, [*hull[1:], hull[0]]), key=lambda pair: math.dist(*pair))
+    a, b = max(zip(hull, [*hull[1:], hull[0]], strict=True), key=lambda pair: math.dist(*pair))
     return math.degrees(math.atan2(b[1] - a[1], b[0] - a[0]))
 
 

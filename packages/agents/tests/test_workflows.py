@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import threading
 import time
+from itertools import pairwise
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -174,7 +175,7 @@ def test_profiles_have_distinct_avatars_and_paths_always_face_forward(
         pipeline,
     )
     route = result.legs[0].route
-    for here, following in zip(route, route[1:]):
+    for here, following in pairwise(route):
         dx = following.position.x - here.position.x
         dy = following.position.y - here.position.y
         if dx or dy:

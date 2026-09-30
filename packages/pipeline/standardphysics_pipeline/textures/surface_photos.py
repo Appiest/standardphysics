@@ -183,7 +183,7 @@ def region_weighted_decimate(vertices, triangles, region_mask, region_budget, re
     if region_budget < 4 or rest_budget < 4:
         raise ValueError("budgets must be at least 4 faces")
     parts = []
-    for label, mask, budget in (("region", region_mask, region_budget),
+    for _label, mask, budget in (("region", region_mask, region_budget),
                                 ("rest", ~region_mask, rest_budget)):
         part = trimesh.Trimesh(vertices, triangles[mask], process=False)
         reduced = part.simplify_quadric_decimation(face_count=min(budget, len(part.faces)))
@@ -191,7 +191,7 @@ def region_weighted_decimate(vertices, triangles, region_mask, region_budget, re
     display_vertices = np.concatenate([part[0] for part in parts], axis=0)
     offsets = np.concatenate([[0], np.cumsum([len(part[0]) for part in parts[:-1]])])
     display_triangles = np.concatenate(
-        [np.asarray(part[1]) + int(offset) for part, offset in zip(parts, offsets)], axis=0)
+        [np.asarray(part[1]) + int(offset) for part, offset in zip(parts, offsets, strict=True)], axis=0)
     return display_vertices, display_triangles, len(parts[0][1])
 
 

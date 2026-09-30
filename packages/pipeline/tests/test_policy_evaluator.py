@@ -190,7 +190,7 @@ def test_e01_positive_infinity_improvement_never_clips_to_a_high_score(tmp_path)
     for view in views:
         view["psnr_db"] = float("inf")
     candidate = _run_record(tmp_path, policy_path=policy_path, views=views, rois=_rois())
-    _run_cli(tmp_path, policy_path, baseline, candidate, rois) is not None
+    assert _run_cli(tmp_path, policy_path, baseline, candidate, rois) is not None
     _, result = _run_cli(tmp_path, policy_path, baseline, candidate, rois)
     assert result["selection_score"] is None
     assert result["status"] in ("blocked_missing_evidence", "completed_rejected")

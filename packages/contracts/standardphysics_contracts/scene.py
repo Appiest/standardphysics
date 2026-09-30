@@ -75,7 +75,10 @@ class DisplayPart(BaseModel):
 
     @model_validator(mode="after")
     def within_measured_bounds(self) -> DisplayPart:
-        if any(size <= 0 or abs(center) + size / 2 > 0.50001 for center, size in zip(self.center, self.size)):
+        if any(
+            size <= 0 or abs(center) + size / 2 > 0.50001
+            for center, size in zip(self.center, self.size, strict=True)
+        ):
             raise ValueError("display parts must stay inside the measured object bounds")
         return self
 

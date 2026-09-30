@@ -65,7 +65,7 @@ def rasterize_atlas(
     if not pieces:
         empty = np.empty((0, 3), dtype=np.float32)
         return Texels(np.empty(0, np.int32), np.empty(0, np.int32), empty, empty, np.empty(0, np.int32), empty)
-    faces, rows, columns, positions = (np.concatenate(parts) for parts in zip(*pieces))
+    faces, rows, columns, positions = (np.concatenate(parts) for parts in zip(*pieces, strict=True))
     keep = _last_face_per_texel(faces, rows.astype(np.int64) * size + columns)
     faces = faces[keep]
     return Texels(

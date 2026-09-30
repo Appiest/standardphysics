@@ -175,7 +175,7 @@ class Trainer:
         self.progress.state["observed_sample_tokens"] = (self.progress.state.get("observed_sample_tokens", 0)
             + sum(len(seq.tokens or []) for group in groups for seq in group))
         self.progress.save()
-        return list(zip(prompts, groups))
+        return list(zip(prompts, groups, strict=True))
 
     def text_of(self, sequence) -> str:
         return get_text_content(self.renderer.parse_response(list(sequence.tokens or []))[0])
@@ -189,7 +189,7 @@ class Trainer:
         rows = self.data.heldout
         sampled = self.sample(snapshot, rows, self.plan.eval_samples, self.plan.eval_temperature)
         records, verdicts = [], []
-        for row, (_, group) in zip(rows, sampled):
+        for row, (_, group) in zip(rows, sampled, strict=True):
             for index, sequence in enumerate(group):
                 text = self.text_of(sequence)
                 verdict = self.data.score(text, row["variant"])
@@ -269,7 +269,7 @@ class Trainer:
 
     def rl_datums(self, rows: list[dict], sampled: list) -> tuple[list, list[float]]:
         datums, all_rewards = [], []
-        for row, (prompt, group) in zip(rows, sampled):
+        for row, (prompt, group) in zip(rows, sampled, strict=True):
             usable = [seq for seq in group if seq.tokens and seq.logprobs and len(seq.logprobs) == len(seq.tokens)]
             rewards = [self.data.score(self.text_of(seq), row["variant"]).reward for seq in usable]
             all_rewards.extend(rewards)
@@ -280,7 +280,7 @@ class Trainer:
     def group_datums(self, prompt, sequences, group_advantages) -> list:
         start = prompt.length - 1
         made = []
-        for sequence, advantage in zip(sequences, group_advantages):
+        for sequence, advantage in zip(sequences, group_advantages, strict=True):
             tokens = list(sequence.tokens)
             model_input = prompt.append(tinker.EncodedTextChunk(tokens=tokens[:-1]))
             made.append(tinker.Datum(model_input=model_input, loss_fn_inputs={

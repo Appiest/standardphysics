@@ -479,7 +479,7 @@ def test_rebuild_keeps_measured_geometry_and_rejects_stale_revision(make_client)
         assert calls == [0]
         after = result.json()
         assert after['revision'] == 1
-        for original, rebuilt in zip(before['nodes'], after['nodes']):
+        for original, rebuilt in zip(before['nodes'], after['nodes'], strict=False):
             assert original['dimensions'] == rebuilt['dimensions']
             assert original['transform'] == rebuilt['transform']
             assert original['id'] == rebuilt['id']

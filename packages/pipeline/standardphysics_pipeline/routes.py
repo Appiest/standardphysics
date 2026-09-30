@@ -609,7 +609,7 @@ def runs_below(
 
 def _inches_along(grid: Grid, cells: list[tuple[int, int]]) -> list[float]:
     """How far along the route each cell sits, in inches."""
-    steps = [0.0] + [math.dist(a, b) * grid.cell_size for a, b in zip(cells, cells[1:])]
+    steps = [0.0] + [math.dist(a, b) * grid.cell_size for a, b in itertools.pairwise(cells)]
     return [to_inches(metres) for metres in itertools.accumulate(steps)]
 
 

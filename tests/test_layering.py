@@ -137,7 +137,7 @@ def find_cycles(edges: Mapping[str, Iterable[str]]) -> list[tuple[str, ...]]:
 
 
 def describe_cycle(cycle: tuple[str, ...], graph: ImportGraph) -> str:
-    steps = zip(cycle, [*cycle[1:], cycle[0]])
+    steps = zip(cycle, [*cycle[1:], cycle[0]], strict=True)
     return "; ".join(_describe(importer, imported, graph[importer][imported]) for importer, imported in steps)
 
 

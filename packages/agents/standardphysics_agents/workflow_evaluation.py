@@ -142,11 +142,11 @@ def workflow_candidate_rejection(
             after = evaluate_workflow(
                 candidate, workflow, profile, measure, collision_index=mesh_index
             )
-            lost_leg = any(old.passed and not new.passed for old, new in zip(prior.legs, after.legs))
+            lost_leg = any(old.passed and not new.passed for old, new in zip(prior.legs, after.legs, strict=True))
             lost_interaction = any(
                 (old.reachable is True and new.reachable is not True)
                 or (not old.needs_measurement and new.needs_measurement)
-                for old, new in zip(prior.interactions, after.interactions)
+                for old, new in zip(prior.interactions, after.interactions, strict=True)
             )
             if lost_leg or lost_interaction:
                 return f"workflow_regression:{workflow.id}:{profile.id}"

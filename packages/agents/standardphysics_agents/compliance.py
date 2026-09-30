@@ -382,7 +382,7 @@ def _query_entry(directive: PrecedentDirective, query: PrecedentQuerySpec, ctx: 
     outcomes = [_value_outcome(value, query) for value in values]
     measured = _combined(outcomes)
     ask = QUERY_ASKS.get(query.query_id) if measured == "unknown" else None
-    values = tuple(replace(value, measured=result) for value, result in zip(values, outcomes))
+    values = tuple(replace(value, measured=result) for value, result in zip(values, outcomes, strict=True))
     return RequirementEntry(
         id=f"query:{directive.directive_id}:{query.query_id}", source="query", citation=query.citation,
         target=query.target_role, threshold=query.threshold, comparison=query.comparison, unit="in",

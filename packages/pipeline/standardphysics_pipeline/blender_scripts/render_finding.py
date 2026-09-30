@@ -11,6 +11,7 @@ the problem legible rather than pretty.
 """
 
 import argparse
+import itertools
 import json
 import math
 import os
@@ -99,7 +100,7 @@ def draw_line(points, materials):
     """A dimension line as a thin bar with end caps, so it reads on paper."""
     if len(points) < 2:
         return
-    for start, end in zip(points, points[1:]):
+    for start, end in itertools.pairwise(points):
         a = Vector((start["x"], start["y"], start["z"]))
         b = Vector((end["x"], end["y"], end["z"]))
         span = b - a

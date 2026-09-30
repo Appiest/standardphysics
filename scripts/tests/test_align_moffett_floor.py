@@ -110,7 +110,7 @@ def _create_database(path: Path) -> tuple[SceneGraph, SceneGraph]:
 
 def _memberships(raw: SceneGraph) -> dict[str, str]:
     rooms = ("center", "top", "left", "bottom")
-    return {str(node.id): room for node, room in zip(raw.nodes, rooms)}
+    return {str(node.id): room for node, room in zip(raw.nodes, rooms, strict=True)}
 
 
 def _write_inputs(tmp_path: Path, raw: SceneGraph, *, transforms: dict | None = None, rooms: dict | None = None):
@@ -130,7 +130,7 @@ def _write_inputs(tmp_path: Path, raw: SceneGraph, *, transforms: dict | None = 
             or {
                 "rooms": [
                     {"name": room, "node_ids": [str(node.id)]}
-                    for node, room in zip(raw.nodes, ("center", "top", "left", "bottom left"))
+                    for node, room in zip(raw.nodes, ("center", "top", "left", "bottom left"), strict=True)
                 ]
             }
         )

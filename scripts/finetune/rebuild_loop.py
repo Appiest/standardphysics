@@ -68,7 +68,7 @@ class Model:
     def answer_all(self, prompts: list) -> list[Answer]:
         """One answer per rendered prompt, all in flight at once; a failed request is retried once."""
         futures = [self.sampler.sample(prompt=prompt, num_samples=1, sampling_params=self.params) for prompt in prompts]
-        return [self._answer(future, prompt) for future, prompt in zip(futures, prompts)]
+        return [self._answer(future, prompt) for future, prompt in zip(futures, prompts, strict=True)]
 
     def _answer(self, future, prompt) -> Answer:
         attempts = 1

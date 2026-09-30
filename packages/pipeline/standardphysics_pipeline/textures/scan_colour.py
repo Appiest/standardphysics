@@ -242,13 +242,13 @@ def colour_the_scan(
         raise ValueError("masks must have one entry per image")
     normals = vertex_normals(vertices, triangles)
     views = [_ScanView(camera, photo, *_occlusion(camera, vertices, masks, index))
-             for index, (camera, photo) in enumerate(zip(cameras, images))]
+             for index, (camera, photo) in enumerate(zip(cameras, images, strict=False))]
     hidden_masks = [hidden(view.camera) for view in views] if hidden is not None else None
     gains = _exposure_gains(views, vertices, normals, hidden_masks)
     blend = TopViews(len(vertices))
     best = np.zeros(len(vertices), dtype=np.float32)
     best_view = np.full(len(vertices), -1, dtype=np.int64)
-    for index, (view, gain) in enumerate(zip(views, gains)):
+    for index, (view, gain) in enumerate(zip(views, gains, strict=True)):
         weight, columns, rows = view.weights(vertices, normals)
         if hidden_masks is not None:
             weight = np.where(hidden_masks[index], 0.0, weight)
@@ -511,10 +511,11 @@ def coloured_scan(
         inferred, sheet_patches, mirror_source = shown.inferred, shown.sheet_patches, shown.mirror_source
         hidden = hidden_behind_objects(patch_holes_from, vertices, sheet_patches)
     images = [_photo(frame_paths[camera.frame_id]) for camera in cameras]
-    resized = [camera.resized(*image.shape[1::-1]) for camera, image in zip(cameras, images)]
+    resized = [camera.resized(*image.shape[1::-1]) for camera, image in zip(cameras, images, strict=True)]
     masks = None
     if people:
-        by_frame = people_masks(people, cameras, {c.frame_id: i.shape[:2] for c, i in zip(cameras, images)})
+        shapes = {camera.frame_id: image.shape[:2] for camera, image in zip(cameras, images, strict=True)}
+        by_frame = people_masks(people, cameras, shapes)
         masks = [by_frame[camera.frame_id] for camera in cameras]
     coloured = colour_the_scan(vertices, triangles, resized, images, masks=masks, hidden=hidden)
     scan = replace(coloured, inferred=inferred, sheet_patches=sheet_patches, mirror_source=mirror_source)

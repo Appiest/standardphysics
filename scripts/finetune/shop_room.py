@@ -218,7 +218,7 @@ def commit(room: Room, items: list[Item], owner: int = -1) -> list[SceneNode] | 
             room.nodes, added):
         del room.nodes[before:]
         return None
-    room.boxes += [(item.box, owner) for item, node in zip(items, added) if blocks_floor(node)]
+    room.boxes += [(item.box, owner) for item, node in zip(items, added, strict=True) if blocks_floor(node)]
     return added
 
 
@@ -322,7 +322,7 @@ def _surviving_units(room: Room, placed: list[Placed], boxes: list[Box], aisle: 
     """Indices of the pieces kept: whole units that fit, if at least half the units do."""
     fits = [clear(room, box, aisle, room.groups) for box in boxes]
     units = {item.unit for item in placed}
-    kept = {u for u in units if all(ok for item, ok in zip(placed, fits) if item.unit == u)}
+    kept = {u for u in units if all(ok for item, ok in zip(placed, fits, strict=True) if item.unit == u)}
     if 0 in units and 0 not in kept:
         return []
     if len(kept) * 2 < len(units):

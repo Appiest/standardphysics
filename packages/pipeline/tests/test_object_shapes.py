@@ -82,7 +82,7 @@ class TestStreamingTheMesh:
         streamed = list(streamed_parts(CAPTURE / "lidar-mesh.json"))
         loaded = load_mesh(CAPTURE / "lidar-mesh.json").parts
         assert len(streamed) == len(loaded)
-        for one, other in zip(streamed, loaded):
+        for one, other in zip(streamed, loaded, strict=True):
             assert np.array_equal(one.transform, other.transform)
             assert np.array_equal(one.vertices, other.vertices)
             assert np.array_equal(one.triangles, other.triangles)

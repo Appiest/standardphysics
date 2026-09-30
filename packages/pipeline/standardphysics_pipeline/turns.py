@@ -17,6 +17,7 @@ reading before a finding goes out.
 
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass
 from uuid import UUID
@@ -454,7 +455,7 @@ def trim_endpoints(path: list[Vec3], radius: float) -> list[Vec3]:
 
 def _arc_length(points: list[Vec3]) -> float:
     return sum(
-        math.dist((a.x, a.y), (b.x, b.y)) for a, b in zip(points, points[1:])
+        math.dist((a.x, a.y), (b.x, b.y)) for a, b in itertools.pairwise(points)
     )
 
 

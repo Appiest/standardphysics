@@ -93,22 +93,22 @@ def _routes_improved(
             )
             if any(
                 old.passed and not new.passed
-                for old, new in zip(prior.legs, next_eval.legs)
+                for old, new in zip(prior.legs, next_eval.legs, strict=True)
             ):
                 return False
             if any(
                 (old.reachable is True and new.reachable is not True)
                 or (not old.needs_measurement and new.needs_measurement)
-                for old, new in zip(prior.interactions, next_eval.interactions)
+                for old, new in zip(prior.interactions, next_eval.interactions, strict=True)
             ):
                 return False
             improved = improved or any(
                 not old.passed and new.passed
-                for old, new in zip(prior.legs, next_eval.legs)
+                for old, new in zip(prior.legs, next_eval.legs, strict=True)
             )
             improved = improved or any(
                 old.reachable is not True and new.reachable is True
-                for old, new in zip(prior.interactions, next_eval.interactions)
+                for old, new in zip(prior.interactions, next_eval.interactions, strict=True)
             )
     return improved
 

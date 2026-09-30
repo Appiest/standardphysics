@@ -14,6 +14,7 @@ discovery removes people by the same rule before anything is measured.
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 
 import numpy as np
@@ -90,7 +91,7 @@ def _rim_steps(triangles: np.ndarray) -> dict[int, int]:
     rim_edges = directed[unmatched]
     _, first = np.unique(rim_edges[:, 1], return_index=True)
     kept = rim_edges[np.sort(first)]
-    return dict(zip(kept[:, 1].tolist(), kept[:, 0].tolist()))
+    return dict(zip(kept[:, 1].tolist(), kept[:, 0].tolist(), strict=True))
 
 
 def _perimeter(points: np.ndarray) -> float:
@@ -131,7 +132,7 @@ def _cap(rim: list[int], points: np.ndarray, first_new: int) -> tuple[np.ndarray
         rings.append([first_new + (step - 1) * count + i for i in range(count)])
     centre_index = first_new + (ring_count - 1) * count
     faces = []
-    for outer, inner in zip(rings, rings[1:]):
+    for outer, inner in itertools.pairwise(rings):
         for i in range(count):
             j = (i + 1) % count
             faces.append([outer[i], outer[j], inner[j]])
@@ -149,7 +150,7 @@ def closed_object_holes(vertices: np.ndarray, triangles: np.ndarray, graph: Scen
     rims = _rims(triangles) if objects else []
     small = [rim for rim in rims if _perimeter(vertices[rim]) <= MAX_RIM_METRES]
     inside = _inside_objects(np.array([vertices[rim].mean(axis=0) for rim in small]).reshape(-1, 3), objects)
-    for number, (rim, capped) in enumerate(zip(small, inside), start=1):
+    for number, (rim, capped) in enumerate(zip(small, inside, strict=True), start=1):
         advanced(number, len(small))
         if not capped:
             continue

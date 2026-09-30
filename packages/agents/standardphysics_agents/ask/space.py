@@ -132,7 +132,7 @@ def _wall_placements(
     if corners is None:
         return
     inset = to_meters(request.depth_inches or 0.0) / 2 + WALL_CLEARANCE
-    for start, end in zip(corners, [*corners[1:], corners[0]]):
+    for start, end in zip(corners, [*corners[1:], corners[0]], strict=True):
         yield from _along(start, end, inset)
 
 

@@ -1,6 +1,8 @@
 """Continuous route capsules against measured triangles clipped to the mobility band."""
 from __future__ import annotations
 
+from itertools import pairwise
+
 import numpy as np
 from scipy.spatial import cKDTree
 from standardphysics_contracts import LidarMesh, Vec3, bounds_the_room, to_meters
@@ -10,7 +12,7 @@ from standardphysics_pipeline.footprints import contains_point
 
 def _clip_height(polygon: list[np.ndarray], bound: float, above: bool) -> list[np.ndarray]:
     clipped = []
-    for start, end in zip(polygon, polygon[1:] + polygon[:1]):
+    for start, end in zip(polygon, polygon[1:] + polygon[:1], strict=True):
         start_inside = start[1] >= bound if above else start[1] <= bound
         end_inside = end[1] >= bound if above else end[1] <= bound
         if start_inside:
@@ -43,8 +45,11 @@ def _segments_distance(a, b, c, d) -> float:
 
 
 def _inside(point, polygon) -> bool:
-    crosses = [_cross(end - start, point - start) for start, end in zip(polygon, np.roll(polygon, -1, axis=0))]
-    area = abs(sum(_cross(start, end) for start, end in zip(polygon, np.roll(polygon, -1, axis=0))))
+    crosses = [
+        _cross(end - start, point - start)
+        for start, end in zip(polygon, np.roll(polygon, -1, axis=0), strict=True)
+    ]
+    area = abs(sum(_cross(start, end) for start, end in zip(polygon, np.roll(polygon, -1, axis=0), strict=True)))
     return area > 1e-12 and (min(crosses) >= -1e-12 or max(crosses) <= 1e-12)
 
 
@@ -82,7 +87,7 @@ class MeshCollisionIndex:
         centers = np.asarray([polygon.mean(axis=0) for polygon in self._polygons])
         self._maximum_radius = max(
             float(np.linalg.norm(polygon - center, axis=1).max())
-            for polygon, center in zip(self._polygons, centers)
+            for polygon, center in zip(self._polygons, centers, strict=True)
         )
         self._tree = cKDTree(centers)
 
@@ -122,7 +127,7 @@ class MeshCollisionIndex:
             return False
         points = np.asarray([(point.x, point.y) for point in path], dtype=float)
         radius = to_meters(radius_inches)
-        segments = zip(points[:-1], points[1:]) if len(points) > 1 else [(points[0], points[0])]
+        segments = pairwise(points) if len(points) > 1 else [(points[0], points[0])]
         for start, end in segments:
             search_radius = radius + self._maximum_radius + float(np.linalg.norm(end - start)) / 2
             for index in self._tree.query_ball_point((start + end) / 2, search_radius):
@@ -130,6 +135,6 @@ class MeshCollisionIndex:
                 if _inside(start, polygon) or _inside(end, polygon):
                     return True
                 if any(_segments_distance(start, end, a, b) <= radius + 1e-9
-                       for a, b in zip(polygon, np.roll(polygon, -1, axis=0))):
+                       for a, b in zip(polygon, np.roll(polygon, -1, axis=0), strict=True)):
                     return True
         return False

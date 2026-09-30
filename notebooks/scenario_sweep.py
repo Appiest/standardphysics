@@ -332,7 +332,7 @@ def _(captures, mo):
         value=scans[0].name,
         label="Room",
     )
-    scan
+    scan  # noqa: B018 - marimo shows a cell's last expression
     return scan, scans
 
 
@@ -497,7 +497,7 @@ def _(mo):
     nudge_steps = mo.ui.slider(
         5, 25, 1, value=13, label="Readings across the range", show_value=True
     )
-    nudge_steps
+    nudge_steps  # noqa: B018 - marimo shows a cell's last expression
     return (nudge_steps,)
 
 

@@ -32,6 +32,7 @@ import datetime
 import math
 from collections import Counter
 from dataclasses import dataclass
+from itertools import pairwise
 
 from standardphysics_contracts import SceneGraph, SceneNode, Vec3
 
@@ -146,7 +147,7 @@ def recover_origins(history: list[RevisionPoses]) -> Origins:
         node_id: None if node_id in first.shared else first.stamped.get(node_id, _position(pose))
         for node_id, pose in first.poses.items()
     }
-    for before, after in zip(history, history[1:]):
+    for before, after in pairwise(history):
         origins = _Step(before, after).carry(origins)
     return origins
 

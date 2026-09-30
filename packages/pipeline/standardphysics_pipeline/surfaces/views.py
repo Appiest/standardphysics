@@ -101,7 +101,7 @@ def _view(patch: Patch, camera: PhotoCamera) -> View | None:
         frame_id=camera.frame_id,
         box=box,
         distance=distance,
-        outline=tuple(zip(columns.tolist(), rows.tolist())),
+        outline=tuple(zip(columns.tolist(), rows.tolist(), strict=True)),
     )
 
 

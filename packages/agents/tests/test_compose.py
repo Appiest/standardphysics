@@ -131,7 +131,7 @@ class TestWhatThePlannerSeesIsWhatTheEngineRuns:
     nothing."""
 
     def test_every_figure_shown_is_the_figure_evaluated(self, graph):
-        for view, node in zip(compose._regions(graph), graph.nodes):
+        for view, node in zip(compose._regions(graph), graph.nodes, strict=True):
             for name in compose.FIELDS:
                 assert view[name] == pytest.approx(compose._field(node, name), abs=1e-3)
 

@@ -198,7 +198,7 @@ def _joined(pieces: list[tuple[np.ndarray, np.ndarray]]) -> tuple[np.ndarray, np
     starts = np.cumsum([0] + [len(vertices) for vertices, _ in pieces[:-1]])
     return (
         np.concatenate([vertices for vertices, _ in pieces]),
-        np.concatenate([triangles + start for (_, triangles), start in zip(pieces, starts)]),
+        np.concatenate([triangles + start for (_, triangles), start in zip(pieces, starts, strict=True)]),
     )
 
 

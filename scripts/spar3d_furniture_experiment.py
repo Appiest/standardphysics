@@ -227,7 +227,7 @@ def training_photos(room: RoomEvidence, exclude: set[str]) -> tuple[list, list[n
             image = np.asarray(photo, dtype=np.float32) / 255.0
         images.append(image)
         resized.append(camera.resized(image.shape[1], image.shape[0]))
-    shapes = {camera.frame_id: image.shape[:2] for camera, image in zip(cameras, images)}
+    shapes = {camera.frame_id: image.shape[:2] for camera, image in zip(cameras, images, strict=True)}
     masks = people_masks(room.people, cameras, shapes)
     return resized, images, [masks[camera.frame_id] for camera in resized]
 
@@ -342,7 +342,7 @@ def comparison_image(photo: np.ndarray, lidar: np.ndarray, fitted: np.ndarray, m
     width, height = panels[0].size
     sheet = Image.new("RGB", (width * 3, height + 28), (255, 255, 255))
     draw = ImageDraw.Draw(sheet)
-    for index, (panel, label) in enumerate(zip(panels, ("Photo", "LiDAR", "SPAR3D"))):
+    for index, (panel, label) in enumerate(zip(panels, ("Photo", "LiDAR", "SPAR3D"), strict=True)):
         sheet.paste(panel, (index * width, 28))
         draw.text((index * width + 8, 8), label, fill="black")
     return sheet

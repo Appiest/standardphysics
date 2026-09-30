@@ -160,7 +160,8 @@ def _rasterized_face_by_face(world, uv, owners, size):
     normals, areas = face_normals(world)
     colours = np.full((len(world), 3), 0.65, dtype=np.float32)
     pieces = [_triangle_texels(world[i], uv[i], normals[i], owners[i], colours[i], size) for i in np.flatnonzero(areas > 1e-10)]
-    rows, columns, positions, normals_out, owners_out, _ = (np.concatenate(parts) for parts in zip(*[p for p in pieces if p is not None]))
+    drawn = [piece for piece in pieces if piece is not None]
+    rows, columns, positions, normals_out, owners_out, _ = (np.concatenate(parts) for parts in zip(*drawn, strict=True))
     _, last = np.unique((rows.astype(np.int64) * size + columns)[::-1], return_index=True)
     keep = len(rows) - 1 - last
     return rows[keep], columns[keep], positions[keep], normals_out[keep], owners_out[keep]
@@ -178,7 +179,8 @@ def test_drawing_small_faces_together_matches_drawing_every_face_alone(tmp_path)
     alone = _rasterized_face_by_face(mesh.corners, mesh.uv, owners, size)
 
     assert len(together.rows) > 100_000
-    for batched, reference in zip((together.rows, together.columns, together.positions, together.normals, together.owners), alone):
+    batched_arrays = (together.rows, together.columns, together.positions, together.normals, together.owners)
+    for batched, reference in zip(batched_arrays, alone, strict=True):
         assert np.array_equal(batched, reference)
 
 

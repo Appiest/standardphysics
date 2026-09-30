@@ -267,7 +267,7 @@ def _with_every_face_owned(mesh: UnwrappedScan, size: int, rows, columns, faces,
     face_normals_ = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
     face_normals_ /= np.maximum(np.linalg.norm(face_normals_, axis=1, keepdims=True), 1e-12)
     extra: list[list] = [[], [], [], [], []]
-    for point_uv, point in zip(points_uv, points):
+    for point_uv, point in zip(points_uv, points, strict=True):
         row, column = _pixel_of(point_uv, size)
         flat = row * size + column
         _, first = np.unique(flat, return_index=True)
@@ -275,7 +275,7 @@ def _with_every_face_owned(mesh: UnwrappedScan, size: int, rows, columns, faces,
         fresh[first] = True
         fresh &= ~taken[flat]
         taken[flat[fresh]] = True
-        for bucket, values in zip(extra, (row, column, np.arange(len(flat)), point, face_normals_)):
+        for bucket, values in zip(extra, (row, column, np.arange(len(flat)), point, face_normals_), strict=True):
             bucket.append(values[fresh])
     return (
         np.concatenate([rows, *extra[0]]).astype(np.int32), np.concatenate([columns, *extra[1]]).astype(np.int32),
@@ -399,7 +399,7 @@ class _Occluders:
         corners = mesh.corners.astype(np.float32)
         blocks = TriangleBlocks(corners)
         buffers = in_parallel(lambda camera: occluder_depth_buffer(camera, corners, blocks), cameras)
-        self.buffers = {camera.frame_id: buffer for camera, buffer in zip(cameras, buffers)}
+        self.buffers = {camera.frame_id: buffer for camera, buffer in zip(cameras, buffers, strict=True)}
 
     def of(self, camera: PhotoCamera) -> np.ndarray:
         return self.buffers[camera.frame_id]
@@ -450,7 +450,7 @@ def _bake(surface: _Surface, cameras, frame_paths, detections, gains, framed, oc
         colours = np.clip(to_linear(bilinear(photo, columns[seen], rows[seen])) * gain, 0.0, 1.0)
         return visible[seen], weight[seen], colours
 
-    jobs = [(camera, gain) for camera, gain, sees in zip(cameras, gains, framed) if sees]
+    jobs = [(camera, gain) for camera, gain, sees in zip(cameras, gains, framed, strict=True) if sees]
     for indices, weights, colours in in_parallel(sample, jobs):
         blend.add(indices, weights, colours)
         painted[indices] = True

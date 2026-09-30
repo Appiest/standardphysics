@@ -140,7 +140,9 @@ def validate_rigid_matrix(matrix: Sequence[float], label: str = "transform") -> 
 
     rotation = [values[row * 4 : row * 4 + 3] for row in range(3)]
     bottom = values[12:16]
-    if any(abs(value - expected) > RIGID_TOLERANCE for value, expected in zip(bottom, (0.0, 0.0, 0.0, 1.0))):
+    if any(
+        abs(value - expected) > RIGID_TOLERANCE for value, expected in zip(bottom, (0.0, 0.0, 0.0, 1.0), strict=True)
+    ):
         raise ProposalError(f"{label} has an invalid homogeneous bottom row")
     for row in rotation:
         if abs(sum(value * value for value in row) - 1.0) > RIGID_TOLERANCE:
@@ -183,7 +185,7 @@ def load_room_transforms(path: pathlib.Path) -> tuple[dict[str, list[float]], st
     if missing:
         raise ProposalError(f"missing room transforms: {', '.join(missing)}")
     identity = Mat4.identity().m
-    if any(abs(a - b) > RIGID_TOLERANCE for a, b in zip(found["center"], identity)):
+    if any(abs(a - b) > RIGID_TOLERANCE for a, b in zip(found["center"], identity, strict=True)):
         raise ProposalError("center transform must be identity")
     return found, _sha256(path)
 

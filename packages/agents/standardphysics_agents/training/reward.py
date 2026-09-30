@@ -210,8 +210,11 @@ class _Construction:
     cost: float = 0.0
 
 
+NO_CONSTRUCTION = _Construction()
+
+
 def _gated(room: SceneGraph, candidate: SceneGraph, checker: TrainingChecker, disruption: float,
-           construction: _Construction = _Construction()) -> Verdict:
+           construction: _Construction = NO_CONSTRUCTION) -> Verdict:
     before, after = checker.assess(room), checker.assess(candidate)
     gate = accepts(before, after)
     recovered = _recovered(gate.shortfall_before, gate.shortfall_after)

@@ -197,7 +197,7 @@ def _blocks_sight(node: SceneNode) -> bool:
 
 
 def _edges(polygon) -> list:
-    return list(zip(polygon, polygon[1:] + polygon[:1]))
+    return list(zip(polygon, polygon[1:] + polygon[:1], strict=True))
 
 
 def sight_edges(graph: SceneGraph, viewpoint) -> list:

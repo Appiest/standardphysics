@@ -218,7 +218,7 @@ def feedback_message(attempt: Attempt) -> str:
 def _inside_convex(polygon, xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
     points = np.asarray(polygon, dtype=float)
     signs = []
-    for (ax, ay), (bx, by) in zip(points, np.roll(points, -1, axis=0)):
+    for (ax, ay), (bx, by) in zip(points, np.roll(points, -1, axis=0), strict=True):
         signs.append((bx - ax) * (ys - ay) - (by - ay) * (xs - ax))
     stacked = np.stack(signs)
     return np.all(stacked >= 0, axis=0) | np.all(stacked <= 0, axis=0)
@@ -344,7 +344,7 @@ def run_chains(chains: list[Chain], propose: Propose, judge: Judge, rounds: int 
         if not active:
             break
         completions = propose([chain.messages for chain in active])
-        for chain, completion in zip(active, completions):
+        for chain, completion in zip(active, completions, strict=False):
             _advance(chain, round_index, completion, judge(completion, chain.variant), last=round_index == rounds)
         if after_round:
             after_round(round_index)

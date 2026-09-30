@@ -13,6 +13,7 @@ directly and the viewer can select by it with no mapping file.
 
 import argparse
 import base64
+import itertools
 import json
 import sys
 from math import cos, pi, radians
@@ -275,7 +276,7 @@ def wall_parts(wall: dict, portals: list[dict]) -> list:
             openings.append((start, end, lower, upper))
     cuts = sorted({-length / 2, length / 2, *(edge for opening in openings for edge in opening[:2])})
     parts = []
-    for start, end in zip(cuts, cuts[1:]):
+    for start, end in itertools.pairwise(cuts):
         middle = (start + end) / 2
         vertical = merge_intervals([(lower, upper) for left, right, lower, upper in openings if left <= middle <= right])
         cursor = z_floor

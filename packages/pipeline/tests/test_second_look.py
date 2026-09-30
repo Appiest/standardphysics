@@ -37,8 +37,9 @@ def camera_at(position, looking_at, frame_id="frame-0001", width=640, height=480
 
 
 def dispenser(weights: Counter) -> DiscoveredObject:
-    points = np.stack(np.meshgrid(*[np.arange(c - s / 2, c + s / 2 + 0.01, 0.02)
-                                    for c, s in zip((2.0, 0.0, 1.3), (0.2, 0.2, 0.45))], indexing="ij"), axis=-1)
+    ranges = [np.arange(c - s / 2, c + s / 2 + 0.01, 0.02)
+              for c, s in zip((2.0, 0.0, 1.3), (0.2, 0.2, 0.45), strict=True)]
+    points = np.stack(np.meshgrid(*ranges, indexing="ij"), axis=-1)
     box = fit_box(points.reshape(-1, 3))
     return DiscoveredObject(name=weights.most_common(1)[0][0], box=box, movable=True, confidence=0.8,
                             frame_ids=("frame-0001",), weights=weights)

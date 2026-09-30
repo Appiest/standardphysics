@@ -74,7 +74,7 @@ def run_scrambles(run: pathlib.Path, workers: int) -> None:
     windows = _rows(run / "windows.jsonl")
     todo = [row for row in windows if row["window_id"] not in done]
     with multiprocessing.get_context("spawn").Pool(workers) as pool:
-        for rows, window in zip(pool.imap(_scramble_task, todo), todo):
+        for rows, window in zip(pool.imap(_scramble_task, todo), todo, strict=True):
             for row in rows:
                 _append(output, row)
             if not rows:

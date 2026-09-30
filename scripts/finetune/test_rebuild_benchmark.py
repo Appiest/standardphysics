@@ -60,7 +60,7 @@ def test_shuffle_skips_a_failure_that_cannot_be_recovered(monkeypatch):
     def fake_scramble(*_args, **_kwargs):
         for index in range(2):
             node = SimpleNamespace(id=index, transform=SimpleNamespace(m=[index]), movable=True)
-            graph = SimpleNamespace(nodes=[node], model_dump=lambda **_: {"variant": index})
+            graph = SimpleNamespace(nodes=[node], model_dump=lambda variant=index, **_: {"variant": variant})
             yield SimpleNamespace(name=f"v{index:03d}", graph=graph)
 
     monkeypatch.setattr("rebuild_benchmark.scramble", fake_scramble)

@@ -49,7 +49,7 @@ def scan():
 
 def _every_pair_ranking(cameras, scores, limit):
     """The ranking as it was, comparing every candidate with every pick each round."""
-    chosen, remaining = [], list(zip(cameras, scores))
+    chosen, remaining = [], list(zip(cameras, scores, strict=True))
     while remaining and len(chosen) < limit:
         def value(candidate):
             camera, score = candidate
@@ -57,7 +57,9 @@ def _every_pair_ranking(cameras, scores, limit):
                 return score
             positions = [np.linalg.norm(camera.position - prior.position) for prior, _ in chosen]
             directions = [1.0 - float(np.dot(camera.forward, prior.forward)) for prior, _ in chosen]
-            novelty = min(max(position / 1.0, direction) for position, direction in zip(positions, directions))
+            novelty = min(
+                max(position / 1.0, direction) for position, direction in zip(positions, directions, strict=True)
+            )
             return score * (0.35 + min(novelty, 1.0))
 
         best = max(remaining, key=value)

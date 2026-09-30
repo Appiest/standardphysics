@@ -127,7 +127,7 @@ class AccessibilityIntelligence:
         if not math.isfinite(disruption_weight) or disruption_weight < 0:
             raise ValueError("disruption_weight must be finite and nonnegative")
         questions: dict[str, ScoreQuestion] = {}
-        for index, candidate in enumerate(items):
+        for index, _candidate in enumerate(items):
             questions[f"u_{index}"] = ScoreQuestion(
                 instructions=(
                     "Rate customer usability supported by "

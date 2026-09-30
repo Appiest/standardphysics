@@ -42,7 +42,7 @@ from multiroom_train_data import MultiroomData, load
 from standardphysics_agents.training.edits import apply_edits, parse_edits
 from standardphysics_agents.training.explain import explain_change
 from standardphysics_agents.training.feedback import measured_feedback_message
-from standardphysics_agents.training.menu import MenuView, build_menu, menu_messages, resolve
+from standardphysics_agents.training.menu import DEFAULT_VIEW, MenuView, build_menu, menu_messages, resolve
 from standardphysics_agents.training.owner import InteractiveOwner, SimulatedOwner, WishBook
 from standardphysics_agents.training.prompt import prompt_messages
 from standardphysics_agents.training.quality import layout_quality
@@ -153,6 +153,9 @@ class LoopSetup:
     view: MenuView = MenuView()
 
 
+DEFAULT_SETUP = LoopSetup()
+
+
 def _owner_for(kind: str, checker, start):
     if kind == "simulated":
         return SimulatedOwner(checker.owner_layout or start, checker.measure, hidden=checker.owner_wishes)
@@ -207,7 +210,7 @@ class RawTurns(_Turns):
 class MenuTurns(_Turns):
     """The model picks from a menu of legal, measured moves; each prompt stands alone."""
 
-    def __init__(self, checker, sampler, illustrate, owner=None, view: MenuView = MenuView()):
+    def __init__(self, checker, sampler, illustrate, owner=None, view: MenuView = DEFAULT_VIEW):
         super().__init__(checker, owner)
         self.sampler, self.illustrate, self.view = sampler, illustrate, view
         self.last: dict | None = None
@@ -276,7 +279,7 @@ def _owner_outcome(checker, start, end, attempts: list[dict]) -> dict:
 
 def evaluate_variant(data: MultiroomData, row: dict, sampler: Sampler | None, model: str,
                      max_attempts: int = MAX_ATTEMPTS, solver: Solver | None = None,
-                     illustrate: Illustrator = _unchanged, setup: LoopSetup = LoopSetup()) -> dict:
+                     illustrate: Illustrator = _unchanged, setup: LoopSetup = DEFAULT_SETUP) -> dict:
     if not 1 <= max_attempts <= MAX_ATTEMPTS:
         raise ValueError("max_attempts must be between one and five")
     variant_id = row["variant"]
@@ -350,7 +353,7 @@ def _previous_records(data: MultiroomData, rows: list[dict], out: pathlib.Path,
 def evaluate(data: MultiroomData, sampler: Sampler | None, model: str, out: pathlib.Path,
              max_attempts: int = MAX_ATTEMPTS, rows: list[dict] | None = None, solver: Solver | None = None,
              workers: int = 1, limit: int | None = None, illustrate: Illustrator = _unchanged,
-             setup: LoopSetup = LoopSetup()) -> dict:
+             setup: LoopSetup = DEFAULT_SETUP) -> dict:
     if not 1 <= max_attempts <= MAX_ATTEMPTS:
         raise ValueError("max_attempts must be between one and five")
     out.parent.mkdir(parents=True, exist_ok=True)

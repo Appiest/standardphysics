@@ -22,6 +22,7 @@ from __future__ import annotations
 import math
 import uuid
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Literal
 
 import numpy as np
@@ -376,7 +377,7 @@ def _arrival_turning(
     envelope = profile.envelope_radius_meters
     samples: list[Vec3] = [stop]
     walked = 0.0
-    paired = list(zip(path[::-1], path[-2::-1]))
+    paired = list(pairwise(path[::-1]))
     for direction_from, direction_to in paired:
         walked += math.dist(
             (direction_from.x, direction_from.y), (direction_to.x, direction_to.y)

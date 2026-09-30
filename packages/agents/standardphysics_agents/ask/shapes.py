@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Literal
 
 from standardphysics_contracts import SceneNode, bounds_the_room, to_inches
@@ -82,7 +83,7 @@ def _spacing(groups: list[list[float]]) -> float | None:
     if len(groups) < 2:
         return None
     centres = [statistics.fmean(items) for items in groups]
-    gaps = [b - a for a, b in zip(centres, centres[1:])]
+    gaps = [b - a for a, b in pairwise(centres)]
     return to_inches(statistics.fmean(gaps))
 
 

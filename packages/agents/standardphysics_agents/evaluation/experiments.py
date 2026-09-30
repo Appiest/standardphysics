@@ -186,7 +186,7 @@ def grid(**axes: tuple[Any, ...]) -> list[Setup]:
     """Every combination of the given knobs, each named after what it sets."""
     names = list(axes)
     return [
-        setup(**dict(zip(names, values)))
+        setup(**dict(zip(names, values, strict=True)))
         for values in itertools.product(*(axes[name] for name in names))
     ]
 

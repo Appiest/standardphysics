@@ -203,7 +203,7 @@ def layout(args: argparse.Namespace) -> None:
         surface, uv_area = surface_and_uv_area(obj)
         charts.append({"surface": surface, "uv_area": uv_area, "density": min(MAX_DENSITY, max(MIN_DENSITY, density.get(obj.name, MIN_DENSITY)))})
     sides, placements = allocate(charts)
-    for obj, side, placement in zip(objects, sides, placements):
+    for obj, side, placement in zip(objects, sides, placements, strict=True):
         place_uvs(obj, side, placement)
     arrays: dict[str, Any] = triangle_arrays(objects)
     np.savez(args.triangles, **arrays)
@@ -212,7 +212,7 @@ def layout(args: argparse.Namespace) -> None:
         "atlas_count": 1 + max((placement[0] for placement in placements), default=0),
         "nodes": [
             {"id": obj.name, "atlas": int(obj["atlas"]), "surface": chart["surface"], "base_colour": base_colour(obj), "texels_per_meter": side * math.sqrt(chart["uv_area"] / chart["surface"])}
-            for obj, chart, side in zip(objects, charts, sides)
+            for obj, chart, side in zip(objects, charts, sides, strict=True)
         ],
     }
     pathlib.Path(args.meta).write_text(json.dumps(meta))

@@ -109,7 +109,7 @@ def test_no_wall_patch_hides_surface_the_scan_saw_behind_the_wall_plane(classroo
     facing_room = vertex_normals(vertices, triangles)
     tree = cKDTree(vertices)
     covered = 0
-    for centre, normal in zip(centres[upright], normals[upright]):
+    for centre, normal in zip(centres[upright], normals[upright], strict=True):
         behind = [centre - normal * depth for depth in (0.15, 0.3, 0.5)]
         for point in behind:
             near = tree.query_ball_point(point, 0.02)

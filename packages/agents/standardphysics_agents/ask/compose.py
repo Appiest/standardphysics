@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from itertools import pairwise
 from uuid import UUID
 
 from standardphysics_contracts import SceneGraph, SceneNode, measured_as, to_inches
@@ -323,7 +324,7 @@ def _written_in(value: float, asked: str) -> bool:
     said.extend(IN_WORDS[word] for word in words if word in IN_WORDS)
     said.extend(
         IN_WORDS[first] * IN_WORDS[second]
-        for first, second in zip(words, words[1:])
+        for first, second in pairwise(words)
         if first in IN_WORDS and second in IN_WORDS
     )
     scales = (1.0, 0.01, 0.001, 0.0254, 0.3048)

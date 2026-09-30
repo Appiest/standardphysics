@@ -154,7 +154,7 @@ def placement_since_capture(capture: SceneGraph, placed: SceneGraph, node_ids: l
     The fit refuses with `AmbiguousRegistration` when they disagree on one motion.
     """
     end = {str(node.id): node for node in placed.nodes}
-    pairs = [(node, end[node_id]) for node, node_id in zip(capture.nodes, node_ids) if node_id in end]
+    pairs = [(node, end[node_id]) for node, node_id in zip(capture.nodes, node_ids, strict=False) if node_id in end]
     source = [(a.transform.m[3], a.transform.m[7]) for a, _ in pairs]
     target = [(b.transform.m[3], b.transform.m[7]) for _, b in pairs]
     return align_points(source, target, tolerance=PLACEMENT_TOLERANCE_M)

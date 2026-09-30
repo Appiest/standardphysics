@@ -121,7 +121,7 @@ def second_look(
     renamed = list(objects)
     with concurrent.futures.ThreadPoolExecutor(max_workers=LOOK_WORKERS) as pool:
         answers = pool.map(lambda index: _looked_at(objects[index], photos, transport, cache_dir), asking)
-        for index, answer in zip(asking, answers):
+        for index, answer in zip(asking, answers, strict=True):
             renamed[index] = answer if answer is not None else replace(objects[index], name_settled=False)
     log.info("second look at %d of %d objects", len(asking), len(objects))
     return renamed

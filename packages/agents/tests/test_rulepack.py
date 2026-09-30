@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 from standardphysics_agents import VerificationLedger, load_ledger
 from standardphysics_agents.rules.pack import parse_pack
 
@@ -106,7 +107,7 @@ def test_an_unknown_field_in_the_pack_is_rejected(pack):
     payload = {"version": "test", "rules": [
         {**pack.by_id("door_clear_width").model_dump(), "threshold_inches": 32.0}
     ]}
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         parse_pack(payload)
 
 

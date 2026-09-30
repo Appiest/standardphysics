@@ -29,14 +29,14 @@ class TestExactFits:
         source = [(0.0, 0.0), (2.0, 0.0), (0.0, 1.0), (1.0, 0.5)]
         target = moved(source, -41.0, 0.1, 0.2)
         fit = align_points(source, target, tolerance=0.01)
-        for point, expected in zip(source, target):
+        for point, expected in zip(source, target, strict=True):
             assert fit.apply(point) == pytest.approx(expected, abs=1e-9)
 
     def test_inverse_restores_the_original(self):
         source = [(0.0, 0.0), (3.0, 1.0), (-1.0, 2.0)]
         target = moved(source, 22.0, -0.4, 0.9)
         fit = align_points(source, target, tolerance=0.01)
-        for point, expected in zip(source, target):
+        for point, expected in zip(source, target, strict=True):
             assert fit.inverse().apply(fit.apply(point)) == pytest.approx(point, abs=1e-9)
             assert fit.inverse().apply(expected) == pytest.approx(point, abs=1e-9)
 
@@ -104,7 +104,7 @@ class TestRefusals:
         source = [(float(x), float(y)) for x, y in rng.uniform(-2, 2, (6, 2))]
         target = moved(source, 12.0, 0.3, -0.2)
         noisy = [(qx + float(e), qy + float(e)) for (qx, qy), (e, _) in
-                 zip(target, rng.normal(0, 0.003, (6, 2)))]
+                 zip(target, rng.normal(0, 0.003, (6, 2)), strict=True)]
         fit = align_points(source, noisy, tolerance=0.02)
         assert fit.yaw == pytest.approx(math.radians(12.0), abs=1e-2)
         assert fit.residual_max < 0.08

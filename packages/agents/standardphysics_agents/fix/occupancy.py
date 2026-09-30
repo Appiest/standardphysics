@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from itertools import pairwise
 
 from standardphysics_contracts import Vec3, to_meters
 
@@ -225,7 +226,7 @@ def ensure_spacing(path: list[Vec3], radius_meters: float) -> list[Vec3]:
         return list(path)
     spacing = radius_meters / 2
     refined: list[Vec3] = []
-    for start, end in zip(path, path[1:]):
+    for start, end in pairwise(path):
         if not refined or refined[-1] != start:
             refined.append(start)
         distance = math.dist(

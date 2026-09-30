@@ -9,6 +9,7 @@ or accept a diagonal corner cut that endpoint distance alone would miss.
 from __future__ import annotations
 
 import math
+from itertools import pairwise
 from uuid import uuid4
 
 import pytest
@@ -181,7 +182,7 @@ class TestSweptSampling:
     def test_refined_points_are_never_further_than_half_a_radius_apart(self):
         path = [Vec3(x=0.0, y=0.0, z=0.0), Vec3(x=0.3, y=0.4, z=0.0)]
         refined = ensure_spacing(path, radius_meters=0.1)
-        for left, right in zip(refined, refined[1:]):
+        for left, right in pairwise(refined):
             assert math.dist((left.x, left.y), (right.x, right.y)) <= 0.05 + 1e-9
 
     def test_a_single_point_path_comes_back_unchanged(self):

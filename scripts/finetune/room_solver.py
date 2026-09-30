@@ -122,10 +122,11 @@ def _scored(graph: SceneGraph, checker, edits: TrainingEdits) -> Solution:
 
 
 def _attempt(graph: SceneGraph, checker, shifts: list[WallShift], run: _Run,
-             fixtures: list[FixtureMove] = (), fittings: TrainingEdits = TrainingEdits()) -> Solution | None:
+             fixtures: list[FixtureMove] = (), fittings: TrainingEdits | None = None) -> Solution | None:
     if run.out_of_time:
         return None
-    construction = combined(TrainingEdits(wall_shifts=shifts, fixture_moves=list(fixtures)), fittings)
+    construction = combined(TrainingEdits(wall_shifts=shifts, fixture_moves=list(fixtures)),
+                            fittings if fittings is not None else TrainingEdits())
     try:
         built = built_room(graph, construction)
     except ValueError:
@@ -169,7 +170,7 @@ def _narrowed(graph: SceneGraph, checker, side, cleared: Solution, run: _Run) ->
 def _nearest(centre: tuple[float, float], polygon: list) -> tuple[float, tuple[float, float]]:
     """Distance from the centre to the polygon's outline, and the closest point on it."""
     best = (math.inf, centre)
-    for (x1, y1), (x2, y2) in zip(polygon, [*polygon[1:], polygon[0]]):
+    for (x1, y1), (x2, y2) in zip(polygon, [*polygon[1:], polygon[0]], strict=True):
         dx, dy = x2 - x1, y2 - y1
         along = max(0.0, min(1.0, ((centre[0] - x1) * dx + (centre[1] - y1) * dy) / ((dx * dx + dy * dy) or 1.0)))
         point = (x1 + along * dx, y1 + along * dy)

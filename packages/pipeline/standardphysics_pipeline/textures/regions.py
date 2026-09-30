@@ -48,7 +48,8 @@ class VertexIndex:
         last = np.minimum(np.floor(high / CUBE_METRES).astype(np.int64), self.low + self.span - 1)
         if np.any(last < first):
             return np.empty(0, dtype=np.int64)
-        grid = np.stack(np.meshgrid(*[np.arange(a, b + 1) for a, b in zip(first, last)], indexing="ij"), axis=-1)
+        ranges = [np.arange(a, b + 1) for a, b in zip(first, last, strict=True)]
+        grid = np.stack(np.meshgrid(*ranges, indexing="ij"), axis=-1)
         keys = self._key(grid.reshape(-1, 3))
         starts = np.searchsorted(self.sorted_keys, keys, side="left")
         ends = np.searchsorted(self.sorted_keys, keys, side="right")

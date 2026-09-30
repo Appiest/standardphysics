@@ -121,7 +121,7 @@ def test_export_consumes_the_placed_transforms_exactly_once() -> None:
 
     moved = apply_room_placements(graph, [_placement(ids, yaw=-20.0, tx=0.5, ty=0.5)])
     exported = display_graph(moved)
-    for placed, drawn in zip(moved.nodes, exported.nodes):
+    for placed, drawn in zip(moved.nodes, exported.nodes, strict=True):
         assert drawn.transform.m == placed.transform.m
     assert [node.id for node in exported.nodes] == [node.id for node in moved.nodes]
 
@@ -180,7 +180,7 @@ def test_a_placed_room_keeps_what_lies_flat_lying_flat() -> None:
 
     turn = math.radians(92.0)
     cos, sin = math.cos(turn), math.sin(turn)
-    for before, after in zip(graph.nodes, moved.nodes):
+    for before, after in zip(graph.nodes, moved.nodes, strict=True):
         m, n = before.transform.m, after.transform.m
         for column in range(3):
             x, y, z = m[column], m[4 + column], m[8 + column]

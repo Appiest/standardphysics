@@ -25,7 +25,7 @@ def listing(term: str):
     titles = {int(i): slug.replace("-", " ") for slug, i in re.findall(r'href="/free-stock-video/([a-z0-9-]+)-(\d+)/"', page)}
     previews = re.findall(r"https://assets\.mixkit\.co/[^\"']+?/(\d+)-(?:video-)?360\.mp4", page)
     urls = re.findall(r"https://assets\.mixkit\.co/[^\"']+?-360\.mp4", page)
-    return [(int(i), titles.get(int(i), "?"), url) for i, url in zip(previews, urls)]
+    return [(int(i), titles.get(int(i), "?"), url) for i, url in zip(previews, urls, strict=False)]
 
 
 def search(target: Path, terms):

@@ -82,7 +82,7 @@ def _by_room(rows: list[dict]) -> list[list[dict]]:
 def pick(rows: list[dict], arm: str, step: int) -> list[dict]:
     """The step's prompts: a fixed count from each pool, one variant per room, cycling through rooms."""
     picked = []
-    for pool, count in zip(("real", "generated"), ARMS[arm]):
+    for pool, count in zip(("real", "generated"), ARMS[arm], strict=True):
         rooms = _by_room([row for row in rows if row["pool"] == pool])
         for index in range(count):
             variants = rooms[(step * count + index) % len(rooms)]

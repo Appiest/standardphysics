@@ -5,6 +5,7 @@ import re
 import threading
 import urllib.error
 import uuid
+from itertools import pairwise
 
 import pytest
 from model_provider import Reply, completion, serve_provider
@@ -50,7 +51,7 @@ def test_without_a_model_the_loop_takes_the_menus_best_ranked_move_each_turn(mak
     turns = [event for event in events if event["kind"] == "turn"]
     assert turns and all(turn["picked"] and turn["why"] for turn in turns)
     before = [events[0], *turns]
-    cleared = [(set(earlier["working_on"]) - set(turn["working_on"]), turn["why"]) for earlier, turn in zip(before, turns)]
+    cleared = [(set(earlier["working_on"]) - set(turn["working_on"]), turn["why"]) for earlier, turn in pairwise(before)]
     assert any(titles for titles, _ in cleared)
     assert all(title in why for titles, why in cleared for title in titles)
     assert events[-1]["moves"] and events[-1]["fixable_left"] < events[0]["fixable_left"]

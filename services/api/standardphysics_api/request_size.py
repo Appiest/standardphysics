@@ -20,7 +20,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .errors import ApiProblem
-from .receive_deadlines import BodyTooSlow, ReceiveClock, ReceiveDeadlines
+from .receive_deadlines import DEFAULT_DEADLINES, BodyTooSlow, ReceiveClock, ReceiveDeadlines
 
 STREAMED_UPLOADS = re.compile(r"^/api/scans/[^/]+/(artifacts/[^/]+|requests/[^/]+/photo)$")
 """The routes that stream their body to disk under a cap of their own: artifacts (see `store`) and
@@ -80,7 +80,7 @@ class BoundedRequestBodies:
     """ASGI middleware refusing any body over `max_bytes` with a 413, and any too slow to arrive with a 408,
     outside the streamed uploads, which the store holds to the same deadlines."""
 
-    def __init__(self, app: ASGIApp, max_bytes: int, deadlines: ReceiveDeadlines = ReceiveDeadlines()):
+    def __init__(self, app: ASGIApp, max_bytes: int, deadlines: ReceiveDeadlines = DEFAULT_DEADLINES):
         self.app, self.max_bytes, self.deadlines = app, max_bytes, deadlines
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:

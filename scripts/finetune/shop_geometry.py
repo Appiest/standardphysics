@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
+from itertools import pairwise
 
 from standardphysics_contracts import Mat4
 from standardphysics_pipeline.footprints import Polygon
@@ -114,7 +115,7 @@ def _split(edge: Wall, cuts: list[float]) -> list[Wall]:
         points.reverse()
     fixed = edge.a[1] if horizontal else edge.a[0]
     as_point: Callable[[float], Point] = (lambda v: (v, fixed)) if horizontal else (lambda v: (fixed, v))
-    return [Wall(as_point(p), as_point(q)) for p, q in zip(points, points[1:])]
+    return [Wall(as_point(p), as_point(q)) for p, q in pairwise(points)]
 
 
 def _merge(walls: list[Wall]) -> list[Wall]:

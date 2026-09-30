@@ -84,7 +84,7 @@ def import_capture(directory: pathlib.Path, name: str, api: str, token: str) -> 
             put(api, scan_id, artifact_id, kind, source, token)
 
     frames_dir = directory / "frames"
-    for frame_id, sha, _ in frame_entries(directory):
+    for frame_id, _sha, _ in frame_entries(directory):
         put(api, scan_id, frame_id, "frames", frames_dir / f"{frame_id.replace('-', '_')}.jpg", token)
 
     post(f"{api}/api/scans/{scan_id}/complete", {}, token)

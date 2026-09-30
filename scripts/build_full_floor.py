@@ -143,7 +143,7 @@ def _moved(columns: list[float], motion: np.ndarray) -> list[float]:
 def _walk_nodes(connection, store: ArtifactStore, walk: Walk, room: dict, placed: SceneGraph) -> list[SceneNode]:
     """The walk as its own processing left it, moved to where the walk was placed."""
     capture = captured_graph(store, walk.scan_id)
-    placed_ids = {node.id: uuid.UUID(node_id) for node, node_id in zip(capture.nodes, room["node_ids"])}
+    placed_ids = {node.id: uuid.UUID(node_id) for node, node_id in zip(capture.nodes, room["node_ids"], strict=False)}
     latest = _latest_graph(connection, walk.scan_id)
     return walk_on_floor(latest, capture, placed, walk.to_floor, placed_ids, walk.frame_id)
 
@@ -225,7 +225,9 @@ def _publish_floor(database: Database, store: ArtifactStore, scan_id: uuid.UUID,
     key = texture_build_key(bake, inputs["digest"])
     staged = staged_build_dir(store, scan_id)
     try:
-        painted_scans_joined([(path, walk.to_floor) for path, walk in zip(painted, walks)], staged / "scan.glb")
+        painted_scans_joined(
+            [(path, walk.to_floor) for path, walk in zip(painted, walks, strict=True)], staged / "scan.glb"
+        )
         export_glb(bake, staged / "scene.glb")
         prefix = build_prefix(scan_id, key)
         result = TextureBuild(
@@ -285,7 +287,8 @@ def main() -> int:
             raise SystemExit("that scan's walks have not been placed yet: align them and save first")
         walks = [_walk(store, room, placed, index) for index, room in enumerate(manifest["rooms"])]
         walk_nodes = [
-            _walk_nodes(connection, store, walk, room, placed) for walk, room in zip(walks, manifest["rooms"])
+            _walk_nodes(connection, store, walk, room, placed)
+            for walk, room in zip(walks, manifest["rooms"], strict=True)
         ]
         placed = _joined(placed, walk_nodes, manifest["rooms"])
     if args.regraph:

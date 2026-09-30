@@ -231,7 +231,7 @@ def test_c03_known_barycentric_weights_match_independent_calculation():
     v0, v1, v2 = vertices[0], vertices[1], vertices[2]
     denom = (v1[1] - v2[1]) * (v0[0] - v2[0]) + (v2[0] - v1[0]) * (v0[1] - v2[1])
     for point, state, expected_rgb_row in zip(
-        result.gaussians.positions, states, decoded
+        result.gaussians.positions, states, decoded, strict=False
     ):
         assert state.supported
         weight_v0 = ((v1[1] - v2[1]) * (point[0] - v2[0]) + (v2[0] - v1[0]) * (point[1] - v2[1])) / denom

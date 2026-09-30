@@ -164,7 +164,7 @@ def scramble(scene: Scene, seed: int) -> Scene:
     tokens = _tokens(len(scene.graph.nodes), seed)
     nodes = [
         node.model_copy(update={"label": token, "raw_category": token})
-        for node, token in zip(scene.graph.nodes, tokens)
+        for node, token in zip(scene.graph.nodes, tokens, strict=True)
     ]
     return Scene(
         scan_id=scene.scan_id,

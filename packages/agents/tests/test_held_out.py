@@ -66,14 +66,14 @@ class TestScrambling:
     def test_every_name_changes(self, scanned):
         scene = scanned[0]
         scrambled = held_out.scramble(scene, seed=3)
-        for before, after in zip(scene.graph.nodes, scrambled.graph.nodes):
+        for before, after in zip(scene.graph.nodes, scrambled.graph.nodes, strict=True):
             assert after.label != before.label
             assert after.raw_category != before.raw_category
 
     def test_no_measurement_changes(self, scanned):
         scene = scanned[0]
         scrambled = held_out.scramble(scene, seed=3)
-        for before, after in zip(scene.graph.nodes, scrambled.graph.nodes):
+        for before, after in zip(scene.graph.nodes, scrambled.graph.nodes, strict=True):
             assert after.dimensions == before.dimensions
             assert after.transform == before.transform
 

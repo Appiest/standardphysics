@@ -139,7 +139,7 @@ def runs_of(points, inside):
     step that ended it so the two pieces meet rather than leaving a gap.
     """
     runs = []
-    for step, on_floor in zip(points, inside):
+    for step, on_floor in zip(points, inside, strict=False):
         if runs and runs[-1][0] == on_floor:
             runs[-1][1].append(step)
             continue

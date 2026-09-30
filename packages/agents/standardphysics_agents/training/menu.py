@@ -530,8 +530,12 @@ class _Measurer:
         return followed
 
 
+DEFAULT_VIEW = MenuView()
+DEFAULT_LIMITS = MenuLimits()
+
+
 def build_menu(room: SceneGraph, checker: TrainingChecker, stated: WishBook | None = None,
-               view: MenuView = MenuView(), limits: MenuLimits = MenuLimits()) -> Menu:
+               view: MenuView = DEFAULT_VIEW, limits: MenuLimits = DEFAULT_LIMITS) -> Menu:
     """Legal, gate-accepted options for each of the room's fixable problems, numbered from 1.
 
     Nothing offered breaks a hard constraint, a directive for the room's space

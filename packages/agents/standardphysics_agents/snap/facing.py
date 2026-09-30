@@ -66,7 +66,7 @@ def _closest_on_segment(point, a, b) -> tuple[float, float]:
 
 
 def _closest_on_polygon(point, polygon) -> tuple[float, float]:
-    edges = zip(polygon, polygon[1:] + polygon[:1])
+    edges = zip(polygon, polygon[1:] + polygon[:1], strict=True)
     return min((_closest_on_segment(point, a, b) for a, b in edges), key=lambda q: math.dist(point, q))
 
 

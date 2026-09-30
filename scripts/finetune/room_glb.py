@@ -13,6 +13,7 @@ and `index.html`, a three.js viewer with a switch for each.
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import math
 import pathlib
@@ -58,7 +59,7 @@ def _box(node, colour) -> trimesh.Trimesh:
 def _route(window: Window) -> list[trimesh.Trimesh]:
     points = [np.array([stop.position.x, stop.position.y, 0.05]) for stop in window.scenario.stops]
     pieces = []
-    for start, end in zip(points, points[1:]):
+    for start, end in itertools.pairwise(points):
         length = float(np.linalg.norm(end - start))
         if length < 0.01:
             continue

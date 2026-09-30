@@ -564,10 +564,12 @@ def _inside_convex_polygon(polygon, world_x: np.ndarray, world_y: np.ndarray, ma
     """Vectorized convex containment for the transformed floor boundary."""
     if len(polygon) < 3:
         return np.zeros(world_x.shape, dtype=bool)
-    area = sum(start[0] * end[1] - end[0] * start[1] for start, end in zip(polygon, polygon[1:] + polygon[:1]))
+    area = sum(
+        start[0] * end[1] - end[0] * start[1] for start, end in zip(polygon, polygon[1:] + polygon[:1], strict=True)
+    )
     direction = 1 if area >= 0 else -1
     inside = np.ones(world_x.shape, dtype=bool)
-    for start, end in zip(polygon, polygon[1:] + polygon[:1]):
+    for start, end in zip(polygon, polygon[1:] + polygon[:1], strict=True):
         edge_x, edge_y = end[0] - start[0], end[1] - start[1]
         cross = edge_x * (world_y - start[1]) - edge_y * (world_x - start[0])
         inside &= direction * cross >= -margin * (edge_x * edge_x + edge_y * edge_y) ** 0.5

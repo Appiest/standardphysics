@@ -53,7 +53,7 @@ class PoseRecord(BaseModel):
         for index, column in enumerate(columns):
             for other_index, other in enumerate(columns):
                 expected = 1.0 if index == other_index else 0.0
-                if not math.isclose(sum(a * b for a, b in zip(column, other)), expected, abs_tol=0.01):
+                if not math.isclose(sum(a * b for a, b in zip(column, other, strict=True)), expected, abs_tol=0.01):
                     raise ValueError("camera transform must be rigid")
         return self
 

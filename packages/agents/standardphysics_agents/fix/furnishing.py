@@ -23,7 +23,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from itertools import product
+from itertools import pairwise, product
 from typing import Any
 
 import numpy as np
@@ -142,7 +142,7 @@ def _inscribed(bounds: Bounds, degrees: float) -> Bounds:
     flattens it to nothing.
     """
     low_x, low_y, high_x, high_y = bounds
-    xs, ys = zip(*(_rotate(x, y, degrees) for x in (low_x, high_x) for y in (low_y, high_y)))
+    xs, ys = zip(*(_rotate(x, y, degrees) for x in (low_x, high_x) for y in (low_y, high_y)), strict=True)
     return sorted(xs)[1], sorted(ys)[1], sorted(xs)[2], sorted(ys)[2]
 
 
@@ -215,7 +215,7 @@ class _Floor:
         floor = replace(self, blocked=self.blocked.copy(), aisles=np.zeros_like(self.blocked))
         stops = [self.to_frame(stop.position) for stop in scenario.stops]
         half = to_meters(rules.by_id("route_clear_width").threshold) / 2 + AISLE_MARGIN_METERS
-        for (start, end), corner in zip(zip(stops, stops[1:]), corners):
+        for (start, end), corner in zip(pairwise(stops), corners, strict=True):
             for a, b in _legs(start, end, corner):
                 floor.mark_box(floor.aisles, min(a[0], b[0]) - half, min(a[1], b[1]) - half,
                                max(a[0], b[0]) + half, max(a[1], b[1]) + half)
@@ -238,7 +238,7 @@ def _corner_choices(scenario: Scenario, floor: _Floor) -> list[tuple[int, ...]]:
     stops = [floor.to_frame(stop.position) for stop in scenario.stops]
     per_leg = [
         (0,) if min(abs(b[0] - a[0]), abs(b[1] - a[1])) < STOP_SQUARE_METERS else (0, 1)
-        for a, b in zip(stops, stops[1:])
+        for a, b in pairwise(stops)
     ]
     return list(product(*per_leg))[:MAX_PLANS]
 

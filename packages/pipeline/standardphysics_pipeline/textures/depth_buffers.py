@@ -175,7 +175,7 @@ def _draw_depth(buffer: np.ndarray, small: PhotoCamera, triangles: np.ndarray) -
     u, v, depth = u[visible], v[visible], depth[visible]
     few_pixels = _pixel_spans(buffer, u, v).max(axis=0) <= SMALL_TRIANGLE_SIDES[-1]
     _rasterize_small_triangles(buffer, u[few_pixels], v[few_pixels], depth[few_pixels])
-    for corners_u, corners_v, corners_depth in zip(u[~few_pixels], v[~few_pixels], depth[~few_pixels]):
+    for corners_u, corners_v, corners_depth in zip(u[~few_pixels], v[~few_pixels], depth[~few_pixels], strict=True):
         _rasterize_depth_triangle(buffer, corners_u, corners_v, corners_depth)
 
 

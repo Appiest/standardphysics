@@ -354,7 +354,7 @@ class Experiment:
             raise SystemExit(ESTIMATE_EXIT_CODE)
         if spec.independent:
             groups = proposer([self.first_prompt(v, spec.hint) for v in variants], samples=ROUNDS)
-            records = [self.independent_record(arm, v, group) for v, group in zip(variants, groups)]
+            records = [self.independent_record(arm, v, group) for v, group in zip(variants, groups, strict=False)]
         else:
             records = self.run_chain_arm(proposer, arm, spec, variants)
         print(f"wrote {self.write(arm, records)}", flush=True)

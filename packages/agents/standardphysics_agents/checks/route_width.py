@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 
 from standardphysics_contracts import WidthResult
 from standardphysics_pipeline import path_locus, width_locus
@@ -53,7 +54,7 @@ def route_width_verdict(
         return WidthVerdict(False, "reduction_too_long")
     if any(
         following[0] - previous[1] < rule.parameter("separating_segment_min_length_inches")
-        for previous, following in zip(reduced_runs, reduced_runs[1:])
+        for previous, following in pairwise(reduced_runs)
     ):
         return WidthVerdict(False, "reductions_too_close")
     return WidthVerdict(True, "reduction_permitted")

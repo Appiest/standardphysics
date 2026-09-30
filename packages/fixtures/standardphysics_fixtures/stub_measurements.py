@@ -15,6 +15,7 @@ searches the distance transform, which handles geometry this one cannot.
 
 from __future__ import annotations
 
+import itertools
 from uuid import UUID
 
 from standardphysics_contracts import (
@@ -80,7 +81,7 @@ def _merge(barriers: list[_Barrier]) -> list[_Barrier]:
 
 
 def _widest_gap(merged: list[_Barrier]) -> tuple[_Barrier, _Barrier] | None:
-    gaps = list(zip(merged, merged[1:]))
+    gaps = list(itertools.pairwise(merged))
     if not gaps:
         return None
     return max(gaps, key=lambda pair: pair[1].x0 - pair[0].x1)

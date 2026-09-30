@@ -166,7 +166,7 @@ def test_real_blender_import_and_render_place_markers_at_known_pixels(tmp_path):
     scene = trimesh.Scene()
     transform = camera.room_to_camera
     position = -transform[:3, :3].T @ transform[:3, 3]
-    for (u, v), color, depth in zip(targets, colors, (.7, 2, 3, 5, 2, 2)):
+    for (u, v), color, depth in zip(targets, colors, (.7, 2, 3, 5, 2, 2), strict=True):
         room_vertices = []
         for dx, dy in ((-4, -4), (4, -4), (4, 4), (-4, 4)):
             # Invert the documented image crop/resize directly in original sensor pixels.
@@ -196,7 +196,7 @@ def test_real_blender_import_and_render_place_markers_at_known_pixels(tmp_path):
     assert result.returncode == 0, result.stdout[-2500:] + result.stderr[-2500:]
     assert "CALIBRATED_MESH_RENDER_COMPLETE" in result.stdout
     image = np.asarray(Image.open(tmp_path/"oblique_candidate.png").convert("RGB"))
-    for (u, v), color in zip(targets, colors):
+    for (u, v), color in zip(targets, colors, strict=True):
         if color is None:
             continue
         channels = np.asarray(color) > 0
@@ -207,7 +207,7 @@ def test_real_blender_import_and_render_place_markers_at_known_pixels(tmp_path):
         assert abs(ys.mean()-v) < .75
     geometry = np.asarray(Image.open(tmp_path/"oblique_geometry.png").convert("L")) > 128
     photo_support = np.asarray(Image.open(tmp_path/"oblique_photo_support.png").convert("L")) > 128
-    for (u, v), color in zip(targets, colors):
+    for (u, v), color in zip(targets, colors, strict=True):
         assert geometry[v, u]
         assert photo_support[v, u] == (color is not None)
     assert not geometry[15, 15]

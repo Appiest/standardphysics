@@ -35,8 +35,8 @@ def fit(dataset: pathlib.Path) -> dict:
         path = dataset / f"{name}.jsonl"
         rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
         lengths = [renderer.build_generation_prompt(_prompt_messages(row)).length for row in rows]
-        kept = [row for row, length in zip(rows, lengths) if length <= MAX_PROMPT_TOKENS]
-        dropped = [row for row, length in zip(rows, lengths) if length > MAX_PROMPT_TOKENS]
+        kept = [row for row, length in zip(rows, lengths, strict=True) if length <= MAX_PROMPT_TOKENS]
+        dropped = [row for row, length in zip(rows, lengths, strict=True) if length > MAX_PROMPT_TOKENS]
         (spill / f"{name}.jsonl").write_text("".join(json.dumps(row) + "\n" for row in dropped))
         path.write_text("".join(json.dumps(row) + "\n" for row in kept))
         report[name] = {"kept": len(kept), "dropped": len(dropped), "longest_kept": max(

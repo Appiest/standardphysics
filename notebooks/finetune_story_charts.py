@@ -47,7 +47,7 @@ def ladder_points(stages):
 
 def ladder_marks(stages, points, metric):
     marks = []
-    for stage, (x, y) in zip(stages, points):
+    for stage, (x, y) in zip(stages, points, strict=True):
         css = "dot-base" if stage["delta"] is None else f"dot-stage {change_css(stage['delta'])}"
         marks.append(f'<circle class="{css}" cx="{x:.1f}" cy="{y:.1f}" r="6"/>')
         marks.append(text(x, y - 14, value_text(stage["value"], metric), "label-figure", "middle"))
@@ -90,7 +90,7 @@ def benchmark_rows(runs):
     rows = []
     for run in runs:
         cleared = stage_changes(run, "cleared")
-        for entry, step in zip(run["evaluations"], cleared):
+        for entry, step in zip(run["evaluations"], cleared, strict=True):
             rows.append({
                 "Run": run["title"],
                 "Stage": entry["label"],

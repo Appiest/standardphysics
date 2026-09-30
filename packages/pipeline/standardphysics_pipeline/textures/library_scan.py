@@ -147,7 +147,7 @@ def painted_room(room: RoomCapture) -> tuple[ColouredScan, int]:
     vertices, triangles = scan_geometry(room.mesh_path, room.capture_to_room)
     cameras = _cameras_for(room)
     images = [_photo(room.frame_paths[camera.frame_id]) for camera in cameras]
-    resized = [camera.resized(*image.shape[1::-1]) for camera, image in zip(cameras, images)]
+    resized = [camera.resized(*image.shape[1::-1]) for camera, image in zip(cameras, images, strict=True)]
     scan = unused_vertices_removed(colour_the_scan(vertices, triangles, resized, images))
     return moved_to_floor(unobserved_filled_from_nearest(scan), room.to_floor), len(cameras)
 

@@ -36,6 +36,7 @@ class Displacement:
     pieces: int = MAX_PIECES
 
 
+DEFAULT_DISPLACEMENT = Displacement()
 LIGHT = Displacement(LIGHT_SLIDE_METERS, LIGHT_TURNS)
 SHUFFLE = Displacement(1.5, TURNS, 6)
 """A shuffle for benchmarks: up to six pieces, each slid up to 1.5 m and turned by any angle in `TURNS`."""
@@ -58,7 +59,7 @@ def floor_furniture(graph: SceneGraph) -> list[SceneNode]:
     ]
 
 
-def random_moves(pieces: list[SceneNode], rng: random.Random, how: Displacement = Displacement()) -> list[NodeMove]:
+def random_moves(pieces: list[SceneNode], rng: random.Random, how: Displacement = DEFAULT_DISPLACEMENT) -> list[NodeMove]:
     chosen = rng.sample(pieces, rng.randint(1, min(how.pieces, len(pieces))))
     return [
         NodeMove(
@@ -101,7 +102,7 @@ def _one_variant(scanned: SceneGraph, start: SceneGraph, rng: random.Random, che
 
 def scramble(
     scanned: SceneGraph, checker: TrainingChecker, count: int, *, seed: int = 0, starts: list[SceneGraph] | None = None,
-    how: Displacement = Displacement(),
+    how: Displacement = DEFAULT_DISPLACEMENT,
 ) -> list[Variant]:
     """Up to `count` distinct variants. `starts` are layouts to scramble from, the scanned one by default."""
     origins = starts or [scanned]

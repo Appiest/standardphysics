@@ -126,7 +126,7 @@ def merge(
     across = math.ceil(math.sqrt(len(graphs)))
 
     nodes, rooms = [], []
-    for index, (directory, graph, box) in enumerate(zip(directories, graphs, footprints)):
+    for index, (directory, graph, box) in enumerate(zip(directories, graphs, footprints, strict=True)):
         left, _right, bottom, _top = box
         column, row = index % across, index // across
         placed = _slid(

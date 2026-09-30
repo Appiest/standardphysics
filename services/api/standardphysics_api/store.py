@@ -19,7 +19,7 @@ import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
-from .receive_deadlines import ReceiveDeadlines
+from .receive_deadlines import DEFAULT_DEADLINES, ReceiveDeadlines
 
 ARTIFACT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 STAGING_PREFIX = ".upload-"
@@ -57,6 +57,9 @@ class ScanQuota:
             raise ScanFull(f"this scan would hold more than {self.max_bytes} bytes")
 
 
+DEFAULT_QUOTA = ScanQuota()
+
+
 @dataclass(frozen=True)
 class StagedUpload:
     temp_path: pathlib.Path
@@ -69,8 +72,8 @@ class ArtifactStore:
         self,
         root: pathlib.Path,
         max_bytes: int,
-        quota: ScanQuota = ScanQuota(),
-        receive_deadlines: ReceiveDeadlines = ReceiveDeadlines(),
+        quota: ScanQuota = DEFAULT_QUOTA,
+        receive_deadlines: ReceiveDeadlines = DEFAULT_DEADLINES,
     ):
         self.root = root.resolve()
         self.max_bytes = max_bytes

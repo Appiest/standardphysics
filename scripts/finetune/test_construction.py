@@ -38,7 +38,7 @@ def test_shift_grows_the_floor_on_one_side_only():
     edge = {edge.side: edge for edge in floor_edges(graph)}["x+"]
     shifted = shift_walls(graph, [SHIFT])
     before, after = graph.ground(), shifted.ground()
-    grown = [b - a for a, b in zip(before.dimensions.as_tuple(), after.dimensions.as_tuple())]
+    grown = [b - a for a, b in zip(before.dimensions.as_tuple(), after.dimensions.as_tuple(), strict=True)]
     assert sorted(round(value, 4) for value in grown) == [0.0, 0.0, round(to_meters(12), 4)]
     assert _offset(after, edge) == pytest.approx(to_meters(12) / 2)
 

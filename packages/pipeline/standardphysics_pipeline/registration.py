@@ -65,7 +65,7 @@ def _fit(source: np.ndarray, target: np.ndarray) -> PlaneAlignment:
     n = len(source)
     design = np.empty((2 * n, 4))
     residual = np.empty(2 * n)
-    for index, ((x, y), (qx, qy)) in enumerate(zip(source, target)):
+    for index, ((x, y), (qx, qy)) in enumerate(zip(source, target, strict=True)):
         design[2 * index] = [1.0, x, -y, 0.0]
         residual[2 * index] = qx
         design[2 * index + 1] = [0.0, y, x, 1.0]
@@ -78,7 +78,7 @@ def _fit(source: np.ndarray, target: np.ndarray) -> PlaneAlignment:
     cos_t, sin_t = cos_t / radius, sin_t / radius
     yaw = float(np.arctan2(sin_t, cos_t))
     distances = []
-    for (x, y), (qx, qy) in zip(source, target):
+    for (x, y), (qx, qy) in zip(source, target, strict=True):
         px = cos_t * x - sin_t * y + tx
         py = sin_t * x + cos_t * y + ty
         distances.append(np.hypot(px - qx, py - qy))

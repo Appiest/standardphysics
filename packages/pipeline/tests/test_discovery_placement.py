@@ -33,7 +33,7 @@ from standardphysics_pipeline.textures.camera import PhotoCamera
 
 
 def slab(centre, size, spacing=0.02) -> np.ndarray:
-    ranges = [np.arange(c - s / 2, c + s / 2 + spacing / 2, spacing) for c, s in zip(centre, size)]
+    ranges = [np.arange(c - s / 2, c + s / 2 + spacing / 2, spacing) for c, s in zip(centre, size, strict=False)]
     grid = np.meshgrid(*ranges, indexing="ij")
     return np.stack([axis.ravel() for axis in grid], axis=1)
 
@@ -146,7 +146,7 @@ class TestNamingTheCounter:
         detections = {
             frame.frame_id: [Detection(frame_id=frame.frame_id, name=name, box=self.BOX, movable=False,
                                        confidence=0.95)]
-            for frame, name in zip(frames, names)
+            for frame, name in zip(frames, names, strict=True)
         }
         return apply_secondary_semantic_corrections(graph_of(node), detections, frames).by_id(node.id)
 

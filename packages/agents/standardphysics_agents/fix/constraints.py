@@ -198,7 +198,7 @@ WALL_ON_EDGE_METERS = 0.35
 
 def _floor_heading(outline: Polygon) -> float:
     """The direction of the floor outline's longest edge, in radians: the room's own x axis."""
-    start, end = max(zip(outline, [*outline[1:], outline[0]]), key=lambda edge: math.dist(*edge))
+    start, end = max(zip(outline, [*outline[1:], outline[0]], strict=True), key=lambda edge: math.dist(*edge))
     return math.atan2(end[1] - start[1], end[0] - start[0])
 
 

@@ -181,7 +181,7 @@ def path_line(run):
     curve.bevel_resolution = 1
     spline = curve.splines.new('POLY')
     spline.points.add(len(run['path'])-1)
-    for point, saved in zip(spline.points,run['path']):
+    for point, saved in zip(spline.points,run['path'],strict=False):
         point.co = (saved['x'],saved['y'],.04,1)
     obj = bpy.data.objects.new("Verified route "+run['task']['id'],curve)
     bpy.context.collection.objects.link(obj)

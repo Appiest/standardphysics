@@ -198,7 +198,7 @@ class Meter:
         self.path.write_text(json.dumps(self.spend.as_dict()) + "\n")
 
     def charge_answers(self, prompts: list, answers: list) -> None:
-        prompt_tokens = sum(prompt.length * answer.attempts for prompt, answer in zip(prompts, answers))
+        prompt_tokens = sum(prompt.length * answer.attempts for prompt, answer in zip(prompts, answers, strict=False))
         sample_tokens = sum(answer.sample_tokens + (answer.attempts - 1) * self.sample_cap for answer in answers)
         self.charge(prompt_tokens, sample_tokens)
 
@@ -210,8 +210,8 @@ def _round(model, pool, rebuilds: list[Rebuild], windows: dict, meter: Meter, lo
     answers = model.answer_all(prompts)
     meter.charge_answers(prompts, answers)
     jobs = [(windows[rebuild.shuffle["window_id"]], rebuild.current, answer.text)
-            for rebuild, answer in zip(rebuilds, answers)]
-    for rebuild, answer, judged in zip(rebuilds, answers, pool.starmap(step, jobs)):
+            for rebuild, answer in zip(rebuilds, answers, strict=False)]
+    for rebuild, answer, judged in zip(rebuilds, answers, pool.starmap(step, jobs), strict=False):
         rebuild.advance(loop, answer.text, judged)
 
 
@@ -285,7 +285,7 @@ def run(out: pathlib.Path, models: list[tuple[str, str | None]], budget: float, 
             finals = pool.starmap(final_measures, [(windows[r.shuffle["window_id"]], r.current,
                                                     r.shuffle["owner_failures"])
                                                    for r in rebuilds])
-            _write(result_path, [_record(name, state, r, f) for r, f in zip(rebuilds, finals)])
+            _write(result_path, [_record(name, state, r, f) for r, f in zip(rebuilds, finals, strict=True)])
 
 
 # --- report -----------------------------------------------------------------

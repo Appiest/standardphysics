@@ -40,7 +40,7 @@ def placed(path: str, placement: str) -> None:
 def main() -> None:
     args = parse_args()
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    for path, placement in zip(args.usdz, args.placement):
+    for path, placement in zip(args.usdz, args.placement, strict=True):
         placed(path, placement)
     bpy.ops.wm.usd_export(filepath=args.out)
     print("FLOOR_USDZ_WRITTEN")

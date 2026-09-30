@@ -176,7 +176,7 @@ def discover_objects(inputs: DiscoveryInputs, *, transport: Transport | None = N
     kept = _carved_objects(graph, cameras, detections, removal, MeshViews(points, views))
     looked = second_look([object_ for object_, _ in kept], Photos(cameras, inputs.frame_paths, orientations),
                          transport=transport, cache_dir=inputs.cache_dir)
-    kept = [(object_, viewpoints) for object_, (_, viewpoints) in zip(looked, kept)]
+    kept = [(object_, viewpoints) for object_, (_, viewpoints) in zip(looked, kept, strict=True)]
     objects = [object_ for object_, _ in kept]
     carved_nodes = [_node_for(object_, graph, viewpoints) for object_, viewpoints in kept]
     attached_nodes = _attached_targets(inputs, graph, cameras, detections, buffers)
@@ -247,7 +247,7 @@ def _carved_objects(
     measured = measured_on_the_mesh([object_ for object_, _ in kept], mesh.loose_near([o for o, _ in kept], graph, people))
     return [
         (replace(standing, box=seated(standing.box, graph, loose)), viewpoints)
-        for object_, (_, viewpoints) in zip(measured, kept)
+        for object_, (_, viewpoints) in zip(measured, kept, strict=True)
         for standing in [_standing_at_its_surface(object_, graph, loose)]
         if standing is not None
     ]

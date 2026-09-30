@@ -185,7 +185,7 @@ def _point_to_segment(point: Point, a: Point, b: Point) -> float:
 
 
 def _edges(polygon: Polygon):
-    return zip(polygon, polygon[1:] + polygon[:1])
+    return zip(polygon, polygon[1:] + polygon[:1], strict=True)
 
 
 def _separated(a: Polygon, b: Polygon) -> bool:

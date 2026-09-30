@@ -46,7 +46,7 @@ def verify(scene, obj, view):
         matrix_pixel = [(clip.x/clip.w+1)*view["width"]/2-.5,
                         (1-clip.y/clip.w)*view["height"]/2-.5]
         error = max(abs(actual-wanted) for output in (helper_pixel, matrix_pixel)
-                    for actual, wanted in zip(output, probe["pixel"]))
+                    for actual, wanted in zip(output, probe["pixel"], strict=False))
         if ndc.z <= 0 or error > 0.01:
             raise RuntimeError(f"camera {view['id']} failed corner/depth verification: {error}px")
         rows.append({"expected": probe["pixel"], "helper": helper_pixel,
@@ -116,7 +116,7 @@ def main():
         bpy.ops.render.render(write_still=True)
         scene.world.color = (0, 0, 0)
         for name in ("geometry", "photo_support"):
-            for (slot, _), photographed in zip(originals, support):
+            for (slot, _), photographed in zip(originals, support, strict=True):
                 slot.material = masks[int(name == "geometry" or photographed)]
             scene.render.filepath = str(output/f"{view['id']}_{name}.png")
             bpy.ops.render.render(write_still=True)

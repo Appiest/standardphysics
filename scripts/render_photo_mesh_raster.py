@@ -240,7 +240,7 @@ def render_view(arrays, camera, width, height, modes, out_paths):
     outputs = {}
     sentinel_textures = textures if textures else [np.zeros((1, 1, 3), dtype=np.uint8)]
     sentinel_vcolors = vcolors if vcolors else [np.zeros((1, 3), dtype=np.float32)]
-    for mode, out_path in zip(modes, out_paths):
+    for mode, out_path in zip(modes, out_paths, strict=False):
         colour, depth, face_buffer, texi, uv_buffer = raster_frame(
             vertices, faces, uvs, texture_index, sentinel_textures, palette,
             rot, trans, np.float32(camera.fx), np.float32(camera.fy),
@@ -268,7 +268,7 @@ def main():
         paths = [args.out / f"{view['id']}-{name}.png" for name in passes]
         render_view(arrays, camera, view["width"], view["height"], [0, 1, 2, 3], paths)
         manifest["views"].append({"id": view["id"], "width": view["width"], "height": view["height"],
-                                  "passes": {name: str(path) for name, path in zip(passes, paths)}})
+                                  "passes": {name: str(path) for name, path in zip(passes, paths, strict=True)}})
     (args.out / "raster-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print("RASTER_DONE", len(spec["views"]))
 

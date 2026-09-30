@@ -374,7 +374,7 @@ def _exposure_gains(world, cameras, images, clean_buffers, lidar_buffers) -> np.
         indices = np.linspace(0, len(points) - 1, MAX_EXPOSURE_POINTS, dtype=np.int64)
         points, normals = points[indices], normals[indices]
     observations = []
-    for camera, image, clean, lidar in zip(cameras, images, clean_buffers, lidar_buffers):
+    for camera, image, clean, lidar in zip(cameras, images, clean_buffers, lidar_buffers, strict=True):
         samples = view_samples(DepthBuffers(camera, clean, lidar), points, normals, 1.0)
         accepted = np.flatnonzero(samples.accepted)
         observations.append((accepted, bilinear(image, samples.u[accepted], samples.v[accepted])))

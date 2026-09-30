@@ -28,7 +28,7 @@ def main() -> None:
     first = evaluations[0]
     for view in first["views"]:
         cells = []
-        for evaluation, label in zip(evaluations, args.labels):
+        for evaluation, label in zip(evaluations, args.labels, strict=True):
             matching = [v for v in evaluation["views"] if v["id"] == view["id"]]
             entry = matching[0] if matching else {}
             ref = entry.get("passes", {}).get("rgb")
@@ -46,7 +46,7 @@ def main() -> None:
                 rel = ""
             cells.append(f"<img src='{rel}' width='500' height='500' alt='{label} {view['id']}'>")
         metrics = []
-        for evaluation, label in zip(evaluations, args.labels):
+        for evaluation, label in zip(evaluations, args.labels, strict=True):
             entry = [v for v in evaluation["views"] if v["id"] == view["id"]][0]
             coverage = entry.get("coverage", {})
             psnr = entry.get("psnr_ssim", {})

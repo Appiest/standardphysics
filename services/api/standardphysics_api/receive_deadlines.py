@@ -33,6 +33,9 @@ class ReceiveDeadlines:
         return ReceiveClock(self, time.monotonic() + self.total_seconds)
 
 
+DEFAULT_DEADLINES = ReceiveDeadlines()
+
+
 @dataclass(frozen=True)
 class ReceiveClock:
     deadlines: ReceiveDeadlines

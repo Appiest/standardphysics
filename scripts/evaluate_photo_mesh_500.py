@@ -267,7 +267,7 @@ def render_all(arrays, views, out_dir: Path) -> list[dict]:
         paths = [out_dir / f"{view.id}-{name}.png" for name in ["rgb", "source_id", "coverage"]]
         outputs = render_view(arrays, view.camera, FINAL, FINAL, [0, 2, 3], paths)
         records.append({"id": view.id, "passes": {name: str(path) for name, path in
-                        zip(["rgb", "source_id", "coverage"], paths)},
+                        zip(["rgb", "source_id", "coverage"], paths, strict=True)},
                         "buffers": outputs})
     return records
 
@@ -361,7 +361,7 @@ def main() -> None:
                "views": [], "gates": {}}
     coverage_gate = policy["visual_gates"]["coverage"]
     resolution_gate = policy["visual_gates"]["effective_resolution"]
-    for view, record in zip(views, records):
+    for view, record in zip(views, records, strict=True):
         results["views"].append(
             evaluate_view(view, record, arrays, measured, region_box, args.out))
 

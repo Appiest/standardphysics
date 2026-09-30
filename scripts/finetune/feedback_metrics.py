@@ -8,6 +8,7 @@ keeps the accepted one with the highest reward, as a best-of-n pick would.
 from __future__ import annotations
 
 from collections import Counter
+from itertools import pairwise
 
 from standardphysics_agents.training.snapped_reward import Verdict, summarize
 
@@ -64,7 +65,7 @@ def next_outcome_after(records: list[dict]) -> dict[str, dict]:
     table: dict[str, Counter] = {}
     for record in records:
         calls = until_accepted(record)
-        for previous, following in zip(calls, calls[1:]):
+        for previous, following in pairwise(calls):
             table.setdefault(previous["category"], Counter())[following["category"]] += 1
     return {category: {"calls": sum(counts.values()), **{k: _share(v, sum(counts.values()))
                                                           for k, v in counts.most_common()}}
@@ -90,9 +91,9 @@ def arm_metrics(records: list[dict]) -> dict:
         "accepted_rooms": accepted_count,
         "accepted_share": _share(accepted_count, rooms),
         "accepted_of_ceiling": _share(accepted_count, fixable),
-        "accepted_where_search_failed": sum(1 for record, pick in zip(records, picks)
+        "accepted_where_search_failed": sum(1 for record, pick in zip(records, picks, strict=True)
                                             if pick is not None and not record["ceiling_fixable"]),
-        "accepted_where_search_succeeded": sum(1 for record, pick in zip(records, picks)
+        "accepted_where_search_succeeded": sum(1 for record, pick in zip(records, picks, strict=True)
                                                if pick is not None and record["ceiling_fixable"]),
         "cleared_where_search_cleared": sum(1 for record in records if record["ceiling_all_clear"] and cleared(record)),
         "cleared_rooms": cleared_count,

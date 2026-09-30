@@ -62,16 +62,18 @@ def walks():
         scan_id = room["source_scan_id"]
         capture = captured_graph(store, uuid.UUID(scan_id))
         motion = placement_matrix(placement_since_capture(capture, placed, room["node_ids"]))
-        placed_ids = {node.id: uuid.UUID(node_id) for node, node_id in zip(capture.nodes, room["node_ids"])}
+        placed_ids = {
+            node.id: uuid.UUID(node_id) for node, node_id in zip(capture.nodes, room["node_ids"], strict=False)
+        }
         first = (index + 1) * FRAMES_PER_WALK
         walk = latest(database, scan_id)
         measured = {node.id for node in capture.nodes}
         on_floor = walk_on_floor(
             walk, capture, placed, motion, placed_ids,
-            lambda frame: f"frame-{first + int(frame.removeprefix('frame-')):05d}",
+            lambda frame, first=first: f"frame-{first + int(frame.removeprefix('frame-')):05d}",
         )
         found = [node for node in walk.nodes if node.id not in measured]
-        moved = [after for before, after in zip(walk.nodes, on_floor) if before.id not in measured]
+        moved = [after for before, after in zip(walk.nodes, on_floor, strict=True) if before.id not in measured]
         carried.append({"walk": walk, "found": found, "moved": moved, "motion": motion, "first": first})
     return placed, carried
 
@@ -85,7 +87,7 @@ class TestTheFloorKeepsWhatEachWalkFound:
     def test_each_object_lands_where_its_walk_was_placed(self, walks):
         _, carried = walks
         for walk in carried:
-            for before, after in zip(walk["found"], walk["moved"]):
+            for before, after in zip(walk["found"], walk["moved"], strict=True):
                 expected = walk["motion"] @ np.append(position(before), 1.0)
                 assert np.allclose(position(after), expected[:3], atol=1e-6)
 
@@ -95,7 +97,7 @@ class TestTheFloorKeepsWhatEachWalkFound:
         resting = 0
         for walk in carried:
             in_walk = {node.id: node for node in walk["walk"].nodes}
-            for before, after in zip(walk["found"], walk["moved"]):
+            for before, after in zip(walk["found"], walk["moved"], strict=True):
                 if after.parent_id not in on_floor:
                     continue
                 resting += 1

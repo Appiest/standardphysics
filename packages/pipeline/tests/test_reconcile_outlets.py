@@ -11,6 +11,7 @@ Validates:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 
 import numpy as np
 from standardphysics_contracts import Mat4, ObservationCrop, SceneNode, SurfaceAttachment, Vec3
@@ -51,9 +52,9 @@ def make_outlet_node(
     normal: tuple[float, float, float] = (0.0, -1.0, 0.0),
     support_id: uuid.UUID | None = None,
     frame_id: str = "frame-0001",
-    sensor_box: list[float] = [288.0, 216.0, 352.0, 264.0],
+    sensor_box: Sequence[float] = (288.0, 216.0, 352.0, 264.0),
     review_status: str = "detected",
-    uncertainty_reasons: list[str] = [],
+    uncertainty_reasons: Sequence[str] = (),
     node_id: uuid.UUID | None = None,
 ) -> SceneNode:
     supp_id = support_id or uuid.uuid4()
@@ -68,14 +69,14 @@ def make_outlet_node(
         observations=[
             ObservationCrop(
                 frame_id=frame_id,
-                sensor_box=sensor_box,
+                sensor_box=list(sensor_box),
                 confidence=0.9,
             )
         ],
         identity_confidence=0.9,
         localization_quality="verified_support",
         review_status=review_status,
-        uncertainty_reasons=uncertainty_reasons,
+        uncertainty_reasons=list(uncertainty_reasons),
     )
     return SceneNode(
         id=nid,

@@ -16,6 +16,7 @@ you leave in the direction you arrived from, and that is a fact about the stops.
 from __future__ import annotations
 
 import math
+from itertools import pairwise
 
 from standardphysics_contracts import Stop, Vec3, WidthResult
 
@@ -104,7 +105,7 @@ def setback_point(stops: list[Stop], index: int, setback_meters: float) -> Vec3:
 
 
 def path_length_meters(path: list[Vec3]) -> float:
-    return sum(math.dist((a.x, a.y), (b.x, b.y)) for a, b in zip(path, path[1:]))
+    return sum(math.dist((a.x, a.y), (b.x, b.y)) for a, b in pairwise(path))
 
 
 def route_length_feet(legs: list[WidthResult]) -> float:

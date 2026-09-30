@@ -16,6 +16,7 @@ import json
 import math
 import time
 from dataclasses import asdict, dataclass, field
+from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -330,7 +331,7 @@ def _route_errors(
         errors.append("path crosses occupied furniture or a wall")
     if any(
         max(abs(a[0] - b[0]), abs(a[1] - b[1])) != 1
-        for a, b in zip(result.path, result.path[1:])
+        for a, b in pairwise(result.path)
     ):
         errors.append("path contains a disconnected step")
 

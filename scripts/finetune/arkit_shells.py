@@ -137,7 +137,7 @@ class Grid:
         xs, ys = np.meshgrid(np.arange(self.shape[0]), np.arange(self.shape[1]), indexing="ij")
         centres = np.stack([xs.ravel(), ys.ravel()], axis=1) * CELL + self.origin + CELL / 2
         sides = []
-        for a, b in zip(corners, np.roll(corners, -1, axis=0)):
+        for a, b in zip(corners, np.roll(corners, -1, axis=0), strict=True):
             edge = b - a
             sides.append(edge[0] * (centres[:, 1] - a[1]) - edge[1] * (centres[:, 0] - a[0]))
         sides = np.array(sides)
@@ -240,7 +240,7 @@ class Room:
         turned = [rotate(footprint(piece), -self.angle) for piece in pieces]
         self.grid = Grid(rotate(floor_points, -self.angle))
         self.floor = _smoothed(floor_region(self.grid, rotate(floor_points, -self.angle), turned))
-        tall = [corners for corners, piece in zip(turned, pieces) if piece["label"] in TALL]
+        tall = [corners for corners, piece in zip(turned, pieces, strict=True) if piece["label"] in TALL]
         self.backed = wall_near(self.grid, rotate(points[band], -self.angle), tall)
         self.blocked = np.zeros_like(self.floor)
         for corners in turned:
@@ -257,7 +257,7 @@ class Room:
         """Each straight wall as (start, end, outward normal) in the aligned frame; the floor is on the left."""
         corners = [self.local(corner) for corner in outline(ndimage.binary_fill_holes(coarse(self.floor, "most")))]
         found = []
-        for start, end in zip(corners, corners[1:] + corners[:1]):
+        for start, end in zip(corners, corners[1:] + corners[:1], strict=True):
             along = end - start
             length = float(np.linalg.norm(along))
             if length > 0:
@@ -290,7 +290,7 @@ class Room:
         steps = np.arange(0.0, length, CELL)
         open_flags = [not self.backed_at(start + direction * t, outward) for t in steps]
         stretches, begin = [], None
-        for t, is_open in zip([*steps, length], [*open_flags, False]):
+        for t, is_open in zip([*steps, length], [*open_flags, False], strict=True):
             if is_open and begin is None:
                 begin = t
             elif not is_open and begin is not None:
@@ -349,7 +349,7 @@ def _stop(name: str, room: Room, target, anchor: SceneNode | None) -> Stop | Non
 
 def _first(nodes: list[SceneNode], pieces: list[dict], labels) -> tuple[SceneNode, dict] | None:
     for wanted in labels:
-        for node, piece in zip(nodes, pieces):
+        for node, piece in zip(nodes, pieces, strict=False):
             if piece["label"] == wanted:
                 return node, piece
     return None

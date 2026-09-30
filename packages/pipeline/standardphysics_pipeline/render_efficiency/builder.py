@@ -171,13 +171,13 @@ def _keep_supported_finite(
     points, normals, colours = points[norm_finite], normals[norm_finite], colours[norm_finite]
     kept_owners = kept_owners[norm_finite]
     if kept_sources is not None:
-        kept_sources = [row for row, keep in zip(kept_sources, norm_finite) if keep]
+        kept_sources = [row for row, keep in zip(kept_sources, norm_finite, strict=True) if keep]
     if len(points) == 0:
         raise MetricError("no supported, non-degenerate surface samples remain")
     source_iter = kept_sources if kept_sources is not None else [()] * len(kept_owners)
     states = [
         SampleState(triangle=int(owner), supported=True, source_ids=sources or ())
-        for owner, sources in zip(kept_owners, source_iter)
+        for owner, sources in zip(kept_owners, source_iter, strict=True)
     ]
     return points, normals, colours, kept_owners, states, rejected
 

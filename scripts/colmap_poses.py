@@ -58,7 +58,7 @@ def pose_overrides(model_dir: Path) -> dict[str, dict]:
     cameras = read_cameras_bin(model_dir / "cameras.bin")
     images = read_images_bin(model_dir / "images.bin")
     overrides = {}
-    for image_id, (name, rotation, translation, camera_id) in images.items():
+    for _image_id, (name, rotation, translation, camera_id) in images.items():
         camera_params = cameras[camera_id]
         fx, fy, cx, cy = camera_params[0], camera_params[1], camera_params[2], camera_params[3]
         overrides[name] = {"R": rotation, "t": translation, "fx": float(fx), "fy": float(fy),
