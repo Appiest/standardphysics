@@ -91,6 +91,15 @@ RAMP_LANDING_LABELS = frozenset({"ramp landing", "landing"})
 
 HANDRAIL_LABELS = frozenset({"handrail", "hand rail", "railing", "rail", "guardrail", "guard rail", "banister"})
 
+LAVATORY_LABELS = frozenset(
+    {"sink", "lavatory", "bathroom sink", "restroom sink", "hand sink", "wash basin", "washbasin", "basin", "vanity"}
+)
+"""606 covers lavatories and sinks alike; RoomPlan boxes both as a sink."""
+
+MIRROR_LABELS = frozenset({"mirror", "bathroom mirror", "restroom mirror", "vanity mirror", "wall mirror"})
+
+GRAB_BAR_LABELS = frozenset({"grab bar", "grab bars", "grab rail", "safety bar", "toilet grab bar"})
+
 HOUSINGS = frozenset({"dispenser", "station", "stand", "unit", "pump", "cabinet", "panel", "box"})
 """Words a detector adds after an operable thing's name for what holds it: a sanitizer dispenser is a sanitizer."""
 
@@ -239,6 +248,28 @@ def ramp_landings(graph: SceneGraph) -> list[SceneNode]:
 def handrails(graph: SceneGraph) -> list[SceneNode]:
     """Railings are thin and long, so a railing's box can read as a sheet of the room; the name decides here."""
     return [node for node in graph.nodes if _normalized(node.label) in HANDRAIL_LABELS]
+
+
+def _named(graph: SceneGraph, labels: frozenset[str]) -> list[SceneNode]:
+    """By the label a person or a model gave it, or by the category the scanner did.
+
+    A mirror is a thin sheet and a grab bar a thin rod, so either can read as
+    part of the room's shell; the name decides for these, as it does for a railing.
+    """
+    return [node for node in graph.nodes
+            if _normalized(node.label) in labels or _normalized(node.raw_category) in labels]
+
+
+def lavatories(graph: SceneGraph) -> list[SceneNode]:
+    return [node for node in _named(graph, LAVATORY_LABELS) if not bounds_the_room(node)]
+
+
+def mirrors(graph: SceneGraph) -> list[SceneNode]:
+    return _named(graph, MIRROR_LABELS)
+
+
+def grab_bars(graph: SceneGraph) -> list[SceneNode]:
+    return _named(graph, GRAB_BAR_LABELS)
 
 
 def point_of_sale(graph: SceneGraph) -> list[SceneNode]:

@@ -656,6 +656,228 @@
       "source_text": "904.5.1 Self-Service Shelves and Dispensing Devices. Self-service shelves and dispensing devices for tableware, dishware, condiments, food and beverages shall comply with 308, which sets the high forward reach at 48 inches (1220 mm) maximum and the low forward reach at 15 inches (380 mm) minimum above the finish floor or ground.",
       "review_note": "Read the same way as kiosk_reach. The lower limits for reaching over an obstruction in 308.2.2 and 308.3.2 are not applied.",
       "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "water_closet_location",
+      "title": "The toilet's distance from the side wall",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "604.2",
+        "url": "https://www.access-board.gov/ada/#ada-604"
+      },
+      "tier": 1,
+      "threshold": 18.0,
+      "unit": "in",
+      "comparison": "at_most",
+      "parameters": {
+        "centerline_min_inches": 16.0
+      },
+      "applies_to": [
+        "water_closet"
+      ],
+      "evidence": "photo",
+      "source_text": "604.2 Location. The water closet shall be positioned with a wall or partition to the rear and to one side. The centerline of the water closet shall be 16 inches (405 mm) minimum to 18 inches (455 mm) maximum from the side wall or partition, except that the water closet shall be 17 inches (430 mm) minimum and 19 inches (485 mm) maximum from the side wall or partition in the ambulatory accessible toilet compartment specified in 604.8.2. Water closets shall be arranged for a left-hand or right-hand approach.",
+      "review_note": "Measured from the toilet box's centre to the face of the nearest wall running alongside the box's longer, front-to-back side. A box too square to tell front from side, or no such wall within 30 inches, asks for a tape measurement. The 17 to 19 inch range for an ambulatory compartment in 604.8.2 is not applied, because a small shop's customer restroom is a single room.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "water_closet_seat_height",
+      "title": "The toilet seat height",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "604.4",
+        "url": "https://www.access-board.gov/ada/#ada-604"
+      },
+      "tier": 1,
+      "threshold": 19.0,
+      "unit": "in",
+      "comparison": "at_most",
+      "parameters": {
+        "seat_min_inches": 17.0
+      },
+      "applies_to": [
+        "water_closet"
+      ],
+      "evidence": "photo",
+      "source_text": "604.4 Seats. The seat height of a water closet above the finish floor shall be 17 inches (430 mm) minimum and 19 inches (485 mm) maximum measured to the top of the seat. Seats shall not be sprung to return to a lifted position.",
+      "review_note": "A scan boxes the toilet to the top of its tank, so the seat is never measured and this is always a photo with a tape measure.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "water_closet_grab_bars",
+      "title": "The grab bars at the toilet",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "604.5",
+        "url": "https://www.access-board.gov/ada/#ada-604"
+      },
+      "tier": 1,
+      "threshold": 42.0,
+      "unit": "in",
+      "comparison": "at_least",
+      "parameters": {
+        "rear_wall_min_inches": 36.0,
+        "side_wall_max_from_rear_inches": 12.0,
+        "side_wall_extends_from_rear_min_inches": 54.0,
+        "rear_wall_short_side_min_inches": 12.0,
+        "rear_wall_long_side_min_inches": 24.0
+      },
+      "applies_to": [
+        "water_closet"
+      ],
+      "evidence": "photo",
+      "source_text": "604.5 Grab Bars. Grab bars for water closets shall comply with 609. Grab bars shall be provided on the side wall closest to the water closet and on the rear wall. 604.5.1 Side Wall. The side wall grab bar shall be 42 inches (1065 mm) long minimum, located 12 inches (305 mm) maximum from the rear wall and extending 54 inches (1370 mm) minimum from the rear wall. 604.5.2 Rear Wall. The rear wall grab bar shall be 36 inches (915 mm) long minimum and extend from the centerline of the water closet 12 inches (305 mm) minimum on one side and 24 inches (610 mm) minimum on the other side.",
+      "review_note": "Checks the lengths only: a bar within 20 inches of the toilet running front to back is the side bar and one running across is the rear bar, each read as its box's longest side. A toilet missing either bar in the scan asks for a photo rather than failing, because detection misses thin bars. Where each bar sits along its wall is not checked.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "grab_bar_height",
+      "title": "The grab bar height",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "609.4",
+        "url": "https://www.access-board.gov/ada/#ada-609"
+      },
+      "tier": 1,
+      "threshold": 36.0,
+      "unit": "in",
+      "comparison": "at_most",
+      "parameters": {
+        "gripping_surface_min_inches": 33.0
+      },
+      "applies_to": [
+        "grab_bar"
+      ],
+      "evidence": "photo",
+      "source_text": "609.4 Position of Grab Bars. Grab bars shall be installed in a horizontal position, 33 inches (840 mm) minimum and 36 inches (915 mm) maximum above the finish floor measured to the top of the gripping surface, except that at water closets for children\u2019s use complying with 604.9, grab bars shall be installed in a horizontal position 18 inches (455 mm) minimum and 27 inches (685 mm) maximum above the finish floor measured to the top of the gripping surface. The height of the lower grab bar on the back wall of a bathtub shall comply with 607.4.1.1 or 607.4.2.1.",
+      "review_note": "Read as the top of each grab bar's box. The children's range and the bathtub rules are not applied.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "lavatory_height",
+      "title": "The restroom sink height",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "606.3",
+        "url": "https://www.access-board.gov/ada/#ada-606"
+      },
+      "tier": 1,
+      "threshold": 34.0,
+      "unit": "in",
+      "comparison": "at_most",
+      "parameters": {},
+      "applies_to": [
+        "lavatory"
+      ],
+      "evidence": "photo",
+      "source_text": "606.3 Height. Lavatories and sinks shall be installed with the front of the higher of the rim or counter surface 34 inches (865 mm) maximum above the finish floor or ground.",
+      "review_note": "Read from the measured top surface when the scan has one, and otherwise from the top of the sink's box, which is the higher of the rim or the counter around it.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "lavatory_knee_clearance",
+      "title": "The space under the restroom sink",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "606.2",
+        "url": "https://www.access-board.gov/ada/#ada-606"
+      },
+      "tier": 1,
+      "threshold": 27.0,
+      "unit": "in",
+      "comparison": "at_least",
+      "parameters": {
+        "toe_clearance_top_inches": 9.0,
+        "knee_depth_at_9_min_inches": 11.0,
+        "knee_depth_at_27_min_inches": 8.0,
+        "knee_width_min_inches": 30.0
+      },
+      "applies_to": [
+        "lavatory"
+      ],
+      "evidence": "photo",
+      "source_text": "606.2 Clear Floor Space. A clear floor space complying with 305, positioned for a forward approach, and knee and toe clearance complying with 306 shall be provided. 306.3.1 General. Space under an element between 9 inches (230 mm) and 27 inches (685 mm) above the finish floor or ground shall be considered knee clearance and shall comply with 306.3. 306.3.3 Minimum Required Depth. Where knee clearance is required under an element as part of a clear floor space, the knee clearance shall be 11 inches (280 mm) deep minimum at 9 inches (230 mm) above the finish floor or ground, and 8 inches (205 mm) deep minimum at 27 inches (685 mm) above the finish floor or ground. 306.3.5 Width. Knee clearance shall be 30 inches (760 mm) wide minimum.",
+      "review_note": "A scan boxes a sink as a solid, so it cannot see whether there is open space under it. This is always a photo.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "mirror_height",
+      "title": "The mirror over the restroom sink",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "603.3",
+        "url": "https://www.access-board.gov/ada/#ada-603"
+      },
+      "tier": 1,
+      "threshold": 40.0,
+      "unit": "in",
+      "comparison": "at_most",
+      "parameters": {
+        "not_over_lavatory_max_inches": 35.0
+      },
+      "applies_to": [
+        "mirror"
+      ],
+      "evidence": "photo",
+      "source_text": "603.3 Mirrors. Mirrors located above lavatories or countertops shall be installed with the bottom edge of the reflecting surface 40 inches (1015 mm) maximum above the finish floor or ground. Mirrors not located above lavatories or countertops shall be installed with the bottom edge of the reflecting surface 35 inches (890 mm) maximum above the finish floor or ground.",
+      "review_note": "Only a mirror standing within 12 inches of a sink's outline, horizontally, is measured, as the bottom of its box. A frame makes that slightly lower than the reflecting surface. Mirrors elsewhere are left alone, because a scan cannot say whether a mirror on a shop wall is in a restroom.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "sign_tactile_height",
+      "title": "The restroom sign height",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "703.4.1",
+        "url": "https://www.access-board.gov/ada/#ada-703"
+      },
+      "tier": 1,
+      "threshold": 60.0,
+      "unit": "in",
+      "comparison": "at_most",
+      "parameters": {
+        "lowest_baseline_min_inches": 48.0
+      },
+      "applies_to": [
+        "permanent_room_sign"
+      ],
+      "evidence": "photo",
+      "source_text": "703.4.1 Height Above Finish Floor or Ground. Tactile characters on signs shall be located 48 inches (1220 mm) minimum above the finish floor or ground surface, measured from the baseline of the lowest tactile character and 60 inches (1525 mm) maximum above the finish floor or ground surface, measured from the baseline of the highest tactile character. 216.2 Designations. Interior and exterior signs identifying permanent rooms and spaces shall comply with 703.1, 703.2, and 703.5.",
+      "review_note": "A scan cannot read raised characters or braille, so this is always a photo with a tape measure.",
+      "resolved_by": "changing_a_fixture"
+    },
+    {
+      "id": "sign_location",
+      "title": "Where the restroom sign hangs",
+      "citation": {
+        "authority": "ADA_2010",
+        "edition": "2010 ADA Standards for Accessible Design",
+        "section": "703.4.2",
+        "url": "https://www.access-board.gov/ada/#ada-703"
+      },
+      "tier": 1,
+      "threshold": 18.0,
+      "unit": "in",
+      "comparison": "at_least",
+      "parameters": {
+        "clear_floor_side_min_inches": 18.0,
+        "door_swing_degrees": 45.0
+      },
+      "applies_to": [
+        "permanent_room_sign"
+      ],
+      "evidence": "photo",
+      "source_text": "703.4.2 Location. Where a tactile sign is provided at a door, the sign shall be located alongside the door at the latch side. Where a tactile sign is provided at double doors with one active leaf, the sign shall be located on the inactive leaf. Where a tactile sign is provided at double doors with two active leafs, the sign shall be located to the right of the right hand door. Where there is no wall space at the latch side of a single door or at the right side of double doors, signs shall be located on the nearest adjacent wall. Signs containing tactile characters shall be located so that a clear floor space of 18 inches (455 mm) minimum by 18 inches (455 mm) minimum, centered on the tactile characters, is provided beyond the arc of any door swing between the closed position and 45 degree open position. 216.2 Designations. Interior and exterior signs identifying permanent rooms and spaces shall comply with 703.1, 703.2, and 703.5.",
+      "review_note": "The threshold is the side of the clear floor square centred on the sign. Where the sign hangs relative to the latch is only visible in a photo.",
+      "resolved_by": "changing_a_fixture"
     }
   ]
 }

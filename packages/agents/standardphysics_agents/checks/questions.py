@@ -16,6 +16,7 @@ from standardphysics_contracts import SceneGraph, SceneNode
 from ..tracing import traced
 from . import roles
 from .context import CheckContext
+from .lavatory import mirrors_over_lavatories
 from .observation import Observation
 from .restroom import toilets
 
@@ -56,18 +57,43 @@ ASK_ABOUT: tuple[tuple[str, NodeFinder], ...] = (
     ("door_opening_force", _inside_door_nodes),
     ("floor_surface", _floor_nodes),
     ("restroom_turning_space", no_nodes),
+    ("water_closet_location", no_nodes),
+    ("water_closet_seat_height", toilets),
+    ("water_closet_grab_bars", no_nodes),
+    ("grab_bar_height", no_nodes),
+    ("lavatory_height", no_nodes),
+    ("lavatory_knee_clearance", roles.lavatories),
+    ("mirror_height", no_nodes),
+    ("sign_tactile_height", _inside_door_nodes),
+    ("sign_location", _inside_door_nodes),
 )
 
 RULE_IDS = frozenset(rule_id for rule_id, _ in ASK_ABOUT)
 
-MEASURED_WHEN_SEEN = frozenset({"restroom_turning_space"})
-"""Asked about only while the scan shows no toilet; `restroom.restroom_turning_space` measures it otherwise."""
+MEASURED_WHEN_SEEN: dict[str, NodeFinder] = {
+    "restroom_turning_space": toilets,
+    "water_closet_location": toilets,
+    "water_closet_grab_bars": toilets,
+    "grab_bar_height": roles.grab_bars,
+    "lavatory_height": roles.lavatories,
+    "mirror_height": mirrors_over_lavatories,
+}
+"""Asked about only while the scan does not show the thing; its own check measures it once the scan does.
+
+`restroom`, `water_closet`, `grab_bars` and `lavatory` each take over as soon
+as the graph holds what they measure, so an owner is never asked for a photo of
+something the scan already answered.
+"""
+
+
+def _seen(ctx: CheckContext, rule_id: str) -> bool:
+    finder = MEASURED_WHEN_SEEN.get(rule_id)
+    return finder is not None and bool(finder(ctx.graph))
 
 
 @traced("checks.scan_cannot_see")
 def scan_cannot_see(ctx: CheckContext) -> list[Observation]:
-    measured = MEASURED_WHEN_SEEN if toilets(ctx.graph) else frozenset()
-    return [ask(ctx, rule_id, finder) for rule_id, finder in ASK_ABOUT if rule_id not in measured]
+    return [ask(ctx, rule_id, finder) for rule_id, finder in ASK_ABOUT if not _seen(ctx, rule_id)]
 
 
 def ask(ctx: CheckContext, rule_id: str, finder: NodeFinder) -> Observation:

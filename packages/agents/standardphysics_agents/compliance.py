@@ -17,6 +17,8 @@ from standardphysics_pipeline import footprint, gap_between
 from .checks import REGISTRY, CheckContext, Observation, roles
 from .checks.dining import required_count, surface_height_inches, within_range
 from .checks.door_clearance import latch_sides_clear
+from .checks.lavatory import mirrors_over_lavatories
+from .checks.restroom import toilets
 from .checks.result import as_result
 from .checks.route_geometry import stops_needing_turning_space
 from .precedents import PrecedentCompiler, check_precedent_constraints
@@ -181,6 +183,10 @@ def _applicable_rule(rule: RuleSpec, graph: SceneGraph, scenario: Scenario, typo
         "kiosk": bool(roles.kiosks(graph)),
         "self_service": bool(roles.self_service(graph)),
         "post_mounted": any("post" in node.label.lower() for node in graph.nodes),
+        "water_closet": bool(toilets(graph)),
+        "grab_bar": bool(toilets(graph) or roles.grab_bars(graph)),
+        "lavatory": bool(roles.lavatories(graph)),
+        "mirror": bool(mirrors_over_lavatories(graph)),
     }
     return any(targets.get(target, True) for target in rule.applies_to)
 

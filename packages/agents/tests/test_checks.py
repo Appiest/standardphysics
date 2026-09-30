@@ -181,6 +181,8 @@ def test_things_a_scan_cannot_see_become_questions(graph, scenario, measure, led
     assert asked == {
         "door_clear_width", "entrance_threshold", "door_hardware",
         "door_opening_force", "floor_surface", "restroom_turning_space",
+        "water_closet_location", "water_closet_seat_height", "water_closet_grab_bars", "grab_bar_height",
+        "lavatory_height", "lavatory_knee_clearance", "mirror_height", "sign_tactile_height", "sign_location",
     }
 
 

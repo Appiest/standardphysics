@@ -19,8 +19,12 @@ from .dining import dining_surface_height
 from .door_clearance import door_maneuvering_clearance, door_verdict
 from .door_width import door_clear_width
 from .exit_path import exit_path
+from .grab_bars import RULE_IDS as GRAB_BAR_RULE_IDS
+from .grab_bars import grab_bars
 from .kiosks import RULE_IDS as KIOSK_RULE_IDS
 from .kiosks import kiosks
+from .lavatory import RULE_IDS as LAVATORY_RULE_IDS
+from .lavatory import lavatory
 from .observation import Observation, Unevaluated
 from .passing_space import passing_space
 from .protrusions import protruding_objects
@@ -40,6 +44,7 @@ from .service_counter import (
 )
 from .turn_width import turn_clear_width, turn_verdict
 from .turning_space import turning_space
+from .water_closet import water_closet_location
 
 CheckFn = Callable[[CheckContext], CheckResult | Iterable[Observation]]
 
@@ -58,6 +63,9 @@ REGISTRY: tuple[tuple[frozenset[str], CheckFn], ...] = (
     (frozenset({"dining_surface_height"}), dining_surface_height),
     (frozenset({"reach_range"}), reach_range),
     (frozenset({"restroom_turning_space"}), restroom_turning_space),
+    (frozenset({"water_closet_location"}), water_closet_location),
+    (GRAB_BAR_RULE_IDS, grab_bars),
+    (LAVATORY_RULE_IDS, lavatory),
     (RAMP_RULE_IDS, ramps),
     (KIOSK_RULE_IDS, kiosks),
     (frozenset({"self_service_reach"}), self_service_reach),
@@ -131,9 +139,9 @@ COVERED = frozenset().union(*[rule_ids for rule_ids, _ in REGISTRY])
 __all__ = [
     "COVERED", "CheckContext", "CheckResult", "Observation", "REGISTRY",
     "Unevaluated", "dedupe", "dining_surface_height", "door_clear_width",
-    "door_maneuvering_clearance", "door_verdict", "exit_path", "kiosks", "passing_space",
+    "door_maneuvering_clearance", "door_verdict", "exit_path", "grab_bars", "kiosks", "lavatory", "passing_space",
     "point_of_sale_height", "protruding_objects", "ramps", "reach_range", "restroom_turning_space",
     "route_clear_width", "route_width_verdict", "run_checks", "scan_cannot_see", "self_service_reach",
     "service_counter_approach", "service_counter_height", "turn_clear_width",
-    "turn_verdict", "turning_space",
+    "turn_verdict", "turning_space", "water_closet_location",
 ]

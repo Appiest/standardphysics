@@ -304,6 +304,42 @@ QUESTIONS = {
         title="Send a photo of anything a customer has to reach for",
         detail="The card reader, the light switch by the door, a bell pull. We'll check each one sits between 15 and 48 inches up.",
     ),
+    "water_closet_location": FindingCopy(
+        title="Send a photo of a tape measure from the side wall to the toilet",
+        detail="Run the tape from the wall beside the toilet to the middle of the seat, and get the tape and the toilet in the shot. The middle of the toilet needs to sit 16 to 18 inches from that wall, close enough to reach the grab bar.",
+    ),
+    "water_closet_seat_height": FindingCopy(
+        title="Send a photo of a tape measure beside the toilet seat",
+        detail="Put the seat down, stand the tape on the floor next to it and get close enough to read the tape at the top of the seat. The seat needs to be 17 to 19 inches up, level with a wheelchair seat.",
+    ),
+    "water_closet_grab_bars": FindingCopy(
+        title="Send a photo of the grab bars around the toilet",
+        detail="Step back far enough to get the wall beside the toilet and the wall behind it. The toilet needs a bar at least 42 inches long on the side wall and one at least 36 inches long behind it.",
+    ),
+    "grab_bar_height": FindingCopy(
+        title="Send a photo of a tape measure beside a grab bar",
+        detail="Stand the tape on the floor under the bar and get the top of the bar in the shot. The top of each bar belongs 33 to 36 inches up.",
+    ),
+    "lavatory_height": FindingCopy(
+        title="Send a photo of a tape measure beside the restroom sink",
+        detail="Stand the tape on the floor at the front of the sink and get its top edge in the shot. Whichever is higher, the rim or the counter, needs to be 34 inches up or lower.",
+    ),
+    "lavatory_knee_clearance": FindingCopy(
+        title="Send a photo of the space under the restroom sink",
+        detail="Crouch in front of it and get the floor and the underside of the sink in. Someone in a wheelchair rolls their knees under it, so it needs 27 inches of clear height and 30 inches of width, with no cabinet in the way.",
+    ),
+    "mirror_height": FindingCopy(
+        title="Send a photo of the mirror over the restroom sink",
+        detail="Get the bottom edge of the mirror and the sink in, with a tape measure standing on the floor if you have one. The bottom of the glass needs to be 40 inches up or lower so someone sitting down can see into it.",
+    ),
+    "sign_tactile_height": FindingCopy(
+        title="Send a photo of the restroom sign with a tape measure beside it",
+        detail="Stand the tape on the floor under the sign and get the whole sign in. Someone reading it by touch finds the raised letters when they sit between 48 and 60 inches up.",
+    ),
+    "sign_location": FindingCopy(
+        title="Send a photo of the restroom door and the wall beside it",
+        detail="Step back far enough to get the whole door and its sign. The sign belongs on the wall next to the handle side of the door, where someone reading it by touch isn't hit by the door as it opens.",
+    ),
 }
 
 def _door_clearance(observation: Observation, rule: RuleSpec) -> FindingCopy:
@@ -556,6 +592,82 @@ def _kiosk_floor(observation: Observation, rule: RuleSpec) -> FindingCopy:
     )
 
 
+def _band_detail(observation: Observation, what: str, allowed: str) -> str:
+    return f"{what} {measured(_measured_inches(observation), observation.required_inches)} up. {allowed}"
+
+
+def _water_closet_location(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    low = inches(observation.facts.get("low", 16.0))
+    high = inches(observation.facts.get("high", rule.threshold))
+    shown = measured(_measured_inches(observation), observation.required_inches)
+    detail = (f"Its middle is {shown} from the wall beside it. It belongs {low} to {high} out, close enough "
+              "to reach the grab bar on that wall.")
+    if observation.satisfied:
+        return FindingCopy(title="The toilet sits the right distance from the side wall", detail=detail)
+    side = "close to" if observation.reason == "too_low" else "far from"
+    return FindingCopy(
+        title=f"The toilet sits too {side} the side wall",
+        detail=detail,
+        fix=f"Ask a plumber about moving the toilet so its middle sits {low} to {high} from the side wall.",
+    )
+
+
+def _water_closet_grab_bars(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    side, rear = inches(observation.facts.get("side", 0.0)), inches(observation.facts.get("rear", 0.0))
+    side_min = inches(observation.facts.get("side_min", rule.threshold))
+    rear_min = inches(observation.facts.get("rear_min", 36.0))
+    if observation.satisfied:
+        return FindingCopy(
+            title="The toilet has grab bars on the side and back walls",
+            detail=f"The side bar is {side} long and the back bar is {rear}. They need {side_min} and {rear_min}.",
+        )
+    wall, needed = ("behind", rear_min) if observation.reason == "rear_too_short" else ("beside", side_min)
+    shown = measured(_measured_inches(observation), observation.required_inches)
+    return FindingCopy(
+        title=f"The grab bar {wall} the toilet is too short",
+        detail=f"It's {shown} long. The wall {wall} the toilet needs a bar at least {needed} long.",
+        fix=f"Replace it with a grab bar at least {needed} long.",
+    )
+
+
+def _grab_bar_height(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    low = inches(observation.facts.get("low", 33.0))
+    high = inches(observation.facts.get("high", rule.threshold))
+    detail = _band_detail(observation, "Its top is", f"Grab bars belong {low} to {high} up.")
+    if observation.satisfied:
+        return FindingCopy(title="The grab bar is a good height", detail=detail)
+    return FindingCopy(
+        title=f"The grab bar is too {'low' if observation.reason == 'too_low' else 'high'}",
+        detail=detail,
+        fix=f"Remount it so its top sits {low} to {high} up.",
+    )
+
+
+def _lavatory_height(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    sink = _subject(observation, "subject", "sink")
+    allowed = inches(rule.threshold)
+    detail = _band_detail(observation, "Its front edge is", f"Using it from a wheelchair needs {allowed} or lower.")
+    if observation.satisfied:
+        return FindingCopy(title=f"The {sink} is low enough to use from a wheelchair", detail=detail)
+    return FindingCopy(
+        title=f"The {sink} is too high to use from a wheelchair",
+        detail=detail,
+        fix=f"Lower the {sink} so the front of its rim or counter sits no higher than {allowed}.",
+    )
+
+
+def _mirror_height(observation: Observation, rule: RuleSpec) -> FindingCopy:
+    allowed = inches(rule.threshold)
+    detail = _band_detail(observation, "Its bottom edge is", f"Over a sink it needs to be {allowed} or lower.")
+    if observation.satisfied:
+        return FindingCopy(title="The mirror is low enough to see into from a wheelchair", detail=detail)
+    return FindingCopy(
+        title="The mirror is too high to see into from a wheelchair",
+        detail=detail,
+        fix=f"Lower the mirror, or hang another whose bottom edge sits at {allowed} or lower.",
+    )
+
+
 WRITERS: dict[str, Callable[[Observation, RuleSpec], FindingCopy]] = {
     "reach_range": _reach,
     "door_maneuvering_clearance": _door_clearance,
@@ -580,6 +692,11 @@ WRITERS: dict[str, Callable[[Observation, RuleSpec], FindingCopy]] = {
     "kiosk_reach": _reach_limits,
     "kiosk_clear_floor": _kiosk_floor,
     "self_service_reach": _reach_limits,
+    "water_closet_location": _water_closet_location,
+    "water_closet_grab_bars": _water_closet_grab_bars,
+    "grab_bar_height": _grab_bar_height,
+    "lavatory_height": _lavatory_height,
+    "mirror_height": _mirror_height,
 }
 
 
@@ -619,6 +736,10 @@ REQUESTS = {
     "self_service_reach": FindingCopy(
         title="Measure how high the self-serve spouts and stacks are",
         detail="Measure from the floor to the highest lever, spout, lid stack or napkin a customer reaches for. It needs to be 48 inches or lower.",
+    ),
+    "water_closet_location": FindingCopy(
+        title="Measure how far the middle of the toilet is from the side wall",
+        detail="Measure from the wall beside the toilet to the middle of the seat. It needs to be 16 to 18 inches.",
     ),
     "door_clear_width": FindingCopy(
         title="Measure how wide {door_name} opens and send us the number",
