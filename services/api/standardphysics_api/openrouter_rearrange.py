@@ -9,7 +9,8 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from standardphysics_agents.models import OpenRouter, provider_routing
+from standardphysics_agents.models import OpenRouter
+from standardphysics_pipeline.astra_transport import provider_routing
 
 from .fireworks import ModelFailed, Sampling
 

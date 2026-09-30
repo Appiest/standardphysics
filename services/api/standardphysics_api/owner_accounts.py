@@ -20,10 +20,10 @@ from standardphysics_contracts import DeviceRegistration, Session
 from . import accounts, notifications
 from .accounts import Owner
 from .apple_identity import AppleIdentity, AppleUnavailable, NotFromApple, verify
+from .attempt_limiter import AttemptLimiter
 from .auth import (
     SIGN_IN_THROTTLED,
     SIGN_IN_WINDOW_SECONDS,
-    AttemptLimiter,
     client_address,
     resolve_owner,
     save_guest,

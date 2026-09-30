@@ -66,7 +66,7 @@ class DetectionCache:
             pass
 
 
-def _detection(item: dict, frame_id: str) -> Detection | None:
+def _detection(item: object, frame_id: str) -> Detection | None:
     """One stored answer, or nothing when it is malformed, NaN or infinite.
 
     A cache entry that cannot be read exactly is not repaired and is not

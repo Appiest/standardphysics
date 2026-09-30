@@ -58,6 +58,14 @@ plugins = ["pydantic.mypy"]
 check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
+# The parts of --strict the code already meets, held from here on. The rest of --strict
+# (untyped and incomplete defs, Any returns) is several hundred annotations away.
+strict_equality = true
+strict_bytes = true
+extra_checks = true
+warn_unreachable = true
+no_implicit_reexport = true
+warn_unused_configs = true
 
 [[tool.mypy.overrides]]
 module = ["standardphysics_fixtures.*"]
