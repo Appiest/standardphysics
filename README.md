@@ -226,6 +226,8 @@ Each configuration of the system is one run. The three runs on 28 September are 
 
 The stand-in rows are the control. Swapping the measured geometry for merged boxes keeps recall but loses most of the precision and adds about 8.6 inches of measurement error. Reproduce them with `standardphysics-agents weave-eval`.
 
+On every push, CI scores [ten of the cases](packages/agents/tests/test_weave_eval_slice.py) through the same evaluation with fixes on and no W&B connection, and fails when recall drops below 0.94, measurement error rises above 0.05 in, or any other score falls below 1.0.
+
 ## Post-training
 
 We fine-tuned an open model with supervised fine-tuning followed by reinforcement learning on Fireworks to propose furniture rearrangements. On the same 65 held-out layout variants, with four attempts each, training raised the share of proposals that obey every geometric constraint from 42.3% for the base model to 71.9% ([results](runs/finetune/synthetic/results.json), [run notes](runs/finetune/synthetic/STATUS.txt)). Better constraint-following did not produce more accepted or fully cleared layouts, though: gate acceptance peaked at 31.5% after the first RL run and fell to 28.1% after the second, and the share of attempts that cleared every fixable finding fell across the trained checkpoints. A bounded search over those variants finds an accepted fix for 36 of the 65 and clears every fixable finding in 27; the other 29 are unresolved under that search budget, which is a lower bound rather than proof that no layout exists. A second fine-tuned model, Qwen3.8-27B served from Fireworks, can replace Gemini 3.8 Flash for naming the objects in a scan when `LABEL_STATE` is set. It isn't a fallback: an unusable label answer falls back to local labels.
