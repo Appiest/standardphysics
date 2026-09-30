@@ -40,6 +40,11 @@ export class LayoutChecker {
     return this.cache.get(layoutKey(moves));
   }
 
+  /** Remembers a check made elsewhere, such as the one a Fix room run ends with, so the layout needs no request. */
+  seed(moves: MoveSet, result: LayoutCheckResult): void {
+    this.cache.set(layoutKey(moves), result);
+  }
+
   request(moves: MoveSet): void {
     const hit = this.cached(moves);
     if (hit) {

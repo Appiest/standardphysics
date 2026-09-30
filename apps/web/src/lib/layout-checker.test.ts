@@ -43,6 +43,20 @@ describe("layoutKey", () => {
 });
 
 describe("LayoutChecker", () => {
+  it("answers a layout it was handed a check for without asking the server, even while another check is out", async () => {
+    const server = slowServer();
+    const seen = recorder();
+    const checker = new LayoutChecker(server.run, seen.listeners);
+    checker.request(layout(0.1));
+    checker.seed(layout(0.5), result(7));
+    checker.request(layout(0.5));
+    expect(server.asked).toHaveLength(1);
+    expect(seen.results.at(-1)?.result.graph_hash).toBe("hash-7");
+    server.asked[0].answer();
+    await settle();
+    expect(server.asked).toHaveLength(1);
+  });
+
   it("keeps one check out at a time and follows it with only the newest layout asked for", async () => {
     const server = slowServer();
     const seen = recorder();

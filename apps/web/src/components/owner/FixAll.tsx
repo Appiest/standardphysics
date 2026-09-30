@@ -24,13 +24,13 @@ import {
 import { ApiRefusal, modelLoopInfo, streamModelLoop } from "@/lib/layout-client";
 import { advanceModelLoop, type ModelLoopProgress, NOT_STARTED } from "@/lib/model-loop-progress";
 import { easeDrawn, easeSweep } from "@/lib/motion";
-import type { ModelLoopEvent, NodeMove } from "@/types/contracts";
+import type { LayoutCheckResult, ModelLoopEvent, NodeMove } from "@/types/contracts";
 
 type Props = {
   scanId: string;
   revision: number;
   /** Puts the finished layout on the plan, with the pieces the run proposes moving so they can be picked out. */
-  onOpen: (moves: NodeMove[], proposed: string[]) => void;
+  onOpen: (moves: NodeMove[], proposed: string[], check: LayoutCheckResult | null) => void;
   /** The owner's unsaved moves; given, the loop fixes that layout instead of the saved shop. */
   plan?: NodeMove[];
 };
@@ -294,7 +294,7 @@ function Finished({ finished, started, onOpen }: { finished: ModelLoopEvent; sta
       </div>
       {proposes && finished.explanation && <Explanation explanation={finished.explanation} />}
       {proposes && (
-        <Button ref={openButton} variant="primary" onClick={() => onOpen(finished.moves, finished.proposed)}>{showMovesLabel(finished.proposed.length)}</Button>
+        <Button ref={openButton} variant="primary" onClick={() => onOpen(finished.moves, finished.proposed, finished.check)}>{showMovesLabel(finished.proposed.length)}</Button>
       )}
     </motion.div>
   );

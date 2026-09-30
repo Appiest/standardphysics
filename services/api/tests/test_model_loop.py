@@ -105,6 +105,21 @@ def test_fix_room_clears_what_a_piece_dragged_into_the_aisle_pinches(make_client
     assert turns and pinch not in turns[-1]["working_on"] and events[-1]["fixable_left"] == 0
 
 
+def test_the_finished_line_carries_the_plans_own_check_of_the_layout_it_found(make_client, monkeypatch):
+    from standardphysics_contracts import to_meters
+    from standardphysics_fixtures import node_id
+
+    monkeypatch.delenv("SP_LOOP_MODEL_URL", raising=False)
+    client, scan_id = _sample(make_client)
+    dragged = {"node_id": str(node_id("case_east")), "delta_translation": {"x": -to_meters(30), "y": 0.0, "z": 0.0},
+               "delta_rotation_z_degrees": 0.0}
+    finished = _events_from_plan(client, scan_id, [dragged])[-1]
+    checked = client.post(f"/api/scans/{scan_id}/layout-checks",
+                          json={"base_revision": 0, "sequence": 0, "moves": finished["moves"]}).json()
+    assert finished["check"]["findings"] == checked["findings"]
+    assert finished["check"]["graph_hash"] == checked["graph_hash"] and finished["check"]["blocked"] == []
+
+
 def test_an_unreachable_model_ends_the_stream_with_a_way_to_recover(make_client, monkeypatch):
     def down(self, messages, seconds=None):
         raise urllib.error.URLError("connection refused")

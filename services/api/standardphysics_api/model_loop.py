@@ -51,7 +51,7 @@ from standardphysics_contracts import (
 )
 
 from .db import Database
-from .layout import plan_candidate
+from .layout import plan_candidate, plan_check
 from .model_chooser import REPLY_SECONDS, ModelChooser, ModelReplyError, ModelSlots, without_wall_shifts
 from .proposals import fix_inputs, owner_wishes_of, space_typology_of
 from .stages import Stages
@@ -268,9 +268,11 @@ def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: Ch
             break
     with _measuring(stages):
         left = loop.fixable_left()
+    moves = list(loop.moves.values())
     with suspend_tracing():
         explanation = stages.explain(graph, loop.current, scenario, wishes) if loop.moves else None
-    yield ModelLoopEvent(kind="finished", moves=list(loop.moves.values()), built_ins=sorted(loop.built_ins, key=str),
+        check = plan_check(stages, graph, moves, scenario)
+    yield ModelLoopEvent(kind="finished", moves=moves, built_ins=sorted(loop.built_ins, key=str), check=check,
                          proposed=_proposed(loop, plan), explanation=explanation, fixable_left=left,
                          message=loop.stop or f"Stopped after {MODEL_LOOP_TURNS} turns.")
 

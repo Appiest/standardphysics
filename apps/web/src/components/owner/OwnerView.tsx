@@ -11,7 +11,7 @@ import { groupFindings } from "@/lib/findings";
 import { inApp, listenToApp, tellApp } from "@/lib/native-bridge";
 import { latestPlan, markStatus, savePlan, walkingRoute } from "@/lib/owner-client";
 import { type ChecklistStatus, checklistRows, type Destination, isFixing, type Panel, panelFor, pieceToTry, requestsForStep } from "@/lib/owner-journey";
-import type { Assessment, Checklist, Finding, Journey, NodeMove, OwnerRequest, ProposalResult, Scan, Scenario, SceneGraph, SceneNode, Vec3 } from "@/types/contracts";
+import type { Assessment, Checklist, Finding, Journey, LayoutCheckResult, NodeMove, OwnerRequest, ProposalResult, Scan, Scenario, SceneGraph, SceneNode, Vec3 } from "@/types/contracts";
 import { CounterStep } from "./CounterStep";
 import { OwnerModel } from "./OwnerModel";
 import { PathStep } from "./PathStep";
@@ -298,16 +298,16 @@ function OwnerShop(props: ShopProps) {
     setPlanFinding(finding);
     review.propose(finding.id, showProposal);
   };
-  const showFixedLayout = (moves: NodeMove[], proposedIds: string[]) => {
-    arrangement.load(moves);
+  const showFixedLayout = (moves: NodeMove[], proposedIds: string[], check: LayoutCheckResult | null) => {
+    arrangement.load(moves, check);
     arrangement.setActiveId(null);
     proposed.show(moves, proposedIds);
   };
-  const openFixedLayout = (moves: NodeMove[], proposedIds: string[]) => {
+  const openFixedLayout = (moves: NodeMove[], proposedIds: string[], check: LayoutCheckResult | null) => {
     tools.setTool("plan");
     setSelected(null);
     arrangement.start();
-    showFixedLayout(moves, proposedIds);
+    showFixedLayout(moves, proposedIds, check);
   };
   const putItAllBack = () => {
     arrangement.reset();

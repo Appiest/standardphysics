@@ -126,8 +126,9 @@ function useChecker(scanId: string, revision: number, state: LayoutState) {
   }, [checker]);
 
   const cached = useCallback((moves: MoveSet) => checker().cached(moves), [checker]);
+  const seed = useCallback((moves: MoveSet, result: LayoutCheckResult) => checker().seed(moves, result), [checker]);
 
-  return { cached, checking, latencyMs, request, cancel };
+  return { cached, seed, checking, latencyMs, request, cancel };
 }
 
 /** One pending check at a time: a new drag or nudge replaces the one waiting. */
@@ -221,7 +222,7 @@ function movesOf(proposed: NodeMove[]): MoveSet {
 export function useArrangement(scanId: string, scene: SceneGraph, persist: Persist = saveLayout, afterSave: AfterSave = "clear") {
   const state = useLayoutState();
   const { layout, setLayout, movesRef, legalRef, place } = state;
-  const { cached: cachedCheck, checking, latencyMs, request, cancel } = useChecker(scanId, scene.revision, state);
+  const { cached: cachedCheck, seed, checking, latencyMs, request, cancel } = useChecker(scanId, scene.revision, state);
   const settle = useSettleTimer();
   const [activeId, setActiveId] = useState<string | null>(null);
   const setProblem = useCallback((problem: string) => setLayout((current) => ({ ...current, problem })), [setLayout]);
@@ -278,14 +279,19 @@ export function useArrangement(scanId: string, scene: SceneGraph, persist: Persi
     mark("cleared");
   }, [movesRef, legalRef, layout.history, jumpTo, mark]);
 
-  const loadFrom = useCallback((proposed: NodeMove[], event: ArrangementEvent, id: string | null = null) => {
+  /** Puts a whole layout on the plan. A check still on its way describes the layout before it, so it is dropped. */
+  const loadFrom = useCallback((proposed: NodeMove[], event: ArrangementEvent, id: string | null = null, known?: LayoutCheckResult | null) => {
     const moves = movesOf(proposed);
-    place(moves, { refused: NO_BLOCKS });
+    cancel();
+    settle.clear();
+    if (known) seed(moves, known);
+    place(moves, { refused: NO_BLOCKS, problem: null });
     mark(event, id);
     setActiveId(proposed[0]?.node_id ?? null);
     request(moves, true);
-  }, [place, mark, request]);
-  const load = useCallback((proposed: NodeMove[]) => loadFrom(proposed, "loaded"), [loadFrom]);
+  }, [cancel, settle, seed, place, mark, request]);
+  /** Loads a layout; `known` is its check when one came with it, such as the check a Fix room run ends with. */
+  const load = useCallback((proposed: NodeMove[], known?: LayoutCheckResult | null) => loadFrom(proposed, "loaded", null, known), [loadFrom]);
   /** Loads the model's suggested layout, remembered by id so a save or a put-back reaches the server. */
   const loadSuggestion = useCallback((proposed: NodeMove[], id: string) => loadFrom(proposed, "suggested", id), [loadFrom]);
 

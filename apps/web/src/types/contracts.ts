@@ -1014,6 +1014,7 @@ export interface ManualMarkRequest {
  */
 export interface ModelLoopEvent {
   built_ins: string[];
+  check: LayoutCheckResult | null;
   construction: string[];
   explanation: ProposalExplanation | null;
   fixable_left: number | null;

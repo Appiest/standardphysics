@@ -13,6 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from .api import LayoutCheckResult
 from .loop import NodeMove
 from .wishes import ProposalExplanation
 
@@ -52,4 +53,6 @@ class ModelLoopEvent(BaseModel):
     proposed: list[uuid.UUID] = []
     """On `finished`, the pieces the loop moved beyond the layout it started from: what it proposes, as opposed to the owner's own moves carried along."""
     explanation: ProposalExplanation | None = None
+    check: LayoutCheckResult | None = None
+    """On `finished`, the plan's own check of the layout `moves` make, so the plan can draw it without asking again."""
     message: str = ""

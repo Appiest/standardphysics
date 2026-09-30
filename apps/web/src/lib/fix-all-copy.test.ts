@@ -6,7 +6,7 @@ import { NOT_STARTED } from "./model-loop-progress";
 const move: NodeMove = { node_id: "a", delta_translation: { x: 0.3, y: 0, z: 0 }, delta_rotation_z_degrees: 0 };
 
 function event(fields: Partial<ModelLoopEvent>): ModelLoopEvent {
-  return { kind: "turn", turn: null, picked: [], why: "", fixable_left: null, working_on: [], turns_at_most: null, construction: [], built_ins: [], proposed: [], moves: [], explanation: null, message: "", ...fields };
+  return { kind: "turn", turn: null, picked: [], why: "", fixable_left: null, working_on: [], turns_at_most: null, construction: [], built_ins: [], proposed: [], moves: [], explanation: null, check: null, message: "", ...fields };
 }
 
 describe("fix all copy", () => {
