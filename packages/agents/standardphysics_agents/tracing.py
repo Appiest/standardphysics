@@ -31,8 +31,10 @@ from dataclasses import dataclass, fields, is_dataclass
 from typing import Any, Callable, TypeVar
 
 from pydantic import BaseModel
+from standardphysics_pipeline import model_calls
 
 Fn = TypeVar("Fn", bound=Callable[..., Any])
+T = TypeVar("T")
 
 PROJECT_ENV = "WANDB_PROJECT"
 ENTITY_ENV = "WANDB_ENTITY"
@@ -365,9 +367,13 @@ def init(project: str | None = None, entity: str | None = None) -> bool:
     """Turn tracing on. Returns whether it actually came up.
 
     Called once at API startup. A missing project or a missing Weave install
-    leaves tracing off and every traced function calls straight through.
+    leaves tracing off and every traced function calls straight through. Once it
+    is up, the pipeline's model calls are traced too (`model_calls`).
     """
-    return _TRACING.start(project, entity)
+    started = _TRACING.start(project, entity)
+    if started:
+        model_calls.report_to(traced_call)
+    return started
 
 
 def shutdown() -> None:
@@ -442,6 +448,31 @@ def traced(name: str) -> Callable[[Fn], Fn]:
         return call  # type: ignore[return-value]
 
     return decorate
+
+
+_NAMED_CALLS: dict[str, Callable[..., Any]] = {}
+
+
+def _named_call(name: str) -> Callable[..., Any]:
+    """A traced function of its own for each name, since Weave keys an op by its function."""
+    if name not in _NAMED_CALLS:
+        def call(inputs: dict[str, Any], run: Callable[[], Any]) -> Any:
+            return run()
+
+        _NAMED_CALLS[name] = traced(name)(call)
+    return _NAMED_CALLS[name]
+
+
+def traced_call(name: str, inputs: dict[str, Any], run: Callable[[], T]) -> T:
+    """`run()` as one call named `name` in the trace, logged with `inputs` and whatever `run` returns.
+
+    For work whose real arguments must not be logged: a model client holding its
+    key and address, a request carrying photos, or a job whose argument is the
+    worker. `inputs` says what a reader needs instead, and `run` is logged only
+    by its type.
+    """
+    result: T = _named_call(name)(inputs, run)
+    return result
 
 
 @contextmanager

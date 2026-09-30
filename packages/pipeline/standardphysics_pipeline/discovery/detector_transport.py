@@ -14,6 +14,7 @@ import urllib.request
 from email.utils import parsedate_to_datetime
 from typing import Any, Callable
 
+from ..model_calls import images_in, reported
 from .detection_errors import (
     DetectionAuthError,
     DetectionError,
@@ -129,7 +130,14 @@ DETECTOR_SLOTS = DetectorSlots()
 
 
 def model_answer(transport: Transport | None, body: dict[str, Any], api_key: str, urgent: bool = True) -> dict[str, Any]:
-    """The model's reply, asked for again after a blip or a rate limit until the attempts run out."""
+    """The model's reply, asked for again after a blip or a rate limit until the attempts run out, and reported as
+    one model call however many attempts it took."""
+    summary = {"model": body.get("model"), "host": endpoint_host(), "images": images_in(body.get("messages", [])),
+               "urgent": urgent}
+    return reported("model.detect", summary, lambda: _answer_with_retries(transport, body, api_key, urgent))
+
+
+def _answer_with_retries(transport: Transport | None, body: dict[str, Any], api_key: str, urgent: bool) -> dict[str, Any]:
     attempt = 0
     while True:
         attempt += 1

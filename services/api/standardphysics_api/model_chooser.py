@@ -36,6 +36,7 @@ from pydantic import BaseModel, Field, ValidationError
 from standardphysics_agents.fix import FixOutcome
 from standardphysics_agents.fix.search import _build_proposal
 from standardphysics_agents.fix.strategies import Candidate
+from standardphysics_agents.tracing import traced_call
 from standardphysics_agents.training.edits import apply_edits, node_moves, parse_edits
 from standardphysics_agents.training.menu import Menu, resolve
 from standardphysics_contracts import Finding, SceneGraph
@@ -144,8 +145,14 @@ class ModelChooser:
         return cls(url.rstrip("/"), model, label, _reply_seconds(prefix), _key_for(prefix, url))
 
     def ask(self, messages: list[dict], seconds: float | None = None) -> str:
-        """The model's reply within `seconds` (at most `reply_seconds`), or TimeoutError or ModelReplyError."""
+        """The model's reply within `seconds` (at most `reply_seconds`), or TimeoutError or ModelReplyError.
+
+        Each call is traced with the model, its host and the messages, never the key or the full address."""
         limit = min(seconds or self.reply_seconds, self.reply_seconds)
+        inputs = {"model": self.model, "host": _host(self.url), "label": self.label, "messages": messages}
+        return traced_call("model.choose", inputs, lambda: self._send(messages, limit))
+
+    def _send(self, messages: list[dict], limit: float) -> str:
         body = json.dumps({"model": self.model, "messages": messages, "temperature": 0.0,
                            "max_tokens": MAX_REPLY_TOKENS, **REASONING_OFF.get(_host(self.url), {}),
                            **NO_DATA_COLLECTION.get(_host(self.url), {})}).encode()

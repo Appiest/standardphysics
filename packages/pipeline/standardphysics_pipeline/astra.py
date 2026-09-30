@@ -31,6 +31,7 @@ from .astra_transport import (
     openrouter_post,
 )
 from .mesh_evidence import object_mesh_profiles
+from .model_calls import images_in, reported
 
 logger = logging.getLogger(__name__)
 
@@ -184,10 +185,8 @@ def _remote_batch(
         mesh_profiles=mesh_profiles,
         model=model,
     )
-    if transport is not None:
-        payload = transport(chat_url(), body, chat_headers(api_key))
-    else:
-        payload = openrouter_post(chat_url(), body, chat_headers(api_key), deadline=deadline)
+    summary = {"model": body.get("model"), "objects": len(objects), "images": images_in(body.get("messages", []))}
+    payload = reported("model.label", summary, lambda: _labelled(body, api_key, transport, deadline))
     _log_usage(body.get("model"), payload.get("usage"))
     return patches_from_model(
         payload,
@@ -195,6 +194,12 @@ def _remote_batch(
         allow_appearance=body_has_images(body),
         evidence_by_node=body_evidence_by_node(body),
     )
+
+
+def _labelled(body: dict, api_key: str, transport: Transport | None, deadline: float) -> dict:
+    if transport is not None:
+        return transport(chat_url(), body, chat_headers(api_key))
+    return openrouter_post(chat_url(), body, chat_headers(api_key), deadline=deadline)
 
 
 def _log_usage(model: Any, usage: Any) -> None:

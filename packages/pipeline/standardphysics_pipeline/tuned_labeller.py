@@ -23,6 +23,8 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from .model_calls import reported
+
 STATE_ENV = "LABEL_STATE"
 """Saved training state to serve, as account/run/name, e.g. amelia-team/run-6800718d223f45ec85e0eb34ead5a0dd/epoch-1."""
 KEY_ENV = "FIREWORKS_API_KEY"
@@ -211,12 +213,14 @@ def transport(url: str, body: dict, headers: dict[str, str]) -> dict:
 
 def _complete(held: Session, body: dict) -> dict:
     messages = body["messages"]
+    images, prompt = image_urls(messages), render_prompt(messages)
     payload = {
-        "model": held.model(), "prompt": render_prompt(messages), "images": image_urls(messages),
+        "model": held.model(), "prompt": prompt, "images": images,
         "max_tokens": min(int(body.get("max_tokens") or MAX_ANSWER_TOKENS), MAX_ANSWER_TOKENS),
         "temperature": 0.0, "stream": False,
     }
-    answer = _post_retrying("/inference/v1/completions", payload, held.api_key,
-                            time.monotonic() + REQUEST_TIMEOUT_SECONDS)
+    summary = {"model": payload["model"], "images": len(images), "prompt_characters": len(prompt)}
+    answer = reported("model.label.fireworks", summary, lambda: _post_retrying(
+        "/inference/v1/completions", payload, held.api_key, time.monotonic() + REQUEST_TIMEOUT_SECONDS))
     text = (answer.get("choices") or [{}])[0].get("text", "")
     return {"choices": [{"message": {"content": text}}], "usage": answer.get("usage")}

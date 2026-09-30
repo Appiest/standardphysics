@@ -11,6 +11,8 @@ so saving still refuses a moved fixture.
 
 from __future__ import annotations
 
+import contextlib
+import itertools
 import uuid
 
 from standardphysics_agents.fix import apply_moves, carried_along, relocation_violations, violations
@@ -82,16 +84,25 @@ def check_layout(database: Database, stages: Stages, scan_id: uuid.UUID, body: L
     return plan_check(stages, base, body.moves, scenario, body.sequence)
 
 
+DRAG_CHECKS_PER_TRACE = 20
+_drag_checks = itertools.count()
+
+
+def _drag_tracing() -> contextlib.AbstractContextManager[None]:
+    """Tracing for the first drag check and every DRAG_CHECKS_PER_TRACE-th after it, and suspended for the rest."""
+    return contextlib.nullcontext() if next(_drag_checks) % DRAG_CHECKS_PER_TRACE == 0 else suspend_tracing()
+
+
 def plan_check(
     stages: Stages, base: SceneGraph, moves: list[NodeMove], scenario, sequence: int = 0
 ) -> LayoutCheckResult:
     """The plan's what-if. A piece the owner put somewhere the scan never saw it is taken as measured, so a pinch
     it causes is a problem to fix by moving things; pieces left where they were keep the report's second look.
 
-    A drag asks for one of these every time a piece comes to rest, so its checks are not sent to Weave, as in the
-    model loop: tracing them made one check of an 84-piece shop take seconds instead of 0.3 s."""
+    A drag asks for one of these every time a piece comes to rest, and tracing one makes a check of an 84-piece shop
+    take 2.5-4 s instead of 0.3 s, so only one drag check in DRAG_CHECKS_PER_TRACE is sent to Weave."""
     candidate, blocked = plan_candidate(base, moves, construction=True)
-    with suspend_tracing():
+    with _drag_tracing():
         findings = stages.assess(trusted_where_moved(base, candidate), scenario, candidate.revision + 1).findings
     return LayoutCheckResult(sequence=sequence, graph_hash=graph_hash(candidate), findings=findings, blocked=blocked)
 

@@ -19,7 +19,7 @@ from collections.abc import Callable
 from dataclasses import asdict
 from datetime import UTC, datetime
 
-from standardphysics_agents.tracing import tracing_for_this_process
+from standardphysics_agents.tracing import traced_call, tracing_for_this_process
 from standardphysics_contracts import SimulationRequest
 from standardphysics_pipeline.discovery.live import LiveReader, LiveReport
 from standardphysics_pipeline.floor_coverage import with_floor_coverage
@@ -114,7 +114,12 @@ class JobHandlers:
         }
 
     def run_stage(self, job) -> bool:
-        """Run the job's stage here and say whether a follow-up process job may be due."""
+        """Run the job's stage here, as one root call named job.<kind> that every call it traces nests under,
+        and say whether a follow-up process job may be due."""
+        inputs = {"job_id": job["id"], "scan_id": str(job["scan_id"]), "revision": job["revision"]}
+        return traced_call(f"job.{job['kind']}", inputs, lambda: self._run_handler(job))
+
+    def _run_handler(self, job) -> bool:
         scan_id, revision = uuid.UUID(job["scan_id"]), job["revision"]
         handler = self.handlers()[job["kind"]]
         if job["kind"] in (TEXTURE, FURNITURE):
