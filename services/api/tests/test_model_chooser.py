@@ -146,6 +146,24 @@ def test_openrouter_is_asked_with_reasoning_off(monkeypatch):
     assert json.loads(sent[0].data)["reasoning"] == {"enabled": False}
 
 
+def test_openrouter_is_asked_not_to_keep_the_request(monkeypatch):
+    sent = _capture_requests(monkeypatch)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-default")
+    monkeypatch.setenv("SP_LOOP_MODEL_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("SP_LOOP_MODEL", "moonshotai/kimi-k3")
+    ModelChooser.from_environment("SP_LOOP_").ask([{"role": "user", "content": "pick"}])
+    assert json.loads(sent[0].data)["provider"] == {"data_collection": "deny"}
+
+
+def test_other_hosts_get_no_provider_field(monkeypatch):
+    sent = _capture_requests(monkeypatch)
+    monkeypatch.setenv("FIREWORKS_API_KEY", "fw-test-key")
+    monkeypatch.setenv("SP_LOOP_MODEL_URL", "https://api.fireworks.ai/inference/v1")
+    monkeypatch.setenv("SP_LOOP_MODEL", "accounts/fireworks/models/kimi-k3")
+    ModelChooser.from_environment("SP_LOOP_").ask([{"role": "user", "content": "pick"}])
+    assert "provider" not in json.loads(sent[0].data)
+
+
 def test_a_local_server_is_asked_without_a_key(monkeypatch):
     sent = _capture_requests(monkeypatch)
     monkeypatch.setenv("SP_LOOP_MODEL_URL", "http://127.0.0.1:8095/v1")

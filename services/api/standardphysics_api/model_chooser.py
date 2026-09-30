@@ -60,6 +60,9 @@ REASONING_OFF: dict[str, dict[str, object]] = {
     "api.fireworks.ai": {"reasoning_effort": "none"}, "openrouter.ai": {"reasoning": {"enabled": False}}}
 """Hosts that accept turning reasoning off. A menu pick is a short JSON answer, and reasoning tokens would
 eat the reply budget and add seconds per turn."""
+NO_DATA_COLLECTION: dict[str, dict[str, object]] = {"openrouter.ai": {"provider": {"data_collection": "deny"}}}
+"""OpenRouter's per-request half of zero data retention, the same opt-out every other OpenRouter client here sends.
+Other hosts don't take a `provider` field."""
 
 
 class ModelReplyError(Exception):
@@ -144,7 +147,8 @@ class ModelChooser:
         """The model's reply within `seconds` (at most `reply_seconds`), or TimeoutError or ModelReplyError."""
         limit = min(seconds or self.reply_seconds, self.reply_seconds)
         body = json.dumps({"model": self.model, "messages": messages, "temperature": 0.0,
-                           "max_tokens": MAX_REPLY_TOKENS, **REASONING_OFF.get(_host(self.url), {})}).encode()
+                           "max_tokens": MAX_REPLY_TOKENS, **REASONING_OFF.get(_host(self.url), {}),
+                           **NO_DATA_COLLECTION.get(_host(self.url), {})}).encode()
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
