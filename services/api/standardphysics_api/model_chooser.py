@@ -83,7 +83,7 @@ def _declared_too_large(response) -> bool:
     return declared is not None and declared.isdigit() and int(declared) > MAX_REPLY_BYTES
 
 
-def _read_capped(response, deadline: float) -> bytes:
+def read_capped(response, deadline: float) -> bytes:
     """The body, refused once it passes MAX_REPLY_BYTES or the deadline, whichever comes first."""
     if _declared_too_large(response):
         raise ModelReplyError(f"sent an answer over {MAX_REPLY_BYTES // 1024} KB")
@@ -151,7 +151,7 @@ class ModelChooser:
         request = urllib.request.Request(f"{self.url}/chat/completions", data=body, method="POST", headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=limit) as response:
-                return reply_content(_read_capped(response, time.monotonic() + limit))
+                return reply_content(read_capped(response, time.monotonic() + limit))
         except urllib.error.URLError as error:
             if isinstance(error.reason, TimeoutError):
                 raise TimeoutError(f"no answer within {limit:g} seconds") from error

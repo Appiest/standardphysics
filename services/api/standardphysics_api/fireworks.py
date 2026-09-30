@@ -22,10 +22,13 @@ from __future__ import annotations
 
 import json
 import socket
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
+
+from .model_chooser import ModelReplyError, read_capped
 
 CHAT_URL = "https://api.fireworks.ai/inference/v1/chat/completions"
 CONTROL_URL = "https://api.fireworks.ai/v1"
@@ -65,17 +68,29 @@ class RearrangeModel(Protocol):
 
 
 def urllib_transport(method: str, url: str, body: dict, headers: dict, timeout: float) -> tuple[int, dict]:
+    """The status and parsed body, read no further than MAX_REPLY_BYTES and no later than `timeout` s after sending."""
     request = urllib.request.Request(url, data=json.dumps(body).encode(), method=method,
                                      headers={"Content-Type": "application/json", **headers})
+    deadline = time.monotonic() + timeout
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.status, json.loads(response.read() or b"{}")
+            return response.status, _json_or_empty(read_capped(response, deadline))
     except urllib.error.HTTPError as error:
-        return error.code, _json_or_empty(error.read())
+        return error.code, _error_body(error, deadline)
+    except ModelReplyError as error:
+        raise ModelFailed("The model sent an answer too large to read. Try again in a minute.") from error
     except (TimeoutError, socket.timeout) as error:
         raise ModelFailed("The model took too long to answer. Try again in a minute.") from error
     except urllib.error.URLError as error:
         raise ModelFailed("We couldn't reach the model. Try again in a minute.") from error
+
+
+def _error_body(error: urllib.error.HTTPError, deadline: float) -> dict:
+    """An error's body is only read for its code, so one too large or too slow to read counts as empty."""
+    try:
+        return _json_or_empty(read_capped(error, deadline))
+    except (ModelReplyError, TimeoutError, socket.timeout):
+        return {}
 
 
 def _json_or_empty(raw: bytes) -> dict:
@@ -106,7 +121,7 @@ class FireworksModel:
     api_key: str = field(repr=False)
     model: str
     deployment: str | None = None
-    timeout_seconds: float = 300.0
+    timeout_seconds: float = 120.0
     transport: Transport = urllib_transport
 
     @property

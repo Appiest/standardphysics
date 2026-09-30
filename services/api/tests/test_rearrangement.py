@@ -298,7 +298,7 @@ def test_the_request_matches_the_training_evaluation_and_reads_every_choice():
     assert (method, url) == ("POST", "https://api.fireworks.ai/inference/v1/chat/completions")
     assert body["n"] == 4 and body["temperature"] == 0.7 and body["max_tokens"] == 512
     assert body["model"] == "accounts/team/models/rearranger"
-    assert headers == {"Authorization": "Bearer fw-secret"} and timeout == 300.0
+    assert headers == {"Authorization": "Bearer fw-secret"} and timeout == 120.0
 
 
 def test_scaling_up_is_warming_and_other_errors_fail_without_the_key():

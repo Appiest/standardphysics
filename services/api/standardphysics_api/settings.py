@@ -213,8 +213,8 @@ class Settings:
     rearrange_timeout_seconds: float = 60 * 60
     """How long a layout suggestion may run, from SP_REARRANGE_TIMEOUT_SECONDS. It asks the model at most
     twenty times, four rounds in each of up to five windows, and an OpenRouter request gives up after two
-    minutes, so forty minutes of asking is the most a working suggestion takes. The Fireworks path can also
-    wait ten minutes for a cold deployment, and its requests give up after five, so raise this for it."""
+    minutes, so forty minutes of asking is the most a working suggestion takes. Fireworks requests give up
+    after two minutes too, but that path can also wait ten minutes for a cold deployment, so raise this for it."""
     furniture_timeout_seconds: float = 3 * 60 * 60
     """How long a furniture refinement may run, from SP_FURNITURE_TIMEOUT_SECONDS. It fits every chair,
     sofa, table, bed and stool in the build one after another; the script gives each fit up to forty
