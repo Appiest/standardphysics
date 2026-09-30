@@ -215,7 +215,7 @@ def test_owner_words_drop_piece_ids_and_name_problems_by_title():
 
 
 def test_a_move_anchored_on_the_problem_itself_names_a_place_not_a_check(room):
-    from standardphysics_agents.training.menu import _anchor
+    from standardphysics_agents.training.menu_words import _anchor
     from standardphysics_contracts import Finding, Locus, Vec3
 
     graph = room[0]
@@ -229,7 +229,7 @@ def test_a_move_anchored_on_the_problem_itself_names_a_place_not_a_check(room):
 
 def test_a_built_in_touching_more_pieces_than_one_answer_may_move_is_not_offered_as_a_set(room, checker, monkeypatch):
     from standardphysics_agents.fix.strategies import Candidate
-    from standardphysics_agents.training import menu as menu_module
+    from standardphysics_agents.training import menu_construction
     from standardphysics_agents.training.edits import TrainingEdits
     from standardphysics_contracts import NodeMove, Vec3
 
@@ -238,6 +238,6 @@ def test_a_built_in_touching_more_pieces_than_one_answer_may_move_is_not_offered
     too_many = TrainingEdits.model_fields["fixture_moves"].metadata[0].max_length + 3
     moves = [NodeMove(node_id=pieces[index % len(pieces)].id, delta_translation=Vec3(x=0.1, y=0.0, z=0.0),
                       delta_rotation_z_degrees=0.0) for index in range(too_many)]
-    monkeypatch.setattr(menu_module, "built_in_set_moves", lambda *args: [Candidate("set", moves, 0.0)])
+    monkeypatch.setattr(menu_construction, "built_in_set_moves", lambda *args: [Candidate("set", moves, 0.0)])
     problem = checker.fixable_problems(checker.assess(graph))[0]
-    assert menu_module._fixture_set_guesses(graph, problem, {piece.id for piece in pieces}, "P1") == []
+    assert menu_construction._fixture_set_guesses(graph, problem, {piece.id for piece in pieces}, "P1") == []

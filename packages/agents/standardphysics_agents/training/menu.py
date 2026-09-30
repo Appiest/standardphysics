@@ -9,13 +9,17 @@ illegally let code own the geometry. So the model here chooses, and code places.
 1. Generate. For each fixable problem, the solver's own guesses: the slide
    ladder of `fix/strategies.py` and the placement beam of `fix/placement.py`,
    and slides that set a too-high item down on a lower surface
-   (`fix/surfaces.py`). When none of those clears the problem, three more
+   (`fix/surfaces.py`). When none of those clears the problem, more
    families get their own tries: every piece inside a turning circle pushed
-   out at once (`fix/clearing.py`), a table carried together with its seats
+   out at once (`fix/clearing.py`), every piece in a passing square somewhere
+   on the route pushed out of it (`fix/path_squares.py`), a table carried
+   together with its seats
    (`fix/groups.py`), and short nudges of each named piece along its own sides
    (`fix/nudges.py`). Last come short slides of a built-in fixture the problem
    names, alone or together with the built-ins it touches (`fix/built_ins.py`),
-   so a counter keeps its lowered section. Each is worded as a relation
+   so a counter keeps its lowered section, and for a problem nothing clears, a
+   move refused only for a problem it brought together with a move for that
+   problem (`training/menu_follow_ups.py`). Each is worded as a relation
    ("slide Chair [3f2a] 14 in away from the Cafe table, for P1").
    After Holodeck (Yang et al., CVPR 2024, arXiv:2312.09067), where the language
    model states relations and a solver enforces no-collision and in-bounds.
@@ -45,6 +49,7 @@ import json
 import math
 import random
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from itertools import chain, zip_longest
 from uuid import UUID
@@ -54,24 +59,23 @@ from standardphysics_contracts import Finding, NodeMove, SceneGraph, SceneNode, 
 from standardphysics_pipeline.footprints import rotation_about_z
 
 from ..assess import Pass
-from ..checks import roles
 from ..evaluation.gate import GateResult, accepts
 from ..fix import CandidateRejection, candidates, combine_rejections, pinch_from, room_heading, snap_moves
 from ..fix.budget import out_of_time
-from ..fix.built_ins import built_in_set_moves
 from ..fix.clearing import circle_clearing_moves, space_clearing_moves
 from ..fix.groups import group_moves
 from ..fix.moves import measured_position
 from ..fix.nudges import nudge_moves
+from ..fix.path_squares import on_a_route, route_paths, square_clearing_moves
 from ..fix.placement import placements
 from ..fix.strategies import Candidate
 from ..fix.surfaces import lower_surface_moves
-from ..redesign import FurnitureMove
-from .catalog import ACCESSIBLE_FOUR_TOP, ACCESSIBLE_TWO_TOP, LOWERED_COUNTER_SECTION
-from .checker import TrainingChecker
-from .construction import MAX_FIXTURE_MOVE_INCHES, FixtureMove, build, construction_inches, fixture_ids
-from .edits import MAX_FIXTURE_MOVES, TrainingEdits, _json_text, combined, edits_json, node_moves, parse_edits
-from .fittings import HeightChange, LoweredSection, Replacement, height_range, rests_on, use_of
+from .checker import FITTING_FIELDS, TrainingChecker
+from .construction import build, construction_inches
+from .edits import TrainingEdits, _json_text, combined, edits_json, node_moves, parse_edits
+from .menu_construction import _fitting_guesses, _fixture_guesses
+from .menu_follow_ups import Tried, follow_up_guesses
+from .menu_words import _furniture, _Guess, _move_words, _name, _slide_words
 from .owner import WishBook
 from .prices import construction_price
 from .prompt import room_view
@@ -82,13 +86,11 @@ from .wishes import Wish, infer_wishes, kept
 
 GUESSES_PER_PROBLEM = 24
 PLACEMENTS_PER_PROBLEM = 24
-FIXTURE_STEPS_INCHES = (6.0, 12.0, MAX_FIXTURE_MOVE_INCHES)
-FIXTURE_DIRECTIONS = tuple((math.cos(math.radians(angle)), math.sin(math.radians(angle)))
-                           for angle in range(0, 360, 45))
 FURNITURE_TRIES = 12
 CLEARING_TRIES = 18
 FIXTURE_TRIES = 12
 FITTING_TRIES = 8
+FOLLOW_UP_TRIES = 8
 """Legal guesses measured per problem; each costs one full checker pass.
 
 The clearing families and then fixture slides are only measured for a problem
@@ -100,7 +102,6 @@ MENU_SIZE = 12
 RETURN_MIN_METERS = to_meters(3.0)
 """A piece closer than this to where the scan found it has not really been moved, so there is nothing to undo."""
 MAX_PICKS = MENU_SIZE
-TURN_WORDING_DEGREES = 1.0
 SQUARE_TOLERANCE_DEGREES = 3.0
 """How close to a multiple of 90 degrees, relative to the room's own axes, still counts as square."""
 
@@ -190,53 +191,6 @@ class MenuView:
     seed: int = 0
 
 
-@dataclass(frozen=True)
-class _Guess:
-    edits: TrainingEdits
-    wording: str
-    restores_scan: bool = False
-    """Every piece it moves goes back where the scan found it."""
-
-
-def _name(node: SceneNode) -> str:
-    return f"{node.label} [{str(node.id)[:4]}]"
-
-
-def _anchor(graph: SceneGraph, node: SceneNode, finding: Finding) -> tuple[str, tuple[float, float]]:
-    """What a move is described relative to: the nearest other piece the problem names, or the problem's spot."""
-    here = (node.transform.position.x, node.transform.position.y)
-    nodes = {other.id: other for other in graph.nodes}
-    others = [nodes[node_id] for node_id in (finding.locus.node_ids if finding.locus else [])
-              if node_id != node.id and node_id in nodes]
-    if others:
-        other = min(others, key=lambda o: math.dist(here, (o.transform.position.x, o.transform.position.y)))
-        return f"the {other.label}", (other.transform.position.x, other.transform.position.y)
-    point = finding.locus.point if finding.locus and finding.locus.point else node.transform.position
-    return "the problem spot", (point.x, point.y)
-
-
-def _turn_words(degrees: float) -> str:
-    return f"{abs(degrees):.0f} degrees {'counter-clockwise' if degrees > 0 else 'clockwise'}"
-
-
-def _slide_words(graph, node, finding, dx: float, dy: float, verb: str) -> str:
-    anchor, spot = _anchor(graph, node, finding)
-    here = (node.transform.position.x, node.transform.position.y)
-    away = math.dist((here[0] + dx, here[1] + dy), spot) >= math.dist(here, spot)
-    inches = to_inches(math.hypot(dx, dy))
-    return f"{verb} {_name(node)} {inches:.0f} in {'further from' if away else 'closer to'} {anchor}"
-
-
-def _move_words(graph: SceneGraph, move: NodeMove, finding: Finding) -> str:
-    node = graph.by_id(move.node_id)
-    delta, degrees = move.delta_translation, move.delta_rotation_z_degrees
-    turned = abs(degrees) >= TURN_WORDING_DEGREES
-    if math.hypot(delta.x, delta.y) < to_meters(0.5):
-        return f"turn {_name(node)} {_turn_words(degrees)}"
-    words = _slide_words(graph, node, finding, delta.x, delta.y, "slide")
-    return f"{words} and turn it {_turn_words(degrees)}" if turned else words
-
-
 def _pinch_candidates(graph: SceneGraph, finding: Finding, checker: TrainingChecker) -> list[Candidate]:
     pinch = pinch_from(finding, graph)
     if pinch is None or not pinch.fixable:
@@ -298,6 +252,11 @@ def _set_words(graph: SceneGraph, candidate: Candidate, finding: Finding) -> str
     return f"{_slide_words(graph, table, finding, delta.x, delta.y, 'slide')} with its {seats} seat{'s' * (seats > 1)}"
 
 
+def _routes(graph: SceneGraph, finding: Finding, checker: TrainingChecker) -> list[list[Vec3]]:
+    """The route's legs, measured only for a problem whose locus is the route."""
+    return route_paths(graph, checker.scenario, checker.measure) if on_a_route(finding) else []
+
+
 def _clearing_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:
     """A turning circle or a counter's clear floor emptied at once, a table moved with its seats, and short nudges,
     taken in turn."""
@@ -312,6 +271,8 @@ def _clearing_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChec
     families = [
         [worded(found, slides(found)) for found in circle_clearing_moves(graph, finding, pinned)],
         [worded(found, slides(found)) for found in space_clearing_moves(graph, finding, pinned)],
+        [worded(found, slides(found)) for found in square_clearing_moves(graph, finding, _routes(graph, finding, checker),
+                                                                         pinned)],
         _varied([worded(found, _set_words(graph, found, finding))
                  for found in group_moves(graph, finding, _groups(graph), pinned)]),
         _varied([worded(found, slides(found)) for found in nudge_moves(graph, finding, pinned)]),
@@ -331,114 +292,25 @@ def _varied(guesses: list[_Guess]) -> list[_Guess]:
     return [guess for guess in chain.from_iterable(zip_longest(*by_pieces.values())) if guess is not None]
 
 
-def _furniture(move: NodeMove) -> FurnitureMove:
-    return FurnitureMove(node_id=move.node_id, dx=move.delta_translation.x, dy=move.delta_translation.y,
-                         rotation_degrees=move.delta_rotation_z_degrees)
+@dataclass(frozen=True)
+class Tier:
+    guesses: Callable[[SceneGraph, Finding, TrainingChecker, str], list[_Guess]]
+    tries: int
+    edits: frozenset[str]
+    """The answer fields its guesses are made of."""
 
 
-def _single_fixture_guesses(graph: SceneGraph, finding: Finding, fixtures: set, label: str) -> list[_Guess]:
-    named = [node_id for node_id in (finding.locus.node_ids if finding.locus else []) if node_id in fixtures]
-    found = []
-    for node_id in named:
-        node = graph.by_id(node_id)
-        for inches in FIXTURE_STEPS_INCHES:
-            for x, y in FIXTURE_DIRECTIONS:
-                move = FixtureMove(node_id=node_id, dx_inches=round(x * inches, 1), dy_inches=round(y * inches, 1))
-                words = _slide_words(graph, node, finding, to_meters(move.dx_inches), to_meters(move.dy_inches),
-                                     "move built-in")
-                found.append(_Guess(TrainingEdits(fixture_moves=[move]), f"{words} (construction), for {label}"))
-    return found
-
-
-def _fixture_move(move: NodeMove) -> FixtureMove:
-    return FixtureMove(node_id=move.node_id, dx_inches=round(to_inches(move.delta_translation.x), 1),
-                       dy_inches=round(to_inches(move.delta_translation.y), 1))
-
-
-def _run_words(graph: SceneGraph, candidate: Candidate, finding: Finding) -> str:
-    first, *rest = (graph.by_id(move.node_id) for move in candidate.moves)
-    delta = candidate.moves[0].delta_translation
-    words = _slide_words(graph, first, finding, delta.x, delta.y, "move built-in")
-    return f"{words} with the {', '.join(node.label for node in rest)} it touches" if rest else words
-
-
-def _fixture_set_guesses(graph: SceneGraph, finding: Finding, fixtures: set, label: str) -> list[_Guess]:
-    """A built-in slid with the built-ins it touches, unless that is more than one answer may move."""
-    return [_Guess(TrainingEdits(fixture_moves=[_fixture_move(move) for move in found.moves]),
-                   f"{_run_words(graph, found, finding)} (construction), for {label}")
-            for found in built_in_set_moves(graph, finding, fixtures) if len(found.moves) <= MAX_FIXTURE_MOVES]
-
-
-def _fixture_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:
-    """Slides of a built-in the problem names, alone or with the built-ins it touches; construction, so offered last."""
-    fixtures = fixture_ids(graph) - set(checker.pinned)
-    families = [_single_fixture_guesses(graph, finding, fixtures, label),
-                _fixture_set_guesses(graph, finding, fixtures, label)]
-    return [guess for guess in chain.from_iterable(zip_longest(*families)) if guess is not None]
-
-
-def _named_pieces(graph: SceneGraph, finding: Finding) -> list[SceneNode]:
-    ids = {node.id for node in graph.nodes}
-    return [graph.by_id(node_id) for node_id in (finding.locus.node_ids if finding.locus else []) if node_id in ids]
-
-
-def _section_guesses(graph: SceneGraph, node: SceneNode, label: str) -> list[_Guess]:
-    """A lowered section cut into either end of a counter, with whatever people pay at set down on it."""
-    if use_of(graph, node) != "counter":
-        return []
-    paying = [item.id for item in roles.point_of_sale(graph) if rests_on(item, node)][:4]
-    carried = f", with the {', '.join(graph.by_id(item).label for item in paying)} set on it" if paying else ""
-    return [_Guess(TrainingEdits(add_lowered_section=[LoweredSection(counter_id=node.id, end=end, carry=paying)]),
-                   f"cut a {LOWERED_COUNTER_SECTION.length_inches:g} in section at {placing} of {_name(node)} "
-                   f"down to {LOWERED_COUNTER_SECTION.top_inches:g} in{carried} (construction), for {label}")
-            for end, placing in (("start", "one end"), ("end", "the other end"))]
-
-
-def _target_tops(finding: Finding, allowed: tuple[float, float]) -> list[float]:
-    """Tops that meet the rule's number with a little to spare, inside what the piece can be built or hung at."""
-    required = finding.required_inches
-    if required is None:
-        return []
-    measured = finding.measured_inches
-    lowering = measured is None or measured > required
-    tops = (required - 2.0, required) if lowering else (required + 2.0, required)
-    return sorted({round(min(max(top, allowed[0]), allowed[1]), 1) for top in tops})
-
-
-def _height_guesses(graph: SceneGraph, node: SceneNode, finding: Finding, label: str) -> list[_Guess]:
-    allowed = height_range(graph, node)
-    if allowed is None:
-        return []
-    verb = "rehang" if use_of(graph, node) is None else "rebuild"
-    return [_Guess(TrainingEdits(height_changes=[HeightChange(node_id=node.id, top_inches=top)]),
-                   f"{verb} {_name(node)} with its top at {top:g} in (construction), for {label}")
-            for top in _target_tops(finding, allowed)]
-
-
-def _replacement_guesses(graph: SceneGraph, node: SceneNode, label: str) -> list[_Guess]:
-    if use_of(graph, node) != "surface":
-        return []
-    return [_Guess(TrainingEdits(replacements=[Replacement(node_id=node.id, catalog_item=item.name)]),
-                   f"swap {_name(node)} for a {item.length_inches:g} in {item.label.lower()} "
-                   f"{item.top_inches:g} in high (construction), for {label}")
-            for item in (ACCESSIBLE_TWO_TOP, ACCESSIBLE_FOUR_TOP)]
-
-
-def _fitting_guesses(graph: SceneGraph, finding: Finding, checker: TrainingChecker, label: str) -> list[_Guess]:
-    """Construction that changes what a piece is rather than where it stands, for problems no move can clear:
-    a lowered counter section, a piece rebuilt or rehung at a reachable height, a table swapped for one at
-    dining height. Offered only when the checker counts fitting edits as fixes."""
-    if not checker.fittable(finding.check_id):
-        return []
-    families = [guesses for node in _named_pieces(graph, finding) if node.id not in checker.pinned
-                for guesses in (_section_guesses(graph, node, label), _height_guesses(graph, node, finding, label),
-                                _replacement_guesses(graph, node, label))]
-    return [guess for guess in chain.from_iterable(zip_longest(*families)) if guess is not None]
-
-
-TIERS = ((_furniture_guesses, FURNITURE_TRIES), (_clearing_guesses, CLEARING_TRIES),
-         (_fixture_guesses, FIXTURE_TRIES), (_fitting_guesses, FITTING_TRIES))
+MOVES = frozenset({"moves"})
+TIERS = (Tier(_furniture_guesses, FURNITURE_TRIES, MOVES), Tier(_clearing_guesses, CLEARING_TRIES, MOVES),
+         Tier(_fixture_guesses, FIXTURE_TRIES, frozenset({"fixture_moves"})),
+         Tier(_fitting_guesses, FITTING_TRIES, FITTING_FIELDS))
 """Guess families in the order they are measured, each with its own tries."""
+
+
+def tiers_for(checker: TrainingChecker, finding: Finding) -> list[Tier]:
+    """The tiers made of edits that can clear the finding's rule: sliding a counter leaves it just as high."""
+    resolving = set(checker.resolving_edits(finding.check_id))
+    return [tier for tier in TIERS if tier.edits & resolving]
 
 
 def _legal(room: SceneGraph, edits: TrainingEdits, veto: CandidateRejection | None = None) -> SceneGraph | None:
@@ -587,14 +459,17 @@ class _Measurer:
     wishes: list[tuple[str, Wish]] = field(default_factory=list)
     worded: set = field(default_factory=set)
     deadline: float | None = None
+    tried: dict[str, list[Tried]] = field(default_factory=dict)
+    """Every legal guess measured for each problem label, refused or not, for following up."""
 
     def breaks(self, candidate: SceneGraph) -> list[str]:
         return [label for label, wish in self.wishes if not kept(wish, self.room, candidate, self.checker.measure)]
 
-    def measured(self, guess: _Guess, candidate: SceneGraph) -> dict | None:
+    def measured(self, guess: _Guess, candidate: SceneGraph, label: str) -> dict | None:
         """What the guess does to the room, or None when the gate refuses it."""
         after = self.checker.assess(candidate)
         verdict = accepts(self.before, after)
+        self.tried.setdefault(label, []).append(Tried(guess, candidate, after, verdict))
         if not verdict and not _restores_the_scan(guess, verdict):
             return None
         self.worded.add(guess.wording)
@@ -617,22 +492,42 @@ class _Measurer:
             if candidate is None:
                 continue
             tries -= 1
-            effect = self.measured(guess, candidate)
+            effect = self.measured(guess, candidate, label)
             if effect is not None:
                 found.append((guess, effect))
         return sorted(found, key=lambda pair: _rank(pair[1]))[:OPTIONS_PER_PROBLEM]
 
-    def for_problem(self, finding: Finding) -> list[tuple[_Guess, dict]]:
-        """Each tier of guesses in turn, stopping at the first tier that offers an option clearing the problem."""
-        label = self.labels[finding.id]
+    def every_problem(self, findings: list[Finding]) -> list[tuple[_Guess, dict]]:
+        """Every problem's first tier of guesses, then the next tier of each problem no option clears yet, and so on.
+
+        Taken one problem at a time, the first problem's built-in slides used a
+        whole menu's time on the validation shops before a later problem had any
+        guess measured, even one its own first tier would have cleared.
+        """
+        queues = [(finding, tiers_for(self.checker, finding)) for finding in findings]
         found: list[tuple[_Guess, dict]] = []
-        for guesses, tries in TIERS:
-            if out_of_time(self.deadline):
-                break
-            found.extend(self.options(guesses(self.room, finding, self.checker, label), tries, label))
-            if _clears(found, label):
-                break
-        return found
+        for depth in range(len(TIERS)):
+            for finding, tiers in queues:
+                if out_of_time(self.deadline):
+                    return found
+                label = self.labels[finding.id]
+                if depth < len(tiers) and not (depth and _clears(found, label)):
+                    tier = tiers[depth]
+                    found.extend(self.options(tier.guesses(self.room, finding, self.checker, label), tier.tries, label))
+        return found + self.follow_ups(findings, found)
+
+    def follow_ups(self, findings: list[Finding], found: list[tuple[_Guess, dict]]) -> list[tuple[_Guess, dict]]:
+        """For each problem no option clears and furniture could, a move refused only for a problem it brought,
+        together with a move for that problem."""
+        followed: list[tuple[_Guess, dict]] = []
+        for finding in findings:
+            label = self.labels[finding.id]
+            if out_of_time(self.deadline) or _clears(found, label) or not MOVES & set(
+                    self.checker.resolving_edits(finding.check_id)):
+                continue
+            guesses = follow_up_guesses(self.tried.get(label, []), self.before, self.checker, label, _furniture_guesses)
+            followed.extend(self.options(guesses, FOLLOW_UP_TRIES, label))
+        return followed
 
 
 def build_menu(room: SceneGraph, checker: TrainingChecker, stated: WishBook | None = None,
@@ -649,7 +544,7 @@ def build_menu(room: SceneGraph, checker: TrainingChecker, stated: WishBook | No
     veto = combine_rejections(checker.directive_veto(room), stated.rejection(checker.measure) if stated else None)
     labelled, told = _wishes_shown(room, checker, stated, view)
     measurer = _Measurer(room, checker, before, labels, veto, labelled, deadline=limits.deadline)
-    measured = [pair for finding in problems if limits.wants(finding) for pair in measurer.for_problem(finding)]
+    measured = measurer.every_problem([finding for finding in problems if limits.wants(finding)])
     measured = _drop_covered_diagonals(measured)
     kept_best = sorted(measured, key=lambda pair: _rank(pair[1]))[:MENU_SIZE]
     options = [Option(number, guess.wording, guess.edits, effect)

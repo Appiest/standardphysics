@@ -1,6 +1,7 @@
 """Bounding the menu and the search for a person waiting on them: focus and deadlines."""
 
 import time
+from dataclasses import replace
 
 import pytest
 from standardphysics_agents import assess
@@ -8,6 +9,7 @@ from standardphysics_agents.fix import pinch_from, propose_fix
 from standardphysics_agents.fix.budget import deadline_in, out_of_time
 from standardphysics_agents.fix.placement import placements
 from standardphysics_agents.training import TrainingChecker
+from standardphysics_agents.training import menu as menu_module
 from standardphysics_agents.training.menu import MenuLimits, build_menu
 from standardphysics_pipeline import PipelineMeasurements
 
@@ -79,3 +81,22 @@ def test_a_passed_deadline_stops_the_search_and_the_placement_beam(room, pack, l
     outcome = propose_fix(graph, scenario, measure, before.problems, rules=pack, ledger=ledger, baseline=before,
                           deadline=past)
     assert not outcome.found and outcome.measured == 0 and outcome.relaxation is None
+
+
+def test_every_problem_gets_its_first_tier_before_any_problem_gets_its_second(room, checker, whole, monkeypatch):
+    """Measured one problem at a time, the first problem's built-in slides used the whole budget on the validation
+    shops before a later problem had anything measured, though its own first tier might have cleared it."""
+    asked = []
+
+    def spying(depth):
+        def guesses(graph, finding, checker, label):
+            asked.append((depth, label))
+            return []
+        return guesses
+
+    tiers = tuple(replace(tier, guesses=spying(depth)) for depth, tier in enumerate(menu_module.TIERS))
+    monkeypatch.setattr(menu_module, "TIERS", tiers)
+    build_menu(room[0], checker)
+    depths = [depth for depth, _ in asked]
+    assert len({label for _, label in asked}) == len(whole.problems) > 1
+    assert depths == sorted(depths)
