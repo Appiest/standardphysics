@@ -3,7 +3,7 @@
 [![CI](https://github.com/Imhaohao/standardphysics/actions/workflows/ci.yml/badge.svg)](https://github.com/Imhaohao/standardphysics/actions/workflows/ci.yml)
 [![iOS app](https://github.com/Imhaohao/standardphysics/actions/workflows/ios.yml/badge.svg)](https://github.com/Imhaohao/standardphysics/actions/workflows/ios.yml)
 
-Standard Physics turns an iPhone scan of a small business into a 3D model. It checks that model against the 2010 ADA Standards and highlights every violation, with the measurement and the rule it breaks. An agent loop then finds a rearrangement of the owner's own furniture that fixes the violations, and every proposal is measured again before it is accepted.
+Standard Physics turns an iPhone scan of a small business into a 3D model. It checks the features it can measure against selected rules from the 2010 ADA Standards, and each finding shows the measurement and the rule it breaks. Where the scan can't see enough to decide, it asks the owner a question instead of counting a pass. An agent loop then searches for a rearrangement of the owner's own furniture, and every proposal is measured again before it is accepted. It is a screening and planning tool: it doesn't certify a building or establish that a site complies with the ADA.
 
 It is already deployed and in production use. We partnered with Sharetea in Berkeley, California, and used Standard Physics to find two violations: the payment processor was too high, and one of the walkways wasn't wide enough when chairs weren't pushed in.
 
@@ -28,7 +28,7 @@ The long form lives in three documents at the root: [ARCHITECTURE.md](ARCHITECTU
 
 | What a reviewer asks | What is in the repo |
 |---|---|
-| Is it in production? | Yes. The web app, the API and the scan pipeline serve real owners at [standardphysics.app](https://standardphysics.app), the iPhone app is in TestFlight, and every deploy ships an image CI has already tested. |
+| Is it in production? | Yes. The web app, the API and the scan pipeline run at [standardphysics.app](https://standardphysics.app), the iPhone app is in TestFlight, and every deploy ships an image CI has already tested. |
 | Does it survive failures? | A crash-safe job queue, hard deadlines on every job, bounded retries, admission control on every input, and a test that injects each failure. See [failure modes](#failure-modes-and-what-happens). |
 | Is the code held to a standard? | ruff with a cyclomatic complexity ceiling and mypy across the contracts, pipeline, agents and API packages, strict TypeScript with an ESLint complexity ceiling, a test that fails the build if a package imports upward, and one that fails it if any hand-written source file in any language passes 800 lines. |
 | How is the repo built? | Six packages with one-way dependencies, contracts generated from one source of truth, lockfile-pinned dependencies and digest-pinned base images, and one CI workflow in which every check on code that ships gates the release image. |
@@ -71,6 +71,16 @@ Standard Physics has scanned over 40,000 square feet of campus buildings, reside
 
 Every capture runs through the same pipeline as the sample shop in this repository. At Sharetea, a full shop went from a phone walk to a measured model, cited findings and saved layout proposals. At Moffitt Library, four separate walks of one floor were aligned and joined into a single photo-textured model covering more than 20,000 square feet. The public sample shop ships as downloadable [GLB](packages/fixtures/standardphysics_fixtures/data/shop.glb) and [USDZ](packages/fixtures/standardphysics_fixtures/data/shop.usdz) models, so a reviewer can open the same kind of model without a private capture.
 
+These runs show that the pipeline can capture, model and assess real rooms. They are not an accuracy benchmark.
+
+| Space | What it shows | What it doesn't show |
+|---|---|---|
+| Sharetea | A real shop can be captured, assessed and used for layout review | That furniture moved or that the shop passes; its assessment still carries open questions for the owner |
+| Moffitt Library | Four capture regions can be joined into one published model | Library-specific route findings, because its assessment was run under a shop scenario |
+| Smaller phone scans | The workflow runs beyond the sample shop | Measurement accuracy, because none has independent tape measurements to compare against |
+
+We have no independently tape-measured field accuracy result and no whole-site ADA pass. A LiDAR estimate, an accepted software proposal and a physically verified change are different kinds of evidence, and the product keeps uncertain checks open as questions instead of counting them as passes.
+
 ## How it's built
 
 ```mermaid
@@ -100,7 +110,8 @@ An upload lands in the artifact store and queues a `process` job. The worker tur
 | [`apps/web`](apps/web) | Next.js workspace and the owner's report | `*.test.ts` beside the code, `apps/web/e2e` |
 | [`apps/ios`](apps/ios) | SwiftUI capture app with resumable uploads | `apps/ios/StandardPhysicsTests` |
 | [`deploy/digitalocean`](deploy/digitalocean) | Production compose stack, deploy verification, backups, monitoring | `scripts/tests` |
-| [`tests`](tests), [`scripts`](scripts) | Cross-package regressions, the layering check, deploy and backup scripts | `tests`, `scripts/tests`, `scripts/*/tests`, `scripts/finetune` |
+| [`tests`](tests), [`scripts`](scripts) | Cross-package regressions, the layering check, and the deploy, CI, fine-tuning and research scripts, indexed by who runs them in [`scripts/README.md`](scripts/README.md) | `tests`, `scripts/tests`, `scripts/*/tests`, `scripts/finetune` |
+| [`datasets`](datasets) | Real iPhone captures the tests run against, kept out of the production image ([index](datasets/README.md)) | Read by tests in every package |
 | [`tools/loopforge`](tools/loopforge) | The traced agent-loop starter the project began from, kept as a standalone CLI | `tools/loopforge/tests` |
 
 Dependencies point one way: `contracts` at the bottom, `pipeline` and `agents` above it, `services/api` above those, and the two apps talk to the API over HTTP only. [`tests/test_layering.py`](tests/test_layering.py) fails the build if a package imports upward or imports a sibling its `pyproject.toml` does not declare, and [`tests/test_test_names.py`](tests/test_test_names.py) fails it if any test file sits outside a collected directory.
@@ -205,7 +216,7 @@ The stand-in rows are the control. Swapping the measured geometry for merged box
 
 ## Post-training
 
-We fine-tuned an open model with supervised fine-tuning followed by reinforcement learning on Fireworks to propose furniture rearrangements. On the same 65 held-out layout variants, with four attempts each, training raised the share of proposals that obey every geometric constraint from 42.3% for the base model to 71.9% ([results](runs/finetune/synthetic/results.json), [run notes](runs/finetune/synthetic/STATUS.txt)). A bounded search over those variants finds an accepted fix for 36 of the 65 and clears every fixable finding in 27. A second fine-tuned model, Qwen3.8-27B served from Fireworks, backs up Gemini 3.8 Flash for naming the objects in a scan.
+We fine-tuned an open model with supervised fine-tuning followed by reinforcement learning on Fireworks to propose furniture rearrangements. On the same 65 held-out layout variants, with four attempts each, training raised the share of proposals that obey every geometric constraint from 42.3% for the base model to 71.9% ([results](runs/finetune/synthetic/results.json), [run notes](runs/finetune/synthetic/STATUS.txt)). Better constraint-following did not produce more accepted or fully cleared layouts, though: gate acceptance peaked at 31.5% after the first RL run and fell to 28.1% after the second, and the share of attempts that cleared every fixable finding fell across the trained checkpoints. A bounded search over those variants finds an accepted fix for 36 of the 65 and clears every fixable finding in 27; the other 29 are unresolved under that search budget, which is a lower bound rather than proof that no layout exists. A second fine-tuned model, Qwen3.8-27B served from Fireworks, can replace Gemini 3.8 Flash for naming the objects in a scan when `LABEL_STATE` is set. It isn't a fallback: an unusable label answer falls back to local labels.
 
 ![Grouped bars compare hard-rule pass, gate acceptance, and per-attempt complete-clear rates for the base, run 1 RL, run 2 SFT, and run 2 RL checkpoints](apps/web/public/deck/post-training-outcomes.svg)
 

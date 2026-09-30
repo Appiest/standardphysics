@@ -11,7 +11,7 @@ type PipelineStep = { Icon: Icon; title: string; detail: string; tool?: string }
 const steps: PipelineStep[] = [
   { Icon: DeviceMobile, title: "LiDAR scan", detail: "Apple RoomPlan on Sara’s iPhone" },
   { Icon: Cube, title: "Measured 3D model", detail: "Every wall, door and fixture" },
-  { Icon: Tag, title: "Label each object", detail: "Astra through", tool: "OpenRouter" },
+  { Icon: Tag, title: "Label each object", detail: "Gemini through", tool: "OpenRouter" },
   { Icon: ListChecks, title: "Check the ADA Standards", detail: "Cited rules, traced in", tool: "W&B Weave" },
   { Icon: MapPin, title: "Pin each problem", detail: "The exact spot, rendered in Blender" },
 ];

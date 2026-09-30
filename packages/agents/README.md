@@ -69,6 +69,12 @@ question that names nothing.
 
 ## The router
 
+This router drives the team's developer-mode review loop (`/loop`, from the
+`/scans` workspace), simulations and the evaluation CLI. The owner's Fix room
+doesn't use it: it chooses among moves the checker has already measured, with
+the model the `SP_LOOP_*` settings name, or without one the option the menu
+ranks first ([`model_loop.py`](../../services/api/standardphysics_api/model_loop.py)).
+
 **TypeSafe picks the next action and the code names what it acts on.** The
 request is one Choice question over the five actions, with the measured state
 as its content, so the answer is `FIX`, `RESCAN_AREA`, `ASK_OWNER`, `ESCALATE`
@@ -88,7 +94,7 @@ a loop does something surprising. In practice the calls land between 0.5 and
 An action the shop has no work for, a body that is not the shape the service
 documents, and a service that is down all come back as `Rejected`, which no
 handler is registered for. `TypeSafeCallBudget` caps paid calls for a campaign.
-Without `TYPESAFE_BASE_URL` the loop runs `router/local_policy.py` and labels
+Without `TYPESAFE_API_KEY` the loop runs `router/local_policy.py` and labels
 every decision `local_policy`, so a trace always says which one answered.
 
 ## Turning a check on
@@ -211,7 +217,8 @@ an environment and an optimizer closing a feedback loop.
    already passes. Keep the lesson only if `router_action_match` and
    `trajectory_ok` rise and nothing falls. Each trial is its own eval in Weave.
 4. Repeat with the kept playbook until nothing fails or nothing new is left to
-   try. `runs/playbook.json` is what the API's loop then reads.
+   try. `runs/playbook.json` keeps the result for the next `evolve` run; the
+   API's loop doesn't read it.
 
 A lesson can only change which action TypeSafe picks. One that mentions
 thresholds, inches or unlocking furniture is refused before it is tried, and

@@ -240,6 +240,9 @@ existing `findings.resolve` already downgrades from a finding to a question.
 
 ### 5.4 Appearance, last
 
+This step isn't built. The payment terminal in section 4 is the only mesh a
+model has written, in a one-off test outside the pipeline.
+
 Once an object is named and measured, Astra writes Blender Python for its shape,
 constrained to the measured extents and validated against them before use. This
 is the part that makes the viewer show a terminal instead of a grey cuboid, and

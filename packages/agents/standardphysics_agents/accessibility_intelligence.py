@@ -3,6 +3,10 @@
 This module never measures geometry, applies a rule, moves furniture, or makes
 a legal determination. It classifies and ranks code-supplied facts, then
 returns typed judgments for deterministic callers to validate or escalate.
+
+Only `rank_layouts` has a caller today, the layout repair inside a simulation
+(`adaptive_redesign.py`). The other judgments are tested but not wired into any
+route, so nothing an owner does reaches them.
 """
 
 from __future__ import annotations

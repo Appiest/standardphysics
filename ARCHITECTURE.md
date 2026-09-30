@@ -48,7 +48,7 @@ A walk becomes results through a chain of jobs. Each job is a row in the `jobs` 
 | `texture` | Bakes the walk's photos onto the mesh as an immutable photo build, then queues furniture refinement. | [`textures.py`](services/api/standardphysics_api/textures.py) |
 | `furniture` | Fits measured chairs, sofas, tables, beds and stools with SPAR3D on a server configured for it. | [`furniture.py`](services/api/standardphysics_api/furniture.py) |
 | `rearrange` | Asks a model for a layout that fixes a finding. The measured checker scores each answer and decides whether to accept it. | [`rearrangement.py`](services/api/standardphysics_api/rearrangement.py) |
-| `simulate` | Runs the owner's simulation against the graph saved on its own row. | [`simulations.py`](services/api/standardphysics_api/simulations.py) |
+| `simulate` | Runs a simulation, started from the team's developer-mode panel, against the graph saved on its own row. The panel asks for the TypeSafe router, which the server refuses without `TYPESAFE_API_KEY`. | [`simulations.py`](services/api/standardphysics_api/simulations.py) |
 
 ## Worker lanes
 
