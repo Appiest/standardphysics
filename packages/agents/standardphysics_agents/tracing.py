@@ -27,8 +27,10 @@ import os
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from typing import Any, Callable, TypeVar
+
+from pydantic import BaseModel
 
 Fn = TypeVar("Fn", bound=Callable[..., Any])
 
@@ -191,7 +193,10 @@ class _Tracing:
         traced call is on every check and every agent call, so the one thing it
         may not do is raise because the SDK moved.
         """
+        logged_as_json = {"postprocess_inputs": as_logged, "postprocess_output": as_logged}
         for attempt in (
+            lambda: self._weave.op(name=name, **logged_as_json)(fn),
+            lambda: self._weave.op(fn, name=name, **logged_as_json),
             lambda: self._weave.op(name=name)(fn),
             lambda: self._weave.op(fn, name=name),
             lambda: self._weave.op(fn),
@@ -236,6 +241,31 @@ class Unrecorded:
 
     def record(self, **_fields: Any) -> None:
         return None
+
+
+PLAIN_VALUES = (str, int, float, bool, type(None))
+
+
+def as_logged(value: Any) -> Any:
+    """What a traced call's inputs and output are logged as: plain JSON, built here rather than by Weave.
+
+    Left to itself, Weave walks every object member by member through `typing`
+    protocol checks. A check's context holds the shop's scene graph, and that
+    walk took about 11 s per traced call, some 55 s for one layout check, while
+    `model_dump` takes under 1 ms. Anything that is not data, like the
+    measurement provider and its caches, is logged by its type name.
+    """
+    if isinstance(value, PLAIN_VALUES):
+        return value
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    if is_dataclass(value) and not isinstance(value, type):
+        return {item.name: as_logged(getattr(value, item.name)) for item in fields(value)}
+    if isinstance(value, dict):
+        return {str(key): as_logged(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [as_logged(item) for item in value]
+    return f"<{type(value).__name__}>"
 
 
 _TRACING = _Tracing()

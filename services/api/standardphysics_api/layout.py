@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 
 from standardphysics_agents.fix import apply_moves, carried_along, relocation_violations, violations
+from standardphysics_agents.tracing import suspend_tracing
 from standardphysics_agents.training.checker import trusted_where_moved
 from standardphysics_contracts import (
     Blocked,
@@ -85,9 +86,13 @@ def plan_check(
     stages: Stages, base: SceneGraph, moves: list[NodeMove], scenario, sequence: int = 0
 ) -> LayoutCheckResult:
     """The plan's what-if. A piece the owner put somewhere the scan never saw it is taken as measured, so a pinch
-    it causes is a problem to fix by moving things; pieces left where they were keep the report's second look."""
+    it causes is a problem to fix by moving things; pieces left where they were keep the report's second look.
+
+    A drag asks for one of these every time a piece comes to rest, so its checks are not sent to Weave, as in the
+    model loop: tracing them made one check of an 84-piece shop take seconds instead of 0.3 s."""
     candidate, blocked = plan_candidate(base, moves, construction=True)
-    findings = stages.assess(trusted_where_moved(base, candidate), scenario, candidate.revision + 1).findings
+    with suspend_tracing():
+        findings = stages.assess(trusted_where_moved(base, candidate), scenario, candidate.revision + 1).findings
     return LayoutCheckResult(sequence=sequence, graph_hash=graph_hash(candidate), findings=findings, blocked=blocked)
 
 

@@ -184,3 +184,20 @@ def test_a_child_whose_flush_never_returns_still_exits_and_reports(monkeypatch):
     started = time.monotonic()
     assert in_own_process(hanging_child.trace_through_a_stalled_flush, "physics", timeout_seconds=20) == "finished"
     assert time.monotonic() - started < 20
+
+
+def test_a_drag_check_sends_nothing_to_weave(make_client, recording_weave):
+    """A drag asks for a check each time a piece comes to rest; the shop's own assessment is still traced."""
+    client = make_client(seed=True, weave_project="physics").__enter__()
+    drain(client)
+    traced_while_seeding = [call.get("name") for call in _recorded(recording_weave)]
+    recording_weave.write_text("")
+    scan_id = client.get("/api/scans").json()["scans"][0]["id"]
+    checked = client.post(f"/api/scans/{scan_id}/layout-checks", json={"base_revision": 0, "sequence": 1, "moves": []})
+    assert checked.status_code == 200
+    assert "assess" in traced_while_seeding
+    assert [call for call in _recorded(recording_weave) if call["call"] == "op"] == []
+
+
+def _recorded(calls) -> list[dict]:
+    return [json.loads(line) for line in calls.read_text().splitlines()]

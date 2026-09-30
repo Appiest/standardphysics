@@ -14,9 +14,20 @@ import logging
 import sys
 import threading
 import time
+from dataclasses import dataclass
 
 import pytest
+from pydantic import BaseModel
 from standardphysics_agents import tracing
+
+
+class Piece(BaseModel):
+    name: str
+    width_inches: float
+
+
+class Room(BaseModel):
+    pieces: list[Piece]
 
 
 class FakeWeave:
@@ -28,6 +39,7 @@ class FakeWeave:
         self.settings: list[dict | None] = []
         self.ops: list[str] = []
         self.calls: list[str] = []
+        self.hooks: dict[str, dict] = {}
         self.flushes = 0
 
     def init(self, project: str, settings: dict | None = None) -> None:
@@ -44,6 +56,7 @@ class FakeWeave:
         a missing positional argument and what the wrapper watches for.
         """
         name = kwargs.get("name")
+        self.hooks[name] = {key: value for key, value in kwargs.items() if key.startswith("postprocess_")}
         if self.style == "factory":
             if args:
                 raise TypeError("this version takes name= and returns a decorator")
@@ -198,6 +211,40 @@ class TestWithAnAccount:
         assert tracing.init()
         assert double(21) == 42
         assert fake.calls == ["test.either_way"]
+
+    def test_a_model_is_logged_as_json_and_returned_as_itself(self, weave):
+        room = Room(pieces=[Piece(name="table", width_inches=30.0)])
+
+        @tracing.traced("test.model")
+        def widest(given: Room) -> Piece:
+            return given.pieces[0]
+
+        tracing.init()
+        assert widest(room) is room.pieces[0]
+        hooks = weave.hooks["test.model"]
+        assert hooks["postprocess_inputs"]({"given": room}) == {"given": {"pieces": [{"name": "table", "width_inches": 30.0}]}}
+        assert hooks["postprocess_output"](room.pieces[0]) == {"name": "table", "width_inches": 30.0}
+
+    def test_models_inside_lists_and_tuples_are_logged_as_json(self):
+        pieces = (Piece(name="shelf", width_inches=12.0), "seat")
+        assert tracing.as_logged({"pieces": pieces, "count": 2}) == {
+            "pieces": [{"name": "shelf", "width_inches": 12.0}, "seat"], "count": 2,
+        }
+
+    def test_a_dataclass_is_logged_field_by_field_and_a_helper_by_its_type(self):
+        """A check's context is a dataclass carrying the graph beside the measurement provider and its caches."""
+
+        class Measurements:
+            def __init__(self) -> None:
+                self.cache = {"grid": object()}
+
+        @dataclass(frozen=True)
+        class Context:
+            room: Room
+            measure: Measurements
+
+        context = Context(room=Room(pieces=[]), measure=Measurements())
+        assert tracing.as_logged(context) == {"room": {"pieces": []}, "measure": "<Measurements>"}
 
     def test_the_project_url_points_at_the_traces(self, weave):
         tracing.init()
