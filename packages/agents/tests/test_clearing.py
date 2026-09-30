@@ -137,7 +137,7 @@ def test_a_set_holding_a_piece_that_cannot_move_is_not_carried(room, problems):
 @pytest.fixture
 def second_tier_menu(room, checker, monkeypatch):
     """The menu built from the second tier alone, so every option comes from the new families."""
-    monkeypatch.setattr(menu_module, "TIERS", ((_clearing_guesses, CLEARING_TRIES),))
+    monkeypatch.setattr(menu_module, "TIERS", (replace(menu_module.TIERS[1], guesses=_clearing_guesses, tries=CLEARING_TRIES),))
     return build_menu(room[0], checker)
 
 
@@ -154,7 +154,7 @@ def test_every_second_tier_option_is_legal_and_accepted_by_the_gate(room, checke
 
 def test_a_stated_wish_holds_every_second_tier_option(room, checker, pipeline, monkeypatch):
     graph = room[0]
-    monkeypatch.setattr(menu_module, "TIERS", ((_clearing_guesses, CLEARING_TRIES),))
+    monkeypatch.setattr(menu_module, "TIERS", (replace(menu_module.TIERS[1], guesses=_clearing_guesses, tries=CLEARING_TRIES),))
     seat_wish = next(wish for wish in infer_wishes(graph, pipeline) if wish.kind == "with_table")
     stated = WishBook()
     stated.add(replace(seat_wish, source="stated"), graph)
@@ -171,7 +171,7 @@ def test_the_second_tier_is_only_measured_for_a_problem_the_first_leaves(room, c
         return []
 
     tiers = menu_module.TIERS
-    monkeypatch.setattr(menu_module, "TIERS", (tiers[0], (spy, CLEARING_TRIES), tiers[2]))
+    monkeypatch.setattr(menu_module, "TIERS", (tiers[0], replace(tiers[1], guesses=spy), tiers[2]))
     menu = build_menu(room[0], checker)
     cleared = {label for option in menu.options for label in option.effect["clears"]}
     left = [view["check"] for view in menu.problem_view if view["label"] not in cleared]

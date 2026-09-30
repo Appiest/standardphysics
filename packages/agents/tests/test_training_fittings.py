@@ -254,6 +254,20 @@ def test_the_menu_offers_a_lowered_section_for_a_counter_too_high_to_order_from(
     assert all("(construction)" in option.wording for option in sections)
 
 
+def test_a_counter_too_high_is_only_measured_against_construction_that_changes_its_height(graph, fittings):
+    """Sliding the counter or the furniture round it leaves it 47 inches high, and on the synthetic validation shops
+    measuring those slides first used the whole menu budget before a lowered section was ever tried."""
+    from standardphysics_agents.training.menu import _fitting_guesses, _fixture_guesses, _furniture_guesses, tiers_for
+
+    room = _register_on_the_counter(graph)
+    problems = fittings.fixable_problems(fittings.assess(room))
+    too_high = next(f for f in problems if f.check_id == "service_counter_height")
+    assert [tier.guesses for tier in tiers_for(fittings, too_high)] == [_fitting_guesses]
+    too_narrow = next(f for f in problems if f.check_id == "route_clear_width")
+    moving = [tier.guesses for tier in tiers_for(fittings, too_narrow)]
+    assert _furniture_guesses in moving and _fixture_guesses in moving and _fitting_guesses not in moving
+
+
 def test_the_layout_scope_menu_offers_no_fittings(graph, layout):
     from standardphysics_agents.training.menu import build_menu
 

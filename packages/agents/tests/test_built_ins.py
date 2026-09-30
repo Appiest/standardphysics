@@ -2,6 +2,7 @@
 
 import json
 import math
+from dataclasses import replace
 
 import pytest
 from standardphysics_agents import assess
@@ -59,7 +60,7 @@ def test_a_built_in_the_caller_does_not_count_is_left_where_it_is(shop):
 def test_every_fixture_option_the_menu_offers_is_legal_and_accepted(shop, pipeline, pack, ledger, monkeypatch):
     graph, scenario, _ = shop
     checker = TrainingChecker(scenario, rules=pack, ledger=ledger, measure=pipeline)
-    monkeypatch.setattr(menu_module, "TIERS", ((_fixture_guesses, FIXTURE_TRIES),))
+    monkeypatch.setattr(menu_module, "TIERS", (replace(menu_module.TIERS[2], guesses=_fixture_guesses, tries=FIXTURE_TRIES),))
     menu = build_menu(graph, checker)
     assert any("it touches" in option.wording for option in menu.options)
     for option in menu.options:

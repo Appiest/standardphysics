@@ -45,6 +45,7 @@ import json
 import math
 import random
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from itertools import chain, zip_longest
 from uuid import UUID
@@ -68,7 +69,7 @@ from ..fix.strategies import Candidate
 from ..fix.surfaces import lower_surface_moves
 from ..redesign import FurnitureMove
 from .catalog import ACCESSIBLE_FOUR_TOP, ACCESSIBLE_TWO_TOP, LOWERED_COUNTER_SECTION
-from .checker import TrainingChecker
+from .checker import FITTING_FIELDS, TrainingChecker
 from .construction import MAX_FIXTURE_MOVE_INCHES, FixtureMove, build, construction_inches, fixture_ids
 from .edits import MAX_FIXTURE_MOVES, TrainingEdits, _json_text, combined, edits_json, node_moves, parse_edits
 from .fittings import HeightChange, LoweredSection, Replacement, height_range, rests_on, use_of
@@ -436,9 +437,25 @@ def _fitting_guesses(graph: SceneGraph, finding: Finding, checker: TrainingCheck
     return [guess for guess in chain.from_iterable(zip_longest(*families)) if guess is not None]
 
 
-TIERS = ((_furniture_guesses, FURNITURE_TRIES), (_clearing_guesses, CLEARING_TRIES),
-         (_fixture_guesses, FIXTURE_TRIES), (_fitting_guesses, FITTING_TRIES))
+@dataclass(frozen=True)
+class Tier:
+    guesses: Callable[[SceneGraph, Finding, TrainingChecker, str], list[_Guess]]
+    tries: int
+    edits: frozenset[str]
+    """The answer fields its guesses are made of."""
+
+
+MOVES = frozenset({"moves"})
+TIERS = (Tier(_furniture_guesses, FURNITURE_TRIES, MOVES), Tier(_clearing_guesses, CLEARING_TRIES, MOVES),
+         Tier(_fixture_guesses, FIXTURE_TRIES, frozenset({"fixture_moves"})),
+         Tier(_fitting_guesses, FITTING_TRIES, FITTING_FIELDS))
 """Guess families in the order they are measured, each with its own tries."""
+
+
+def tiers_for(checker: TrainingChecker, finding: Finding) -> list[Tier]:
+    """The tiers made of edits that can clear the finding's rule: sliding a counter leaves it just as high."""
+    resolving = set(checker.resolving_edits(finding.check_id))
+    return [tier for tier in TIERS if tier.edits & resolving]
 
 
 def _legal(room: SceneGraph, edits: TrainingEdits, veto: CandidateRejection | None = None) -> SceneGraph | None:
@@ -626,10 +643,10 @@ class _Measurer:
         """Each tier of guesses in turn, stopping at the first tier that offers an option clearing the problem."""
         label = self.labels[finding.id]
         found: list[tuple[_Guess, dict]] = []
-        for guesses, tries in TIERS:
+        for tier in tiers_for(self.checker, finding):
             if out_of_time(self.deadline):
                 break
-            found.extend(self.options(guesses(self.room, finding, self.checker, label), tries, label))
+            found.extend(self.options(tier.guesses(self.room, finding, self.checker, label), tier.tries, label))
             if _clears(found, label):
                 break
         return found

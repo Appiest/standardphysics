@@ -152,12 +152,16 @@ class TrainingChecker:
         """Problems moving furniture can address, which is all the furniture search is given."""
         return [finding for finding in result.problems if self.rules.by_id(finding.check_id).rearrangeable]
 
+    def resolving_edits(self, rule_id: str) -> tuple[str, ...]:
+        """The answer fields that can clear a problem against this rule here."""
+        return edits_that_resolve(self.rules.by_id(rule_id), self.scope)
+
     def resolvable(self, rule_id: str) -> bool:
-        return bool(edits_that_resolve(self.rules.by_id(rule_id), self.scope))
+        return bool(self.resolving_edits(rule_id))
 
     def fittable(self, rule_id: str) -> bool:
         """Whether a fitting edit (a height change, a swap, a lowered section) may clear this rule here."""
-        return any(edit in FITTING_FIELDS for edit in edits_that_resolve(self.rules.by_id(rule_id), self.scope))
+        return any(edit in FITTING_FIELDS for edit in self.resolving_edits(rule_id))
 
     def unfixable_rules(self) -> dict[str, str]:
         """Every rule in the pack no edit clears in this scope, and why."""
