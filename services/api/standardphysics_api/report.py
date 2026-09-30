@@ -5,12 +5,14 @@ from __future__ import annotations
 import uuid
 
 from standardphysics_agents import VerificationLedger, load_pack
-from standardphysics_contracts import Report, ReviewedRule
+from standardphysics_contracts import LayoutPlan, Report, ReviewedRule
 
 from . import repository as repo
 from . import repository_revisions as revisions_repo
+from .checklist import checklist
 from .db import Database
 from .errors import ApiProblem
+from .plans import plans_of
 from .stages import PREVIEW_REVIEWER
 
 
@@ -36,7 +38,11 @@ def build_report(database: Database, ledger: VerificationLedger, scan_id: uuid.U
         revision = revisions_repo.get_revision(connection, scan_id)
         scenario = revisions_repo.get_scenario(connection, scan_id)
         assessment = revisions_repo.latest_assessment(connection, scan_id)
+        marked = checklist(connection, scan_id, assessment)
+        kept = _kept_plan(plans_of(connection, scan_id), revision["revision"] if revision else None)
     return Report(
+        checklist=marked,
+        plan=kept,
         scan=scan,
         scene=revisions_repo.graph_of(revision) if revision else None,
         scenario=scenario,
@@ -44,3 +50,8 @@ def build_report(database: Database, ledger: VerificationLedger, scan_id: uuid.U
         rules=reviewed_rules(ledger),
         preview=any(entry.verified_by == PREVIEW_REVIEWER for entry in ledger.entries),
     )
+
+
+def _kept_plan(plans: list[LayoutPlan], revision: int | None) -> LayoutPlan | None:
+    """The newest plan made on the shop as it stands; one made before a new walk-through describes other furniture."""
+    return next((plan for plan in reversed(plans) if plan.base_revision == revision), None)

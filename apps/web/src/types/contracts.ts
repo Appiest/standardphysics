@@ -1548,6 +1548,8 @@ export interface ReplayChapter {
  */
 export interface Report {
   assessment: Assessment | null;
+  checklist: Checklist | null;
+  plan: LayoutPlan | null;
   preview: boolean;
   rules: ReviewedRule[];
   scan: Scan;

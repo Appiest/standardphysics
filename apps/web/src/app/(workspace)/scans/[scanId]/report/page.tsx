@@ -20,7 +20,7 @@ export default async function ReportPage({ params }: PageProps<"/scans/[scanId]/
       showScope={isTeam(session)}
       toolbar={
         <>
-          <Link href={`/scans/${scanId}`} className="-ms-2 flex items-center gap-2 rounded-lg p-2 text-ink-muted hover:bg-ink/5 hover:text-ink">
+          <Link href={isTeam(session) ? `/scans/${scanId}` : `/shops/${scanId}`} className="-ms-2 flex items-center gap-2 rounded-lg p-2 text-ink-muted hover:bg-ink/5 hover:text-ink">
             <ArrowLeft size={18} weight="bold" aria-hidden />
             Back to the shop
           </Link>

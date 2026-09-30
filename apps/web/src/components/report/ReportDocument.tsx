@@ -1,12 +1,14 @@
-import { HourglassMedium } from "@phosphor-icons/react/dist/ssr";
+import { CheckCircle, HourglassMedium, MinusCircle, Wrench } from "@phosphor-icons/react/dist/ssr";
 import type { ReactNode } from "react";
 import { FloorPlan } from "@/components/FloorPlan";
 import { OutcomeMatrix } from "@/components/workspace/OutcomeMatrix";
 import { formatInches, groupFindings } from "@/lib/findings";
 import { scopedSummary } from "@/lib/outcomes";
-import type { Assessment, Finding, Report } from "@/types/contracts";
+import { applyMoves } from "@/lib/moves";
+import type { Assessment, Finding, LayoutPlan, Report, SceneGraph } from "@/types/contracts";
 import { type Fact, FactList } from "./FactList";
 import { beingCheckedNames, splitQuestions } from "./reportCounts";
+import { type Decision, decisions, planOutcome } from "./reportPlan";
 import { longDate } from "./reportDates";
 import { WhatWeChecked } from "./WhatWeChecked";
 import { Wordmark } from "./Wordmark";
@@ -16,7 +18,24 @@ function citation(finding: Finding) {
   return finding.citation.url ? <a href={finding.citation.url} className="underline decoration-rule underline-offset-2">{text}</a> : text;
 }
 
-function ProblemBlock({ finding }: { finding: Finding }) {
+const DECISION_LOOK: Record<Decision, { Icon: typeof Wrench; words: string; tone: string }> = {
+  needs_pro: { Icon: Wrench, words: "Left for a contractor", tone: "text-attention" },
+  not_doing: { Icon: MinusCircle, words: "The owner chose not to fix this", tone: "text-ink-muted" },
+  done: { Icon: CheckCircle, words: "Fixed", tone: "text-pass" },
+};
+
+function DecisionMark({ decision }: { decision: Decision | undefined }) {
+  if (!decision) return null;
+  const { Icon, words, tone } = DECISION_LOOK[decision];
+  return (
+    <p className={`mt-3 flex items-center gap-2 font-medium ${tone}`}>
+      <Icon size={20} weight="bold" aria-hidden />
+      {words}
+    </p>
+  );
+}
+
+function ProblemBlock({ finding, decision }: { finding: Finding; decision?: Decision }) {
   const render = finding.locus?.render_url;
   return (
     <article className={`grid gap-5 break-inside-avoid border-t border-rule py-8 ${render ? "sm:grid-cols-[minmax(0,15rem)_1fr]" : ""}`}>
@@ -33,21 +52,48 @@ function ProblemBlock({ finding }: { finding: Finding }) {
         </div>
         <p className="mt-2 text-ink-muted">{finding.detail}</p>
         {finding.fix && <p className="mt-4 border-l-2 border-accent pl-3 font-medium">{finding.fix}</p>}
+        <DecisionMark decision={decision} />
         <p className="mt-3 text-sm text-ink-muted">{citation(finding)}</p>
       </div>
     </article>
   );
 }
 
-function ProblemsSection({ problems }: { problems: Finding[] }) {
+function ProblemsSection({ problems, decided }: { problems: Finding[]; decided: Map<string, Decision> }) {
   if (problems.length === 0) return null;
   return (
     <section className="mt-12">
       <h2 className="heading-display text-2xl">What to fix</h2>
       <div className="mt-4">
         {problems.map((finding) => (
-          <ProblemBlock key={finding.id} finding={finding} />
+          <ProblemBlock key={finding.id} finding={finding} decision={decided.get(finding.id)} />
         ))}
+      </div>
+    </section>
+  );
+}
+
+/** The layout the owner kept: drawn with the pieces where the plan puts them, and what that clears. */
+function PlanSection({ plan, scene, problems }: { plan: LayoutPlan | null | undefined; scene: SceneGraph | null; problems: Finding[] }) {
+  if (!plan || !scene || plan.moves.length === 0) return null;
+  const { cleared, moved } = planOutcome(problems, plan);
+  const planned = applyMoves(scene, Object.fromEntries(plan.moves.map((move) => [move.node_id, move])));
+  return (
+    <section className="mt-12 break-inside-avoid">
+      <h2 className="heading-display text-2xl">The layout to move to</h2>
+      <div className="mt-4 grid gap-6 sm:grid-cols-[minmax(0,15rem)_1fr]">
+        <FloorPlan scene={planned} name="plan" className="aspect-square w-full" />
+        <div>
+          <FactList facts={[{ label: "Pieces to move", value: moved }, { label: "Problems it clears", value: cleared.length }]} />
+          <ul className="mt-4 flex flex-col gap-2">
+            {cleared.map((finding) => (
+              <li key={finding.id} className="flex items-start gap-2">
+                <CheckCircle size={20} weight="fill" className="mt-0.5 shrink-0 text-pass" aria-hidden />
+                {finding.title}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   );
@@ -177,7 +223,8 @@ export function ReportDocument({ report, showScope, toolbar }: ReportDocumentPro
         {scene && <FloorPlan scene={scene} className="hidden aspect-square w-full sm:block" />}
       </header>
 
-      <ProblemsSection problems={groups.problems} />
+      <PlanSection plan={report.plan} scene={scene} problems={groups.problems} />
+      <ProblemsSection problems={groups.problems} decided={decisions(report.checklist)} />
       {showScope && <ScopedSection assessment={assessment} />}
       <NextStepsSection toSend={toSend} beingChecked={beingCheckedNames(beingChecked, rules)} />
       <WhatWeChecked scenario={scenario} passes={groups.passes} rules={rules} preview={report.preview} />

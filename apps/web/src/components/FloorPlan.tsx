@@ -44,14 +44,18 @@ export function planBounds(nodes: SceneNode[]): PlanBounds {
 }
 
 /** The shop from above, drawn from measured footprints. North is up. */
-export function FloorPlan({ scene, className = "" }: { scene: SceneGraph; className?: string }) {
+/** Scanned walls are planes with no thickness, which an SVG rect would not draw at all. */
+const THINNEST_WALL_METERS = 0.1;
+
+/** `name` tells two drawings on one page apart, since each defines its own hatch. */
+export function FloorPlan({ scene, className = "", name = "scan" }: { scene: SceneGraph; className?: string; name?: string }) {
   const drawn = drawnNodes(scene);
   if (drawn.length === 0) return null;
   const box = planBounds(drawn);
   const pad = Math.max(box.width, box.height) * 0.04;
   const layered = [...drawn].sort((a, b) => DRAWN_KINDS.indexOf(a.kind) - DRAWN_KINDS.indexOf(b.kind));
   const hatchSpacing = Math.max(box.width, box.height) / 90;
-  const hatchId = `floor-plan-hatch-${scene.scan_id}-${scene.revision}`;
+  const hatchId = `floor-plan-hatch-${name}-${scene.scan_id}-${scene.revision}`;
 
   return (
     <svg
@@ -67,7 +71,8 @@ export function FloorPlan({ scene, className = "" }: { scene: SceneGraph; classN
         </pattern>
       </defs>
       {layered.map((node) => {
-        const { x, y, width, depth, degrees } = footprint(node);
+        const { x, y, width, depth: measured, degrees } = footprint(node);
+        const depth = node.kind === "wall" ? Math.max(measured, THINNEST_WALL_METERS) : measured;
         const style = STYLE[node.kind];
         return (
           <rect

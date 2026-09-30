@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, RootModel
 from .findings import Finding, Locus
 from .geometry import Vec3
 from .loop import Assessment, NodeMove, Proposal, RouterAction
+from .owner import Checklist, LayoutPlan
 from .precedents import SpaceTypology
 from .rules import Check
 from .scan import Scan
@@ -170,6 +171,10 @@ class Report(BaseModel):
     rules: list[ReviewedRule]
     preview: bool = False
     """Built from rules no person has reviewed, for development only."""
+    checklist: Checklist | None = None
+    """What the owner decided about each thing to fix, such as leaving one for a contractor."""
+    plan: LayoutPlan | None = None
+    """The layout the owner kept last for this revision of the shop, if they kept one."""
 
 
 class ProposalRequest(BaseModel):
