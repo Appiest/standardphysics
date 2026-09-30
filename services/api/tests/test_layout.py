@@ -187,3 +187,32 @@ def test_saving_from_an_unrecorded_revision_writes_the_recovered_origin(make_cli
     assert saved.status_code == 201, saved.text
     case = next(node for node in saved.json()["nodes"] if node["id"] == CASE_EAST)
     assert (case["measured_position"]["x"], case["measured_position"]["y"]) == (found.x, found.y)
+
+
+def _mark_unsure(client, scan_id: str, node: str) -> None:
+    """What RoomPlan does to a piece it saw poorly: the report asks for another look instead of calling it."""
+    with client.app.state.database.transaction() as connection:
+        row = revisions_repo.get_revision(connection, uuid.UUID(scan_id), 0)
+        graph = revisions_repo.graph_of(row)
+        unsure = graph.model_copy(update={"nodes": [
+            n.model_copy(update={"quality": "needs_another_look"}) if str(n.id) == node else n for n in graph.nodes]})
+        connection.execute("UPDATE revisions SET graph_json = ? WHERE scan_id = ? AND revision = 0",
+                           (unsure.model_dump_json(), scan_id))
+
+
+def _at(findings, node):
+    return [f for f in findings if f["check_id"] == "route_clear_width" and node in (f["locus"] or {}).get("node_ids", [])]
+
+
+def test_a_piece_the_scan_saw_poorly_stays_a_question_until_the_owner_moves_it_on_the_plan(make_client):
+    client, scan_id = _sample(make_client)
+    _mark_unsure(client, scan_id, CASE_EAST)
+
+    def check(moves):
+        body = {"base_revision": 0, "sequence": 1, "moves": moves}
+        return client.post(f"/api/scans/{scan_id}/layout-checks", json=body).json()["findings"]
+
+    untouched = _at(check([]), CASE_EAST)
+    assert untouched and all(f["outcome"] == "question" for f in untouched)
+    closer = _at(check([_move(CASE_EAST, dx=-to_meters(2))]), CASE_EAST)
+    assert closer and all(f["outcome"] == "problem" for f in closer)

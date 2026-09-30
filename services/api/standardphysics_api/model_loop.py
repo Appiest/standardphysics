@@ -11,9 +11,9 @@ shifts are not, because the owner's plan cannot show a moved wall. Nothing is
 saved: the stream ends with every move the loop made, for the owner to open
 in the plan and keep or not.
 
-The loop works on what the owner's report shows: an answer resting on scan
-geometry marked "needs another look" stays a question here too, so the loop
-never chases something the owner sees as still to check.
+The loop works on what the owner's plan shows (`layout.check_layout`): a piece
+standing somewhere the scan never saw it, moved by the owner or by the loop,
+is taken as measured, and every other piece keeps the report's second look.
 
 A loop holds one of the owner's `ModelSlots` from the moment it is admitted
 until its stream ends, and may spend at most MODEL_LOOP_TURNS calls' worth of
@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from standardphysics_agents.fix import carried_along
 from standardphysics_agents.fix.budget import deadline_in, out_of_time
 from standardphysics_agents.tracing import suspend_tracing
-from standardphysics_agents.training.checker import TrainingChecker
+from standardphysics_agents.training.checker import TrainingChecker, trusted_where_moved
 from standardphysics_agents.training.edits import TrainingEdits, apply_edits, has_construction, node_moves, parse_edits
 from standardphysics_agents.training.menu import Menu, MenuLimits, build_menu, menu_messages, resolve
 from standardphysics_agents.training.owner import WishBook, stated_book
@@ -146,9 +146,11 @@ class ModelLoop:
     menu: Menu | None = None
     stop: str = ""
     built_ins: set = field(default_factory=set)
+    scanned: SceneGraph | None = None
+    """The shop as saved; a piece standing anywhere else is a what-if taken as measured."""
 
     def __post_init__(self) -> None:
-        self.current = self.start
+        self.current = trusted_where_moved(self.scanned or self.start, self.start)
 
     def offered(self) -> Menu:
         """The menu the last prompt showed; a reply only means something against it."""
@@ -181,7 +183,7 @@ class ModelLoop:
         edits = parse_edits(resolution.completion)
         added = _all_moves(edits) if edits else []
         if edits is not None and (added or has_construction(edits)):
-            self.current = apply_edits(self.current, edits)
+            self.current = trusted_where_moved(self.scanned or self.start, apply_edits(self.current, edits))
             self.moves = _combined(self.moves, added)
             self.built_ins |= {move.node_id for move in edits.fixture_moves}
         else:
@@ -243,7 +245,7 @@ def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: Ch
         checker = stages.menu_checker(plan.start, scenario, typology, scope="fittings", trust_unsure_geometry=False)
         loop = ModelLoop(plan.start, checker,
                          stated_book(plan.start, list(wishes)), moves={move.node_id: move for move in plan.moves},
-                         built_ins=set(plan.built_ins))
+                         built_ins=set(plan.built_ins), scanned=graph)
         open_problems = loop.open_problems()
     yield ModelLoopEvent(kind="started", fixable_left=len(open_problems), working_on=_titles(open_problems),
                          turns_at_most=MODEL_LOOP_TURNS, message=f"{chooser.label} is looking at your shop.")

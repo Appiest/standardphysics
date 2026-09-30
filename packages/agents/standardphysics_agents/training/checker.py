@@ -77,6 +77,21 @@ def trusted_geometry(graph: SceneGraph) -> SceneGraph:
     )
 
 
+def trusted_where_moved(before: SceneGraph, after: SceneGraph) -> SceneGraph:
+    """`after` with each piece standing somewhere `before` did not have it treated as measured.
+
+    A spot the owner or a fix chose is a what-if the scan cannot take a second
+    look at, so a pinch it causes is a problem to move things for. Pieces left
+    where the scan found them keep their quality, and so the report's question.
+    """
+    placed = {node.id: node.transform for node in before.nodes}
+    return after.model_copy(update={"nodes": [
+        node.model_copy(update={"quality": TRUSTED_QUALITY})
+        if node.quality == UNSURE_QUALITY and placed.get(node.id) != node.transform else node
+        for node in after.nodes
+    ]})
+
+
 @dataclass
 class TrainingChecker:
     scenario: Scenario

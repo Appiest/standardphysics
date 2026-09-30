@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 
 from standardphysics_agents.fix import apply_moves, carried_along, relocation_violations, violations
+from standardphysics_agents.training.checker import trusted_where_moved
 from standardphysics_contracts import (
     Blocked,
     LayoutCheckRequest,
@@ -76,9 +77,11 @@ def _is_fixture(node: SceneNode) -> bool:
 
 
 def check_layout(database: Database, stages: Stages, scan_id: uuid.UUID, body: LayoutCheckRequest) -> LayoutCheckResult:
+    """The plan's what-if. A piece the owner put somewhere the scan never saw it is taken as measured, so a pinch
+    it causes is a problem to fix by moving things; pieces left where they were keep the report's second look."""
     base, _, scenario = _base(database, scan_id, body.base_revision)
     candidate, blocked = plan_candidate(base, body.moves, construction=True)
-    findings = stages.assess(candidate, scenario, candidate.revision + 1).findings
+    findings = stages.assess(trusted_where_moved(base, candidate), scenario, candidate.revision + 1).findings
     return LayoutCheckResult(
         sequence=body.sequence, graph_hash=graph_hash(candidate), findings=findings, blocked=blocked
     )
