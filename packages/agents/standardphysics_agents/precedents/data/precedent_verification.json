@@ -1,1 +1,44 @@
-[]
+[
+  {
+    "directive_id": "service_counter",
+    "verified_by": "Boris Nezlobin",
+    "verified_at": "2026-09-30T02:58:16.673241Z",
+    "second_check_by": null
+  },
+  {
+    "directive_id": "circulation_clear_width",
+    "verified_by": "Boris Nezlobin",
+    "verified_at": "2026-09-30T02:58:16.674762Z",
+    "second_check_by": null
+  },
+  {
+    "directive_id": "accessible_dining_surfaces",
+    "verified_by": "Boris Nezlobin",
+    "verified_at": "2026-09-30T02:58:16.675617Z",
+    "second_check_by": null
+  },
+  {
+    "directive_id": "door_clearances",
+    "verified_by": "Boris Nezlobin",
+    "verified_at": "2026-09-30T02:58:16.676404Z",
+    "second_check_by": null
+  },
+  {
+    "directive_id": "restroom_turning_space",
+    "verified_by": "Boris Nezlobin",
+    "verified_at": "2026-09-30T02:58:16.676640Z",
+    "second_check_by": null
+  },
+  {
+    "directive_id": "self_service_kiosk",
+    "verified_by": "Boris Nezlobin",
+    "verified_at": "2026-09-30T02:58:16.676848Z",
+    "second_check_by": null
+  },
+  {
+    "directive_id": "assembly_wheelchair_spaces",
+    "verified_by": "Boris Nezlobin",
+    "verified_at": "2026-09-30T02:58:16.677022Z",
+    "second_check_by": null
+  }
+]
