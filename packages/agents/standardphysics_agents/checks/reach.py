@@ -10,13 +10,14 @@ have to go, so a part whose top is in range is in range.
 
 from __future__ import annotations
 
-from standardphysics_contracts import SceneNode, to_inches
+from standardphysics_contracts import SceneNode
 
 from ..rules import RuleSpec
 from ..tracing import traced
 from . import roles
 from .clear_floor import at_least, at_most
 from .context import CheckContext
+from .heights import bottom_inches, top_inches
 from .observation import Observation
 from .questions import ask, no_nodes
 from .vertical import mounted_locus
@@ -24,16 +25,8 @@ from .vertical import mounted_locus
 RULE_ID = "reach_range"
 
 
-def _top_inches(node: SceneNode) -> float:
-    return to_inches(node.transform.position.z + node.dimensions.z / 2)
-
-
-def _bottom_inches(node: SceneNode) -> float:
-    return to_inches(node.transform.position.z - node.dimensions.z / 2)
-
-
 def _reach(rule: RuleSpec, node: SceneNode) -> Observation:
-    top, bottom = _top_inches(node), _bottom_inches(node)
+    top, bottom = top_inches(node), bottom_inches(node)
     low = rule.parameter("unobstructed_low_inches")
     too_low = bottom < low
     return Observation(
@@ -59,7 +52,7 @@ def within_reach(ctx: CheckContext, rule_id: str, node: SceneNode) -> Observatio
     height of the highest control rather than guessing.
     """
     rule = ctx.rule(rule_id)
-    top, bottom = _top_inches(node), _bottom_inches(node)
+    top, bottom = top_inches(node), bottom_inches(node)
     high, low = rule.threshold, rule.parameter("unobstructed_low_inches")
     reason = _reach_reason(top, bottom, high, low)
     return Observation(
