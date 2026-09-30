@@ -94,9 +94,9 @@ function Home({ rows, fixing, pending, onSection, footer, children }: Props) {
           <FolderLink title="Things to fix" fact={fixing ? stillToDo(toDo) : preview(rows)} count={fixing ? toDo : rows.length} urgent onOpen={() => onSection("fix")} />
         )}
         {pending > 0 && (
-          <FolderLink title="Still to check" fact={`${pending === 1 ? "A question" : `${pending} questions`} the scan couldn't answer on its own.`} count={pending} onOpen={() => onSection("check")} />
+          <FolderLink title="Still to check" fact="Questions the scan couldn't answer." count={pending} onOpen={() => onSection("check")} />
         )}
-        {children && <FolderLink title="Share and tools" fact="Send the report to a contractor, or try moving furniture around." onOpen={() => onSection("share")} />}
+        {children && <FolderLink title="Share and tools" fact="Send the report, or move furniture around." onOpen={() => onSection("share")} />}
       </nav>
       {footer}
     </>
@@ -208,7 +208,7 @@ function Progress({ rows }: { rows: Row[] }) {
 function FirstResultsTip({ onDismiss }: { onDismiss: () => void }) {
   return (
     <aside className="flex items-start gap-3 rounded-2xl bg-ink p-4 text-paper">
-      <p className="flex-1 text-pretty">A red bar is how far a spot misses the ADA number. Tap a card to see where it is.</p>
+      <p className="flex-1 text-pretty">Tap a card to see the spot on your shop.</p>
       <Button variant="inverse" className="shrink-0" onClick={onDismiss}>Got it</Button>
     </aside>
   );
