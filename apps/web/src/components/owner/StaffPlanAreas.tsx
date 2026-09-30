@@ -2,16 +2,17 @@
 
 import { type PointerEvent, type RefObject, useId, useRef } from "react";
 import { CORNERS, type Corner, cornerPoint, isOpen, outline, type StaffHandles } from "@/lib/staff-areas";
+import { turnedPoint } from "@/lib/plan-view";
 import type { StaffArea } from "@/types/contracts";
 import { roomPoint } from "./usePlanDrag";
 
 const HANDLE_RADIUS_METERS = 0.16;
 const HANDLE_GRAB_METERS = 0.35;
-const LABEL_SIZE_METERS = 0.3;
 
 type FloorPoint = { x: number; y: number };
 type Drag = (from: FloorPoint, to: FloorPoint) => void;
-type SvgRef = RefObject<SVGSVGElement | null>;
+/** The group the room is drawn in, inside the plan's turn. */
+type SvgRef = RefObject<SVGGraphicsElement | null>;
 
 /** Marks what belongs to a staff area, so a tap anywhere else on the plan closes the open one. */
 export const STAFF_AREA_ATTRIBUTE = "data-staff-area";
@@ -77,15 +78,21 @@ function PlanArea({ area, index, handles, hatch, svgRef }: { area: StaffArea; in
   );
 }
 
-/** Drawn above the furniture, so a counter standing in the area can't hide what the area is. */
-export function StaffPlanLabels({ areas }: { areas: StaffArea[] }) {
+/**
+ * Drawn above the furniture, so a counter standing in the area can't hide what the area is.
+ * Drawn outside the plan's turn, at each area's turned centre, so the words stay upright.
+ */
+export function StaffPlanLabels({ areas, turnDegrees, size }: { areas: StaffArea[]; turnDegrees: number; size: number }) {
   return (
     <g className="pointer-events-none" aria-hidden>
-      {areas.map((area, index) => (
-        <text key={index} x={area.centre.x} y={-area.centre.y} dy={LABEL_SIZE_METERS * 0.35} fontSize={LABEL_SIZE_METERS} textAnchor="middle" fontWeight={600} fill="var(--color-ink)" stroke="var(--color-paper)" strokeWidth={LABEL_SIZE_METERS * 0.25} paintOrder="stroke">
-          Staff only
-        </text>
-      ))}
+      {areas.map((area, index) => {
+        const at = turnedPoint(area.centre, turnDegrees);
+        return (
+          <text key={index} x={at.x} y={at.y} dy={size * 0.35} fontSize={size} textAnchor="middle" fontWeight={600} fill="var(--color-ink)" stroke="var(--color-paper)" strokeWidth={size * 0.25} paintOrder="stroke">
+            Staff only
+          </text>
+        );
+      })}
     </g>
   );
 }
