@@ -122,6 +122,8 @@ class TestCompiler:
 
     def test_the_prompt_cites_sections_and_leaves_out_unsigned_cases(self):
         counter = _directive("service_counter")
+        unsigned_case = counter.case_references[0].model_copy(update={"verified_by": None, "verified_at": None})
+        counter = counter.model_copy(update={"case_references": [unsigned_case]})
         assert counter.case_references and not counter.verified_cases
         prompt = PrecedentCompiler(ALL).format_qwen_precedent_prompt([counter])
         assert "904.4.1" in prompt
