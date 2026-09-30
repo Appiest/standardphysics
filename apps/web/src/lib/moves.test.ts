@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { SceneGraph, SceneNode } from "@/types/contracts";
-import { applyMoves, candidateMoves, METERS_PER_INCH, moveNode, nudgeForKey, withMove } from "./moves";
+import {
+  applyMoves, candidateMoves, METERS_PER_INCH, moveNode, nudgeForKey, restsOnSomething, ridersOf, screenStepInRoom, sitsOn, supportOf, withMove,
+} from "./moves";
 
 const table: SceneNode = {
   id: "t", kind: "object", label: "Table", raw_category: "table", quality: "measured", movable: true,
@@ -111,5 +113,40 @@ describe("carrying what sits on a piece", () => {
   it("swings the cup about the table's centre when the table turns", () => {
     const moved = applyMoves(scene, { t: { node_id: "t", delta_translation: { x: 0, y: 0, z: 0 }, delta_rotation_z_degrees: 90 } });
     expect(where(moved, "c")).toEqual([2, 2.4, 0.81]);
+  });
+});
+
+describe("what a piece sits on", () => {
+  const cup: SceneNode = { ...table, id: "c", label: "Cup", dimensions: { x: 0.1, y: 0.1, z: 0.12 },
+    transform: { m: [1, 0, 0, 2.2, 0, 1, 0, 2.2, 0, 0, 1, 0.81, 0, 0, 0, 1] } };
+  const drawer: SceneNode = { ...table, id: "d", label: "Drawer", dimensions: { x: 0.4, y: 0.3, z: 0.2 },
+    transform: { m: [1, 0, 0, 2, 0, 1, 0, 2.2, 0, 0, 1, 0.5, 0, 0, 0, 1] } };
+  const scene: SceneGraph = { scan_id: "s", revision: 0, base_hash: null, nodes: [table, cup, drawer] };
+
+  it("finds the table under a cup resting on its top, as Lane C's riders_of does", () => {
+    expect(sitsOn(cup, table)).toBe(true);
+    expect(supportOf(scene, cup)?.id).toBe("t");
+    expect(ridersOf(scene, table).map((node) => node.id)).toEqual(["c"]);
+  });
+
+  it("finds nothing under a drawer inside a case, though it rests off the floor", () => {
+    expect(supportOf(scene, drawer)).toBeNull();
+    expect(restsOnSomething(drawer, 0)).toBe(true);
+    expect(restsOnSomething(table, 0)).toBe(false);
+  });
+});
+
+describe("arrows on a turned plan", () => {
+  const press = (key: string) => ({ key, shiftKey: false, preventDefault: () => {} });
+
+  it("slides the way the screen shows, not the way the room runs", () => {
+    const nudges: number[][] = [];
+    nudgeForKey(press("ArrowRight"), (dx, dy) => nudges.push(rounded([dx, dy])), 90);
+    nudgeForKey(press("ArrowUp"), (dx, dy) => nudges.push(rounded([dx, dy])), 90);
+    expect(nudges).toEqual([[0, METERS_PER_INCH], [-METERS_PER_INCH, 0]]);
+  });
+
+  it("matches the room when the plan is not turned", () => {
+    expect(rounded(screenStepInRoom(1, 2, 0))).toEqual([1, 2]);
   });
 });
