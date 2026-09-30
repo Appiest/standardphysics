@@ -453,9 +453,10 @@ def _where_scanned(node: SceneNode) -> bool:
 
 
 def _as_scanned(node: SceneNode, other: SceneNode) -> bool:
-    """Both pieces stand where the scan found them, so any overlap is the scan's, as when it boxed a table twice.
-    Putting a piece back there restores the scan; it does not cause the clash."""
-    return _where_scanned(node) and _where_scanned(other)
+    """A piece put back where the scan found it, against one also standing where the scan found it: any overlap is
+    the scan's, as when it boxed a table twice. Putting the piece back restores the scan; it does not cause the
+    clash. A piece that never moved, or one added to the room, has no scanned spot to go back to."""
+    return node.measured_position is not None and _where_scanned(node) and _where_scanned(other)
 
 
 def _overlaps(node: SceneNode, obstacles, swings, scene: _Scene) -> list[Violation]:
@@ -597,7 +598,7 @@ def _lost_room_to_use(base: SceneGraph, candidate: SceneGraph, checked: list[Sce
 
 def _back_where_it_had_no_room(base: SceneGraph, node: SceneNode, role: roles.UsedFromTheFloor) -> bool:
     """A piece put back where the scan found it wedged in gets back the room it had there, which was none."""
-    if not _where_scanned(node):
+    if node.measured_position is None or not _where_scanned(node):
         return False
     scanned = as_scanned(base)
     return not has_room_to_use(room_of(scanned), scanned.by_id(node.id), role)
