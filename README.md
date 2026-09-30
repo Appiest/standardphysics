@@ -45,6 +45,8 @@ Solver capacity is a separate measurement from model training. A bounded search 
 
 ### Field testing
 
+Standard Physics has scanned over 40,000 square feet of campus buildings, residential units, and restaurants across the Bay Area and Los Angeles. It is currently in TestFlight beta access—sign up at standardphysics.app.
+
 We have run the capture and assessment workflow on actual spaces, including Share Tea, Moffitt Library, and several smaller rooms captured on iPhone. These runs test whether the pipeline can ingest and represent real rooms. They do not establish broad ADA accuracy or independent physical measurement accuracy.
 
 | Physical space | Evidence in the current product record | What it establishes |

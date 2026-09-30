@@ -22,6 +22,7 @@
   --shadow-float: 0 1px 2px rgb(27 28 30 / 0.12), 0 4px 16px rgb(27 28 30 / 0.08);
 
   --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+  --scale-lift: 1.04;
 
   --animate-drafting-line: drafting-line 1.6s var(--ease-settle) infinite;
 
@@ -78,6 +79,31 @@
   .measurement {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Words drawn over the plan: a paper halo keeps them legible over walls and furniture. */
+  .plan-label {
+    font-weight: 600;
+    stroke: var(--color-paper);
+    stroke-linejoin: round;
+    paint-order: stroke;
+  }
+
+  /* A piece in hand on the plan rises a little toward the owner. */
+  .plan-lift {
+    transition-property: scale;
+    transition-duration: 150ms;
+    transition-timing-function: var(--ease-settle);
+  }
+
+  .plan-lift[data-held] {
+    scale: var(--scale-lift);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .plan-lift {
+      transition: none;
+    }
   }
 }
 

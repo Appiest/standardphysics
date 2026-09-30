@@ -25,7 +25,8 @@ function underside(node: SceneNode): number {
   return node.transform.m[11] - node.dimensions.z / 2;
 }
 
-function restsOnSomething(node: SceneNode, floorZ: number): boolean {
+/** Mirrors Lane C's rests_on_something: a piece held up off the floor by whatever is under it. */
+export function restsOnSomething(node: SceneNode, floorZ: number): boolean {
   return node.kind === "object" && underside(node) > floorZ + RESTING_GAP;
 }
 
@@ -45,10 +46,20 @@ function topOf(node: SceneNode): number {
   return node.transform.m[11] + node.dimensions.z / 2;
 }
 
+/** Mirrors Lane C's test in riders_of: the rider's underside is on the carrier's top, over its footprint. */
+export function sitsOn(rider: SceneNode, carrier: SceneNode): boolean {
+  return rider.id !== carrier.id && rider.kind === "object" &&
+    Math.abs(underside(rider) - topOf(carrier)) <= RIDING_GAP && coversPoint(carrier, rider.transform.m[3], rider.transform.m[7]);
+}
+
 /** Mirrors Lane C's riders_of: what sits on the carrier's top, like a register on a counter. */
 export function ridersOf(scene: SceneGraph, carrier: SceneNode): SceneNode[] {
-  return scene.nodes.filter((node) => node.id !== carrier.id && node.kind === "object" &&
-    Math.abs(underside(node) - topOf(carrier)) <= RIDING_GAP && coversPoint(carrier, node.transform.m[3], node.transform.m[7]));
+  return scene.nodes.filter((node) => sitsOn(node, carrier));
+}
+
+/** The piece this one sits on and travels with when it moves, if any. */
+export function supportOf(scene: SceneGraph, node: SceneNode): SceneNode | null {
+  return scene.nodes.find((carrier) => carrier.kind === "object" && sitsOn(node, carrier)) ?? null;
 }
 
 /** The rider's share of the carrier's move: it turns about the carrier's centre, not its own. */
@@ -177,13 +188,24 @@ const TURN_STEP_DEGREES = 15;
 
 type KeyPress = Pick<KeyboardEvent, "key" | "shiftKey" | "preventDefault">;
 
-/** Arrow keys slide the piece in hand an inch, six with Shift; R turns it a step, the other way with Shift. */
-export function nudgeForKey(event: KeyPress, nudge: (dx: number, dy: number, degrees: number) => void): boolean {
+/** A step the owner sees as right and up on a plan drawn turned by `turnDegrees`, as a step across the room's floor. */
+export function screenStepInRoom(right: number, up: number, turnDegrees: number): [number, number] {
+  const radians = (turnDegrees * Math.PI) / 180;
+  const [cos, sin] = [Math.cos(radians), Math.sin(radians)];
+  return [cos * right - sin * up, sin * right + cos * up];
+}
+
+/**
+ * Arrow keys slide the piece in hand an inch, six with Shift; R turns it a step, the other way with Shift.
+ * On a plan drawn turned by `turnDegrees`, the arrows follow the screen rather than the room.
+ */
+export function nudgeForKey(event: KeyPress, nudge: (dx: number, dy: number, degrees: number) => void, turnDegrees = 0): boolean {
   const inches = (event.shiftKey ? 6 : 1) * METERS_PER_INCH;
   const direction = NUDGE_DIRECTIONS[event.key];
   if (direction) {
     event.preventDefault();
-    nudge(direction[0] * inches, direction[1] * inches, 0);
+    const [dx, dy] = screenStepInRoom(direction[0] * inches, direction[1] * inches, turnDegrees);
+    nudge(dx, dy, 0);
     return true;
   }
   if (event.key.toLowerCase() !== "r") return false;

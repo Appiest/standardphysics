@@ -185,7 +185,8 @@ def fit_box(points: np.ndarray) -> CarvedBox | None:
     along = points[:, 0] * cos_t + points[:, 1] * sin_t
     across = -points[:, 0] * sin_t + points[:, 1] * cos_t
     spans = [_span(values) for values in (along, across, points[:, 2])]
-    dimensions = tuple(max(MIN_EXTENT, high - low) for low, high in spans)
+    along_extent, across_extent, vertical_extent = (max(MIN_EXTENT, high - low) for low, high in spans)
+    dimensions = (along_extent, across_extent, vertical_extent)
     if any(extent > MAX_EXTENT for extent in dimensions) or min(dimensions) < SLIVER_EXTENT:
         return None
     local_centre = [(low + high) / 2 for low, high in spans]

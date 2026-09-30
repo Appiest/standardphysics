@@ -1,6 +1,7 @@
 "use client";
 
 import { type PointerEvent as ReactPointerEvent, type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { roomPointFrom } from "@/lib/plan-view";
 
 export type PlanDragHandlers = {
   onGrab: (nodeId: string) => void;
@@ -10,12 +11,13 @@ export type PlanDragHandlers = {
 
 type Grip = { nodeId: string; pointerId: number; last: { x: number; y: number } };
 
-/** Where a pointer lands in the plan's own units: metres, with y flipped because the plan draws north up. */
-export function roomPoint(svg: SVGSVGElement, event: { clientX: number; clientY: number }) {
-  const matrix = svg.getScreenCTM()?.inverse();
-  if (!matrix) return null;
-  const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix);
-  return { x: point.x, y: -point.y };
+/**
+ * Where a pointer lands in room metres. `drawing` is the group the room is
+ * drawn in, inside the plan's turn, so its screen matrix undoes the turn too.
+ */
+export function roomPoint(drawing: SVGGraphicsElement, event: { clientX: number; clientY: number }) {
+  const inverse = drawing.getScreenCTM()?.inverse();
+  return inverse ? roomPointFrom(inverse, event) : null;
 }
 
 /**
@@ -23,7 +25,7 @@ export function roomPoint(svg: SVGSVGElement, event: { clientX: number; clientY:
  * summed and handed over once per frame, so a fast drag costs one layout per
  * frame rather than one per pointer event.
  */
-export function usePlanDrag(svgRef: RefObject<SVGSVGElement | null>, handlers: PlanDragHandlers) {
+export function usePlanDrag(drawingRef: RefObject<SVGGraphicsElement | null>, handlers: PlanDragHandlers) {
   const grip = useRef<Grip | null>(null);
   const pending = useRef({ dx: 0, dy: 0 });
   const frame = useRef<number | null>(null);
@@ -41,7 +43,7 @@ export function usePlanDrag(svgRef: RefObject<SVGSVGElement | null>, handlers: P
   }, []);
 
   const grab = useCallback((nodeId: string, event: ReactPointerEvent<SVGElement>) => {
-    const at = svgRef.current && roomPoint(svgRef.current, event);
+    const at = drawingRef.current && roomPoint(drawingRef.current, event);
     if (!at || event.button > 0) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -49,16 +51,16 @@ export function usePlanDrag(svgRef: RefObject<SVGSVGElement | null>, handlers: P
     pending.current = { dx: 0, dy: 0 };
     setDraggingId(nodeId);
     latest.current.onGrab(nodeId);
-  }, [svgRef]);
+  }, [drawingRef]);
 
   const move = useCallback((event: ReactPointerEvent<SVGElement>) => {
     const held = grip.current;
-    const at = held && held.pointerId === event.pointerId && svgRef.current && roomPoint(svgRef.current, event);
+    const at = held && held.pointerId === event.pointerId && drawingRef.current && roomPoint(drawingRef.current, event);
     if (!held || !at) return;
     pending.current = { dx: pending.current.dx + at.x - held.last.x, dy: pending.current.dy + at.y - held.last.y };
     held.last = at;
     if (frame.current === null) frame.current = requestAnimationFrame(flush);
-  }, [svgRef, flush]);
+  }, [drawingRef, flush]);
 
   const release = useCallback((event: ReactPointerEvent<SVGElement>) => {
     const held = grip.current;

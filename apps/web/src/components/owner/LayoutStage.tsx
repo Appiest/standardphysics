@@ -15,7 +15,8 @@ const VIEWS: { id: LayoutView; words: string; Icon: typeof Cube }[] = [
 ];
 
 /**
- * The plan drawn over the 3D model while a layout is being tried. Both draw the
+ * The plan drawn over the 3D model while a layout is being tried. The plan
+ * starts below the view switch, so no measurement ends up under it. Both draw the
  * same moved layout, so switching views shows the same pieces where they were
  * left; the model stays mounted under the plan so switching is instant.
  */
@@ -37,7 +38,7 @@ export function LayoutStage({ arrangement, scanned, trial, pointedIds, staff }: 
   return (
     <>
       {trial.view === "plan" && (
-        <div className="absolute inset-0 z-30">
+        <div className="absolute inset-0 z-30 bg-paper pt-16">
           <LayoutPlan
             shown={arrangement.shown} scanned={scanned}
             activeId={arrangement.activeId} blockedIds={arrangement.blockedIds} pointedIds={pointedIds} movedIds={trial.movedIds}

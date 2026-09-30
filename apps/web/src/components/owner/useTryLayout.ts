@@ -30,8 +30,8 @@ export function useTryLayout(arrangement: Arrangement, scene: SceneGraph, scanne
     setActiveId(nodeId);
   }, [setActiveId]);
 
-  const onKey = useCallback((nodeId: string, event: KeyboardEvent) => {
-    const handled = nudgeForKey(event, (dx, dy, degrees) => nudge(dx, dy, degrees, nodeId));
+  const onKey = useCallback((nodeId: string, event: KeyboardEvent, turnDegrees = 0) => {
+    const handled = nudgeForKey(event, (dx, dy, degrees) => nudge(dx, dy, degrees, nodeId), turnDegrees);
     if (handled) onGrab(nodeId);
   }, [nudge, onGrab]);
 

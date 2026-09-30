@@ -27,6 +27,11 @@ VISUAL_AGREEMENT_IOU = 0.30
 """How much two boxes in the same photo must overlap to count as one detection."""
 
 
+def _box(sensor_box: list[float]) -> tuple[float, float, float, float]:
+    left, top, right, bottom = sensor_box
+    return left, top, right, bottom
+
+
 def _visually_agree(att_a: SurfaceAttachment, att_b: SurfaceAttachment) -> bool:
     """Whether some single photo shows both crops overlapping substantially.
 
@@ -38,7 +43,7 @@ def _visually_agree(att_a: SurfaceAttachment, att_b: SurfaceAttachment) -> bool:
         for obs_b in att_b.observations:
             if obs_a.frame_id != obs_b.frame_id:
                 continue
-            if box_iou(tuple(obs_a.sensor_box), tuple(obs_b.sensor_box)) >= VISUAL_AGREEMENT_IOU:
+            if box_iou(_box(obs_a.sensor_box), _box(obs_b.sensor_box)) >= VISUAL_AGREEMENT_IOU:
                 return True
     return False
 
@@ -99,11 +104,11 @@ def are_compatible_observations(
       separate and the count stays unknown
     """
     att_a, att_b = node_a.attachment, node_b.attachment
-    if att_a is None or att_b is None or not _same_place(node_a, node_b):
+    if att_a is None or att_b is None or not _same_place(node_a, att_a, node_b, att_b):
         return False
     if camera_a is None and camera_b is None:
         return _visually_agree(att_a, att_b)
-    return _cameras_agree(node_a, node_b, camera_a, camera_b)
+    return _cameras_agree((node_a, att_a, camera_a), (node_b, att_b, camera_b))
 
 
 def _position(node: SceneNode) -> np.ndarray:
@@ -116,23 +121,26 @@ def _normal(attachment: SurfaceAttachment) -> np.ndarray | None:
     return np.array([attachment.normal.x, attachment.normal.y, attachment.normal.z], dtype=np.float64)
 
 
-def _same_place(node_a: SceneNode, node_b: SceneNode) -> bool:
+def _same_place(node_a: SceneNode, att_a: SurfaceAttachment, node_b: SceneNode, att_b: SurfaceAttachment) -> bool:
     """Facing the same way, on one wall face, and close enough to be one device of their size."""
-    norm_a, norm_b = _normal(node_a.attachment), _normal(node_b.attachment)
+    norm_a, norm_b = _normal(att_a), _normal(att_b)
     if norm_a is None or norm_b is None or float(np.dot(norm_a, norm_b)) < NORMAL_ALIGNMENT_MIN_COS:
         return False
     pos_a, pos_b = _position(node_a), _position(node_b)
-    same_support = node_a.attachment.support_node_id == node_b.attachment.support_node_id
+    same_support = att_a.support_node_id == att_b.support_node_id
     if not same_support and not _on_one_face(pos_a, pos_b, norm_a):
         return False
     return float(np.linalg.norm(pos_a - pos_b)) <= _same_device_distance(node_a, node_b)
 
 
-def _cameras_agree(
-    node_a: SceneNode, node_b: SceneNode, camera_a: PhotoCamera | None, camera_b: PhotoCamera | None,
-) -> bool:
+AttachedView = tuple[SceneNode, SurfaceAttachment, PhotoCamera | None]
+"""A node, its attachment, and the camera that photographed it, if there is one."""
+
+
+def _cameras_agree(view_a: AttachedView, view_b: AttachedView) -> bool:
     """Each view's photo box holds the other node's centre, for every camera given."""
-    views = ((node_a.attachment, _position(node_b), camera_a), (node_b.attachment, _position(node_a), camera_b))
+    (node_a, att_a, camera_a), (node_b, att_b, camera_b) = view_a, view_b
+    views = ((att_a, _position(node_b), camera_a), (att_b, _position(node_a), camera_b))
     return all(_reprojection_agrees(att, other, camera) for att, other, camera in views if camera is not None)
 
 
@@ -289,6 +297,13 @@ def merge_two_nodes(node_a: SceneNode, node_b: SceneNode, cameras: dict[str, Pho
     return merge_cluster([node_a, node_b], cameras)
 
 
+def _first_camera(node: SceneNode, cameras: dict[str, PhotoCamera] | None) -> PhotoCamera | None:
+    """The camera of the first photo that saw this node, when cameras were given."""
+    if not cameras or node.attachment is None or not node.attachment.observations:
+        return None
+    return cameras.get(node.attachment.observations[0].frame_id)
+
+
 def reconcile_outlets(
     nodes: Sequence[SceneNode],
     cameras: dict[str, PhotoCamera] | None = None,
@@ -308,13 +323,13 @@ def reconcile_outlets(
         matched_cluster = None
         for cluster in clusters:
             # Check compatibility against all nodes in the cluster to prevent transitive chain merging
-            cam_node = cameras.get(node.attachment.observations[0].frame_id) if cameras and node.attachment.observations else None
+            cam_node = _first_camera(node, cameras)
             if all(
                 are_compatible_observations(
                     node,
                     c_node,
                     cam_node,
-                    cameras.get(c_node.attachment.observations[0].frame_id) if cameras and c_node.attachment.observations else None,
+                    _first_camera(c_node, cameras),
                 )
                 for c_node in cluster
             ):

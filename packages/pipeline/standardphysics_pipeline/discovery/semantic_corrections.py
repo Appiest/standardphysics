@@ -172,7 +172,7 @@ def _detection_name(detection: Detection) -> str:
 
 def _detection_box(detection: Detection) -> tuple[float, float, float, float]:
     box = getattr(detection, "box", getattr(detection, "box_2d", (0.0, 0.0, 0.0, 0.0)))
-    return tuple(box)  # type: ignore
+    return tuple(box)
 
 
 def correct_furniture_label(
@@ -331,6 +331,10 @@ BOARD_APART = 0.5
 """Boards whose centres are closer than this are one board."""
 
 
+def _identity_confidence(board: SceneNode) -> float:
+    return board.attachment.identity_confidence if board.attachment is not None else 0.0
+
+
 def _one_board_per_place(boards: list[SceneNode]) -> list[SceneNode]:
     """The best-evidenced board at each place on the walls.
 
@@ -339,7 +343,7 @@ def _one_board_per_place(boards: list[SceneNode]) -> list[SceneNode]:
     wall, so boards already attached are not offered as walls either.
     """
     kept: list[SceneNode] = []
-    for board in sorted(boards, key=lambda one: -one.attachment.identity_confidence):
+    for board in sorted(boards, key=_identity_confidence, reverse=True):
         where = np.asarray(board.transform.position.as_tuple())
         if all(np.linalg.norm(where - np.asarray(other.transform.position.as_tuple())) >= BOARD_APART for other in kept):
             kept.append(board)
