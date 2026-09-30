@@ -207,7 +207,9 @@ def _install_request_routes(
     async def photo(scan_id: uuid.UUID, request_id: str, request: Request) -> OwnerRequest:
         found = await anyio.to_thread.run_sync(one, scan_id, request_id)
         admission = PhotoAdmission(photo_limits.budgets, store, owner_of(request), photo_limits.reservations)
-        with _reserve_photo(database, admission, request) as reservation:
+        with contextlib.ExitStack() as held:
+            reserving = _reserve_photo(database, admission, request)
+            reservation = await anyio.to_thread.run_sync(held.enter_context, reserving)
             staged = await _stage_photo(store, scan_id, request, reservation)
             try:
                 await anyio.to_thread.run_sync(_keep_photo, database, admission, scan_id, found, staged)

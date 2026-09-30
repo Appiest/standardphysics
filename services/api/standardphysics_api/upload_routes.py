@@ -206,21 +206,25 @@ def install_upload_routes(
         x_artifact_kind: Annotated[ArtifactKind, Header()],
         x_frame_pose: Annotated[str | None, Header()] = None,
     ):
+        # SQLite can wait 30 s for a write lock, so every step that touches the database runs on a worker thread.
         admission = UploadAdmission(budgets, store, owner_of(request), scan_id, reservations)
         pose = frame_pose(x_frame_pose, artifact_id, x_artifact_kind)
-        with _reserve_or_refuse_early(database, admission, artifact_id, request) as reservation:
+        with contextlib.ExitStack() as held:
+            reservation = await anyio.to_thread.run_sync(
+                held.enter_context, _reserve_or_refuse_early(database, admission, artifact_id, request)
+            )
             staged = await _stage_upload(store, scan_id, artifact_id, request, reservation)
             try:
                 await _validate_staged(staged, x_artifact_kind, validations)
-                status, artifact = _accept_staged(
-                    database, admission, artifact_id, x_artifact_kind, x_checksum_sha256, staged
+                status, artifact = await anyio.to_thread.run_sync(
+                    _accept_staged, database, admission, artifact_id, x_artifact_kind, x_checksum_sha256, staged
                 )
             finally:
                 store.discard(staged)
         if status == 201:
             read_during_walk(worker.live_reader, store, scan_id, artifact_id, pose)
-        if _queue_for_arrival(
-            database, store, worker, scan_id, x_artifact_kind, settings.evidence_settle_seconds
+        if await anyio.to_thread.run_sync(
+            _queue_for_arrival, database, store, worker, scan_id, x_artifact_kind, settings.evidence_settle_seconds
         ):
             worker.wake()
         return JSONResponse(artifact.model_dump(mode="json"), status_code=status)
