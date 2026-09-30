@@ -222,7 +222,7 @@ def _dominant_support(
     support_counts: dict[uuid.UUID, int] = {}
     for hit in unoccluded_hits:
         support_counts[hit.support_node.id] = support_counts.get(hit.support_node.id, 0) + 1
-    dominant_node_id = max(support_counts, key=support_counts.get) if support_counts else None
+    dominant_node_id = max(support_counts, key=lambda node_id: support_counts[node_id]) if support_counts else None
     dominant_hits = [h for h in unoccluded_hits if h.support_node.id == dominant_node_id] if dominant_node_id else []
     return support_counts, dominant_node_id, dominant_hits
 

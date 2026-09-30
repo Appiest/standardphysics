@@ -84,36 +84,6 @@ ignore_missing_imports = true
 module = ["torch", "torch.*", "numba", "fast_simplification", "imageio_ffmpeg", "trimesh", "trimesh.*"]
 ignore_missing_imports = true
 
-# Discovery, build_glb and object_shapes are being rewritten on another branch,
-# so their type fixes land with that work instead of conflicting with it. Each
-# stays checked with only the codes it still trips turned off.
-
-[[tool.mypy.overrides]]
-# map_crop_point_to_sensor returns an (x, y) pair but is annotated as a triple.
-module = ["standardphysics_pipeline.discovery.detect", "standardphysics_pipeline.discovery.detection_boxes"]
-disable_error_code = ["arg-type", "return-value"]
-
-[[tool.mypy.overrides]]
-# Boxes built with tuple(...) lose their length, and attachments read without
-# narrowing the Optional first.
-module = ["standardphysics_pipeline.discovery.reconcile"]
-disable_error_code = ["arg-type", "union-attr"]
-
-[[tool.mypy.overrides]]
-# CarvedBox dimensions built with tuple(...) lose their length.
-module = ["standardphysics_pipeline.discovery.carve"]
-disable_error_code = ["arg-type"]
-
-[[tool.mypy.overrides]]
-# max() keyed by dict.get, whose overloads mypy cannot pick a key type from.
-module = ["standardphysics_pipeline.discovery.surface_attach"]
-disable_error_code = ["arg-type"]
-
-[[tool.mypy.overrides]]
-# An attachment read without narrowing the Optional, and an ignore that is no
-# longer needed.
-module = ["standardphysics_pipeline.discovery.semantic_corrections"]
-disable_error_code = ["union-attr", "unused-ignore"]
 
 [[tool.mypy.overrides]]
 # Optional names passed to dict.get, and a colour built with tuple(...).
