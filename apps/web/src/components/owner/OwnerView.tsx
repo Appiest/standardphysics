@@ -98,12 +98,13 @@ function EarlyPanel({ scan, journey, requests }: OwnerViewProps) {
   );
 }
 
-const MODEL_HEIGHT: Record<ModelSize, string> = { small: "h-[30dvh] min-h-52", medium: "h-[42dvh] min-h-64", large: "h-[62dvh] min-h-64" };
-type ModelSize = "small" | "medium" | "large";
+const MODEL_HEIGHT: Record<ModelSize, string> = { small: "h-[30dvh] min-h-52", medium: "h-[42dvh] min-h-64", plan: "h-[52dvh] min-h-64", large: "h-[62dvh] min-h-64" };
+type ModelSize = "small" | "medium" | "plan" | "large";
 
 /** How much of a phone the model takes: most while driving or dragging furniture, some while tapping on it, least while reading a list. */
 function modelSize(panel: string): ModelSize {
-  if (panel === "wheelchair" || panel === "plan") return "large";
+  if (panel === "wheelchair") return "large";
+  if (panel === "plan") return "plan";
   return panel === "counter" || panel === "path" ? "medium" : "small";
 }
 

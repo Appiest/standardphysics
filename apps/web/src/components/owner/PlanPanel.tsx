@@ -79,11 +79,11 @@ export function PlanPanel({ arrangement, scanned, pieceName, fixedNote, builtIn 
   useAllClear(before, left, arrangement.checking, onAllClear);
   return (
     <div className="flex min-h-full flex-col gap-5" data-check-ms={arrangement.latencyMs ?? undefined}>
+      <Refusals arrangement={arrangement} fixedNote={fixedNote} />
       <PlanScore before={before} left={left} checking={arrangement.checking} moved={arrangement.hasMoves} />
       {!arrangement.hasMoves && <p className="-mt-2 text-ink-muted">Drag a piece on the plan.</p>}
       {movable.length + changes.filter((change) => change.kind === "new").length > 0 && fixPlan}
       {review}
-      <Refusals arrangement={arrangement} fixedNote={fixedNote} />
       <Changes changes={changes} />
       <StillToFix findings={movable.filter((finding) => statusOf(finding.id) === "to_do")} />
       <BuildingWork findings={building} statusOf={statusOf} onDecide={onDecide} />
