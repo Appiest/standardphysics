@@ -76,6 +76,19 @@ def test_the_model_takes_turns_until_it_stops_and_the_moves_add_up(make_client, 
     assert all(len(turn["working_on"]) <= turn["fixable_left"] for turn in turns)
 
 
+def test_the_loop_measures_its_moves_without_sending_each_check_to_the_tracer(make_client, monkeypatch):
+    from standardphysics_agents import tracing
+
+    sent = []
+    monkeypatch.delenv("SP_LOOP_MODEL_URL", raising=False)
+    client, scan_id = _sample(make_client)
+    monkeypatch.setattr(tracing._TRACING, "_weave", object())
+    monkeypatch.setattr(tracing._TRACING, "op", lambda name, fn: sent.append(name) or fn)
+    events = _events(client, scan_id)
+    assert events[-1]["kind"] == "finished" and events[-1]["moves"]
+    assert "checks.run" not in sent
+
+
 def test_an_unreachable_model_ends_the_stream_with_a_way_to_recover(make_client, monkeypatch):
     def down(self, messages, seconds=None):
         raise urllib.error.URLError("connection refused")
@@ -95,6 +108,7 @@ def test_a_turn_whose_menu_runs_out_of_time_ends_the_loop_without_asking_the_mod
     assert not asked
     assert [event["kind"] for event in events] == ["started", "finished"]
     assert events[-1]["moves"] == [] and events[-1]["fixable_left"] == events[0]["fixable_left"]
+    assert "time" in events[-1]["message"] and "Nothing we can move" not in events[-1]["message"]
 
 
 def test_a_built_in_slide_becomes_a_move_of_that_piece_the_plan_can_show():

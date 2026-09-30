@@ -23,6 +23,7 @@ found. A reply the loop can't read ends the stream with a failed line.
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 import json
 import logging
@@ -32,7 +33,8 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 
 from standardphysics_agents.fix import carried_along
-from standardphysics_agents.fix.budget import deadline_in
+from standardphysics_agents.fix.budget import deadline_in, out_of_time
+from standardphysics_agents.tracing import suspend_tracing
 from standardphysics_agents.training.checker import TrainingChecker
 from standardphysics_agents.training.edits import TrainingEdits, apply_edits, has_construction, node_moves, parse_edits
 from standardphysics_agents.training.menu import Menu, MenuLimits, build_menu, menu_messages, resolve
@@ -62,6 +64,8 @@ LOOP_MENU_SECONDS = 40.0
 built-ins included, took 31 s. The card shows a turn clock, so the owner sees the wait."""
 LOOP_ENVIRONMENT = "SP_LOOP_"
 UNEXPECTED_FAILURE = "Something went wrong on our side while fixing the room. Nothing was changed. Try again."
+NOTHING_CLEARS = "Nothing we can move or build clears what is left, so it stays on your list."
+OUT_OF_TIME = "It ran out of time measuring moves for what is left, so it stopped here. Nothing was changed."
 clock: Callable[[], float] = time.monotonic
 
 
@@ -167,7 +171,7 @@ class ModelLoop:
         menu = without_wall_shifts(build_menu(self.current, self.checker, stated=self.stated, limits=limits))
         self.menu = menu
         if not menu.options:
-            self.stop = "Nothing we can move or build clears what is left, so it stays on your list."
+            self.stop = OUT_OF_TIME if out_of_time(limits.deadline) else NOTHING_CLEARS
             return None
         return menu_messages(self.current, self.checker, menu, self.last)
 
@@ -223,10 +227,19 @@ def _proposed(loop: ModelLoop, plan: Plan) -> list[uuid.UUID]:
     return [node_id for node_id, move in loop.moves.items() if started.get(node_id) != move]
 
 
+@contextlib.contextmanager
+def _measuring(stages: Stages) -> Iterator[None]:
+    """The search lock with per-check tracing off. A menu runs thousands of checks, and sending each to Weave
+    loaded the two-core production box while a turn was already short of time. Each block is entered and left
+    within one step of the stream, which can resume on another thread, so tracing is suspended per block."""
+    with stages.locked(), suspend_tracing():
+        yield
+
+
 def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: Chooser, typology,
             wishes) -> Iterator[ModelLoopEvent]:
     """Turns until the room is clear, the menu runs dry, the model picks nothing, or the turns or time run out."""
-    with stages.locked():
+    with _measuring(stages):
         checker = stages.menu_checker(plan.start, scenario, typology, scope="fittings", trust_unsure_geometry=False)
         loop = ModelLoop(plan.start, checker,
                          stated_book(plan.start, list(wishes)), moves={move.node_id: move for move in plan.moves},
@@ -237,7 +250,7 @@ def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: Ch
     budget = MODEL_LOOP_TURNS * chooser.reply_seconds
     deadline = clock() + budget
     for turn in range(1, MODEL_LOOP_TURNS + 1):
-        with stages.locked():
+        with _measuring(stages):
             messages = loop.next_messages()
         if messages is None:
             break
@@ -246,14 +259,15 @@ def _events(stages: Stages, graph: SceneGraph, plan: Plan, scenario, chooser: Ch
             loop.stop = f"Stopped because the loop had used its {_in_words(budget)}. Open what it found so far."
             break
         reply = chooser.ask(messages, remaining)
-        with stages.locked():
+        with _measuring(stages):
             event = loop.take(turn, reply)
         yield event
         if loop.stop:
             break
-    with stages.locked():
+    with _measuring(stages):
         left = loop.fixable_left()
-    explanation = stages.explain(graph, loop.current, scenario, wishes) if loop.moves else None
+    with suspend_tracing():
+        explanation = stages.explain(graph, loop.current, scenario, wishes) if loop.moves else None
     yield ModelLoopEvent(kind="finished", moves=list(loop.moves.values()), built_ins=sorted(loop.built_ins, key=str),
                          proposed=_proposed(loop, plan), explanation=explanation, fixable_left=left,
                          message=loop.stop or f"Stopped after {MODEL_LOOP_TURNS} turns.")
