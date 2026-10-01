@@ -14,6 +14,7 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
     private var recording: RecordingResult?
     private var finalMeshFrame: ARFrame?
     private var directory: URL?
+    private var expectsDetailedSurfaces = true
     private var isFinishing = false
     private var isExporting = false
     private var isCancelled = false
@@ -33,12 +34,9 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
 
     func start(in directory: URL, uploadPlan: WalkUploadPlan? = nil) throws {
         self.directory = directory
-        // RoomPlan preserves the settings of an already-running AR session on iOS 17+.
         let session = ARSession()
         let recorder = try FrameRecorder(session: session, directory: directory)
-        let preparedConfiguration = SceneCaptureConfiguration.prepare()
-        let configuration = preparedConfiguration.configuration
-        session.run(configuration)
+        let sceneOptions = Self.prepareSceneCapture(on: session)
         let captureView = RoomCaptureView(frame: view.bounds, arSession: session)
         captureView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         captureView.delegate = self
@@ -52,14 +50,27 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
         recorder.onObservation = { [weak self] frame in self?.observe(frame) }
         streamFrames(to: uploadPlan, from: recorder, directory: directory)
         self.recorder = recorder
+        expectsDetailedSurfaces = sceneOptions != nil
         detailRecorder = LidarMeshRecorder(
             directory: directory,
-            peopleFilteringEnabled: preparedConfiguration.options.peopleFilteringEnabled
+            peopleFilteringEnabled: sceneOptions?.peopleFilteringEnabled ?? false
         )
         var roomConfiguration = RoomCaptureSession.Configuration()
         roomConfiguration.isCoachingEnabled = true
         captureView.captureSession.run(configuration: roomConfiguration)
         recorder.start()
+    }
+
+    /// Before iOS 27, RoomPlan kept the settings of an AR session that was
+    /// already running, which is how the walk got its LiDAR mesh. On iOS 27
+    /// that inherited session opens the front camera alongside the back ones,
+    /// the back camera drops below the rate world tracking needs, and RoomPlan
+    /// ends the walk on a black screen. There RoomPlan runs the session itself.
+    private static func prepareSceneCapture(on session: ARSession) -> SceneCaptureOptions? {
+        if #available(iOS 27, *) { return nil }
+        let prepared = SceneCaptureConfiguration.prepare()
+        session.run(prepared.configuration)
+        return prepared.options
     }
 
     /// Each keyframe also goes to the server during the walk, on Wi-Fi.
@@ -225,7 +236,7 @@ final class RoomCaptureController: UIViewController, RoomCaptureViewDelegate, Ro
               let room = processedRoom, let recording, let directory else { return }
         isExporting = true
         let coverage = coverageEngine.reconcile(finalSurfaces: RoomCoverage.snapshots(from: room))
-        let detailRecorder = detailRecorder
+        let detailRecorder = expectsDetailedSurfaces ? detailRecorder : nil
         let finalMeshFrame = finalMeshFrame
         let streamer = streamer
         Task { [weak self] in
